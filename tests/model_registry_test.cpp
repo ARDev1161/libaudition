@@ -1,10 +1,10 @@
-#include <acoustic/model/in_memory_model_registry.hpp>
+#include <audition/model/in_memory_model_registry.hpp>
 
 #include <gtest/gtest.h>
 
 TEST(ModelRegistry, StoresDescriptorById) {
-    acoustic::InMemoryModelRegistry registry;
-    acoustic::ModelDescriptor model;
+    audition::InMemoryModelRegistry registry;
+    audition::ModelDescriptor model;
     model.id = "asr.test";
     model.version = "1";
     model.license = {"Apache-2.0", true, true, false};

@@ -13,10 +13,10 @@
       "binaryDir": "${sourceDir}/build/dev",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "LIBACOUSTIC_BUILD_TESTS": "ON",
-        "LIBACOUSTIC_BUILD_EXAMPLES": "ON",
-        "LIBACOUSTIC_WITH_SPDLOG": "ON",
-        "LIBACOUSTIC_FETCH_DEPENDENCIES": "ON"
+        "LIBAUDITION_BUILD_TESTS": "ON",
+        "LIBAUDITION_BUILD_EXAMPLES": "ON",
+        "LIBAUDITION_WITH_SPDLOG": "ON",
+        "LIBAUDITION_FETCH_DEPENDENCIES": "ON"
       }
     },
     {
@@ -26,11 +26,11 @@
       "binaryDir": "${sourceDir}/build/ci",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "LIBACOUSTIC_BUILD_TESTS": "ON",
-        "LIBACOUSTIC_BUILD_EXAMPLES": "ON",
-        "LIBACOUSTIC_WITH_SPDLOG": "ON",
-        "LIBACOUSTIC_FETCH_DEPENDENCIES": "ON",
-        "LIBACOUSTIC_WARNINGS_AS_ERRORS": "ON"
+        "LIBAUDITION_BUILD_TESTS": "ON",
+        "LIBAUDITION_BUILD_EXAMPLES": "ON",
+        "LIBAUDITION_WITH_SPDLOG": "ON",
+        "LIBAUDITION_FETCH_DEPENDENCIES": "ON",
+        "LIBAUDITION_WARNINGS_AS_ERRORS": "ON"
       }
     },
     {
@@ -40,10 +40,10 @@
       "binaryDir": "${sourceDir}/build/minimal",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "LIBACOUSTIC_BUILD_TESTS": "OFF",
-        "LIBACOUSTIC_BUILD_EXAMPLES": "ON",
-        "LIBACOUSTIC_WITH_SPDLOG": "OFF",
-        "LIBACOUSTIC_FETCH_DEPENDENCIES": "OFF"
+        "LIBAUDITION_BUILD_TESTS": "OFF",
+        "LIBAUDITION_BUILD_EXAMPLES": "ON",
+        "LIBAUDITION_WITH_SPDLOG": "OFF",
+        "LIBAUDITION_FETCH_DEPENDENCIES": "OFF"
       }
     }
   ],

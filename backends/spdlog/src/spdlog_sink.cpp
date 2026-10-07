@@ -1,4 +1,4 @@
-#include <acoustic/backends/spdlog/spdlog_sink.hpp>
+#include <audition/backends/spdlog/spdlog_sink.hpp>
 
 #include <memory>
 #include <string>
@@ -7,7 +7,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/stdout_sinks.h>
 
-namespace acoustic {
+namespace audition {
 namespace {
 
 spdlog::level::level_enum toSpdlogLevel(LogLevel level) {
@@ -47,7 +47,7 @@ public:
                        : std::static_pointer_cast<spdlog::sinks::sink>(
                              std::make_shared<spdlog::sinks::stdout_sink_mt>());
         }
-        logger_ = std::make_shared<spdlog::logger>("libacoustic", std::move(sink));
+        logger_ = std::make_shared<spdlog::logger>("libaudition", std::move(sink));
         logger_->set_level(toSpdlogLevel(options.level));
         logger_->set_pattern(options.pattern);
     }
@@ -68,4 +68,4 @@ std::shared_ptr<ILogSink> makeSpdlogSink(const SpdlogSinkOptions& options) {
     return std::make_shared<SpdlogSink>(options);
 }
 
-}  // namespace acoustic
+}  // namespace audition

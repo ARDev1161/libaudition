@@ -1,8 +1,8 @@
-#include <acoustic/model/in_memory_model_registry.hpp>
+#include <audition/model/in_memory_model_registry.hpp>
 
-#include <acoustic/core/error.hpp>
+#include <audition/core/error.hpp>
 
-namespace acoustic {
+namespace audition {
 
 void InMemoryModelRegistry::add(ModelDescriptor descriptor) {
     if (descriptor.id.empty()) {
@@ -31,4 +31,4 @@ std::vector<ModelDescriptor> InMemoryModelRegistry::list() const {
     return result;
 }
 
-}  // namespace acoustic
+}  // namespace audition

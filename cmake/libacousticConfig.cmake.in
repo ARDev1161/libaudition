@@ -1,9 +1,0 @@
-@PACKAGE_INIT@
-
-include(CMakeFindDependencyMacro)
-
-if(@LIBACOUSTIC_WITH_SPDLOG@)
-    find_dependency(spdlog 1.15 CONFIG)
-endif()
-include("${CMAKE_CURRENT_LIST_DIR}/libacousticTargets.cmake")
-check_required_components(libacoustic)
