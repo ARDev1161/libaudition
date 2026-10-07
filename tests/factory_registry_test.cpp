@@ -22,5 +22,10 @@ TEST(FactoryRegistry, CreatesRegisteredBackend) {
 
 TEST(FactoryRegistry, RejectsUnknownBackend) {
     audition::FactoryRegistry<audition::IAudioClassifier, Config> registry;
-    EXPECT_THROW(registry.create("missing", {}), audition::Error);
+    EXPECT_THROW(
+        {
+            const auto backend = registry.create("missing", {});
+            (void)backend;
+        },
+        audition::Error);
 }
