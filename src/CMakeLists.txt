@@ -5,6 +5,7 @@ add_library(libacoustic_core
 add_library(acoustic::core ALIAS libacoustic_core)
 set_target_properties(libacoustic_core PROPERTIES
     EXPORT_NAME core
+    OUTPUT_NAME acoustic_core
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES)
 target_compile_definitions(libacoustic_core PRIVATE LIBACOUSTIC_BUILDING_LIBRARY)
@@ -37,7 +38,7 @@ install(TARGETS libacoustic_interfaces EXPORT libacousticTargets)
 
 add_library(libacoustic_model model/in_memory_model_registry.cpp)
 add_library(acoustic::model ALIAS libacoustic_model)
-set_target_properties(libacoustic_model PROPERTIES EXPORT_NAME model)
+set_target_properties(libacoustic_model PROPERTIES EXPORT_NAME model OUTPUT_NAME acoustic_model)
 target_link_libraries(libacoustic_model PUBLIC acoustic::interfaces)
 libacoustic_configure_target(libacoustic_model)
 target_include_directories(libacoustic_model PUBLIC
@@ -46,7 +47,7 @@ target_include_directories(libacoustic_model PUBLIC
 
 add_library(libacoustic_logging logging/logging.cpp)
 add_library(acoustic::logging ALIAS libacoustic_logging)
-set_target_properties(libacoustic_logging PROPERTIES EXPORT_NAME logging)
+set_target_properties(libacoustic_logging PROPERTIES EXPORT_NAME logging OUTPUT_NAME acoustic_logging)
 target_link_libraries(libacoustic_logging PUBLIC acoustic::core)
 libacoustic_configure_target(libacoustic_logging)
 target_include_directories(libacoustic_logging PUBLIC

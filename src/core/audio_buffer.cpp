@@ -46,6 +46,9 @@ StridedSpan<const float> AudioView::channel(std::size_t channel_index) const {
         throw Error{ErrorCode::InvalidArgument, "Audio channel index is out of range"};
     }
     const auto frames = frameCount();
+    if (frames == 0U) {
+        return StridedSpan<const float>{nullptr, 0U, 1};
+    }
     if (format_.layout == AudioLayout::Interleaved) {
         return StridedSpan<const float>{data_ + channel_index, frames,
                                         static_cast<std::ptrdiff_t>(format_.channel_count)};

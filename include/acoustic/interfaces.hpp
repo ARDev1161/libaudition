@@ -3,6 +3,7 @@
 #include <acoustic/interfaces/audio.hpp>
 #include <acoustic/interfaces/authenticity.hpp>
 #include <acoustic/interfaces/classify.hpp>
+#include <acoustic/interfaces/fingerprint.hpp>
 #include <acoustic/interfaces/spatial.hpp>
 #include <acoustic/interfaces/source_identity.hpp>
 #include <acoustic/interfaces/speaker.hpp>
