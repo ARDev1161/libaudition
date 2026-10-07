@@ -10,6 +10,7 @@ option(LIBAUDITION_BUILD_TESTS "Build GoogleTest unit tests" ${BUILD_TESTING})
 option(LIBAUDITION_BUILD_EXAMPLES "Build examples" ON)
 option(LIBAUDITION_BUILD_DOCS "Build Doxygen documentation" OFF)
 option(LIBAUDITION_WITH_SPDLOG "Build the spdlog logging adapter" ON)
+option(LIBAUDITION_WITH_ODAS "Build the direct libodas spatial-audio backend" OFF)
 option(LIBAUDITION_FETCH_DEPENDENCIES "Fetch missing third-party build dependencies" ON)
 option(LIBAUDITION_WARNINGS_AS_ERRORS "Treat libaudition warnings as errors" OFF)
 
@@ -42,6 +43,11 @@ add_subdirectory(src)
 if(LIBAUDITION_WITH_SPDLOG)
     libaudition_find_or_fetch_spdlog()
     add_subdirectory(backends/spdlog)
+endif()
+
+if(LIBAUDITION_WITH_ODAS)
+    libaudition_find_or_fetch_odas()
+    add_subdirectory(backends/odas)
 endif()
 
 if(LIBAUDITION_BUILD_EXAMPLES)
@@ -83,3 +89,6 @@ install(EXPORT libauditionTargets
     NAMESPACE audition::
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")
 install(FILES LICENSE NOTICE THIRD_PARTY.md DESTINATION "${CMAKE_INSTALL_DATADIR}/libaudition")
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/LICENSES" DESTINATION "${CMAKE_INSTALL_DATADIR}/libaudition")
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindODAS.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")
