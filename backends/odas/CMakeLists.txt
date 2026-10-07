@@ -15,7 +15,9 @@ if(BUILD_SHARED_LIBS)
 endif()
 target_link_libraries(libaudition_backend_odas
     PUBLIC audition::interfaces
-    PRIVATE ODAS::odas)
+    PRIVATE
+        "$<BUILD_INTERFACE:ODAS::odas>"
+        "$<INSTALL_INTERFACE:ODAS::odas>")
 target_include_directories(libaudition_backend_odas
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
