@@ -1,0 +1,20 @@
+#pragma once
+
+#include <acoustic/audio/audio_buffer.hpp>
+#include <acoustic/audio/audio_format.hpp>
+#include <acoustic/audio/audio_quality.hpp>
+#include <acoustic/authenticity/types.hpp>
+#include <acoustic/classify/types.hpp>
+#include <acoustic/core/error.hpp>
+#include <acoustic/core/execution.hpp>
+#include <acoustic/core/geometry.hpp>
+#include <acoustic/core/id.hpp>
+#include <acoustic/core/probability.hpp>
+#include <acoustic/core/span.hpp>
+#include <acoustic/core/time.hpp>
+#include <acoustic/core/version.hpp>
+#include <acoustic/event/acoustic_event.hpp>
+#include <acoustic/spatial/types.hpp>
+#include <acoustic/speaker/types.hpp>
+#include <acoustic/speech/types.hpp>
+#include <acoustic/voice/types.hpp>
