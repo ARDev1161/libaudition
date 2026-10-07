@@ -27,3 +27,12 @@ install(TARGETS libacoustic_core
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/acoustic
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+add_library(libacoustic_interfaces INTERFACE)
+add_library(acoustic::interfaces ALIAS libacoustic_interfaces)
+set_target_properties(libacoustic_interfaces PROPERTIES EXPORT_NAME interfaces)
+target_link_libraries(libacoustic_interfaces INTERFACE acoustic::core)
+target_include_directories(libacoustic_interfaces INTERFACE
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+install(TARGETS libacoustic_interfaces EXPORT libacousticTargets)
