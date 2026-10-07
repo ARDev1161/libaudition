@@ -13,3 +13,8 @@ TEST(Direction, NormalizesVector) {
     EXPECT_NEAR(direction.vector().x, 0.6, 1e-12);
     EXPECT_NEAR(direction.vector().y, 0.8, 1e-12);
 }
+
+TEST(DirectionEstimate, UnknownDirectionVarianceIsRepresentable) {
+    audition::DirectionEstimate estimate{};
+    EXPECT_FALSE(estimate.angular_variance_rad2.has_value());
+}

@@ -31,3 +31,48 @@ jobs:
         run: cmake --preset minimal
       - name: Build
         run: cmake --build --preset minimal --parallel
+
+  odas-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ODAS build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libfftw3-dev libasound2-dev libconfig-dev libpulse-dev
+      - name: Configure with direct ODAS backend
+        run: >-
+          cmake -S . -B build-odas -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_ODAS=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-odas --parallel
+      - name: Test
+        run: ctest --test-dir build-odas --output-on-failure
+      - name: Install
+        run: cmake --install build-odas --prefix "$PWD/install-odas"
+      - name: Verify installed ODAS backend package
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-odas-consumer
+          cat > /tmp/libaudition-odas-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_odas_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_odas)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-odas-consumer/main.cpp <<'CPP'
+          #include <audition/backends/odas.hpp>
+          int main() {
+              audition::OdasOptions options{};
+              return options.sample_rate_hz == 16000U ? 0 : 1;
+          }
+          CPP
+          cmake -S /tmp/libaudition-odas-consumer -B /tmp/libaudition-odas-consumer/build -G Ninja             -DCMAKE_PREFIX_PATH="$PWD/install-odas"
+          cmake --build /tmp/libaudition-odas-consumer/build --parallel

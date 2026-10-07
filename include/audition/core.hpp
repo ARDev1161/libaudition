@@ -14,6 +14,7 @@
 #include <audition/core/time.hpp>
 #include <audition/core/version.hpp>
 #include <audition/event/acoustic_event.hpp>
+#include <audition/spatial/microphone_array.hpp>
 #include <audition/spatial/types.hpp>
 #include <audition/speaker/types.hpp>
 #include <audition/speech/types.hpp>

@@ -4,7 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning after `1.0`; the `0.x` public API may evolve.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-08
+
+### Added
+
+- Direct optional `libodas` spatial backend implementing `ISpatialAudioEngine` without `odas_ros`.
+- Typed ODAS configuration for microphone geometry, SSL, SST, SSS and post-filter settings.
+- Stable fixed-slot mapping from ODAS SST track IDs to SSS separated audio.
+- Optional `LIBAUDITION_WITH_ODAS` CMake integration, pinned FetchContent revision, install/export support and ODAS license notice.
+- ODAS backend contract/validation tests, dedicated CI job, ADR and backend documentation.
+- Generic `MicrophoneArrayGeometry` domain type.
 
 ### Changed
 
@@ -12,6 +21,13 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 - Renamed the public C++ namespace and exported CMake target namespace from `acoustic` to `audition`.
 - Moved installed headers from `include/acoustic/` to `include/audition/` and renamed the umbrella header to `audition/audition.hpp`.
 - Renamed build options and package configuration variables from `LIBACOUSTIC_*` to `LIBAUDITION_*`.
+- `DirectionEstimate::angular_variance_rad2` is now optional so backends can represent unknown angular uncertainty instead of reporting false zero variance.
+
+### Validation
+
+- Dependency-free GCC/Clang builds remain supported with ODAS disabled.
+- ODAS backend is built and tested in CI against the pinned upstream revision.
+- Installed package smoke test verifies `find_package(libaudition)` and `audition::backend_odas`.
 
 ## [0.1.0] - 2026-10-07
 
@@ -46,5 +62,5 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Not included yet
 
-ODAS, sherpa-onnx, CLAP, AASIST, WORLD, WebRTC AEC3 and GTSAM adapters are intentionally
+sherpa-onnx, CLAP, AASIST, WORLD, WebRTC AEC3 and GTSAM adapters are intentionally
 scheduled for subsequent releases so their concrete integration does not distort the core API.

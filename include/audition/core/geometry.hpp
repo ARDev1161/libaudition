@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <optional>
 
 #include <audition/core/error.hpp>
 #include <audition/core/probability.hpp>
@@ -48,7 +49,7 @@ struct Pose3D {
 
 struct DirectionEstimate {
     Direction3D direction{Direction3D::fromVector({1.0, 0.0, 0.0})};
-    double angular_variance_rad2{0.0};
+    std::optional<double> angular_variance_rad2{};
     Probability confidence{Probability::one()};
 };
 
