@@ -1,0 +1,62 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Developer build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "LIBACOUSTIC_BUILD_TESTS": "ON",
+        "LIBACOUSTIC_BUILD_EXAMPLES": "ON",
+        "LIBACOUSTIC_WITH_SPDLOG": "ON",
+        "LIBACOUSTIC_FETCH_DEPENDENCIES": "ON"
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ci",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LIBACOUSTIC_BUILD_TESTS": "ON",
+        "LIBACOUSTIC_BUILD_EXAMPLES": "ON",
+        "LIBACOUSTIC_WITH_SPDLOG": "ON",
+        "LIBACOUSTIC_FETCH_DEPENDENCIES": "ON",
+        "LIBACOUSTIC_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "minimal",
+      "displayName": "Minimal dependency-free core",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/minimal",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LIBACOUSTIC_BUILD_TESTS": "OFF",
+        "LIBACOUSTIC_BUILD_EXAMPLES": "ON",
+        "LIBACOUSTIC_WITH_SPDLOG": "OFF",
+        "LIBACOUSTIC_FETCH_DEPENDENCIES": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {"name": "dev", "configurePreset": "dev"},
+    {"name": "ci", "configurePreset": "ci"},
+    {"name": "minimal", "configurePreset": "minimal"}
+  ],
+  "testPresets": [
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "output": {"outputOnFailure": true}
+    }
+  ]
+}
