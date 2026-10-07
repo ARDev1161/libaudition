@@ -15,7 +15,8 @@
 - Direct ODAS adapter (no `odas_ros`).
 - Microphone-array geometry/calibration types.
 - Stable mapping between separated stream slots and spatial track IDs.
-- Recorded scenario fixtures for DOA/tracking/separation regression tests.
+- Typed ODAS configuration, capability reporting, reset semantics and contract tests.
+- Recorded real-scene fixtures remain a follow-up once representative hardware captures are curated.
 
 ## v0.3 — sherpa-onnx backend family
 

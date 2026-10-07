@@ -60,3 +60,11 @@ must appear in `models/manifest.yaml` with immutable provenance, hash and licens
 Expected observations such as "no source", "no speech", or "no match" are normal result
 states (`optional`, empty result, status), not exceptions. Configuration failures, corrupt
 models, unsupported formats and runtime backend failures use libaudition error categories.
+
+## Direct ODAS backend
+
+`OdasSpatialEngine` implements `ISpatialAudioEngine` without owning capture or
+scheduling. It accepts one configured hop per call, maps configured input
+channels into ODAS microphone order, and returns backend-neutral `SpatialTrack`
+and `TrackedAudioFrame` objects. Separated audio is associated by the fixed ODAS
+SST/SSS track slot. See `docs/backends/odas.md` and ADR-0012.
