@@ -21,3 +21,8 @@ target_link_libraries(libaudition_tests PRIVATE
     GTest::gtest_main)
 libaudition_configure_target(libaudition_tests)
 gtest_discover_tests(libaudition_tests)
+
+if(TARGET audition::backend_odas)
+    target_sources(libaudition_tests PRIVATE odas_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_odas)
+endif()
