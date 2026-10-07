@@ -8,7 +8,12 @@ TEST(Time, DifferenceRequiresSameClock) {
     EXPECT_EQ(b.since(a).nanoseconds(), 50);
 
     const audition::Timestamp external{150, {audition::ClockDomain::External, 7}};
-    EXPECT_THROW(external.since(a), audition::Error);
+    EXPECT_THROW(
+        {
+            const auto difference = external.since(a);
+            (void)difference;
+        },
+        audition::Error);
 }
 
 TEST(Time, AdvancePreservesClock) {
