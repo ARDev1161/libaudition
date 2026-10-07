@@ -5,10 +5,12 @@ target_include_directories(libaudition_backend_spdlog
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_include_directories(libaudition_backend_spdlog PRIVATE
+    "$<TARGET_PROPERTY:spdlog::spdlog,INTERFACE_INCLUDE_DIRECTORIES>")
 target_link_libraries(libaudition_backend_spdlog
     PUBLIC audition::logging
     PRIVATE
-        "$<BUILD_INTERFACE:spdlog::spdlog>"
+        "$<BUILD_INTERFACE:$<TARGET_FILE:spdlog::spdlog>>"
         "$<INSTALL_INTERFACE:spdlog::spdlog>")
 libaudition_configure_target(libaudition_backend_spdlog)
 

@@ -13,10 +13,12 @@ target_compile_definitions(libaudition_backend_odas PRIVATE LIBAUDITION_BUILDING
 if(BUILD_SHARED_LIBS)
     target_compile_definitions(libaudition_backend_odas PUBLIC LIBAUDITION_SHARED)
 endif()
+target_include_directories(libaudition_backend_odas PRIVATE
+    "$<TARGET_PROPERTY:ODAS::odas,INTERFACE_INCLUDE_DIRECTORIES>")
 target_link_libraries(libaudition_backend_odas
     PUBLIC audition::interfaces
     PRIVATE
-        "$<BUILD_INTERFACE:ODAS::odas>"
+        "$<BUILD_INTERFACE:$<TARGET_FILE:ODAS::odas>>"
         "$<INSTALL_INTERFACE:ODAS::odas>")
 target_include_directories(libaudition_backend_odas
     PUBLIC
