@@ -58,7 +58,10 @@ double clippingRatio(AudioView audio, double threshold) noexcept {
 AudioBuffer convertLayout(AudioView audio, AudioLayout target_layout) {
     const auto format = audio.format();
     if (format.layout == target_layout) {
-        std::vector<float> copy(audio.data(), audio.data() + audio.sampleCount());
+        std::vector<float> copy;
+        if (audio.sampleCount() > 0U) {
+            copy.assign(audio.data(), audio.data() + audio.sampleCount());
+        }
         return AudioBuffer{std::move(copy), format, audio.captureTime(), audio.sequenceNumber()};
     }
 
