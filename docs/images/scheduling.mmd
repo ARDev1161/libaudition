@@ -1,0 +1,6 @@
+flowchart LR
+    A[Algorithm block] --> Q[Bounded queue]
+    Q --> B[Algorithm block]
+    APP[Application scheduler] -.owns execution.-> A
+    APP -.owns execution.-> B
+    APP -.configures backpressure.-> Q

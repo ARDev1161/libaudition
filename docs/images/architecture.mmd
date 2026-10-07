@@ -1,0 +1,17 @@
+flowchart TB
+    APP[Application / ROS2 / desktop / embedded]
+    subgraph LIB[libacoustic]
+      PIPE[Pipelines / registries / queues]
+      PORTS[Interfaces]
+      CORE[Domain types]
+      PIPE --> PORTS --> CORE
+    end
+    subgraph BACKENDS[Adapters]
+      ODAS[ODAS]
+      SHERPA[sherpa-onnx]
+      OTHER[CLAP / AASIST / WORLD / GTSAM / WebRTC]
+    end
+    APP --> PIPE
+    ODAS -.implements.-> PORTS
+    SHERPA -.implements.-> PORTS
+    OTHER -.implements.-> PORTS

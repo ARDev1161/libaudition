@@ -1,0 +1,7 @@
+flowchart LR
+    TRACK[Transient SpatialTrackId] --> RESOLVE[Identity resolver]
+    FP[Acoustic fingerprint] --> RESOLVE
+    GEO[Geometry and time] --> RESOLVE
+    RESOLVE --> SOURCE[Persistent AcousticSourceId]
+    SPEECH[Speaker embedding] --> SPEAKER[SpeakerId]
+    SPEAKER -.optional evidence.-> SOURCE
