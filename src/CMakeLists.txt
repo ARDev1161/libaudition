@@ -36,3 +36,34 @@ target_include_directories(libacoustic_interfaces INTERFACE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 install(TARGETS libacoustic_interfaces EXPORT libacousticTargets)
+
+add_library(libacoustic_model model/in_memory_model_registry.cpp)
+add_library(acoustic::model ALIAS libacoustic_model)
+set_target_properties(libacoustic_model PROPERTIES EXPORT_NAME model)
+target_link_libraries(libacoustic_model PUBLIC acoustic::interfaces PRIVATE acoustic::project_warnings)
+target_include_directories(libacoustic_model PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+add_library(libacoustic_logging logging/logging.cpp)
+add_library(acoustic::logging ALIAS libacoustic_logging)
+set_target_properties(libacoustic_logging PROPERTIES EXPORT_NAME logging)
+target_link_libraries(libacoustic_logging PUBLIC acoustic::core PRIVATE acoustic::project_warnings)
+target_include_directories(libacoustic_logging PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+add_library(libacoustic_pipeline INTERFACE)
+add_library(acoustic::pipeline ALIAS libacoustic_pipeline)
+set_target_properties(libacoustic_pipeline PROPERTIES EXPORT_NAME pipeline)
+target_link_libraries(libacoustic_pipeline INTERFACE acoustic::core acoustic::interfaces)
+target_include_directories(libacoustic_pipeline INTERFACE
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+install(TARGETS libacoustic_model libacoustic_logging libacoustic_pipeline
+    EXPORT libacousticTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

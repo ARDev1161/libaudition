@@ -8,3 +8,4 @@
 #include <acoustic/interfaces/speech.hpp>
 #include <acoustic/interfaces/tts.hpp>
 #include <acoustic/interfaces/voice.hpp>
+#include <acoustic/interfaces/model_registry.hpp>
