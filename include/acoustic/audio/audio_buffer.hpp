@@ -41,13 +41,13 @@ public:
                 std::uint64_t sequence_number = 0);
 
     [[nodiscard]] const std::vector<float>& samples() const noexcept { return samples_; }
-    [[nodiscard]] std::vector<float>& samples() noexcept { return samples_; }
+    [[nodiscard]] Span<float> mutableSamples() noexcept { return Span<float>{samples_.data(), samples_.size()}; }
     [[nodiscard]] AudioFormat format() const noexcept { return format_; }
     [[nodiscard]] Timestamp captureTime() const noexcept { return capture_time_; }
     [[nodiscard]] std::uint64_t sequenceNumber() const noexcept { return sequence_number_; }
     [[nodiscard]] std::size_t frameCount() const noexcept;
     [[nodiscard]] Duration duration() const noexcept;
-    [[nodiscard]] AudioView view() const noexcept;
+    [[nodiscard]] AudioView view() const;
     [[nodiscard]] StridedSpan<const float> channel(std::size_t channel_index) const;
 
 private:

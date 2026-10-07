@@ -66,7 +66,7 @@ std::size_t AudioBuffer::frameCount() const noexcept {
 
 Duration AudioBuffer::duration() const noexcept { return audioDuration(frameCount(), format_.sample_rate_hz); }
 
-AudioView AudioBuffer::view() const noexcept {
+AudioView AudioBuffer::view() const {
     // Construction cannot fail because AudioBuffer validated the invariant.
     return AudioView{samples_.data(), samples_.size(), format_, capture_time_, sequence_number_};
 }
