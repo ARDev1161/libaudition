@@ -2,6 +2,7 @@
 
 #include <acoustic/core.hpp>
 #include <acoustic/interfaces.hpp>
+#include <acoustic/dsp/basic.hpp>
 #include <acoustic/logging/logging.hpp>
 #include <acoustic/memory/in_memory_registries.hpp>
 #include <acoustic/memory/types.hpp>

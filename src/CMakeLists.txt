@@ -84,3 +84,18 @@ install(TARGETS libacoustic_memory
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+add_library(libacoustic_dsp dsp/basic.cpp)
+add_library(acoustic::dsp ALIAS libacoustic_dsp)
+set_target_properties(libacoustic_dsp PROPERTIES EXPORT_NAME dsp OUTPUT_NAME acoustic_dsp)
+target_link_libraries(libacoustic_dsp PUBLIC acoustic::core)
+libacoustic_configure_target(libacoustic_dsp)
+target_include_directories(libacoustic_dsp PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+install(TARGETS libacoustic_dsp
+    EXPORT libacousticTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
