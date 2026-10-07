@@ -13,7 +13,11 @@ Rules:
 4. Research-only integrations must be opt-in and clearly separated from the
    default distribution.
 
-Planned permissive backends include ODAS (MIT), sherpa-onnx (Apache-2.0),
-GTSAM (BSD), WORLD (BSD-like), WebRTC AEC3 (BSD), and selected permissively
-licensed model artifacts. Their source code is not vendored by this foundation
-release.
+The optional direct ODAS backend uses `introlab/odas` under the MIT license.
+FetchContent is pinned to commit `bcb845434495e293df3d48f1203b7a86e1852449`;
+the upstream license text is retained in `LICENSES/ODAS.txt`. `odas_ros` is not
+a dependency.
+
+Planned permissive backends also include sherpa-onnx (Apache-2.0), GTSAM (BSD),
+WORLD (BSD-like), WebRTC AEC3 (BSD), and selected permissively licensed model
+artifacts. Code licenses and model-artifact licenses are audited separately.

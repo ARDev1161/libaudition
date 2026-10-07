@@ -1,0 +1,11 @@
+flowchart LR
+    CAP[Application capture] --> VIEW[AudioView]
+    VIEW --> MAP[Input channel mapping]
+    MAP --> STFT[ODAS STFT]
+    STFT --> SSL[ODAS SSL]
+    SSL --> SST[ODAS SST]
+    STFT --> SSS[ODAS SSS]
+    SST -->|fixed track slots| SSS
+    SSS --> ISTFT[ODAS ISTFT]
+    SST --> TRACK[SpatialTrack]
+    ISTFT --> FRAME[TrackedAudioFrame]

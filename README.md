@@ -32,6 +32,14 @@ ctest --test-dir build --output-on-failure
 
 Set `LIBAUDITION_FETCH_DEPENDENCIES=OFF` to require system-provided dependencies.
 
+The direct ODAS spatial backend is opt-in:
+
+```bash
+cmake -S . -B build -DLIBAUDITION_WITH_ODAS=ON
+```
+
+See [`docs/backends/odas.md`](docs/backends/odas.md).
+
 ## Consume from CMake
 
 ```cmake
@@ -45,4 +53,4 @@ target_link_libraries(my_app PRIVATE audition::core audition::dsp audition::pipe
 
 ## Status
 
-Version `0.1.x` is the foundation release. Public APIs may evolve before `1.0`.
+Version `0.2.x` adds the first direct spatial backend. Public APIs may evolve before `1.0`.

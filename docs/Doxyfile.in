@@ -4,6 +4,7 @@ PROJECT_BRIEF          = "Composable acoustic perception toolkit"
 OUTPUT_DIRECTORY       = "@CMAKE_CURRENT_BINARY_DIR@/docs"
 INPUT                  = "@CMAKE_CURRENT_SOURCE_DIR@/README.md" \
                          "@CMAKE_CURRENT_SOURCE_DIR@/include" \
+                         "@CMAKE_CURRENT_SOURCE_DIR@/backends" \
                          "@CMAKE_CURRENT_SOURCE_DIR@/docs"
 RECURSIVE              = YES
 FILE_PATTERNS           = *.hpp *.md
