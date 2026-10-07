@@ -1,8 +1,8 @@
-# libacoustic v0.1 specification
+# libaudition v0.1 specification
 
 ## Mission
 
-`libacoustic` is an application-agnostic C++17 library of composable acoustic
+`libaudition` is an application-agnostic C++17 library of composable acoustic
 algorithms and domain types. It answers questions such as what is audible, who
 or what produced it, where it came from, what was said, what characteristics
 are observable, and with what uncertainty.
@@ -12,7 +12,7 @@ state, task relevance, or UI/storage policy.
 
 ## Architectural invariants
 
-1. Domain abstractions depend only on the C++ standard library and libacoustic core.
+1. Domain abstractions depend only on the C++ standard library and libaudition core.
 2. Third-party engines are adapters behind narrow interfaces.
 3. No third-party type appears in stable core public APIs.
 4. Scheduling and real-time policy belong to the application. Algorithms expose
@@ -96,7 +96,7 @@ its `AcousticSourceId` when its spatial tracker ID changes.
 
 ## Lifecycle
 
-libacoustic does not implement a middleware lifecycle. Configuration happens at
+libaudition does not implement a middleware lifecycle. Configuration happens at
 construction/factory time. Stateful algorithms expose only domain-meaningful
 operations such as `reset`, `flush`, `accept`, `partial`, and `finalize`.
 
@@ -151,6 +151,6 @@ ROS adapter can later forward logs to `rclcpp` without changing algorithms.
 
 ## API stability
 
-Only installed headers under `include/acoustic/` form the public API.
+Only installed headers under `include/audition/` form the public API.
 Version `0.x` may make breaking API changes. `1.0` will define the first stable
 compatibility contract.

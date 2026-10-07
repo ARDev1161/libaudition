@@ -1,12 +1,12 @@
-#include <acoustic/dsp/basic.hpp>
+#include <audition/dsp/basic.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
-#include <acoustic/core/error.hpp>
+#include <audition/core/error.hpp>
 
-namespace acoustic::dsp {
+namespace audition::dsp {
 
 double rms(AudioView audio) noexcept {
     if (audio.sampleCount() == 0U) {
@@ -103,4 +103,4 @@ AudioBuffer mixToMono(AudioView audio) {
                        audio.captureTime(), audio.sequenceNumber()};
 }
 
-}  // namespace acoustic::dsp
+}  // namespace audition::dsp

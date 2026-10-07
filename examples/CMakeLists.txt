@@ -1,7 +1,7 @@
-add_executable(libacoustic_example_core core_audio.cpp)
-target_link_libraries(libacoustic_example_core PRIVATE acoustic::core acoustic::pipeline)
-libacoustic_configure_target(libacoustic_example_core)
+add_executable(libaudition_example_core core_audio.cpp)
+target_link_libraries(libaudition_example_core PRIVATE audition::core audition::pipeline)
+libaudition_configure_target(libaudition_example_core)
 
-add_executable(libacoustic_example_custom_classifier custom_classifier.cpp)
-target_link_libraries(libacoustic_example_custom_classifier PRIVATE acoustic::interfaces acoustic::pipeline)
-libacoustic_configure_target(libacoustic_example_custom_classifier)
+add_executable(libaudition_example_custom_classifier custom_classifier.cpp)
+target_link_libraries(libaudition_example_custom_classifier PRIVATE audition::interfaces audition::pipeline)
+libaudition_configure_target(libaudition_example_custom_classifier)

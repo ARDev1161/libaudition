@@ -1,6 +1,6 @@
-#include <acoustic/core/time.hpp>
+#include <audition/core/time.hpp>
 
-namespace acoustic {
+namespace audition {
 
 Duration Timestamp::since(const Timestamp& earlier) const {
     if (!comparableWith(earlier)) {
@@ -26,4 +26,4 @@ Timestamp Timestamp::monotonicNow() {
                      ClockIdentity{ClockDomain::Monotonic, 0}};
 }
 
-}  // namespace acoustic
+}  // namespace audition

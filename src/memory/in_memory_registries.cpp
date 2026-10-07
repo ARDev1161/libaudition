@@ -1,10 +1,10 @@
-#include <acoustic/memory/in_memory_registries.hpp>
+#include <audition/memory/in_memory_registries.hpp>
 
 #include <utility>
 
-#include <acoustic/core/error.hpp>
+#include <audition/core/error.hpp>
 
-namespace acoustic {
+namespace audition {
 namespace {
 
 template <typename Map, typename Id>
@@ -117,4 +117,4 @@ std::vector<SoundPrototype> InMemorySoundPrototypeRegistry::list() const {
     return values(data_);
 }
 
-}  // namespace acoustic
+}  // namespace audition

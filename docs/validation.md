@@ -1,6 +1,6 @@
 # Validation status
 
-## Performed for v0.1.0
+## Foundation validation
 
 The dependency-free build was configured and compiled with:
 
@@ -10,8 +10,10 @@ The dependency-free build was configured and compiled with:
 - warnings-as-errors
 - examples enabled
 
-The produced package was installed to a clean prefix and successfully consumed by a separate
-CMake project through `find_package(libacoustic CONFIG REQUIRED)` and exported targets.
+The renamed `libaudition` package was installed to a clean prefix and successfully consumed by a separate
+CMake project through `find_package(libaudition CONFIG REQUIRED)` and the exported `audition::*` targets.
+The downstream smoke test included `<audition/audition.hpp>` and linked `audition::core`,
+`audition::dsp`, and `audition::pipeline`.
 
 ## GoogleTest
 

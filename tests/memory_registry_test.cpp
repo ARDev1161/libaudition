@@ -1,10 +1,10 @@
-#include <acoustic/memory/in_memory_registries.hpp>
+#include <audition/memory/in_memory_registries.hpp>
 
 #include <gtest/gtest.h>
 
 TEST(MemoryRegistry, KeepsGenericSourceSeparateFromSpeaker) {
-    acoustic::InMemoryAcousticSourceRegistry sources;
-    acoustic::InMemorySpeakerRegistry speakers;
+    audition::InMemoryAcousticSourceRegistry sources;
+    audition::InMemorySpeakerRegistry speakers;
 
     const auto source = sources.create();
     const auto speaker = speakers.create("Ivan");
@@ -17,9 +17,9 @@ TEST(MemoryRegistry, KeepsGenericSourceSeparateFromSpeaker) {
 }
 
 TEST(MemoryRegistry, StoresFewShotSoundExamples) {
-    acoustic::InMemorySoundPrototypeRegistry sounds;
+    audition::InMemorySoundPrototypeRegistry sounds;
     const auto id = sounds.create("coffee_grinder");
-    acoustic::AudioEmbedding embedding;
+    audition::AudioEmbedding embedding;
     embedding.model_id = "clap";
     embedding.values = {0.1F, 0.2F};
     sounds.addExample(id, embedding);

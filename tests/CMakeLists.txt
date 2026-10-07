@@ -1,6 +1,6 @@
 include(GoogleTest)
 
-add_executable(libacoustic_tests
+add_executable(libaudition_tests
     core_time_test.cpp
     audio_buffer_test.cpp
     probability_geometry_test.cpp
@@ -10,14 +10,14 @@ add_executable(libacoustic_tests
     public_headers_test.cpp
     memory_registry_test.cpp
     dsp_test.cpp)
-target_link_libraries(libacoustic_tests PRIVATE
-    acoustic::core
-    acoustic::interfaces
-    acoustic::model
-    acoustic::memory
-    acoustic::logging
-    acoustic::dsp
-    acoustic::pipeline
+target_link_libraries(libaudition_tests PRIVATE
+    audition::core
+    audition::interfaces
+    audition::model
+    audition::memory
+    audition::logging
+    audition::dsp
+    audition::pipeline
     GTest::gtest_main)
-libacoustic_configure_target(libacoustic_tests)
-gtest_discover_tests(libacoustic_tests)
+libaudition_configure_target(libaudition_tests)
+gtest_discover_tests(libaudition_tests)

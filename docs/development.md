@@ -39,8 +39,8 @@ refactors, behavior changes, and documentation changes.
 
 ## Public headers
 
-Third-party headers are forbidden from `include/acoustic/core`, domain types, and
-algorithm interfaces. Backend-specific public headers may expose libacoustic
+Third-party headers are forbidden from `include/audition/core`, domain types, and
+algorithm interfaces. Backend-specific public headers may expose libaudition
 configuration values but still should avoid exposing third-party implementation types.
 
 ## Thread safety documentation

@@ -1,12 +1,12 @@
-#include <acoustic/core/error.hpp>
+#include <audition/core/error.hpp>
 
 #include <utility>
 
-namespace acoustic {
+namespace audition {
 
 Error::Error(ErrorCode code, std::string message)
     : std::runtime_error(std::move(message)), code_(code) {}
 
 ErrorCode Error::code() const noexcept { return code_; }
 
-}  // namespace acoustic
+}  // namespace audition

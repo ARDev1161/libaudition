@@ -1,8 +1,8 @@
-#include <acoustic/audio/audio_buffer.hpp>
+#include <audition/audio/audio_buffer.hpp>
 
 #include <limits>
 
-namespace acoustic {
+namespace audition {
 namespace {
 
 void validateAudio(std::size_t sample_count, const AudioFormat& format) {
@@ -78,4 +78,4 @@ StridedSpan<const float> AudioBuffer::channel(std::size_t channel_index) const {
     return view().channel(channel_index);
 }
 
-}  // namespace acoustic
+}  // namespace audition

@@ -1,100 +1,100 @@
-add_library(libacoustic_core
+add_library(libaudition_core
     core/error.cpp
     core/time.cpp
     core/audio_buffer.cpp)
-add_library(acoustic::core ALIAS libacoustic_core)
-set_target_properties(libacoustic_core PROPERTIES
+add_library(audition::core ALIAS libaudition_core)
+set_target_properties(libaudition_core PROPERTIES
     EXPORT_NAME core
-    OUTPUT_NAME acoustic_core
+    OUTPUT_NAME audition_core
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES)
-target_compile_definitions(libacoustic_core PRIVATE LIBACOUSTIC_BUILDING_LIBRARY)
+target_compile_definitions(libaudition_core PRIVATE LIBAUDITION_BUILDING_LIBRARY)
 if(BUILD_SHARED_LIBS)
-    target_compile_definitions(libacoustic_core PUBLIC LIBACOUSTIC_SHARED)
+    target_compile_definitions(libaudition_core PUBLIC LIBAUDITION_SHARED)
 endif()
-target_include_directories(libacoustic_core
+target_include_directories(libaudition_core
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-libacoustic_configure_target(libacoustic_core)
+libaudition_configure_target(libaudition_core)
 
-install(TARGETS libacoustic_core
-    EXPORT libacousticTargets
+install(TARGETS libaudition_core
+    EXPORT libauditionTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/acoustic
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/audition
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-add_library(libacoustic_interfaces INTERFACE)
-add_library(acoustic::interfaces ALIAS libacoustic_interfaces)
-set_target_properties(libacoustic_interfaces PROPERTIES EXPORT_NAME interfaces)
-target_link_libraries(libacoustic_interfaces INTERFACE acoustic::core)
-target_include_directories(libacoustic_interfaces INTERFACE
+add_library(libaudition_interfaces INTERFACE)
+add_library(audition::interfaces ALIAS libaudition_interfaces)
+set_target_properties(libaudition_interfaces PROPERTIES EXPORT_NAME interfaces)
+target_link_libraries(libaudition_interfaces INTERFACE audition::core)
+target_include_directories(libaudition_interfaces INTERFACE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-install(TARGETS libacoustic_interfaces EXPORT libacousticTargets)
+install(TARGETS libaudition_interfaces EXPORT libauditionTargets)
 
-add_library(libacoustic_model model/in_memory_model_registry.cpp)
-add_library(acoustic::model ALIAS libacoustic_model)
-set_target_properties(libacoustic_model PROPERTIES EXPORT_NAME model OUTPUT_NAME acoustic_model)
-target_link_libraries(libacoustic_model PUBLIC acoustic::interfaces)
-libacoustic_configure_target(libacoustic_model)
-target_include_directories(libacoustic_model PUBLIC
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-
-add_library(libacoustic_logging logging/logging.cpp)
-add_library(acoustic::logging ALIAS libacoustic_logging)
-set_target_properties(libacoustic_logging PROPERTIES EXPORT_NAME logging OUTPUT_NAME acoustic_logging)
-target_link_libraries(libacoustic_logging PUBLIC acoustic::core)
-libacoustic_configure_target(libacoustic_logging)
-target_include_directories(libacoustic_logging PUBLIC
+add_library(libaudition_model model/in_memory_model_registry.cpp)
+add_library(audition::model ALIAS libaudition_model)
+set_target_properties(libaudition_model PROPERTIES EXPORT_NAME model OUTPUT_NAME audition_model)
+target_link_libraries(libaudition_model PUBLIC audition::interfaces)
+libaudition_configure_target(libaudition_model)
+target_include_directories(libaudition_model PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-add_library(libacoustic_pipeline INTERFACE)
-add_library(acoustic::pipeline ALIAS libacoustic_pipeline)
-set_target_properties(libacoustic_pipeline PROPERTIES EXPORT_NAME pipeline)
-target_link_libraries(libacoustic_pipeline INTERFACE acoustic::core acoustic::interfaces)
-target_compile_features(libacoustic_pipeline INTERFACE cxx_std_17)
-target_include_directories(libacoustic_pipeline INTERFACE
+add_library(libaudition_logging logging/logging.cpp)
+add_library(audition::logging ALIAS libaudition_logging)
+set_target_properties(libaudition_logging PROPERTIES EXPORT_NAME logging OUTPUT_NAME audition_logging)
+target_link_libraries(libaudition_logging PUBLIC audition::core)
+libaudition_configure_target(libaudition_logging)
+target_include_directories(libaudition_logging PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-install(TARGETS libacoustic_model libacoustic_logging libacoustic_pipeline
-    EXPORT libacousticTargets
+add_library(libaudition_pipeline INTERFACE)
+add_library(audition::pipeline ALIAS libaudition_pipeline)
+set_target_properties(libaudition_pipeline PROPERTIES EXPORT_NAME pipeline)
+target_link_libraries(libaudition_pipeline INTERFACE audition::core audition::interfaces)
+target_compile_features(libaudition_pipeline INTERFACE cxx_std_17)
+target_include_directories(libaudition_pipeline INTERFACE
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+install(TARGETS libaudition_model libaudition_logging libaudition_pipeline
+    EXPORT libauditionTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-add_library(libacoustic_memory memory/in_memory_registries.cpp)
-add_library(acoustic::memory ALIAS libacoustic_memory)
-set_target_properties(libacoustic_memory PROPERTIES EXPORT_NAME memory OUTPUT_NAME acoustic_memory)
-target_link_libraries(libacoustic_memory PUBLIC acoustic::interfaces)
-libacoustic_configure_target(libacoustic_memory)
-target_include_directories(libacoustic_memory PUBLIC
+add_library(libaudition_memory memory/in_memory_registries.cpp)
+add_library(audition::memory ALIAS libaudition_memory)
+set_target_properties(libaudition_memory PROPERTIES EXPORT_NAME memory OUTPUT_NAME audition_memory)
+target_link_libraries(libaudition_memory PUBLIC audition::interfaces)
+libaudition_configure_target(libaudition_memory)
+target_include_directories(libaudition_memory PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-install(TARGETS libacoustic_memory
-    EXPORT libacousticTargets
+install(TARGETS libaudition_memory
+    EXPORT libauditionTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-add_library(libacoustic_dsp dsp/basic.cpp)
-add_library(acoustic::dsp ALIAS libacoustic_dsp)
-set_target_properties(libacoustic_dsp PROPERTIES EXPORT_NAME dsp OUTPUT_NAME acoustic_dsp)
-target_link_libraries(libacoustic_dsp PUBLIC acoustic::core)
-libacoustic_configure_target(libacoustic_dsp)
-target_include_directories(libacoustic_dsp PUBLIC
+add_library(libaudition_dsp dsp/basic.cpp)
+add_library(audition::dsp ALIAS libaudition_dsp)
+set_target_properties(libaudition_dsp PROPERTIES EXPORT_NAME dsp OUTPUT_NAME audition_dsp)
+target_link_libraries(libaudition_dsp PUBLIC audition::core)
+libaudition_configure_target(libaudition_dsp)
+target_include_directories(libaudition_dsp PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-install(TARGETS libacoustic_dsp
-    EXPORT libacousticTargets
+install(TARGETS libaudition_dsp
+    EXPORT libauditionTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

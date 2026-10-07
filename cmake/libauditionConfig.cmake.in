@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+if(@LIBAUDITION_WITH_SPDLOG@)
+    find_dependency(spdlog 1.15 CONFIG)
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/libauditionTargets.cmake")
+check_required_components(libaudition)

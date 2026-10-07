@@ -7,7 +7,7 @@ pipelines depend on abstractions, applications compose blocks**.
 flowchart TB
     APP[Application / ROS2 / desktop / embedded]
 
-    subgraph LIB[libacoustic]
+    subgraph LIB[libaudition]
       subgraph PIPE[Composition and infrastructure]
         QUEUE[BoundedQueue]
         REG[FactoryRegistry]

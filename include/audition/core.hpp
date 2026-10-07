@@ -1,0 +1,20 @@
+#pragma once
+
+#include <audition/audio/audio_buffer.hpp>
+#include <audition/audio/audio_format.hpp>
+#include <audition/audio/audio_quality.hpp>
+#include <audition/authenticity/types.hpp>
+#include <audition/classify/types.hpp>
+#include <audition/core/error.hpp>
+#include <audition/core/execution.hpp>
+#include <audition/core/geometry.hpp>
+#include <audition/core/id.hpp>
+#include <audition/core/probability.hpp>
+#include <audition/core/span.hpp>
+#include <audition/core/time.hpp>
+#include <audition/core/version.hpp>
+#include <audition/event/acoustic_event.hpp>
+#include <audition/spatial/types.hpp>
+#include <audition/speaker/types.hpp>
+#include <audition/speech/types.hpp>
+#include <audition/voice/types.hpp>

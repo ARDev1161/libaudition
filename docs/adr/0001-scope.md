@@ -2,6 +2,6 @@
 
 **Status:** Accepted
 
-libacoustic provides application-agnostic acoustic algorithms and observations.
+libaudition provides application-agnostic acoustic algorithms and observations.
 Robot behavior, Nav2/PlanSys2 policy, UI, and durable application storage remain
 outside the library.

@@ -1,9 +1,9 @@
-#include <acoustic/logging/logging.hpp>
+#include <audition/logging/logging.hpp>
 
 #include <mutex>
 #include <utility>
 
-namespace acoustic {
+namespace audition {
 namespace {
 
 class NullLogSink final : public ILogSink {
@@ -54,4 +54,4 @@ std::shared_ptr<ILogSink> defaultLogSink() {
     return sinkStorage();
 }
 
-}  // namespace acoustic
+}  // namespace audition

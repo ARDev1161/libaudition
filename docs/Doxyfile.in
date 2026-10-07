@@ -1,4 +1,4 @@
-PROJECT_NAME           = "libacoustic"
+PROJECT_NAME           = "libaudition"
 PROJECT_NUMBER         = "@PROJECT_VERSION@"
 PROJECT_BRIEF          = "Composable acoustic perception toolkit"
 OUTPUT_DIRECTORY       = "@CMAKE_CURRENT_BINARY_DIR@/docs"
