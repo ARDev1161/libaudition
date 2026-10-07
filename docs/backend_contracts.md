@@ -5,7 +5,7 @@ Every backend must document and test the following properties.
 ## Construction
 
 Construction or factory creation performs configuration validation and model/runtime
-initialization. Invalid configuration fails early with a libacoustic `Error`; third-party
+initialization. Invalid configuration fails early with a libaudition `Error`; third-party
 exceptions must not cross a generic interface boundary.
 
 ## Thread safety
@@ -48,7 +48,7 @@ if (engine.capabilities().word_timestamps) { /* use timestamps */ }
 ## Time and geometry
 
 Adapters convert native timestamps, coordinate conventions, units and channel layouts at
-the boundary. Generic code sees only libacoustic types.
+the boundary. Generic code sees only libaudition types.
 
 ## Models
 
@@ -59,4 +59,4 @@ must appear in `models/manifest.yaml` with immutable provenance, hash and licens
 
 Expected observations such as "no source", "no speech", or "no match" are normal result
 states (`optional`, empty result, status), not exceptions. Configuration failures, corrupt
-models, unsupported formats and runtime backend failures use libacoustic error categories.
+models, unsupported formats and runtime backend failures use libaudition error categories.

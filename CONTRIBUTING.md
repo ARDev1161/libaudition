@@ -9,7 +9,7 @@ Use `cz commit` / Conventional Commit messages and keep commits atomic.
 Before opening a change:
 
 ```bash
-cmake -S . -B build -DLIBACOUSTIC_BUILD_TESTS=ON
+cmake -S . -B build -DLIBAUDITION_BUILD_TESTS=ON
 cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```

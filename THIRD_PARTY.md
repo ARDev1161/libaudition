@@ -1,6 +1,6 @@
 # Third-party policy
 
-The `libacoustic` core is Apache-2.0 and must remain usable in open-source and
+The `libaudition` core is Apache-2.0 and must remain usable in open-source and
 commercial proprietary applications.
 
 Rules:

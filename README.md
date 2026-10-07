@@ -1,6 +1,6 @@
-# libacoustic
+# libaudition
 
-`libacoustic` is a C++17 toolkit for real-time and offline acoustic perception,
+`libaudition` is a C++17 toolkit for real-time and offline acoustic perception,
 spatial audio analysis, speech intelligence, source characterization, and
 probabilistic acoustic observations.
 
@@ -30,7 +30,18 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Set `LIBACOUSTIC_FETCH_DEPENDENCIES=OFF` to require system-provided dependencies.
+Set `LIBAUDITION_FETCH_DEPENDENCIES=OFF` to require system-provided dependencies.
+
+## Consume from CMake
+
+```cmake
+find_package(libaudition CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE audition::core audition::dsp audition::pipeline)
+```
+
+```cpp
+#include <audition/audition.hpp>
+```
 
 ## Status
 
