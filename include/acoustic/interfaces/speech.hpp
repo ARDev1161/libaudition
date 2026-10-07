@@ -6,6 +6,7 @@
 
 #include <acoustic/audio/audio_buffer.hpp>
 #include <acoustic/backend/capabilities.hpp>
+#include <acoustic/spatial/types.hpp>
 #include <acoustic/speech/types.hpp>
 
 namespace acoustic {
