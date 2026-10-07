@@ -1,0 +1,6 @@
+libacoustic
+Copyright 2026 libacoustic contributors
+
+This product is licensed under the Apache License, Version 2.0.
+Third-party components and model artifacts, when enabled, retain their own
+licenses and notices. See THIRD_PARTY.md and models/manifest.yaml.

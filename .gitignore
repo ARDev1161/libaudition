@@ -1,0 +1,10 @@
+/build*/
+cmake-build-*/
+.cache/
+compile_commands.json
+*.user
+*.swp
+*.swo
+.DS_Store
+/docs/html/
+/docs/xml/
