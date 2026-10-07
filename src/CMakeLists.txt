@@ -69,3 +69,18 @@ install(TARGETS libacoustic_model libacoustic_logging libacoustic_pipeline
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+add_library(libacoustic_memory memory/in_memory_registries.cpp)
+add_library(acoustic::memory ALIAS libacoustic_memory)
+set_target_properties(libacoustic_memory PROPERTIES EXPORT_NAME memory OUTPUT_NAME acoustic_memory)
+target_link_libraries(libacoustic_memory PUBLIC acoustic::interfaces)
+libacoustic_configure_target(libacoustic_memory)
+target_include_directories(libacoustic_memory PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+install(TARGETS libacoustic_memory
+    EXPORT libacousticTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

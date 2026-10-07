@@ -11,3 +11,4 @@
 #include <acoustic/interfaces/tts.hpp>
 #include <acoustic/interfaces/voice.hpp>
 #include <acoustic/interfaces/model_registry.hpp>
+#include <acoustic/interfaces/memory.hpp>

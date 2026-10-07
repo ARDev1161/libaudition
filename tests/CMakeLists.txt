@@ -7,11 +7,13 @@ add_executable(libacoustic_tests
     factory_registry_test.cpp
     bounded_queue_test.cpp
     model_registry_test.cpp
-    public_headers_test.cpp)
+    public_headers_test.cpp
+    memory_registry_test.cpp)
 target_link_libraries(libacoustic_tests PRIVATE
     acoustic::core
     acoustic::interfaces
     acoustic::model
+    acoustic::memory
     acoustic::logging
     acoustic::pipeline
     GTest::gtest_main)

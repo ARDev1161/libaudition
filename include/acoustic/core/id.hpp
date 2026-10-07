@@ -44,6 +44,7 @@ struct SpeechSegmentIdTag;
 struct AcousticEventIdTag;
 struct SpeakerIdTag;
 struct AudioStreamIdTag;
+struct SoundPrototypeIdTag;
 
 using SpatialTrackId = StrongId<SpatialTrackIdTag>;
 using AcousticSourceId = StrongId<AcousticSourceIdTag>;
@@ -51,5 +52,6 @@ using SpeechSegmentId = StrongId<SpeechSegmentIdTag>;
 using AcousticEventId = StrongId<AcousticEventIdTag>;
 using SpeakerId = StrongId<SpeakerIdTag>;
 using AudioStreamId = StrongId<AudioStreamIdTag>;
+using SoundPrototypeId = StrongId<SoundPrototypeIdTag>;
 
 }  // namespace acoustic
