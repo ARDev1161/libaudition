@@ -12,8 +12,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Ninja
-        uses: seanmiddleditch/gha-setup-ninja@master
+      - name: Check Ninja
+        run: ninja --version
       - name: Configure
         run: cmake --preset ci
       - name: Build
@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Ninja
-        uses: seanmiddleditch/gha-setup-ninja@master
+      - name: Check Ninja
+        run: ninja --version
       - name: Configure without optional dependencies
         run: cmake --preset minimal
       - name: Build
