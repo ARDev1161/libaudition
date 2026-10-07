@@ -15,9 +15,7 @@ target_include_directories(libacoustic_core
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-target_link_libraries(libacoustic_core
-    PUBLIC acoustic::project_options
-    PRIVATE acoustic::project_warnings)
+libacoustic_configure_target(libacoustic_core)
 
 install(TARGETS libacoustic_core
     EXPORT libacousticTargets
@@ -40,7 +38,8 @@ install(TARGETS libacoustic_interfaces EXPORT libacousticTargets)
 add_library(libacoustic_model model/in_memory_model_registry.cpp)
 add_library(acoustic::model ALIAS libacoustic_model)
 set_target_properties(libacoustic_model PROPERTIES EXPORT_NAME model)
-target_link_libraries(libacoustic_model PUBLIC acoustic::interfaces PRIVATE acoustic::project_warnings)
+target_link_libraries(libacoustic_model PUBLIC acoustic::interfaces)
+libacoustic_configure_target(libacoustic_model)
 target_include_directories(libacoustic_model PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
@@ -48,7 +47,8 @@ target_include_directories(libacoustic_model PUBLIC
 add_library(libacoustic_logging logging/logging.cpp)
 add_library(acoustic::logging ALIAS libacoustic_logging)
 set_target_properties(libacoustic_logging PROPERTIES EXPORT_NAME logging)
-target_link_libraries(libacoustic_logging PUBLIC acoustic::core PRIVATE acoustic::project_warnings)
+target_link_libraries(libacoustic_logging PUBLIC acoustic::core)
+libacoustic_configure_target(libacoustic_logging)
 target_include_directories(libacoustic_logging PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
@@ -57,6 +57,7 @@ add_library(libacoustic_pipeline INTERFACE)
 add_library(acoustic::pipeline ALIAS libacoustic_pipeline)
 set_target_properties(libacoustic_pipeline PROPERTIES EXPORT_NAME pipeline)
 target_link_libraries(libacoustic_pipeline INTERFACE acoustic::core acoustic::interfaces)
+target_compile_features(libacoustic_pipeline INTERFACE cxx_std_17)
 target_include_directories(libacoustic_pipeline INTERFACE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
