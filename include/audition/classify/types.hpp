@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,7 +20,7 @@ struct ClassificationResult {
 struct AudioEmbedding {
     std::string model_id{};
     std::vector<float> values{};
-    Probability quality{Probability::zero()};
+    std::optional<Probability> quality{};
 };
 
 }  // namespace audition
