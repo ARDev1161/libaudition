@@ -240,6 +240,24 @@ struct SherpaAudioTaggingOptions {
     std::int32_t top_k{5};
 };
 
+struct SherpaSpeechDenoiserGtcrnModel {
+    std::filesystem::path model{};
+};
+
+struct SherpaSpeechDenoiserDpdfNetModel {
+    std::filesystem::path model{};
+    float attenuation_limit_db{0.0F};
+};
+
+using SherpaSpeechDenoiserModel =
+    std::variant<SherpaSpeechDenoiserGtcrnModel, SherpaSpeechDenoiserDpdfNetModel>;
+
+struct SherpaSpeechDenoiserOptions {
+    SherpaSpeechDenoiserModel model{SherpaSpeechDenoiserGtcrnModel{}};
+    std::optional<ModelDescriptor> model_descriptor{};
+    SherpaRuntimeOptions runtime{};
+};
+
 struct SherpaSpeakerEmbeddingOptions {
     std::filesystem::path model{};
     std::optional<ModelDescriptor> model_descriptor{};
@@ -275,6 +293,10 @@ struct SherpaSpeakerDiarizationOptions {
 };
 
 AUDITION_API void validateSherpaAudioTaggingOptions(const SherpaAudioTaggingOptions& options);
+AUDITION_API void validateSherpaOfflineSpeechDenoiserOptions(
+    const SherpaSpeechDenoiserOptions& options);
+AUDITION_API void validateSherpaStreamingSpeechDenoiserOptions(
+    const SherpaSpeechDenoiserOptions& options);
 AUDITION_API void validateSherpaSpeakerEmbeddingOptions(const SherpaSpeakerEmbeddingOptions& options);
 AUDITION_API void validateSherpaSpeakerIdentifierOptions(const SherpaSpeakerIdentifierOptions& options);
 AUDITION_API void validateSherpaSpeakerDiarizationOptions(const SherpaSpeakerDiarizationOptions& options);
