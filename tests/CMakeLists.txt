@@ -61,3 +61,9 @@ if(TARGET audition::backend_clap)
     target_include_directories(libaudition_tests PRIVATE
         ${PROJECT_SOURCE_DIR}/backends/clap/src)
 endif()
+
+
+if(TARGET audition::backend_aasist)
+    target_sources(libaudition_tests PRIVATE aasist_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_aasist)
+endif()
