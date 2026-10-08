@@ -58,6 +58,11 @@ public:
         const audition::SourceIdentityObservation& observation) override {
         ++observe_calls;
         last_observation = observation;
+        if (throw_on_observe) {
+            throw audition::Error{
+                audition::ErrorCode::InvalidState,
+                "synthetic resolver failure"};
+        }
         return decision;
     }
 
@@ -74,6 +79,7 @@ public:
         audition::Probability::from(0.9),
         false};
 
+    bool throw_on_observe{false};
     std::size_t observe_calls{0U};
     std::size_t reset_calls{0U};
     std::size_t end_calls{0U};
@@ -361,4 +367,80 @@ TEST(SpatialIdentityCoordinator, RejectsUnresolvedTrackForEvent) {
             event,
             track),
         audition::Error);
+}
+
+
+TEST(SpatialIdentityCoordinator, ResolverFailureDoesNotPartiallyMutateTrack) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+
+    fusion.result = position(9.0, 8.0, 7.0);
+    resolver.throw_on_observe = true;
+
+    audition::PositionObservation positions[] = {
+        {ts(5), position(1.0, 2.0, 3.0)},
+    };
+
+    auto track = trackAt(13U, 0, 10);
+    track.position = position(4.0, 5.0, 6.0);
+
+    EXPECT_THROW(
+        static_cast<void>(
+            coordinator.observe(track, {{}, {}, positions})),
+        audition::Error);
+
+    ASSERT_TRUE(track.position.has_value());
+    EXPECT_DOUBLE_EQ(track.position->mean_m.x, 4.0);
+    EXPECT_DOUBLE_EQ(track.position->mean_m.y, 5.0);
+    EXPECT_DOUBLE_EQ(track.position->mean_m.z, 6.0);
+    EXPECT_FALSE(track.source_id.has_value());
+    EXPECT_FALSE(coordinator.activeSource(track.track_id).has_value());
+}
+
+TEST(SpatialIdentityCoordinator, BatchPropagationConflictLeavesResultUnchanged) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+
+    auto observed = trackAt(14U, 0, 10);
+    static_cast<void>(coordinator.observe(observed));
+
+    audition::SpatialProcessingResult result{};
+    result.tracks.push_back(trackAt(14U, 0, 10));
+
+    audition::TrackedAudioFrame frame{};
+    frame.track_id = observed.track_id;
+    frame.source_id = audition::AcousticSourceId{999U};
+    result.separated_frames.push_back(frame);
+
+    EXPECT_THROW(
+        static_cast<void>(coordinator.propagate(result)),
+        audition::Error);
+
+    EXPECT_FALSE(result.tracks[0].source_id.has_value());
+    ASSERT_TRUE(result.separated_frames[0].source_id.has_value());
+    EXPECT_EQ(
+        *result.separated_frames[0].source_id,
+        audition::AcousticSourceId{999U});
+}
+
+TEST(SpatialIdentityCoordinator, EventConflictDoesNotPartiallySetTrackId) {
+    auto track = trackAt(15U, 0, 10);
+    track.source_id = audition::AcousticSourceId{123U};
+
+    audition::AcousticEvent event{};
+    event.source_id = audition::AcousticSourceId{999U};
+
+    EXPECT_THROW(
+        audition::SpatialIdentityCoordinator::attachToEvent(
+            event,
+            track),
+        audition::Error);
+
+    EXPECT_FALSE(event.track_id.has_value());
+    ASSERT_TRUE(event.source_id.has_value());
+    EXPECT_EQ(
+        *event.source_id,
+        audition::AcousticSourceId{999U});
 }
