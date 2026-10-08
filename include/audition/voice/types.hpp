@@ -32,6 +32,8 @@ struct VoiceAcousticFeatures {
 
     std::vector<double> time_axis_seconds{};
     std::vector<double> f0_hz{};
+    // 1 = voiced, 0 = unvoiced; one entry per frame.
+    std::vector<std::uint8_t> voiced_mask{};
 
     // Row-major [frame_count, frequency_bin_count].
     std::vector<double> spectral_envelope{};
