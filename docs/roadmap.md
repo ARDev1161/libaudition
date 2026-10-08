@@ -111,6 +111,13 @@ GTSAM foundation:
 - Optional GTSAM 4.2 backend performs batch bearing/range/position fusion and returns marginal covariance.
 - Mixed clock identities are rejected before geometric fusion.
 
+FUS-03 robustness:
+- Multi-bearing batches use deterministic least-squares ray intersection for initialization.
+- Bearing-only parallel/rank-deficient geometry is rejected instead of producing a fabricated point.
+- Range-only 3D fusion requires non-coplanar sensor geometry.
+- Input position covariance is required to be positive semidefinite and output marginal covariance is sanity-checked.
+- Optional Huber loss can robustify bearing/range/position source measurements without weakening fixed sensor-pose priors.
+
 Next slices:
 - SPL/type range priors.
 - Persistent acoustic-source identity resolver.
