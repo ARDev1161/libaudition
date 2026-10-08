@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -19,6 +21,21 @@ struct VoiceTraits {
     std::optional<double> pitch_mean_hz{};
     std::optional<double> pitch_stddev_hz{};
     std::optional<double> speaking_rate_syllables_per_second{};
+};
+
+struct VoiceAcousticFeatures {
+    std::uint32_t sample_rate_hz{0U};
+    double frame_period_ms{0.0};
+    std::size_t fft_size{0U};
+    std::size_t frame_count{0U};
+    std::size_t frequency_bin_count{0U};
+
+    std::vector<double> time_axis_seconds{};
+    std::vector<double> f0_hz{};
+
+    // Row-major [frame_count, frequency_bin_count].
+    std::vector<double> spectral_envelope{};
+    std::vector<double> aperiodicity{};
 };
 
 struct VoiceState {
