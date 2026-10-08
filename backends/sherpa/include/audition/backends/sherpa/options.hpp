@@ -7,6 +7,7 @@
 #include <variant>
 
 #include <audition/core/execution.hpp>
+#include <audition/core/export.hpp>
 #include <audition/model/model_descriptor.hpp>
 
 namespace audition {
@@ -219,10 +220,10 @@ struct SherpaLanguageIdOptions {
     std::int32_t tail_paddings{0};
 };
 
-void validateSherpaOfflineAsrOptions(const SherpaOfflineAsrOptions& options);
-void validateSherpaStreamingAsrOptions(const SherpaStreamingAsrOptions& options);
-void validateSherpaKeywordSpotterOptions(const SherpaKeywordSpotterOptions& options);
-void validateSherpaVadOptions(const SherpaVadOptions& options);
-void validateSherpaLanguageIdOptions(const SherpaLanguageIdOptions& options);
+AUDITION_API void validateSherpaOfflineAsrOptions(const SherpaOfflineAsrOptions& options);
+AUDITION_API void validateSherpaStreamingAsrOptions(const SherpaStreamingAsrOptions& options);
+AUDITION_API void validateSherpaKeywordSpotterOptions(const SherpaKeywordSpotterOptions& options);
+AUDITION_API void validateSherpaVadOptions(const SherpaVadOptions& options);
+AUDITION_API void validateSherpaLanguageIdOptions(const SherpaLanguageIdOptions& options);
 
 }  // namespace audition
