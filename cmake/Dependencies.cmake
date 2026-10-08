@@ -304,3 +304,29 @@ function(libaudition_find_or_fetch_onnxruntime)
     install(FILES ${_libaudition_onnxruntime_libraries}
         DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endfunction()
+
+
+function(libaudition_find_or_fetch_nlohmann_json)
+    if(TARGET nlohmann_json::nlohmann_json)
+        return()
+    endif()
+
+    find_package(nlohmann_json 3.11 CONFIG QUIET)
+    if(TARGET nlohmann_json::nlohmann_json)
+        return()
+    endif()
+
+    if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR
+            "nlohmann_json not found. Install it or set LIBAUDITION_FETCH_DEPENDENCIES=ON")
+    endif()
+
+    set(JSON_BuildTests OFF CACHE INTERNAL "" FORCE)
+    set(JSON_Install OFF CACHE INTERNAL "" FORCE)
+    FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG v3.11.3
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(nlohmann_json)
+endfunction()
