@@ -71,7 +71,7 @@ struct RangeEstimate {
 struct PositionEstimate {
     Vec3 mean_m{};
     Covariance3 covariance_m2{};
-    Probability confidence{Probability::zero()};
+    std::optional<Probability> confidence{};
 };
 
 }  // namespace audition
