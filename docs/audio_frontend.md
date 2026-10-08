@@ -76,6 +76,18 @@ SNR is intentionally separate. `dsp::snrDb(signal_rms, noise_rms)` requires an
 explicit measured/estimated noise RMS. The library does not infer a trustworthy
 noise floor from an arbitrary single frame.
 
+## Noise suppression lifecycle
+
+`INoiseSuppressorSession` is a stateful stream contract. `process()` may return
+fewer samples than it receives when a backend buffers algorithmic context.
+`flush()` returns any remaining output and ends the current stream; call
+`reset()` before reusing that session afterwards.
+
+`INoiseSuppressor::capabilities()` reports whether a backend is streaming, its
+accepted audio requirements and execution targets. Streaming backends can expose
+a `preferred_frame_count` without requiring callers to use exactly that chunk
+size.
+
 ## libsamplerate backend
 
 `SamplerateResampler` implements `IAudioResampler` with a stateful streaming

@@ -20,6 +20,8 @@ Pinned upstream revision:
 | `SherpaKeywordSpotter` | `IKeywordSpotter` | `KeywordSpotter` |
 | `SherpaLanguageIdentifier` | `ILanguageIdentifier` | `SpokenLanguageIdentification` |
 | `SherpaAudioTagger` | `IAudioClassifier` | `AudioTagging` |
+| `SherpaOfflineSpeechDenoiser` | `INoiseSuppressor` | `OfflineSpeechDenoiser` |
+| `SherpaStreamingSpeechDenoiser` | `INoiseSuppressor` | `OnlineSpeechDenoiser` |
 | `SherpaSpeakerEmbedder` | `ISpeakerEmbedder` | `SpeakerEmbeddingExtractor` |
 | `SherpaSpeakerVerifier` | `ISpeakerVerifier` | `SpeakerEmbeddingManager` |
 | `SherpaSpeakerIdentifier` | `ISpeakerIdentifier` | `SpeakerEmbeddingManager` |
@@ -57,6 +59,20 @@ Audio tagging:
 - CED audio-tagging models;
 - explicit label CSV and top-K selection;
 - mono 16 kHz input for the pinned Sherpa audio-tagging families.
+
+Speech enhancement:
+- GTCRN;
+- DPDFNet;
+- offline complete-buffer denoising;
+- stateful streaming denoising with explicit `flush()` and `reset()`;
+- DPDFNet attenuation limiting in offline mode;
+- model-derived sample rate and streaming preferred frame count.
+
+The denoiser adapters reject input at a different sample rate instead of allowing
+Sherpa's internal resampler to run implicitly. Convert explicitly with an
+`IAudioResampler` when required. Streaming sessions preserve a continuous
+output timeline across buffered chunks and return the remaining tail from
+`flush()`.
 
 Speaker intelligence:
 - speaker embedding models supported by Sherpa's `SpeakerEmbeddingExtractor`;
@@ -227,9 +243,8 @@ target_link_libraries(app PRIVATE audition::backend_sherpa)
 
 ## Future additions
 
-Speech enhancement and TTS remain separate capabilities and will be added
-as separate classes instead of expanding these adapters into a monolithic
-`SherpaBackend`.
+TTS remains a separate capability and will be added as its own adapter instead of
+expanding these classes into a monolithic `SherpaBackend`.
 
 Persistent speaker memory is intentionally implemented outside the Sherpa
 backend so another embedder/index can replace Sherpa without changing stored

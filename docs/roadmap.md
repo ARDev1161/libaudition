@@ -46,8 +46,12 @@ Audio-tagging slice:
 - Zipformer and CED audio tagging through `IAudioClassifier`.
 - Explicit labels, top-K selection and mono 16 kHz contract without hidden resampling.
 
+Speech-enhancement slice:
+- GTCRN and DPDFNet through `INoiseSuppressor`.
+- Explicit offline versus streaming semantics.
+- Streaming `flush()`, model-derived preferred frame size and no hidden resampling.
+
 Follow-up slices:
-- Speech enhancement with explicit streaming flush/latency semantics.
 - TTS and permitted voice-cloning models.
 
 ## v0.4 — extended perception

@@ -48,6 +48,13 @@ audition::SherpaKeywordSpotterOptions keywordSpotterOptions() {
     return options;
 }
 
+audition::SherpaSpeechDenoiserOptions speechDenoiserOptions() {
+    audition::SherpaSpeechDenoiserOptions options{};
+    std::get<audition::SherpaSpeechDenoiserGtcrnModel>(options.model).model =
+        "gtcrn.onnx";
+    return options;
+}
+
 }  // namespace
 
 TEST(SherpaConfig, AcceptsOfflineWhisperConfiguration) {
@@ -162,6 +169,74 @@ TEST(SherpaConfig, AudioTaggingAcceptsDescriptorModelRoot) {
     descriptor.artifact_path = "/opt/models/audio-tagging";
     options.model_descriptor = descriptor;
     EXPECT_NO_THROW(audition::validateSherpaAudioTaggingOptions(options));
+}
+
+TEST(SherpaConfig, SpeechDenoiserSupportsGtcrnOfflineAndStreaming) {
+    const auto options = speechDenoiserOptions();
+    EXPECT_NO_THROW(audition::validateSherpaOfflineSpeechDenoiserOptions(options));
+    EXPECT_NO_THROW(audition::validateSherpaStreamingSpeechDenoiserOptions(options));
+}
+
+TEST(SherpaConfig, SpeechDenoiserSupportsDpdfNetOfflineAttenuation) {
+    auto options = speechDenoiserOptions();
+    audition::SherpaSpeechDenoiserDpdfNetModel model{};
+    model.model = "dpdfnet.onnx";
+    model.attenuation_limit_db = 12.0F;
+    options.model = model;
+
+    EXPECT_NO_THROW(audition::validateSherpaOfflineSpeechDenoiserOptions(options));
+    EXPECT_THROW(audition::validateSherpaStreamingSpeechDenoiserOptions(options),
+                 audition::Error);
+
+    model.attenuation_limit_db = 0.0F;
+    options.model = model;
+    EXPECT_NO_THROW(audition::validateSherpaStreamingSpeechDenoiserOptions(options));
+}
+
+TEST(SherpaConfig, SpeechDenoiserRejectsMissingModelAndInvalidAttenuation) {
+    auto options = speechDenoiserOptions();
+    std::get<audition::SherpaSpeechDenoiserGtcrnModel>(options.model).model.clear();
+    EXPECT_THROW(audition::validateSherpaOfflineSpeechDenoiserOptions(options),
+                 audition::Error);
+
+    audition::SherpaSpeechDenoiserDpdfNetModel dpdfnet{};
+    dpdfnet.model = "dpdfnet.onnx";
+    dpdfnet.attenuation_limit_db = -1.0F;
+    options.model = dpdfnet;
+    EXPECT_THROW(audition::validateSherpaOfflineSpeechDenoiserOptions(options),
+                 audition::Error);
+}
+
+TEST(SherpaConfig, SpeechDenoiserRequiresExplicitProviderForAccelerator) {
+    auto options = speechDenoiserOptions();
+    options.runtime.execution.device_class = audition::DeviceClass::Npu;
+    EXPECT_THROW(audition::validateSherpaOfflineSpeechDenoiserOptions(options),
+                 audition::Error);
+
+    options.runtime.execution.provider = "rknn";
+    EXPECT_NO_THROW(audition::validateSherpaOfflineSpeechDenoiserOptions(options));
+}
+
+TEST(SherpaConfig, SpeechDenoiserRejectsUnsupportedExecutionKnobs) {
+    auto options = speechDenoiserOptions();
+    options.runtime.execution.precision = audition::PrecisionPreference::Float16;
+    EXPECT_THROW(audition::validateSherpaStreamingSpeechDenoiserOptions(options),
+                 audition::Error);
+
+    options = speechDenoiserOptions();
+    options.runtime.execution.allow_fallback = false;
+    EXPECT_THROW(audition::validateSherpaStreamingSpeechDenoiserOptions(options),
+                 audition::Error);
+}
+
+TEST(SherpaConfig, SpeechDenoiserAcceptsDescriptorModelRoot) {
+    auto options = speechDenoiserOptions();
+    audition::ModelDescriptor descriptor{};
+    descriptor.backend = "sherpa-onnx";
+    descriptor.artifact_path = "/opt/models/denoiser";
+    options.model_descriptor = descriptor;
+    EXPECT_NO_THROW(audition::validateSherpaOfflineSpeechDenoiserOptions(options));
+    EXPECT_NO_THROW(audition::validateSherpaStreamingSpeechDenoiserOptions(options));
 }
 
 TEST(SherpaConfig, LanguageIdRequiresWhisperPair) {
