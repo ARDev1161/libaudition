@@ -15,9 +15,9 @@ namespace audition {
 namespace {
 
 struct StreamingSharedState {
-    explicit StreamingSharedState(const SherpaStreamingAsrOptions& options)
-        : options(options),
-          config(sherpa_detail::makeStreamingAsrConfig(options)),
+    explicit StreamingSharedState(const SherpaStreamingAsrOptions& requested_options)
+        : options(requested_options),
+          config(sherpa_detail::makeStreamingAsrConfig(requested_options)),
           recognizer(sherpa_onnx::cxx::OnlineRecognizer::Create(config)) {
         if (recognizer.Get() == nullptr) {
             throw Error{ErrorCode::ModelLoadError,

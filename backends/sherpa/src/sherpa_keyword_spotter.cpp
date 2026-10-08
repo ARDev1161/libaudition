@@ -26,9 +26,9 @@ Duration secondsToDuration(float seconds) {
 }
 
 struct KeywordSharedState {
-    explicit KeywordSharedState(const SherpaKeywordSpotterOptions& options)
-        : options(options),
-          config(sherpa_detail::makeKeywordSpotterConfig(options)),
+    explicit KeywordSharedState(const SherpaKeywordSpotterOptions& requested_options)
+        : options(requested_options),
+          config(sherpa_detail::makeKeywordSpotterConfig(requested_options)),
           spotter(sherpa_onnx::cxx::KeywordSpotter::Create(config)) {
         if (spotter.Get() == nullptr) {
             throw Error{ErrorCode::ModelLoadError,
