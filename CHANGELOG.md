@@ -8,6 +8,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Added
 
+- Optional WORLD voice-traits backend using DIO+StoneMask or Harvest to expose measured pitch mean/stddev without fabricating age, speaking-rate or categorical traits.
 - Optional AASIST ONNX authenticity backend with raw bona-fide/spoof scores, explicit 16 kHz/64600-frame contract and optional external Platt calibration.
 - Optional CLAP ONNX audio-embedding backend implementing `IAudioEmbedder` with strict model-shape, sample-rate and embedding-space contracts.
 - CLAP RoBERTa tokenizer/text-encoder path and candidate-relative open-vocabulary audio classification through `IOpenVocabularyAudioClassifier`.
@@ -29,6 +30,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Changed
 
+- `IVoiceTraitsEstimator` now exposes `VoiceTraitsCapabilities` so applications can distinguish measurable pitch statistics from unsupported inferred traits.
 - `AuthenticityResult` now preserves optional raw bona-fide/spoof `Score` values and makes calibrated probabilities optional; authenticity interfaces also expose explicit backend capabilities.
 - `VadResult::speech_probability`, `KeywordHit::probability` and `LanguageScore::probability` are optional when a backend does not expose a calibrated score.
 - `AsrCapabilities` distinguishes token timestamps from word timestamps.

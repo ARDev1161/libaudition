@@ -67,3 +67,9 @@ if(TARGET audition::backend_aasist)
     target_sources(libaudition_tests PRIVATE aasist_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_aasist)
 endif()
+
+
+if(TARGET audition::backend_world)
+    target_sources(libaudition_tests PRIVATE world_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_world)
+endif()

@@ -87,8 +87,15 @@ AASIST authenticity slice:
 - Optional externally fitted Platt calibration can populate bona-fide/spoof `Probability`.
 - No replay-vs-synthetic attribution is claimed by this binary detector.
 
+WORLD voice-feature slice:
+- Pinned modified-BSD WORLD backend through `IVoiceTraitsEstimator`.
+- DIO + StoneMask and Harvest F0 estimation with explicit typed configuration.
+- Arithmetic mean and population standard deviation over voiced F0 frames.
+- Unvoiced/insufficient speech yields absent pitch fields rather than fabricated zero.
+- Age, categorical voice traits and speaking rate remain unsupported/absent.
+
 Follow-up slices:
-- WORLD voice feature backend.
+- GTSAM spatial inference and acoustic-source fusion.
 
 ## v0.5 — spatial inference and fusion
 

@@ -486,3 +486,56 @@ jobs:
           cmake --build /tmp/libaudition-aasist-consumer/build --parallel
           LD_LIBRARY_PATH="$PWD/install-aasist/lib:${LD_LIBRARY_PATH:-}" \
             /tmp/libaudition-aasist-consumer/build/consumer
+
+
+  world-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure WORLD voice backend
+        run: >-
+          cmake -S . -B build-world -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_WORLD=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-world --parallel
+      - name: Test
+        run: ctest --test-dir build-world --output-on-failure
+      - name: Install
+        run: cmake --install build-world --prefix "$PWD/install-world"
+      - name: Verify installed WORLD package from C++17 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-world-consumer
+          cat > /tmp/libaudition-world-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_world_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_world)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-world-consumer/main.cpp <<'CPP'
+          #include <audition/backends/world.hpp>
+          #include <type_traits>
+
+          int main() {
+              audition::WorldVoiceTraitsOptions options{};
+              audition::validateWorldVoiceTraitsOptions(options);
+              static_assert(
+                  std::is_base_of_v<
+                      audition::IVoiceTraitsEstimator,
+                      audition::WorldVoiceTraitsEstimator>);
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-world-consumer \
+            -B /tmp/libaudition-world-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-world"
+          cmake --build /tmp/libaudition-world-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-world/lib:${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-world-consumer/build/consumer
