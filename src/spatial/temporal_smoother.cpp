@@ -345,12 +345,26 @@ void TemporalSpatialTrackSmoother::update(
         validatePosition(*track.position);
     }
 
+    const auto existing = states_.find(track.track_id);
+
+    if (existing != states_.end() &&
+        existing->second.last_observation.has_value()) {
+        static_cast<void>(
+            elapsedSeconds(
+                track.last_seen,
+                *existing->second.last_observation));
+    }
+
     if (!track.range.has_value() &&
         !track.position.has_value()) {
+        if (existing != states_.end()) {
+            TrackState next_state = existing->second;
+            next_state.last_observation = track.last_seen;
+            states_[track.track_id] = std::move(next_state);
+        }
         return;
     }
 
-    const auto existing = states_.find(track.track_id);
     if (existing == states_.end() &&
         states_.size() >= options_.max_tracks) {
         throw Error{
@@ -362,6 +376,7 @@ void TemporalSpatialTrackSmoother::update(
         existing == states_.end()
             ? TrackState{}
             : existing->second;
+    next_state.last_observation = track.last_seen;
     SpatialTrack candidate = track;
 
     if (track.range.has_value()) {
