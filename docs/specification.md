@@ -8,7 +8,10 @@ or what produced it, where it came from, what was said, what characteristics
 are observable, and with what uncertainty.
 
 It deliberately does **not** decide robot behavior, navigation policy, PDDL
-state, task relevance, or UI/storage policy.
+state, task relevance, or UI/storage policy. It also does not own camera, radar,
+odometry/TF, or other non-audio sensor processing and does not perform
+cross-modal sensor fusion. A consuming application such as `audio_nav2` may
+combine libaudition acoustic outputs with those systems.
 
 ## Architectural invariants
 
@@ -29,6 +32,9 @@ state, task relevance, or UI/storage policy.
 9. Uncertainty is preserved in its native representation rather than flattened
    into a generic confidence number.
 10. Core/default components remain commercially usable under permissive licenses.
+11. Spatial inference inside libaudition is acoustic-only. Non-audio sensor
+    observations and multimodal association/fusion belong to the consuming
+    application.
 
 ## Audio contract
 

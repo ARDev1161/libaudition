@@ -54,12 +54,16 @@ struct DirectionEstimate {
 };
 
 struct RangeEstimate {
+    /**
+     * @brief Acoustic range-estimation provenance.
+     *
+     * Non-audio sensor provenance intentionally does not belong here. Cross-modal
+     * fusion (vision, radar, robot state, etc.) is an application concern.
+     */
     enum class Method {
         Unknown,
         LevelPrior,
         BearingTriangulation,
-        Vision,
-        Radar,
         Fused,
     };
 

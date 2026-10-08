@@ -37,6 +37,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Changed
 
+- Spatial range provenance and fusion contracts are explicitly acoustic-only; removed `Vision`/`Radar` range-method values and documented that cross-modal fusion belongs in consuming applications such as `audio_nav2`.
 - `IVoiceTraitsEstimator` now exposes `VoiceTraitsCapabilities` so applications can distinguish measurable pitch statistics from unsupported inferred traits.
 - `AuthenticityResult` now preserves optional raw bona-fide/spoof `Score` values and makes calibrated probabilities optional; authenticity interfaces also expose explicit backend capabilities.
 - `VadResult::speech_probability`, `KeywordHit::probability` and `LanguageScore::probability` are optional when a backend does not expose a calibrated score.

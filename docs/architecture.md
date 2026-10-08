@@ -67,11 +67,24 @@ flowchart TB
 
 Authoritative Mermaid source: `docs/images/architecture.mmd`.
 
+
+## Project boundary
+
+`libaudition` ends at acoustic-domain outputs: audio-derived direction, range,
+position, source identity, classification, speech, voice measurements, and
+`AcousticEvent`.
+
+Robot/system integration belongs above this library. In the intended
+`audio_nav2` consumer, camera/OAK-D data, radar, odometry, TF, robot state,
+cross-modal association/fusion, and ROS 2/Nav2 behavior remain application
+responsibilities. Non-audio sensor provenance must therefore not be added to
+libaudition spatial enums or backend contracts.
+
 ## Source identity
 
 ```mermaid
 flowchart LR
-    OBS[Bearing / range / position observations] --> F[ISpatialFusion]
+    OBS[Acoustic bearing / range / position observations] --> F[ISpatialFusion]
     F --> C[SpatialIdentityCoordinator]
     T[SpatialTrack] --> C
     C --> R[ISourceIdentityResolver]

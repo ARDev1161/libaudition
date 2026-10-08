@@ -79,8 +79,10 @@ distribution is log-normal, and a multi-type result is a log-normal mixture.
 
 `estimateObservation()` converts the prior directly into
 `ScalarRangeObservation`, preserving the sound-level timestamp and sensor pose.
-That observation can be supplied to `ISpatialFusion` together with bearing,
-vision, radar or other independent geometry.
+That observation can be supplied to `ISpatialFusion` together with other
+acoustic bearing/range/position evidence produced within libaudition's acoustic
+spatial pipeline. Cross-modal fusion with camera, radar, odometry, TF, or other
+robot sensors belongs in the consuming application.
 
 Because acoustic source level can vary substantially even within one semantic
 class, this estimate should normally be treated as a weak prior unless the

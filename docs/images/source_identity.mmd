@@ -1,5 +1,5 @@
 flowchart LR
-    OBS[Bearing / range / position observations] --> FUSE[ISpatialFusion]
+    OBS[Acoustic bearing / range / position observations] --> FUSE[ISpatialFusion]
     FUSE --> COORD[SpatialIdentityCoordinator]
     TRACK[SpatialTrack] --> COORD
     COORD --> RESOLVE[ISourceIdentityResolver]

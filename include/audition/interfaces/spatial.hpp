@@ -102,9 +102,12 @@ struct PositionObservation {
 };
 
 /**
- * @brief Observations belonging to one spatial source hypothesis.
+ * @brief Acoustic observations belonging to one acoustic-source hypothesis.
  *
  * All timestamps must be comparable (same ClockIdentity) before fusion.
+ * This contract is intentionally acoustic-only. Cross-modal fusion with camera,
+ * radar, robot state, or other non-audio sensors belongs in the application
+ * consuming libaudition.
  */
 struct SpatialFusionInput {
     Span<const BearingObservation> bearings{};
