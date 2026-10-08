@@ -124,3 +124,32 @@ function(libaudition_find_or_fetch_samplerate)
     install(FILES "${_samplerate_library}"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endfunction()
+
+function(libaudition_find_or_fetch_webrtc_aec3)
+    if(TARGET webrtc_aec3)
+        return()
+    endif()
+    if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR "WebRTC AEC3 backend requires the pinned standalone AEC3 source; set LIBAUDITION_FETCH_DEPENDENCIES=ON")
+    endif()
+
+    FetchContent_Declare(
+        webrtc_aec3
+        GIT_REPOSITORY https://github.com/Enaium/webrtc-aec3.git
+        GIT_TAG 2cec2f52e26646f93bd2d5498bbabf59cba18da9
+        GIT_SHALLOW FALSE
+        PATCH_COMMAND
+            "${CMAKE_COMMAND}"
+            -DSOURCE_DIR=<SOURCE_DIR>
+            -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PatchWebrtcAec3.cmake")
+    FetchContent_MakeAvailable(webrtc_aec3)
+
+    if(NOT TARGET webrtc_aec3)
+        message(FATAL_ERROR "Fetched WebRTC AEC3 source did not define target webrtc_aec3")
+    endif()
+
+    install(TARGETS webrtc_aec3
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+endfunction()

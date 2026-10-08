@@ -1,0 +1,13 @@
+if(NOT DEFINED SOURCE_DIR)
+    message(FATAL_ERROR "SOURCE_DIR is required")
+endif()
+
+set(_cmake_file "${SOURCE_DIR}/CMakeLists.txt")
+file(READ "${_cmake_file}" _content)
+set(_old "add_compile_options(-Wall -fPIC -Wno-deprecated -m64 -fexceptions)")
+set(_new "add_compile_options(-Wall -fPIC -Wno-deprecated -fexceptions)")
+string(REPLACE "${_old}" "${_new}" _patched "${_content}")
+if(_patched STREQUAL _content AND _content MATCHES "-m64")
+    message(FATAL_ERROR "Could not remove architecture-specific -m64 from standalone AEC3")
+endif()
+file(WRITE "${_cmake_file}" "${_patched}")

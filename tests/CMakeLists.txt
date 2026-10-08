@@ -31,3 +31,8 @@ if(TARGET audition::backend_samplerate)
     target_sources(libaudition_tests PRIVATE samplerate_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_samplerate)
 endif()
+
+if(TARGET audition::backend_webrtc_aec3)
+    target_sources(libaudition_tests PRIVATE webrtc_aec3_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_webrtc_aec3)
+endif()

@@ -27,6 +27,7 @@ target_include_directories(libaudition_backend_webrtc_aec3
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 libaudition_configure_target(libaudition_backend_webrtc_aec3)
+target_compile_features(libaudition_backend_webrtc_aec3 PRIVATE cxx_std_20)
 
 install(TARGETS libaudition_backend_webrtc_aec3
     EXPORT libauditionTargets
