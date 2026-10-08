@@ -8,6 +8,7 @@
 #include <audition/logging/logging.hpp>
 #include <audition/memory/in_memory_registries.hpp>
 #include <audition/memory/sound_prototype_matcher.hpp>
+#include <audition/memory/source_identity_resolver.hpp>
 #include <audition/memory/types.hpp>
 #include <audition/model/in_memory_model_registry.hpp>
 #include <audition/model/model_descriptor.hpp>

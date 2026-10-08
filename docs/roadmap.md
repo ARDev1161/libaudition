@@ -118,9 +118,17 @@ FUS-03 robustness:
 - Input position covariance is required to be positive semidefinite and output marginal covariance is sanity-checked.
 - Optional Huber loss can robustify bearing/range/position source measurements without weakening fixed sensor-pose priors.
 
+ID-01 persistent acoustic-source identity:
+- Active `SpatialTrackId` continuity is authoritative until explicit `endTrack()`.
+- Ended tracks can reacquire a persistent `AcousticSourceId` using compatible acoustic fingerprints and/or recent geometry.
+- Fingerprint spaces are isolated by `model_id` and embedding dimension.
+- One persistent source cannot be assigned to two simultaneous active tracks.
+- Resolver state enforces one clock identity and globally non-decreasing observation timestamps.
+- `reset()` clears transient track/geometry state while persistent registry fingerprints remain available for re-identification.
+
 Next slices:
+- ID-02 integration of spatial fusion output with source identity observations.
 - SPL/type range priors.
-- Persistent acoustic-source identity resolver.
 - Multimodal observation ports suitable for vision/radar integration.
 
 ## 1.0
