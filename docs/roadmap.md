@@ -44,7 +44,7 @@ Speaker slice:
 
 Audio-tagging slice:
 - Zipformer and CED audio tagging through `IAudioClassifier`.
-- Explicit labels, top-K selection and mono/sample-rate contract.
+- Explicit labels, top-K selection and mono 16 kHz contract without hidden resampling.
 
 Follow-up slices:
 - Speech enhancement with explicit streaming flush/latency semantics.
