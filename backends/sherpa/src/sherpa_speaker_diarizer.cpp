@@ -76,7 +76,7 @@ public:
             output.speaker_index = static_cast<std::uint32_t>(segment.speaker);
             output.start_offset = secondsToDuration(segment.start);
             output.end_offset = secondsToDuration(segment.end);
-            if (output.end_offset < output.start_offset) {
+            if (output.end_offset.nanoseconds() < output.start_offset.nanoseconds()) {
                 throw Error{ErrorCode::ProcessingError,
                             "Sherpa diarization returned an inverted segment"};
             }

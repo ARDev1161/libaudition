@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -21,13 +22,31 @@ void validateThreshold(Score threshold) {
     }
 }
 
+void validateVector(const std::vector<float>& values) {
+    if (values.empty() ||
+        values.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+        throw Error{ErrorCode::InvalidArgument,
+                    "Speaker embedding dimension is empty or exceeds backend range"};
+    }
+    double norm2 = 0.0;
+    for (const float value : values) {
+        if (!std::isfinite(value)) {
+            throw Error{ErrorCode::InvalidArgument,
+                        "Speaker embedding contains non-finite values"};
+        }
+        norm2 += static_cast<double>(value) * static_cast<double>(value);
+    }
+    if (!(norm2 > 0.0) || !std::isfinite(norm2)) {
+        throw Error{ErrorCode::InvalidArgument,
+                    "Speaker embedding must have a finite non-zero norm"};
+    }
+}
+
 void validateEmbeddingPair(const SpeakerEmbedding& reference,
                            const SpeakerEmbedding& candidate,
                            bool require_same_model_id) {
-    if (reference.values.empty() || candidate.values.empty()) {
-        throw Error{ErrorCode::InvalidArgument,
-                    "Speaker embeddings must not be empty"};
-    }
+    validateVector(reference.values);
+    validateVector(candidate.values);
     if (reference.values.size() != candidate.values.size()) {
         throw Error{ErrorCode::InvalidArgument,
                     "Speaker embedding dimensions must match"};

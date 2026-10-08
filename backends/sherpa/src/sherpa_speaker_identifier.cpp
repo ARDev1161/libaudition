@@ -55,6 +55,12 @@ public:
                         "Speaker enrollment requires at least one embedding"};
         }
 
+        if (enrollment.embeddings.size() >
+            static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+            throw Error{ErrorCode::InvalidArgument,
+                        "Speaker enrollment count exceeds backend range"};
+        }
+
         std::vector<float> flattened;
         flattened.reserve(enrollment.embeddings.size() * options_.embedding_dimension);
         for (const auto& embedding : enrollment.embeddings) {
@@ -142,6 +148,18 @@ public:
         if (embedding.values.size() != options_.embedding_dimension) {
             throw Error{ErrorCode::InvalidArgument,
                         "Speaker embedding dimension does not match identification index"};
+        }
+        double norm2 = 0.0;
+        for (const float value : embedding.values) {
+            if (!std::isfinite(value)) {
+                throw Error{ErrorCode::InvalidArgument,
+                            "Speaker embedding contains non-finite values"};
+            }
+            norm2 += static_cast<double>(value) * static_cast<double>(value);
+        }
+        if (!(norm2 > 0.0) || !std::isfinite(norm2)) {
+            throw Error{ErrorCode::InvalidArgument,
+                        "Speaker embedding must have a finite non-zero norm"};
         }
         if (!options_.model_id.empty() && !embedding.model_id.empty() &&
             embedding.model_id != options_.model_id) {

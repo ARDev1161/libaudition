@@ -1,5 +1,7 @@
 #include <audition/interfaces/speaker.hpp>
 
+#include <optional>
+
 #include <gtest/gtest.h>
 
 TEST(SpeakerContracts, DiarizationUsesLocalClusterLabels) {
@@ -14,8 +16,8 @@ TEST(SpeakerContracts, DiarizationUsesLocalClusterLabels) {
 
     ASSERT_EQ(result.segments.size(), 1U);
     EXPECT_EQ(result.segments.front().speaker_index, 1U);
-    EXPECT_FALSE(audition::SpeakerId{result.segments.front().speaker_index}.valid() == false &&
-                 result.segments.front().speaker_index == 0U);
+    EXPECT_EQ(result.speaker_count, 2U);
+    // speaker_index is a local diarization cluster label, not a persistent SpeakerId.
 }
 
 TEST(SpeakerContracts, EnrollmentIsSeparateFromPersistentStorage) {
