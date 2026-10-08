@@ -330,3 +330,65 @@ function(libaudition_find_or_fetch_nlohmann_json)
         GIT_SHALLOW TRUE)
     FetchContent_MakeAvailable(nlohmann_json)
 endfunction()
+
+
+function(libaudition_find_or_fetch_world)
+    if(TARGET World::world)
+        return()
+    endif()
+
+    find_path(LIBAUDITION_WORLD_INCLUDE_DIR
+        NAMES world/dio.h
+        HINTS "${LIBAUDITION_WORLD_ROOT}" "$ENV{WORLD_ROOT}"
+        PATH_SUFFIXES include)
+    find_library(LIBAUDITION_WORLD_LIBRARY
+        NAMES world
+        HINTS "${LIBAUDITION_WORLD_ROOT}" "$ENV{WORLD_ROOT}"
+        PATH_SUFFIXES lib lib64)
+
+    if(LIBAUDITION_WORLD_INCLUDE_DIR AND LIBAUDITION_WORLD_LIBRARY)
+        add_library(World::world STATIC IMPORTED GLOBAL)
+        set_target_properties(World::world PROPERTIES
+            IMPORTED_LOCATION "${LIBAUDITION_WORLD_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${LIBAUDITION_WORLD_INCLUDE_DIR}"
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${LIBAUDITION_WORLD_INCLUDE_DIR}")
+        return()
+    endif()
+
+    if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR
+            "WORLD not found. Set LIBAUDITION_WORLD_ROOT/WORLD_ROOT "
+            "or enable LIBAUDITION_FETCH_DEPENDENCIES.")
+    endif()
+
+    set(_world_source_dir "${CMAKE_BINARY_DIR}/_deps/world-src")
+    set(_world_install_dir "${CMAKE_BINARY_DIR}/_deps/world-install")
+    set(_world_library
+        "${_world_install_dir}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}world${CMAKE_STATIC_LIBRARY_SUFFIX}")
+
+    file(MAKE_DIRECTORY
+        "${_world_install_dir}/include"
+        "${_world_install_dir}/lib")
+
+    ExternalProject_Add(libaudition_world_external
+        GIT_REPOSITORY https://github.com/mmorise/World.git
+        GIT_TAG d625e7608ca23a870018f01e7c562ac683d9847f
+        GIT_SHALLOW FALSE
+        UPDATE_DISCONNECTED TRUE
+        SOURCE_DIR "${_world_source_dir}"
+        INSTALL_DIR "${_world_install_dir}"
+        CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DWORLD_BUILD_TESTS=OFF
+            -DWORLD_BUILD_EXAMPLES=OFF
+        BUILD_BYPRODUCTS "${_world_library}")
+
+    add_library(World::world STATIC IMPORTED GLOBAL)
+    set_target_properties(World::world PROPERTIES
+        IMPORTED_LOCATION "${_world_library}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_world_install_dir}/include"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_world_install_dir}/include")
+    add_dependencies(World::world libaudition_world_external)
+endfunction()
