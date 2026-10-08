@@ -417,6 +417,7 @@ function(libaudition_find_or_fetch_gtsam)
 
     file(MAKE_DIRECTORY
         "${_gtsam_install_dir}/include"
+        "${_gtsam_install_dir}/include/gtsam/3rdparty/Eigen"
         "${_gtsam_install_dir}/lib")
 
     ExternalProject_Add(libaudition_gtsam_external
