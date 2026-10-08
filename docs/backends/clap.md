@@ -16,13 +16,13 @@ cmake -S . -B build-clap \
 `ClapAudioEmbedder` implements `IAudioEmbedder`.
 
 The first supported deployment contract is the LAION CLAP HTSAT-unfused audio
-encoder exported to ONNX as a raw-waveform model. A known-compatible fixture is
+encoder. A known-compatible fixture is
 `ConceptualMachines/magda-sample-tagger/clap_audio.onnx`:
 
-- mono 48 kHz waveform input;
-- one float32 input tensor;
-- one float32 output tensor;
-- 512-dimensional semantic embedding;
+- application input: mono 48 kHz float PCM;
+- ONNX input: float32 `input_features` with shape
+  `[batch, 1, 1001, 64]`;
+- ONNX output: one 512-dimensional float32 semantic embedding;
 - model artifact SHA-256
   `3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332`.
 
@@ -30,26 +30,36 @@ The model is not distributed by libaudition. Applications provide the model
 path explicitly. Model licensing/provenance remains separate from the backend
 runtime license.
 
-## Audio and shape contract
+## Audio frontend contract
 
-The adapter never resamples, downmixes, pads, truncates or windows audio
-implicitly. Input must already be mono at the configured sample rate.
+The exported HTSAT graph consumes CLAP log-mel features rather than PCM.
+`ClapAudioEmbedder` therefore owns the deterministic model frontend while
+keeping the public API in `AudioView` terms.
 
-At model load time the adapter inspects the ONNX input shape:
+The current frontend contract is:
 
-- rank-1 waveform tensors are supported;
-- rank-2 tensors are supported when the batch dimension is one or dynamic;
-- if the waveform length is fixed by the graph, it is exposed through
-  `EmbeddingCapabilities::audio.preferred_frame_count` and callers must provide
-  that exact frame count;
-- dynamic waveform lengths accept any non-empty input.
+- mono 48 kHz PCM;
+- at most 10 seconds per `embed()` call;
+- shorter clips use the model-defined repeat-padding policy to the 10-second
+  analysis window;
+- longer clips are rejected and must be segmented explicitly by the caller;
+- centered periodic-Hann STFT, FFT size 1024 and hop length 480;
+- 64 Slaney-normalized mel filters over 50 Hz to 14 kHz;
+- power spectrogram converted to decibels;
+- final feature tensor `[1, 1, 1001, 64]`.
 
-The output must be a rank-1 embedding or a batch-of-one rank-2 embedding with
-the configured dimension. Non-finite and zero-norm results are rejected.
+There is no hidden resampling or downmixing. The repeat-padding and feature
+extraction are part of this model's declared frontend rather than generic audio
+conversion. `EmbeddingCapabilities::audio.preferred_frame_count` reports the
+10-second / 480000-frame analysis window.
+
+At model load time the adapter verifies the ONNX input and output shapes and
+float32 element types. Non-finite input samples and non-finite/zero-norm
+embeddings are rejected.
 
 The backend preserves the model output values. Prototype matching performs its
-own cosine normalization, so the adapter does not silently renormalize the
-embedding.
+own cosine normalization, so the adapter does not silently turn similarity into
+a calibrated probability.
 
 ## Execution
 
