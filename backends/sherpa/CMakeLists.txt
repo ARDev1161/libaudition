@@ -46,6 +46,14 @@ target_include_directories(libaudition_backend_sherpa
 if(TARGET libaudition_sherpa_external)
     add_dependencies(libaudition_backend_sherpa libaudition_sherpa_external)
 endif()
+if(LIBAUDITION_SHERPA_ENABLE_TTS)
+    target_sources(libaudition_backend_sherpa PRIVATE
+        src/sherpa_tts_config.cpp
+        src/sherpa_tts.cpp)
+    target_compile_definitions(libaudition_backend_sherpa
+        PUBLIC LIBAUDITION_SHERPA_TTS_ENABLED=1)
+endif()
+
 libaudition_configure_target(libaudition_backend_sherpa)
 
 install(TARGETS libaudition_backend_sherpa
