@@ -392,3 +392,64 @@ function(libaudition_find_or_fetch_world)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_world_install_dir}/include")
     add_dependencies(World::world libaudition_world_external)
 endfunction()
+
+
+function(libaudition_find_or_fetch_gtsam)
+    if(TARGET GTSAM::gtsam)
+        return()
+    endif()
+
+    find_package(GTSAM 4.3 CONFIG QUIET)
+    if(TARGET gtsam)
+        add_library(GTSAM::gtsam ALIAS gtsam)
+        return()
+    endif()
+
+    if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR
+            "GTSAM 4.3 or newer not found. Install GTSAM or enable "
+            "LIBAUDITION_FETCH_DEPENDENCIES.")
+    endif()
+
+    set(_gtsam_install_dir "${CMAKE_BINARY_DIR}/_deps/gtsam-install")
+    set(_gtsam_library
+        "${_gtsam_install_dir}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}gtsam${CMAKE_SHARED_LIBRARY_SUFFIX}")
+
+    file(MAKE_DIRECTORY
+        "${_gtsam_install_dir}/include"
+        "${_gtsam_install_dir}/lib")
+
+    ExternalProject_Add(libaudition_gtsam_external
+        GIT_REPOSITORY https://github.com/borglab/gtsam.git
+        GIT_TAG 71a25ca36c084cbad1f872e812d6d97fbadfdb05
+        GIT_SHALLOW FALSE
+        UPDATE_DISCONNECTED TRUE
+        INSTALL_DIR "${_gtsam_install_dir}"
+        CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DGTSAM_FORCE_SHARED_LIB=ON
+            -DGTSAM_BUILD_TESTS=OFF
+            -DGTSAM_BUILD_UNSTABLE=OFF
+            -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF
+            -DGTSAM_BUILD_TIMING_ALWAYS=OFF
+            -DGTSAM_BUILD_PYTHON=OFF
+            -DGTSAM_INSTALL_MATLAB_TOOLBOX=OFF
+            -DGTSAM_WITH_TBB=OFF
+            -DGTSAM_ENABLE_BOOST_SERIALIZATION=OFF
+            -DGTSAM_USE_BOOST_FEATURES=OFF
+        BUILD_BYPRODUCTS "${_gtsam_library}")
+
+    add_library(GTSAM::gtsam SHARED IMPORTED GLOBAL)
+    set_target_properties(GTSAM::gtsam PROPERTIES
+        IMPORTED_LOCATION "${_gtsam_library}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_gtsam_install_dir}/include"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_gtsam_install_dir}/include")
+    add_dependencies(GTSAM::gtsam libaudition_gtsam_external)
+
+    install(DIRECTORY "${_gtsam_install_dir}/lib/"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        FILES_MATCHING
+        PATTERN "${CMAKE_SHARED_LIBRARY_PREFIX}gtsam${CMAKE_SHARED_LIBRARY_SUFFIX}*")
+endfunction()
