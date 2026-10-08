@@ -144,7 +144,9 @@ RNG-01 SPL/type range priors:
 - The estimator can emit a pose-anchored `ScalarRangeObservation` directly for spatial fusion.
 
 Next slices:
-- Multimodal observation ports suitable for vision/radar integration.
+- Acoustic range/position temporal smoothing and track-level uncertainty handling.
+- SPL calibration helpers and calibration-data contracts.
+- AcousticEvent pipeline completion and end-to-end acoustic scenario tests.
 
 ## 1.0
 
