@@ -9,7 +9,9 @@ add_executable(libaudition_tests
     model_registry_test.cpp
     public_headers_test.cpp
     memory_registry_test.cpp
-    dsp_test.cpp\n    audio_frontend_test.cpp\n    quality_test.cpp)
+    dsp_test.cpp
+    audio_frontend_test.cpp
+    quality_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces

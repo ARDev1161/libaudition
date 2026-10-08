@@ -2,7 +2,9 @@
 
 #include <audition/core.hpp>
 #include <audition/interfaces.hpp>
-#include <audition/dsp/basic.hpp>\n#include <audition/dsp/audio_frontend.hpp>\n#include <audition/dsp/quality.hpp>
+#include <audition/dsp/basic.hpp>
+#include <audition/dsp/audio_frontend.hpp>
+#include <audition/dsp/quality.hpp>
 #include <audition/logging/logging.hpp>
 #include <audition/memory/in_memory_registries.hpp>
 #include <audition/memory/types.hpp>
