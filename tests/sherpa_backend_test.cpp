@@ -125,6 +125,10 @@ TEST(SherpaConfig, AudioTaggingRejectsInvalidTopKAndSampleRate) {
     options = audioTaggingOptions();
     options.sample_rate_hz = 0U;
     EXPECT_THROW(audition::validateSherpaAudioTaggingOptions(options), audition::Error);
+
+    options = audioTaggingOptions();
+    options.sample_rate_hz = 48000U;
+    EXPECT_THROW(audition::validateSherpaAudioTaggingOptions(options), audition::Error);
 }
 
 TEST(SherpaConfig, AudioTaggingRequiresExplicitProviderForAccelerator) {
