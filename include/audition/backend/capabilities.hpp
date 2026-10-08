@@ -74,6 +74,15 @@ struct AuthenticityCapabilities {
     ExecutionCapabilities execution{};
 };
 
+struct VoiceTraitsCapabilities {
+    bool pitch_statistics{false};
+    bool estimated_age{false};
+    bool categorical_traits{false};
+    bool speaking_rate{false};
+    AudioRequirements audio{};
+    ExecutionCapabilities execution{};
+};
+
 struct TtsCapabilities {
     bool streaming{false};
     bool voice_cloning{false};
