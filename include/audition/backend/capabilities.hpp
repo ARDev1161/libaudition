@@ -66,6 +66,14 @@ struct NoiseSuppressorCapabilities {
     ExecutionCapabilities execution{};
 };
 
+struct AuthenticityCapabilities {
+    bool calibrated_probability{false};
+    bool replay_attribution{false};
+    bool synthetic_attribution{false};
+    AudioRequirements audio{};
+    ExecutionCapabilities execution{};
+};
+
 struct TtsCapabilities {
     bool streaming{false};
     bool voice_cloning{false};
