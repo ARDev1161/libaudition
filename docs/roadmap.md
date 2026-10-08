@@ -70,8 +70,9 @@ Semantic embedding foundation:
 
 CLAP audio-embedding slice:
 - Standalone ONNX Runtime adapter through `IAudioEmbedder`.
-- Strict mono/model-rate input contract with no hidden resampling, padding or truncation.
-- Model-derived fixed frame preference and explicit embedding-space `model_id`.
+- Strict mono 48 kHz input with no hidden resampling or downmixing.
+- Deterministic HTSAT frontend with model-defined repeat-padding for short clips and explicit segmentation for audio longer than 10 seconds.
+- 512-dimensional embedding-space isolation through explicit `model_id`.
 
 Follow-up slices:
 - CLAP text encoder/tokenizer and candidate-relative open-vocabulary classification.
