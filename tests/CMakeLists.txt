@@ -52,4 +52,6 @@ endif()
 if(TARGET audition::backend_clap)
     target_sources(libaudition_tests PRIVATE clap_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_clap)
+    target_include_directories(libaudition_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/backends/clap/src)
 endif()
