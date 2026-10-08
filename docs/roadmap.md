@@ -36,8 +36,13 @@ First speech slice:
 - Whisper spoken-language identification.
 - Hardware-neutral provider pass-through through `ExecutionTarget`.
 
+Speaker slice:
+- Speaker embedding extraction.
+- Verification and transient identification search index.
+- Offline diarization with local cluster labels.
+- Persistent speaker memory remains a separate library layer.
+
 Follow-up slices:
-- Speaker embedding/verification/diarization.
 - Audio tagging and speech enhancement.
 - TTS and permitted voice-cloning models.
 

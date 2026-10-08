@@ -19,7 +19,7 @@ flowchart TB
         SPATIAL[ISpatialAudioEngine / IRangeEstimator / ISpatialFusion]
         SPEECH[IVAD / IAsr / IKWS / ILanguageIdentifier]
         SEM[IAudioClassifier / IAudioEmbedder]
-        SPEAKER[ISpeakerEmbedder / ISpeakerVerifier / ISpeakerIdentifier]
+        SPEAKER[ISpeakerEmbedder / ISpeakerVerifier / ISpeakerIdentifier / ISpeakerDiarizer]
         VOICE[IVoiceTraitsEstimator / IVoiceStateEstimator]
         AUTH[IAudioAuthenticityDetector]
         TTS[ISpeechSynthesizer]
@@ -98,3 +98,21 @@ flowchart LR
 
 The diagram is a possible application graph, not an internal mandatory thread
 layout. The same blocks may be called synchronously in an offline program.
+
+
+## Speaker identity layers
+
+```mermaid
+flowchart LR
+    AUDIO[Speech audio] --> EMB[ISpeakerEmbedder]
+    EMB --> E[SpeakerEmbedding]
+    E --> VER[ISpeakerVerifier]
+    E --> IDX[ISpeakerIdentifier]
+    REG[ISpeakerRegistry] -->|populate/update| IDX
+    AUDIO --> DIA[ISpeakerDiarizer]
+    DIA --> LOCAL[Local diarization clusters]
+    IDX --> PID[Persistent SpeakerId]
+```
+
+The diarizer's cluster index is local evidence. The identification index is
+rebuildable computational state. Persistent identity lives in the registry.

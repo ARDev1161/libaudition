@@ -1,0 +1,9 @@
+flowchart LR
+    AUDIO[Speech audio] --> EMB[SherpaSpeakerEmbedder]
+    EMB --> E[SpeakerEmbedding]
+    E --> VER[SherpaSpeakerVerifier]
+    E --> IDX[SherpaSpeakerIdentifier]
+    REG[Persistent SpeakerRegistry] -->|repopulate| IDX
+    AUDIO --> DIA[SherpaSpeakerDiarizer]
+    DIA --> CLUSTERS[Local cluster labels]
+    IDX --> ID[SpeakerId]
