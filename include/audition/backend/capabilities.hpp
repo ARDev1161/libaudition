@@ -54,6 +54,12 @@ struct ClassifierCapabilities {
     ExecutionCapabilities execution{};
 };
 
+struct NoiseSuppressorCapabilities {
+    bool streaming{false};
+    AudioRequirements audio{};
+    ExecutionCapabilities execution{};
+};
+
 struct TtsCapabilities {
     bool streaming{false};
     bool voice_cloning{false};
