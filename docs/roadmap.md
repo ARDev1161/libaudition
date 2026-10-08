@@ -80,8 +80,14 @@ CLAP open-vocabulary slice:
 - `IOpenVocabularyAudioClassifier` using cosine similarity and explicit candidate-relative softmax temperature.
 - Candidate-relative values are normalized probabilities over the supplied label set, not calibrated real-world event probabilities.
 
+AASIST authenticity slice:
+- Official AASIST ONNX waveform model behind `IAudioAuthenticityDetector`.
+- Explicit mono 16 kHz / 64600-frame analysis contract with model-defined repeat-padding for shorter clips.
+- Raw bona-fide/spoof logits represented as `Score`, never fabricated as calibrated probabilities.
+- Optional externally fitted Platt calibration can populate bona-fide/spoof `Probability`.
+- No replay-vs-synthetic attribution is claimed by this binary detector.
+
 Follow-up slices:
-- AASIST authenticity backend.
 - WORLD voice feature backend.
 
 ## v0.5 — spatial inference and fusion

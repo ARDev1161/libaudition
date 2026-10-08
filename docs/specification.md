@@ -88,6 +88,13 @@ candidate-relative probabilities only when that transformation is explicit.
 Such probabilities describe the supplied candidate set and must not be presented
 as calibrated real-world event probabilities.
 
+Authenticity backends follow the same rule. Binary anti-spoofing model logits are
+reported as `Score`. A `Probability` is populated only when the backend natively
+provides a calibrated posterior or the application supplies an explicit
+calibration transform. A generic spoof detector must not fabricate replay or
+synthetic-attribution probabilities when its model does not distinguish those
+attack classes.
+
 The core intentionally does not depend on a probability framework. Heavy
 inference/fusion implementations may use Eigen, GTSAM, or another library behind
 an adapter. This keeps the domain layer lightweight while preserving covariance
