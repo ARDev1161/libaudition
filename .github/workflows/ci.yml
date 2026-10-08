@@ -212,7 +212,19 @@ jobs:
               audition::SherpaVadOptions options{};
               std::get<audition::SherpaSileroVadModel>(options.model).model = "model.onnx";
               audition::validateSherpaVadOptions(options);
-              return 0;
+
+              audition::SherpaSpeakerIdentifier identifier{{2U, "test-model"}};
+              audition::SpeakerEnrollment enrollment{};
+              enrollment.speaker_id = audition::SpeakerId{1U};
+              enrollment.display_name = "speaker";
+              enrollment.embeddings.push_back(
+                  {"test-model", {1.0F, 0.0F}, std::nullopt});
+              identifier.enroll(enrollment);
+
+              const audition::SpeakerEmbedding query{
+                  "test-model", {1.0F, 0.0F}, std::nullopt};
+              const auto match = identifier.identify(query, audition::Score{0.5});
+              return match.has_value() ? 0 : 1;
           }
           CPP
           cmake -S /tmp/libaudition-sherpa-consumer             -B /tmp/libaudition-sherpa-consumer/build -G Ninja             -DCMAKE_PREFIX_PATH="$PWD/install-sherpa"
