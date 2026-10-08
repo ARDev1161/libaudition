@@ -258,6 +258,16 @@ void validateWorldVoiceTraitsOptions(
     const WorldVoiceTraitsOptions& options) {
     validateExecution(options.execution);
 
+    switch (options.algorithm) {
+    case WorldF0Algorithm::DioStoneMask:
+    case WorldF0Algorithm::Harvest:
+        break;
+    default:
+        throw Error{
+            ErrorCode::ConfigurationError,
+            "WORLD F0 algorithm is invalid"};
+    }
+
     requireConfiguration(
         std::isfinite(options.frame_period_ms) &&
             options.frame_period_ms > 0.0 &&
