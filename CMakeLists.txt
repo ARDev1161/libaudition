@@ -14,6 +14,7 @@ option(LIBAUDITION_WITH_ODAS "Build the direct libodas spatial-audio backend" OF
 option(LIBAUDITION_WITH_LIBSAMPLERATE "Build the libsamplerate resampling backend" OFF)
 option(LIBAUDITION_WITH_WEBRTC_AEC3 "Build the WebRTC AEC3 echo-cancellation backend" OFF)
 option(LIBAUDITION_WITH_SHERPA "Build sherpa-onnx speech backends" OFF)
+option(LIBAUDITION_SHERPA_ENABLE_TTS "Enable sherpa-onnx TTS support and libaudition TTS adapter" OFF)
 option(LIBAUDITION_SHERPA_ENABLE_GPU "Build fetched sherpa-onnx with its GPU provider support" OFF)
 option(LIBAUDITION_SHERPA_ENABLE_DIRECTML "Build fetched sherpa-onnx with DirectML support" OFF)
 option(LIBAUDITION_SHERPA_ENABLE_RKNN "Build fetched sherpa-onnx with RKNN support" OFF)
