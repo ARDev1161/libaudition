@@ -79,6 +79,11 @@ public:
             state_->recognizer.GetResult(&stream_));
     }
 
+    bool endpointDetected() const override {
+        std::lock_guard<std::mutex> lock{state_->mutex};
+        return state_->recognizer.IsEndpoint(&stream_);
+    }
+
     Transcript finalize() override {
         if (!finalized_) {
             std::lock_guard<std::mutex> lock{state_->mutex};
@@ -132,6 +137,7 @@ AsrCapabilities SherpaStreamingAsr::capabilities() const {
     capabilities.word_timestamps = false;
     capabilities.language_identification = false;
     capabilities.partial_results = true;
+    capabilities.endpoint_detection = true;
     capabilities.audio =
         sherpa_detail::monoRequirements(impl_->state_->options.features.sample_rate_hz);
     capabilities.execution =

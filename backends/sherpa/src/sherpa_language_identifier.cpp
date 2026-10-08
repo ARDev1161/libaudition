@@ -77,6 +77,10 @@ BackendInfo SherpaLanguageIdentifier::backendInfo() const {
     return {"sherpa-onnx", sherpa_onnx::cxx::GetVersionStr()};
 }
 
+AudioRequirements SherpaLanguageIdentifier::audioRequirements() const {
+    return sherpa_detail::monoRequirements(impl_->options_.sample_rate_hz);
+}
+
 std::vector<LanguageScore> SherpaLanguageIdentifier::identify(AudioView speech) const {
     return impl_->identify(speech);
 }

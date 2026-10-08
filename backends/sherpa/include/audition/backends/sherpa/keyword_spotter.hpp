@@ -18,6 +18,7 @@ public:
     SherpaKeywordSpotter& operator=(SherpaKeywordSpotter&&) noexcept;
 
     [[nodiscard]] BackendInfo backendInfo() const override;
+    [[nodiscard]] AudioRequirements audioRequirements() const override;
     [[nodiscard]] std::unique_ptr<IKeywordSpotterSession> createSession() const override;
     [[nodiscard]] const SherpaKeywordSpotterOptions& options() const noexcept;
 

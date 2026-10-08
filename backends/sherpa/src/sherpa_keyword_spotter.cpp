@@ -116,6 +116,10 @@ BackendInfo SherpaKeywordSpotter::backendInfo() const {
     return {"sherpa-onnx", sherpa_onnx::cxx::GetVersionStr()};
 }
 
+AudioRequirements SherpaKeywordSpotter::audioRequirements() const {
+    return sherpa_detail::monoRequirements(impl_->state_->options.features.sample_rate_hz);
+}
+
 std::unique_ptr<IKeywordSpotterSession> SherpaKeywordSpotter::createSession() const {
     return std::make_unique<SherpaKeywordSession>(impl_->state_);
 }

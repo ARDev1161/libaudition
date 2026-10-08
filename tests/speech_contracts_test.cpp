@@ -24,3 +24,11 @@ TEST(SpeechContracts, TimedTokenMayHaveOnlyStartOffset) {
     ASSERT_EQ(transcript.tokens.size(), 1U);
     EXPECT_EQ(transcript.tokens.front().start_offset.nanoseconds(), 123);
 }
+
+
+TEST(SpeechContracts, AsrCapabilitiesSeparateEndpointAndTimestampFeatures) {
+    audition::AsrCapabilities capabilities{};
+    EXPECT_FALSE(capabilities.endpoint_detection);
+    EXPECT_FALSE(capabilities.token_timestamps);
+    EXPECT_FALSE(capabilities.word_timestamps);
+}

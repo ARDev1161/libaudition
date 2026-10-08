@@ -18,6 +18,7 @@ public:
     SherpaLanguageIdentifier& operator=(SherpaLanguageIdentifier&&) noexcept;
 
     [[nodiscard]] BackendInfo backendInfo() const override;
+    [[nodiscard]] AudioRequirements audioRequirements() const override;
     [[nodiscard]] std::vector<LanguageScore> identify(AudioView speech) const override;
     [[nodiscard]] const SherpaLanguageIdOptions& options() const noexcept;
 

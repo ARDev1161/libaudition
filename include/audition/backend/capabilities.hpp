@@ -34,6 +34,7 @@ struct AsrCapabilities {
     bool word_timestamps{false};
     bool language_identification{false};
     bool partial_results{false};
+    bool endpoint_detection{false};
     AudioRequirements audio{};
     ExecutionCapabilities execution{};
 };
