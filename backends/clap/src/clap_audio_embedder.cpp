@@ -190,12 +190,24 @@ public:
 
         const auto input_info =
             session_->GetInputTypeInfo(0U).GetTensorTypeAndShapeInfo();
-        if (input_info.GetElementType() !=
-            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-            throw Error{ErrorCode::ModelLoadError,
-                        "CLAP audio model input tensor must be float32"};
-        }
+        const auto input_type = input_info.GetElementType();
         input_shape_ = input_info.GetShape();
+        if (input_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+            std::string shape_text{"["};
+            for (std::size_t i = 0; i < input_shape_.size(); ++i) {
+                if (i != 0U) {
+                    shape_text += ",";
+                }
+                shape_text += std::to_string(input_shape_[i]);
+            }
+            shape_text += "]";
+            throw Error{
+                ErrorCode::ModelLoadError,
+                std::string{"CLAP audio model input '"} + input_name_ +
+                    "' must be float32; observed ONNX element type " +
+                    std::to_string(static_cast<int>(input_type)) +
+                    " with shape " + shape_text};
+        }
         fixed_frame_count_ = fixedFrameCount(input_shape_);
 
         const auto output_info =
