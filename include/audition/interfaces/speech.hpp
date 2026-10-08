@@ -89,7 +89,7 @@ public:
 
 struct LanguageScore {
     std::string language{};
-    Probability probability{Probability::zero()};
+    std::optional<Probability> probability{};
 };
 
 class ILanguageIdentifier {

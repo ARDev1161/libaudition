@@ -30,6 +30,7 @@ struct ExecutionCapabilities {
 };
 
 struct AsrCapabilities {
+    bool token_timestamps{false};
     bool word_timestamps{false};
     bool language_identification{false};
     bool partial_results{false};
