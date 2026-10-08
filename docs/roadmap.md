@@ -18,6 +18,14 @@
 - Typed ODAS configuration, capability reporting, reset semantics and contract tests.
 - Recorded real-scene fixtures remain a follow-up once representative hardware captures are curated.
 
+## v0.2.x — audio frontend
+
+- Explicit channel routing and microphone gain/DC/fractional-delay calibration.
+- Measured signal-quality metrics.
+- Streaming libsamplerate backend.
+- WebRTC AEC3 adapter for the speech branch with explicit playback reference.
+- Keep raw/calibrated microphone-array audio available to spatial processing.
+
 ## v0.3 — sherpa-onnx backend family
 
 - VAD, offline/streaming ASR, KWS, language ID.
@@ -29,7 +37,6 @@
 - CLAP embeddings/open-vocabulary classification and sound prototype matching.
 - AASIST authenticity backend.
 - WORLD voice feature backend.
-- WebRTC AEC3 adapter.
 
 ## v0.5 — spatial inference and fusion
 

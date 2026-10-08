@@ -40,6 +40,18 @@ cmake -S . -B build -DLIBAUDITION_WITH_ODAS=ON
 
 See [`docs/backends/odas.md`](docs/backends/odas.md).
 
+The audio frontend and optional resampler/AEC backends can be enabled independently:
+
+```bash
+cmake -S . -B build \
+  -DLIBAUDITION_WITH_LIBSAMPLERATE=ON \
+  -DLIBAUDITION_WITH_WEBRTC_AEC3=ON
+```
+
+The public API remains C++17. The pinned standalone AEC3 implementation is built
+behind a shared-library boundary with C++20 internally. See
+[`docs/audio_frontend.md`](docs/audio_frontend.md).
+
 ## Consume from CMake
 
 ```cmake

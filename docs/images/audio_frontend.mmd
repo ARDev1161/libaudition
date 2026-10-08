@@ -1,0 +1,10 @@
+flowchart LR
+    CAP[Device capture] --> RAW[Raw multichannel AudioView]
+    RAW --> CAL[Channel routing + calibration]
+    CAL --> ODAS[ODAS / spatial branch]
+
+    RAW --> SMAP[Speech channel selection/calibration]
+    PLAY[Pre-DAC playback reference] --> AEC[WebRTC AEC3]
+    SMAP --> AEC
+    AEC --> RS[Resampler]
+    RS --> SPEECH[Enhancement / VAD / ASR]
