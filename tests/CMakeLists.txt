@@ -12,6 +12,7 @@ add_executable(libaudition_tests
     sound_prototype_matcher_test.cpp
     source_identity_resolver_test.cpp
     spatial_identity_coordinator_test.cpp
+    level_range_prior_test.cpp
     dsp_test.cpp
     audio_frontend_test.cpp
     quality_test.cpp
@@ -25,6 +26,7 @@ target_link_libraries(libaudition_tests PRIVATE
     audition::logging
     audition::dsp
     audition::pipeline
+    audition::spatial
     GTest::gtest_main)
 libaudition_configure_target(libaudition_tests)
 gtest_discover_tests(libaudition_tests)
