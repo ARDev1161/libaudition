@@ -113,7 +113,9 @@ size, sample rate and dimensions explicitly.
 The core intentionally does not depend on a probability framework. Heavy
 inference/fusion implementations may use Eigen, GTSAM, or another library behind
 an adapter. This keeps the domain layer lightweight while preserving covariance
-and posterior information required by downstream applications.
+and posterior information required by downstream applications. Position estimates
+may leave scalar confidence absent when the backend provides covariance but no
+calibrated scalar posterior.
 
 ## Identity model
 
