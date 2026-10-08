@@ -1,5 +1,7 @@
 #include <audition/memory/in_memory_registries.hpp>
 
+#include <cmath>
+#include <limits>
 #include <utility>
 
 #include <audition/core/error.hpp>
@@ -25,6 +27,32 @@ auto values(const Map& map) {
         result.push_back(item.second);
     }
     return result;
+}
+
+void validateAudioEmbedding(const AudioEmbedding& embedding) {
+    if (embedding.model_id.empty()) {
+        throw Error{ErrorCode::InvalidArgument,
+                    "Audio embedding model_id must not be empty"};
+    }
+    if (embedding.values.empty()) {
+        throw Error{ErrorCode::InvalidArgument,
+                    "Audio embedding values must not be empty"};
+    }
+
+    double squared_norm = 0.0;
+    for (float value : embedding.values) {
+        if (!std::isfinite(value)) {
+            throw Error{ErrorCode::InvalidArgument,
+                        "Audio embedding values must be finite"};
+        }
+        squared_norm += static_cast<double>(value) *
+                        static_cast<double>(value);
+    }
+    if (!std::isfinite(squared_norm) ||
+        squared_norm <= std::numeric_limits<double>::epsilon()) {
+        throw Error{ErrorCode::InvalidArgument,
+                    "Audio embedding must have non-zero finite norm"};
+    }
 }
 
 }  // namespace
@@ -102,6 +130,7 @@ SoundPrototypeId InMemorySoundPrototypeRegistry::create(std::string label) {
 }
 
 void InMemorySoundPrototypeRegistry::addExample(SoundPrototypeId id, AudioEmbedding embedding) {
+    validateAudioEmbedding(embedding);
     std::lock_guard<std::mutex> lock{mutex_};
     requireEntry(data_, id, "Sound prototype").examples.push_back(std::move(embedding));
 }

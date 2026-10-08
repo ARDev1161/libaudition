@@ -38,4 +38,10 @@ struct SoundPrototype {
     std::map<std::string, std::string> metadata{};
 };
 
+struct SoundPrototypeMatch {
+    SoundPrototypeId prototype_id{};
+    std::string label{};
+    Score similarity{};
+};
+
 }  // namespace audition

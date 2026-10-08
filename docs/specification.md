@@ -78,6 +78,16 @@ Core provides small dependency-free primitives:
 - `Gaussian1D`: mean + variance
 - 3D covariance for spatial estimates
 
+Embedding quality is optional. Absence means that the embedding backend did not
+provide a meaningful quality estimate; it must not be represented as probability
+zero. Cosine similarity between semantic embeddings is a `Score`, not a
+`Probability`.
+
+Open-vocabulary classifiers may convert a set of model logits/similarities into
+candidate-relative probabilities only when that transformation is explicit.
+Such probabilities describe the supplied candidate set and must not be presented
+as calibrated real-world event probabilities.
+
 The core intentionally does not depend on a probability framework. Heavy
 inference/fusion implementations may use Eigen, GTSAM, or another library behind
 an adapter. This keeps the domain layer lightweight while preserving covariance

@@ -70,7 +70,9 @@ install(TARGETS libaudition_model libaudition_logging libaudition_pipeline
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-add_library(libaudition_memory memory/in_memory_registries.cpp)
+add_library(libaudition_memory
+    memory/in_memory_registries.cpp
+    memory/sound_prototype_matcher.cpp)
 add_library(audition::memory ALIAS libaudition_memory)
 set_target_properties(libaudition_memory PROPERTIES EXPORT_NAME memory OUTPUT_NAME audition_memory)
 target_link_libraries(libaudition_memory PUBLIC audition::interfaces)
