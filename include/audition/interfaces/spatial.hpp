@@ -28,6 +28,7 @@ struct BearingObservation {
 
 struct ScalarRangeObservation {
     Timestamp timestamp{};
+    Pose3D sensor_pose{};
     Gaussian1D distance_m{};
     Probability confidence{Probability::zero()};
     RangeEstimate::Method method{RangeEstimate::Method::Unknown};
