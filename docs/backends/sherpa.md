@@ -83,8 +83,14 @@ offline TDT-style outputs, native durations are used when available. These are
 not promoted to `WordTimestamp`: tokens and words are distinct semantic units.
 
 Offline Whisper advertises token timestamp capability only when
-`enable_token_timestamps` is set. The streaming adapter advertises native token
-timestamps. Word timestamps remain false.
+`enable_token_timestamps` is set. The streaming adapter advertises the native
+token-timestamp result surface; a particular model may still return no tokens or
+timestamps.
+
+Whisper's native `enable_segment_timestamps` option is intentionally not exposed
+in this slice because the current structured C++ result does not carry segment
+timestamps; they are available only through backend JSON. libaudition does not
+leak that raw JSON into its domain model. Word timestamps remain false.
 
 ## Execution providers
 

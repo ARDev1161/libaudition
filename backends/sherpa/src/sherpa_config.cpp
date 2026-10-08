@@ -357,8 +357,6 @@ sherpa_onnx::cxx::OfflineRecognizerConfig makeOfflineAsrConfig(
                 config.model_config.whisper.tail_paddings = value.tail_paddings;
                 config.model_config.whisper.enable_token_timestamps =
                     value.enable_token_timestamps;
-                config.model_config.whisper.enable_segment_timestamps =
-                    value.enable_segment_timestamps;
             } else if constexpr (std::is_same_v<T, SherpaOfflineSenseVoiceModel>) {
                 config.model_config.sense_voice.model =
                     resolved(value.model, options.model_descriptor);

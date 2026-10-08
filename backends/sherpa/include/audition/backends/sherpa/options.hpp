@@ -85,7 +85,6 @@ struct SherpaOfflineWhisperModel {
     std::string task{"transcribe"};
     std::int32_t tail_paddings{-1};
     bool enable_token_timestamps{false};
-    bool enable_segment_timestamps{false};
 };
 
 struct SherpaOfflineSenseVoiceModel {
