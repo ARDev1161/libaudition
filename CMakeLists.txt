@@ -85,6 +85,7 @@ endif()
 
 if(LIBAUDITION_WITH_CLAP)
     libaudition_find_or_fetch_onnxruntime()
+    libaudition_find_or_fetch_nlohmann_json()
     add_subdirectory(backends/clap)
 endif()
 
