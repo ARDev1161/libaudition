@@ -72,7 +72,8 @@ install(TARGETS libaudition_model libaudition_logging libaudition_pipeline
 
 add_library(libaudition_memory
     memory/in_memory_registries.cpp
-    memory/sound_prototype_matcher.cpp)
+    memory/sound_prototype_matcher.cpp
+    memory/source_identity_resolver.cpp)
 add_library(audition::memory ALIAS libaudition_memory)
 set_target_properties(libaudition_memory PROPERTIES EXPORT_NAME memory OUTPUT_NAME audition_memory)
 target_link_libraries(libaudition_memory PUBLIC audition::interfaces)
