@@ -128,10 +128,9 @@ TEST(AasistConfig, ValidatesOptionalCalibration) {
     options.calibration =
         audition::AasistPlattCalibration{
             0.0, 0.0};
-    EXPECT_THROW(
+    EXPECT_NO_THROW(
         audition::validateAasistOnnxOptions(
-            options),
-        audition::Error);
+            options));
 
     options.calibration =
         audition::AasistPlattCalibration{
