@@ -444,8 +444,10 @@ function(libaudition_find_or_fetch_gtsam)
     add_library(GTSAM::gtsam SHARED IMPORTED GLOBAL)
     set_target_properties(GTSAM::gtsam PROPERTIES
         IMPORTED_LOCATION "${_gtsam_library}"
-        INTERFACE_INCLUDE_DIRECTORIES "${_gtsam_install_dir}/include"
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_gtsam_install_dir}/include")
+        INTERFACE_INCLUDE_DIRECTORIES
+            "${_gtsam_install_dir}/include;${_gtsam_install_dir}/include/gtsam/3rdparty/Eigen"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+            "${_gtsam_install_dir}/include;${_gtsam_install_dir}/include/gtsam/3rdparty/Eigen")
     add_dependencies(GTSAM::gtsam libaudition_gtsam_external)
 
     install(DIRECTORY "${_gtsam_install_dir}/lib/"
