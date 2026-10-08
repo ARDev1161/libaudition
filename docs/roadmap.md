@@ -42,8 +42,12 @@ Speaker slice:
 - Offline diarization with local cluster labels.
 - Persistent speaker memory remains a separate library layer.
 
+Audio-tagging slice:
+- Zipformer and CED audio tagging through `IAudioClassifier`.
+- Explicit labels, top-K selection and mono/sample-rate contract.
+
 Follow-up slices:
-- Audio tagging and speech enhancement.
+- Speech enhancement with explicit streaming flush/latency semantics.
 - TTS and permitted voice-cloning models.
 
 ## v0.4 — extended perception
