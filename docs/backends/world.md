@@ -34,6 +34,7 @@ fabricate them.
 
 - WORLD time axis in seconds;
 - F0 contour in hertz;
+- explicit backend-neutral voiced mask;
 - CheapTrick spectral envelope;
 - D4C aperiodicity;
 - sample rate, frame period, FFT size, frame count and frequency-bin count.
