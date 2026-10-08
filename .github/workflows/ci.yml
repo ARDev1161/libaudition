@@ -423,3 +423,66 @@ jobs:
           cmake --build /tmp/libaudition-clap-consumer/build --parallel
           LD_LIBRARY_PATH="$PWD/install-clap/lib:${LD_LIBRARY_PATH:-}" \
             /tmp/libaudition-clap-consumer/build/consumer
+
+
+  aasist-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AASIST ONNX backend
+        run: >-
+          cmake -S . -B build-aasist -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_AASIST=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-aasist --parallel
+      - name: Download pinned AASIST inference fixture
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-aasist/aasist.onnx" \
+            "https://huggingface.co/SpeechAntiSpoofingBenchmarks/AASIST/resolve/16774d458d86d2a021ae31646c1bf66a5331b53e/aasist.onnx?download=true"
+          echo "130e536266b7c537f9a13029e1612a9f392fd1cc827783683b6d1c062a3db5e1  $PWD/build-aasist/aasist.onnx" | sha256sum --check
+      - name: Test
+        env:
+          LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
+        run: ctest --test-dir build-aasist --output-on-failure
+      - name: Install
+        run: cmake --install build-aasist --prefix "$PWD/install-aasist"
+      - name: Verify installed AASIST package from C++17 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-aasist-consumer
+          cat > /tmp/libaudition-aasist-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_aasist_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_aasist)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-aasist-consumer/main.cpp <<'CPP'
+          #include <audition/backends/aasist.hpp>
+          #include <type_traits>
+
+          int main() {
+              audition::AasistOnnxOptions options{};
+              options.model = "aasist.onnx";
+              audition::validateAasistOnnxOptions(options);
+              static_assert(
+                  std::is_base_of_v<
+                      audition::IAudioAuthenticityDetector,
+                      audition::AasistAuthenticityDetector>);
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-aasist-consumer \
+            -B /tmp/libaudition-aasist-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-aasist"
+          cmake --build /tmp/libaudition-aasist-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-aasist/lib:${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-aasist-consumer/build/consumer
