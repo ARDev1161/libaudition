@@ -96,7 +96,8 @@ const std::regex& preTokenRegex() {
 }
 
 void requireAscii(const std::string& text) {
-    for (unsigned char byte : text) {
+    for (char character : text) {
+        const auto byte = static_cast<unsigned char>(character);
         if (byte >= 0x80U) {
             throw Error{
                 ErrorCode::UnsupportedFormat,
@@ -340,7 +341,8 @@ TokenizedText RobertaTokenizer::encode(
 
         std::string encoded;
         encoded.reserve(pretoken.size() * 2U);
-        for (unsigned char byte : pretoken) {
+        for (char character : pretoken) {
+            const auto byte = static_cast<unsigned char>(character);
             encoded += bytes[byte];
         }
 
