@@ -83,6 +83,14 @@ struct VoiceTraitsCapabilities {
     ExecutionCapabilities execution{};
 };
 
+struct VoiceAcousticCapabilities {
+    bool f0_contour{false};
+    bool spectral_envelope{false};
+    bool aperiodicity{false};
+    AudioRequirements audio{};
+    ExecutionCapabilities execution{};
+};
+
 struct TtsCapabilities {
     bool streaming{false};
     bool voice_cloning{false};
