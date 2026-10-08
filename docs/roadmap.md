@@ -51,8 +51,14 @@ Speech-enhancement slice:
 - Explicit offline versus streaming semantics.
 - Streaming `flush()`, model-derived preferred frame size and no hidden resampling.
 
+TTS slice:
+- Optional Sherpa TTS build support.
+- VITS/Piper, Matcha and Kokoro through `ISpeechSynthesizer`.
+- Request-time speed, configured speaker ID and explicit language declaration.
+- Voice references are rejected rather than ignored.
+
 Follow-up slices:
-- TTS and permitted voice-cloning models.
+- ZipVoice/Pocket and other reference-audio/voice-cloning models with explicit core semantics.
 
 ## v0.4 — extended perception
 
