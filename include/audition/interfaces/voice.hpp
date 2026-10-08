@@ -10,6 +10,7 @@ class IVoiceTraitsEstimator {
 public:
     virtual ~IVoiceTraitsEstimator() = default;
     [[nodiscard]] virtual BackendInfo backendInfo() const = 0;
+    [[nodiscard]] virtual VoiceTraitsCapabilities capabilities() const = 0;
     [[nodiscard]] virtual VoiceTraits estimate(AudioView speech) const = 0;
 };
 
