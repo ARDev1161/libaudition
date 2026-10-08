@@ -37,6 +37,17 @@ audition::SherpaAudioTaggingOptions audioTaggingOptions() {
     return options;
 }
 
+audition::SherpaKeywordSpotterOptions keywordSpotterOptions() {
+    audition::SherpaKeywordSpotterOptions options{};
+    audition::SherpaOnlineTransducerModel model{};
+    model.encoder = "encoder.onnx";
+    model.decoder = "decoder.onnx";
+    model.joiner = "joiner.onnx";
+    options.model = model;
+    options.tokens = "tokens.txt";
+    return options;
+}
+
 }  // namespace
 
 TEST(SherpaConfig, AcceptsOfflineWhisperConfiguration) {
@@ -72,15 +83,9 @@ TEST(SherpaConfig, RejectsUnsupportedExecutionKnobsRatherThanIgnoringThem) {
 }
 
 TEST(SherpaConfig, KeywordSpotterRequiresKeywordDefinitions) {
-    audition::SherpaKeywordSpotterOptions options{};
-    audition::SherpaOnlineTransducerModel model{};
-    model.encoder = "encoder.onnx";
-    model.decoder = "decoder.onnx";
-    model.joiner = "joiner.onnx";
-    options.model = model;
-    options.tokens = "tokens.txt";
-
+    auto options = keywordSpotterOptions();
     EXPECT_THROW(audition::validateSherpaKeywordSpotterOptions(options), audition::Error);
+
     options.keywords = "HELLO :2.0";
     EXPECT_NO_THROW(audition::validateSherpaKeywordSpotterOptions(options));
 }
