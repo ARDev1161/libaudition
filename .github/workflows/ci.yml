@@ -307,3 +307,62 @@ jobs:
           cmake --build /tmp/libaudition-sherpa-tts-consumer/build --parallel
           LD_LIBRARY_PATH="$PWD/install-sherpa-tts/lib:${LD_LIBRARY_PATH:-}" \
             /tmp/libaudition-sherpa-tts-consumer/build/consumer
+
+  clap-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure CLAP ONNX backend
+        run: >-
+          cmake -S . -B build-clap -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_CLAP=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-clap --parallel
+      - name: Download pinned CLAP audio inference fixture
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-clap/clap_audio.onnx" \
+            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_audio.onnx?download=true"
+          echo "3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332  $PWD/build-clap/clap_audio.onnx" | sha256sum --check
+      - name: Test
+        env:
+          LIBAUDITION_TEST_CLAP_AUDIO_MODEL: ${{ github.workspace }}/build-clap/clap_audio.onnx
+        run: ctest --test-dir build-clap --output-on-failure
+      - name: Install
+        run: cmake --install build-clap --prefix "$PWD/install-clap"
+      - name: Verify installed CLAP package from C++17 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-clap-consumer
+          cat > /tmp/libaudition-clap-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_clap_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_clap)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-clap-consumer/main.cpp <<'CPP'
+          #include <audition/backends/clap.hpp>
+          #include <type_traits>
+          int main() {
+              audition::ClapOnnxAudioOptions options{};
+              options.model = "clap_audio.onnx";
+              audition::validateClapOnnxAudioOptions(options);
+              static_assert(std::is_base_of_v<audition::IAudioEmbedder,
+                                              audition::ClapAudioEmbedder>);
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-clap-consumer \
+            -B /tmp/libaudition-clap-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-clap"
+          cmake --build /tmp/libaudition-clap-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-clap/lib:${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-clap-consumer/build/consumer
