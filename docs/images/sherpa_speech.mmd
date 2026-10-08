@@ -1,0 +1,31 @@
+flowchart LR
+    AUDIO[Mono AudioView]
+    VAD[SherpaVad]
+    OASR[SherpaOfflineAsr]
+    SASR[SherpaStreamingAsr]
+    KWS[SherpaKeywordSpotter]
+    LID[SherpaLanguageIdentifier]
+
+    AUDIO --> VAD
+    AUDIO --> OASR
+    AUDIO --> SASR
+    AUDIO --> KWS
+    AUDIO --> LID
+
+    VAD --> VR[VadResult]
+    OASR --> TR[Transcript + TimedToken]
+    SASR --> TR
+    KWS --> KH[KeywordHit]
+    LID --> LS[LanguageScore]
+
+    MODEL[ModelDescriptor + typed model config] -.-> VAD
+    MODEL -.-> OASR
+    MODEL -.-> SASR
+    MODEL -.-> KWS
+    MODEL -.-> LID
+
+    EXEC[ExecutionTarget provider] -.-> VAD
+    EXEC -.-> OASR
+    EXEC -.-> SASR
+    EXEC -.-> KWS
+    EXEC -.-> LID

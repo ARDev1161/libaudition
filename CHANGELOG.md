@@ -8,6 +8,10 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Added
 
+- Optional sherpa-onnx speech backend family with typed configuration for Silero/TEN VAD, offline/streaming ASR, keyword spotting and spoken-language identification.
+- Sherpa model-family support for common transducer, Paraformer, CTC, Whisper and SenseVoice deployments without exposing sherpa-native types.
+- Backend-neutral timed ASR tokens and optional VAD/KWS/language scores so unavailable native confidence values are not fabricated.
+- Pinned sherpa-onnx ExternalProject build, install/package smoke tests and provider pass-through via `ExecutionTarget`.
 - Explicit stateful audio frontend for channel routing, gain/DC calibration and fractional-sample delay alignment.
 - Measured RMS/peak/DC/crest/clipping quality metrics and explicit-noise-floor SNR calculation.
 - Optional streaming `libsamplerate` backend with reset/flush and planar/interleaved support.
@@ -16,6 +20,8 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Changed
 
+- `VadResult::speech_probability`, `KeywordHit::probability` and `LanguageScore::probability` are optional when a backend does not expose a calibrated score.
+- `AsrCapabilities` distinguishes token timestamps from word timestamps.
 - Echo-canceller sessions now expose explicit stream-delay, echo-path-gain-change and metrics contracts.
 - AEC is documented as a speech-path processor; the raw spatial-array path remains unprocessed except for explicit calibrated channel alignment.
 
