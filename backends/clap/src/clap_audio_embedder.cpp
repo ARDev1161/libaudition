@@ -188,8 +188,9 @@ public:
         input_name_ = input_name.get();
         output_name_ = output_name.get();
 
+        const auto input_type_info = session_->GetInputTypeInfo(0U);
         const auto input_info =
-            session_->GetInputTypeInfo(0U).GetTensorTypeAndShapeInfo();
+            input_type_info.GetTensorTypeAndShapeInfo();
         const auto input_type = input_info.GetElementType();
         input_shape_ = input_info.GetShape();
         if (input_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
@@ -210,8 +211,9 @@ public:
         }
         fixed_frame_count_ = fixedFrameCount(input_shape_);
 
+        const auto output_type_info = session_->GetOutputTypeInfo(0U);
         const auto output_info =
-            session_->GetOutputTypeInfo(0U).GetTensorTypeAndShapeInfo();
+            output_type_info.GetTensorTypeAndShapeInfo();
         if (output_info.GetElementType() !=
             ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
             throw Error{ErrorCode::ModelLoadError,
