@@ -62,7 +62,14 @@ Follow-up slices:
 
 ## v0.4 — extended perception
 
-- CLAP embeddings/open-vocabulary classification and sound prototype matching.
+Semantic embedding foundation:
+- Optional embedding quality rather than fabricated zero confidence.
+- Audio-embedding and open-vocabulary capability reporting.
+- Backend-neutral cosine sound-prototype matching over persistent few-shot memory.
+- Strict `model_id`/dimension isolation between embedding spaces.
+
+Follow-up slices:
+- CLAP embeddings and candidate-relative open-vocabulary classification.
 - AASIST authenticity backend.
 - WORLD voice feature backend.
 
