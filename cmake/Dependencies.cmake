@@ -430,7 +430,9 @@ function(libaudition_find_or_fetch_gtsam)
             -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
             -DCMAKE_BUILD_TYPE=Release
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DCMAKE_INSTALL_RPATH=$ORIGIN
             -DGTSAM_FORCE_SHARED_LIB=ON
+            -DGTSAM_SUPPORT_NESTED_DISSECTION=OFF
             -DGTSAM_BUILD_TESTS=OFF
             -DGTSAM_BUILD_UNSTABLE=OFF
             -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF
@@ -454,5 +456,5 @@ function(libaudition_find_or_fetch_gtsam)
     install(DIRECTORY "${_gtsam_install_dir}/lib/"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         FILES_MATCHING
-        PATTERN "${CMAKE_SHARED_LIBRARY_PREFIX}gtsam${CMAKE_SHARED_LIBRARY_SUFFIX}*")
+        PATTERN "*gtsam*${CMAKE_SHARED_LIBRARY_SUFFIX}*")
 endfunction()
