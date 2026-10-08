@@ -47,3 +47,9 @@ if(TARGET audition::backend_sherpa)
     target_sources(libaudition_tests PRIVATE sherpa_backend_test.cpp sherpa_speaker_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_sherpa)
 endif()
+
+
+if(TARGET audition::backend_clap)
+    target_sources(libaudition_tests PRIVATE clap_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_clap)
+endif()
