@@ -7,7 +7,10 @@
 namespace audition {
 
 struct AuthenticityResult {
-    Probability bona_fide_probability{Probability::zero()};
+    std::optional<Score> bona_fide_score{};
+    std::optional<Probability> bona_fide_probability{};
+    std::optional<Score> spoof_score{};
+    std::optional<Probability> spoof_probability{};
     std::optional<Probability> replay_probability{};
     std::optional<Probability> synthetic_probability{};
 };
