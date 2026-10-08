@@ -220,6 +220,25 @@ struct SherpaLanguageIdOptions {
     std::int32_t tail_paddings{0};
 };
 
+struct SherpaAudioTaggingZipformerModel {
+    std::filesystem::path model{};
+};
+
+struct SherpaAudioTaggingCedModel {
+    std::filesystem::path model{};
+};
+
+using SherpaAudioTaggingModel =
+    std::variant<SherpaAudioTaggingZipformerModel, SherpaAudioTaggingCedModel>;
+
+struct SherpaAudioTaggingOptions {
+    SherpaAudioTaggingModel model{SherpaAudioTaggingZipformerModel{}};
+    std::filesystem::path labels{};
+    std::optional<ModelDescriptor> model_descriptor{};
+    SherpaRuntimeOptions runtime{};
+    std::uint32_t sample_rate_hz{16000};
+    std::int32_t top_k{5};
+};
 
 struct SherpaSpeakerEmbeddingOptions {
     std::filesystem::path model{};
@@ -255,6 +274,7 @@ struct SherpaSpeakerDiarizationOptions {
     float min_duration_off{0.0F};
 };
 
+AUDITION_API void validateSherpaAudioTaggingOptions(const SherpaAudioTaggingOptions& options);
 AUDITION_API void validateSherpaSpeakerEmbeddingOptions(const SherpaSpeakerEmbeddingOptions& options);
 AUDITION_API void validateSherpaSpeakerIdentifierOptions(const SherpaSpeakerIdentifierOptions& options);
 AUDITION_API void validateSherpaSpeakerDiarizationOptions(const SherpaSpeakerDiarizationOptions& options);
