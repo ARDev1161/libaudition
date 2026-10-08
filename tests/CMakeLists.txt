@@ -11,6 +11,7 @@ add_executable(libaudition_tests
     memory_registry_test.cpp
     sound_prototype_matcher_test.cpp
     source_identity_resolver_test.cpp
+    spatial_identity_coordinator_test.cpp
     dsp_test.cpp
     audio_frontend_test.cpp
     quality_test.cpp

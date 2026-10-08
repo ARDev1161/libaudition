@@ -54,12 +54,19 @@ target_include_directories(libaudition_logging PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-add_library(libaudition_pipeline INTERFACE)
+add_library(libaudition_pipeline
+    pipeline/spatial_identity.cpp)
 add_library(audition::pipeline ALIAS libaudition_pipeline)
-set_target_properties(libaudition_pipeline PROPERTIES EXPORT_NAME pipeline)
-target_link_libraries(libaudition_pipeline INTERFACE audition::core audition::interfaces)
-target_compile_features(libaudition_pipeline INTERFACE cxx_std_17)
-target_include_directories(libaudition_pipeline INTERFACE
+set_target_properties(libaudition_pipeline PROPERTIES
+    EXPORT_NAME pipeline
+    OUTPUT_NAME audition_pipeline)
+target_compile_definitions(libaudition_pipeline PRIVATE LIBAUDITION_BUILDING_LIBRARY)
+if(BUILD_SHARED_LIBS)
+    target_compile_definitions(libaudition_pipeline PUBLIC LIBAUDITION_SHARED)
+endif()
+target_link_libraries(libaudition_pipeline PUBLIC audition::core audition::interfaces)
+libaudition_configure_target(libaudition_pipeline)
+target_include_directories(libaudition_pipeline PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 

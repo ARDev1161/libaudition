@@ -1,7 +1,10 @@
 flowchart LR
-    TRACK[Transient SpatialTrackId] --> RESOLVE[Identity resolver]
+    OBS[Bearing / range / position observations] --> FUSE[ISpatialFusion]
+    FUSE --> COORD[SpatialIdentityCoordinator]
+    TRACK[SpatialTrack] --> COORD
+    COORD --> RESOLVE[ISourceIdentityResolver]
     FP[Acoustic fingerprint] --> RESOLVE
-    GEO[Geometry and time] --> RESOLVE
     RESOLVE --> SOURCE[Persistent AcousticSourceId]
+    COORD --> OUT[SpatialTrack / TrackedAudioFrame / AcousticEvent]
     SPEECH[Speaker embedding] --> SPEAKER[SpeakerId]
-    SPEAKER -.optional evidence.-> SOURCE
+    SPEAKER -. optional evidence .-> SOURCE
