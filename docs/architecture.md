@@ -55,6 +55,7 @@ flowchart TB
     ODAS -. implements .-> SPATIAL
     SHERPA -. implements .-> SPEECH
     SHERPA -. implements .-> SPEAKER
+    SHERPA -. implements .-> SEM
     SHERPA -. implements .-> TTS
     CLAP -. implements .-> SEM
     AASIST -. implements .-> AUTH

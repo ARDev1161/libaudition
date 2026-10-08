@@ -19,6 +19,7 @@ Pinned upstream revision:
 | `SherpaStreamingAsr` | `IStreamingAsrEngine` | `OnlineRecognizer` |
 | `SherpaKeywordSpotter` | `IKeywordSpotter` | `KeywordSpotter` |
 | `SherpaLanguageIdentifier` | `ILanguageIdentifier` | `SpokenLanguageIdentification` |
+| `SherpaAudioTagger` | `IAudioClassifier` | `AudioTagging` |
 | `SherpaSpeakerEmbedder` | `ISpeakerEmbedder` | `SpeakerEmbeddingExtractor` |
 | `SherpaSpeakerVerifier` | `ISpeakerVerifier` | `SpeakerEmbeddingManager` |
 | `SherpaSpeakerIdentifier` | `ISpeakerIdentifier` | `SpeakerEmbeddingManager` |
@@ -51,6 +52,12 @@ VAD:
 Spoken-language identification:
 - Whisper encoder/decoder pair.
 
+Audio tagging:
+- Zipformer audio-tagging models;
+- CED audio-tagging models;
+- explicit label CSV and top-K selection;
+- mono 16 kHz input for the pinned Sherpa audio-tagging families.
+
 Speaker intelligence:
 - speaker embedding models supported by Sherpa's `SpeakerEmbeddingExtractor`;
 - cosine-style verification and transient identification through `SpeakerEmbeddingManager`;
@@ -66,6 +73,19 @@ The current speech adapters require mono input at their configured sample rate.
 Use the explicit libaudition resampler/channel-routing blocks when input differs.
 
 No backend performs implicit application-level buffering or thread scheduling.
+
+## Audio-tagging probability semantics
+
+Sherpa audio tagging returns ranked events with a label and `prob`. The upstream
+API represents this value as a probability in `[0, 1]`; libaudition validates
+the range and maps it directly to `Probability`. The top-K values are not
+renormalized and are not required to sum to one.
+
+The pinned Sherpa audio-tagging stream is internally fixed to 16 kHz and would
+otherwise resample mismatched input inside Sherpa. To preserve libaudition's
+explicit-conversion contract, the adapter accepts mono 16 kHz only and rejects
+other sample rates before the native call. Use libaudition's frontend/resampler
+blocks explicitly when the source format differs.
 
 ## Missing scores are represented honestly
 
@@ -207,9 +227,9 @@ target_link_libraries(app PRIVATE audition::backend_sherpa)
 
 ## Future additions
 
-Audio tagging, speech enhancement and TTS remain separate capabilities and will
-be added as separate classes instead of expanding these adapters into a
-monolithic `SherpaBackend`.
+Speech enhancement and TTS remain separate capabilities and will be added
+as separate classes instead of expanding these adapters into a monolithic
+`SherpaBackend`.
 
 Persistent speaker memory is intentionally implemented outside the Sherpa
 backend so another embedder/index can replace Sherpa without changing stored
