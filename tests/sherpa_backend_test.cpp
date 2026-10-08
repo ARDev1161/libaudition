@@ -55,6 +55,18 @@ audition::SherpaSpeechDenoiserOptions speechDenoiserOptions() {
     return options;
 }
 
+#if defined(LIBAUDITION_SHERPA_TTS_ENABLED)
+audition::SherpaTtsOptions piperTtsOptions() {
+    audition::SherpaTtsOptions options{};
+    auto& model = std::get<audition::SherpaTtsVitsModel>(options.model);
+    model.model = "voice.onnx";
+    model.tokens = "tokens.txt";
+    model.data_dir = "espeak-ng-data";
+    options.languages = {"en"};
+    return options;
+}
+#endif
+
 }  // namespace
 
 TEST(SherpaConfig, AcceptsOfflineWhisperConfiguration) {
@@ -238,6 +250,69 @@ TEST(SherpaConfig, SpeechDenoiserAcceptsDescriptorModelRoot) {
     EXPECT_NO_THROW(audition::validateSherpaOfflineSpeechDenoiserOptions(options));
     EXPECT_NO_THROW(audition::validateSherpaStreamingSpeechDenoiserOptions(options));
 }
+
+#if defined(LIBAUDITION_SHERPA_TTS_ENABLED)
+TEST(SherpaConfig, TtsSupportsPiperVitsMatchaAndKokoro) {
+    auto options = piperTtsOptions();
+    EXPECT_NO_THROW(audition::validateSherpaTtsOptions(options));
+
+    audition::SherpaTtsMatchaModel matcha{};
+    matcha.acoustic_model = "matcha.onnx";
+    matcha.vocoder = "vocoder.onnx";
+    matcha.tokens = "tokens.txt";
+    matcha.lexicon = "lexicon.txt";
+    options.model = matcha;
+    EXPECT_NO_THROW(audition::validateSherpaTtsOptions(options));
+
+    audition::SherpaTtsKokoroModel kokoro{};
+    kokoro.model = "kokoro.onnx";
+    kokoro.voices = "voices.bin";
+    kokoro.tokens = "tokens.txt";
+    kokoro.data_dir = "espeak-ng-data";
+    kokoro.language = "en";
+    options.model = kokoro;
+    EXPECT_NO_THROW(audition::validateSherpaTtsOptions(options));
+}
+
+TEST(SherpaConfig, TtsRejectsMissingPathsAndConflictingFrontendResources) {
+    auto options = piperTtsOptions();
+    auto model = std::get<audition::SherpaTtsVitsModel>(options.model);
+    model.model.clear();
+    options.model = model;
+    EXPECT_THROW(audition::validateSherpaTtsOptions(options), audition::Error);
+
+    options = piperTtsOptions();
+    model = std::get<audition::SherpaTtsVitsModel>(options.model);
+    model.lexicon = "lexicon.txt";
+    options.model = model;
+    EXPECT_THROW(audition::validateSherpaTtsOptions(options), audition::Error);
+}
+
+TEST(SherpaConfig, TtsRejectsInvalidGenerationAndExecutionSettings) {
+    auto options = piperTtsOptions();
+    options.silence_scale = -0.1F;
+    EXPECT_THROW(audition::validateSherpaTtsOptions(options), audition::Error);
+
+    options = piperTtsOptions();
+    options.speaker_id = -1;
+    EXPECT_THROW(audition::validateSherpaTtsOptions(options), audition::Error);
+
+    options = piperTtsOptions();
+    options.runtime.execution.device_class = audition::DeviceClass::Npu;
+    EXPECT_THROW(audition::validateSherpaTtsOptions(options), audition::Error);
+    options.runtime.execution.provider = "rknn";
+    EXPECT_NO_THROW(audition::validateSherpaTtsOptions(options));
+}
+
+TEST(SherpaConfig, TtsAcceptsDescriptorModelRoot) {
+    auto options = piperTtsOptions();
+    audition::ModelDescriptor descriptor{};
+    descriptor.backend = "sherpa-onnx";
+    descriptor.artifact_path = "/opt/models/piper";
+    options.model_descriptor = descriptor;
+    EXPECT_NO_THROW(audition::validateSherpaTtsOptions(options));
+}
+#endif
 
 TEST(SherpaConfig, LanguageIdRequiresWhisperPair) {
     audition::SherpaLanguageIdOptions options{};
