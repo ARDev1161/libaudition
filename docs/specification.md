@@ -126,6 +126,22 @@ A source-identity resolver may combine continuity, position, bearing, time, and
 one or more acoustic fingerprints. A single physical source can therefore retain
 its `AcousticSourceId` when its spatial tracker ID changes.
 
+The default in-memory identity resolver treats an active tracker binding as
+authoritative until `endTrack()`. Re-identification after a tracker handoff is
+conservative: it requires compatible persistent fingerprint evidence or recent
+geometry; recency alone is never sufficient. A source already bound to another
+active track is excluded from association candidates.
+
+Fingerprint matching is isolated by `model_id` and embedding dimension. High
+quality compatible fingerprints below the configured cosine threshold act as
+conflicting evidence for that candidate. Low-quality fingerprints can be used by
+the caller for other purposes but are not persisted or used for source re-ID by
+the default resolver.
+
+The resolver's `SourceIdentityDecision::confidence` is a bounded association
+score produced by the configured evidence policy. It is not a calibrated
+probability that two observations originate from the same physical object.
+
 ## Lifecycle
 
 libaudition does not implement a middleware lifecycle. Configuration happens at
