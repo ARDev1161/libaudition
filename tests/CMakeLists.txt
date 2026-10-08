@@ -10,6 +10,7 @@ add_executable(libaudition_tests
     public_headers_test.cpp
     memory_registry_test.cpp
     sound_prototype_matcher_test.cpp
+    source_identity_resolver_test.cpp
     dsp_test.cpp
     audio_frontend_test.cpp
     quality_test.cpp
