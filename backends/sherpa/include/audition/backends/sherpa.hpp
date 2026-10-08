@@ -5,6 +5,10 @@
 #include <audition/backends/sherpa/language_identifier.hpp>
 #include <audition/backends/sherpa/offline_speech_denoiser.hpp>
 #include <audition/backends/sherpa/streaming_speech_denoiser.hpp>
+
+#if defined(LIBAUDITION_SHERPA_TTS_ENABLED)
+#include <audition/backends/sherpa/sherpa_tts.hpp>
+#endif
 #include <audition/backends/sherpa/offline_asr.hpp>
 #include <audition/backends/sherpa/options.hpp>
 #include <audition/backends/sherpa/streaming_asr.hpp>
