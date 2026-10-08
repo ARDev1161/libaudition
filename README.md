@@ -61,6 +61,14 @@ cmake -S . -B build -DLIBAUDITION_WITH_SHERPA=ON
 See [`docs/backends/sherpa.md`](docs/backends/sherpa.md). Models are not bundled
 and retain their own independent licenses/provenance.
 
+The GTSAM spatial-fusion backend is optional:
+
+```bash
+cmake -S . -B build -DLIBAUDITION_WITH_GTSAM=ON
+```
+
+See [`docs/backends/gtsam.md`](docs/backends/gtsam.md).
+
 ## Consume from CMake
 
 ```cmake
