@@ -85,7 +85,7 @@ install(TARGETS libaudition_memory
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-add_library(libaudition_dsp dsp/basic.cpp)
+add_library(libaudition_dsp\n    dsp/basic.cpp\n    dsp/audio_frontend.cpp\n    dsp/quality.cpp)
 add_library(audition::dsp ALIAS libaudition_dsp)
 set_target_properties(libaudition_dsp PROPERTIES EXPORT_NAME dsp OUTPUT_NAME audition_dsp)
 target_link_libraries(libaudition_dsp PUBLIC audition::core)
