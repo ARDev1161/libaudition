@@ -1,7 +1,8 @@
-# WORLD voice-traits backend
+# WORLD voice analysis backend
 
-The optional WORLD backend exposes measured fundamental-frequency statistics
-through `IVoiceTraitsEstimator`.
+The optional WORLD backend exposes both high-level measured pitch statistics
+through `IVoiceTraitsEstimator` and frame-level acoustic measurements through
+`IVoiceAcousticAnalyzer`.
 
 Build it with:
 
@@ -26,6 +27,32 @@ It intentionally leaves the following absent:
 
 WORLD does not provide those quantities, so this backend does not infer or
 fabricate them.
+
+## Frame-level acoustic analysis
+
+`WorldAcousticAnalyzer` returns `VoiceAcousticFeatures` containing:
+
+- WORLD time axis in seconds;
+- F0 contour in hertz;
+- CheapTrick spectral envelope;
+- D4C aperiodicity;
+- sample rate, frame period, FFT size, frame count and frequency-bin count.
+
+The spectral and aperiodicity buffers are contiguous row-major matrices:
+
+```text
+index = frame * frequency_bin_count + bin
+```
+
+No WORLD-native matrix or option type appears in the installed domain API.
+
+The analyzer uses the same selectable F0 path as the traits estimator
+(`DioStoneMask` or `Harvest`), then derives the FFT size from CheapTrick using
+the configured F0 floor. `cheaptrick_q1` defaults to the pinned WORLD default
+(-0.15) and `d4c_threshold` defaults to 0.85.
+
+The acoustic result is a measured DSP representation. It does not by itself
+claim age, emotion, identity, stress, gender or authenticity.
 
 ## Algorithms
 
@@ -90,6 +117,11 @@ Zero hertz is never used to mean "pitch unavailable".
 
 An empty supported-sample-rate list means the backend accepts the input sample
 rate subject to the runtime Nyquist/F0 contract above.
+
+The frame-level analyzer separately reports
+`VoiceAcousticCapabilities { f0_contour, spectral_envelope, aperiodicity }`.
+All three are true for the WORLD implementation. It uses the same mono/CPU
+execution contract and likewise declares no hidden resampling.
 
 ## Threading
 
