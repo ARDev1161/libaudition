@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include <audition/core/execution.hpp>
 #include <audition/core/export.hpp>
@@ -257,6 +258,55 @@ struct SherpaSpeechDenoiserOptions {
     std::optional<ModelDescriptor> model_descriptor{};
     SherpaRuntimeOptions runtime{};
 };
+
+#if defined(LIBAUDITION_SHERPA_TTS_ENABLED)
+struct SherpaTtsVitsModel {
+    std::filesystem::path model{};
+    std::filesystem::path lexicon{};
+    std::filesystem::path tokens{};
+    std::filesystem::path data_dir{};
+    float noise_scale{0.667F};
+    float noise_scale_w{0.8F};
+    float length_scale{1.0F};
+};
+
+struct SherpaTtsMatchaModel {
+    std::filesystem::path acoustic_model{};
+    std::filesystem::path vocoder{};
+    std::filesystem::path lexicon{};
+    std::filesystem::path tokens{};
+    std::filesystem::path data_dir{};
+    float noise_scale{0.667F};
+    float length_scale{1.0F};
+};
+
+struct SherpaTtsKokoroModel {
+    std::filesystem::path model{};
+    std::filesystem::path voices{};
+    std::filesystem::path tokens{};
+    std::filesystem::path data_dir{};
+    std::filesystem::path lexicon{};
+    std::string language{};
+    float length_scale{1.0F};
+};
+
+using SherpaTtsModel =
+    std::variant<SherpaTtsVitsModel, SherpaTtsMatchaModel, SherpaTtsKokoroModel>;
+
+struct SherpaTtsOptions {
+    SherpaTtsModel model{SherpaTtsVitsModel{}};
+    std::optional<ModelDescriptor> model_descriptor{};
+    SherpaRuntimeOptions runtime{};
+    std::filesystem::path rule_fsts{};
+    std::filesystem::path rule_fars{};
+    std::int32_t max_num_sentences{1};
+    float silence_scale{0.2F};
+    std::int32_t speaker_id{0};
+    std::vector<std::string> languages{};
+};
+
+AUDITION_API void validateSherpaTtsOptions(const SherpaTtsOptions& options);
+#endif
 
 struct SherpaSpeakerEmbeddingOptions {
     std::filesystem::path model{};
