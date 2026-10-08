@@ -61,6 +61,13 @@ void validateCandidates(
                 ErrorCode::InvalidArgument,
                 "CLAP candidate labels must not be empty"};
         }
+        for (unsigned char byte : label) {
+            if (byte >= 0x80U) {
+                throw Error{
+                    ErrorCode::UnsupportedFormat,
+                    "CLAP candidate labels currently require ASCII text"};
+            }
+        }
         if (!unique.insert(label).second) {
             throw Error{
                 ErrorCode::InvalidArgument,
