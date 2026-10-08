@@ -66,8 +66,8 @@ void validateFusionTimes(
     }
 }
 
-[[nodiscard]] bool assignOrVerify(
-    std::optional<AcousticSourceId>& destination,
+void verifyCompatibleSource(
+    const std::optional<AcousticSourceId>& destination,
     AcousticSourceId source_id,
     const char* object_name) {
     if (!source_id.valid()) {
@@ -76,19 +76,26 @@ void validateFusionTimes(
             "Identity resolver returned an invalid source ID"};
     }
 
-    if (!destination.has_value()) {
-        destination = source_id;
-        return true;
-    }
-
-    if (*destination != source_id) {
+    if (destination.has_value() &&
+        *destination != source_id) {
         throw Error{
             ErrorCode::InvalidState,
             std::string{object_name} +
                 " already carries a conflicting acoustic source ID"};
     }
+}
 
-    return false;
+[[nodiscard]] bool assignOrVerify(
+    std::optional<AcousticSourceId>& destination,
+    AcousticSourceId source_id,
+    const char* object_name) {
+    verifyCompatibleSource(destination, source_id, object_name);
+    if (destination.has_value()) {
+        return false;
+    }
+
+    destination = source_id;
+    return true;
 }
 
 }  // namespace
@@ -166,27 +173,41 @@ SpatialIdentityCoordinator::activeSource(
 
 std::size_t SpatialIdentityCoordinator::propagate(
     SpatialProcessingResult& result) const {
-    std::size_t annotated = 0U;
+    for (const auto& track : result.tracks) {
+        const auto source_id = activeSource(track.track_id);
+        if (source_id.has_value()) {
+            verifyCompatibleSource(
+                track.source_id,
+                *source_id,
+                "SpatialTrack");
+        }
+    }
 
+    for (const auto& frame : result.separated_frames) {
+        const auto source_id = activeSource(frame.track_id);
+        if (source_id.has_value()) {
+            verifyCompatibleSource(
+                frame.source_id,
+                *source_id,
+                "TrackedAudioFrame");
+        }
+    }
+
+    std::size_t annotated = 0U;
     for (auto& track : result.tracks) {
         const auto source_id = activeSource(track.track_id);
-        if (!source_id.has_value()) {
-            continue;
-        }
-        if (assignOrVerify(track.source_id, *source_id, "SpatialTrack")) {
+        if (source_id.has_value() &&
+            !track.source_id.has_value()) {
+            track.source_id = *source_id;
             ++annotated;
         }
     }
 
     for (auto& frame : result.separated_frames) {
         const auto source_id = activeSource(frame.track_id);
-        if (!source_id.has_value()) {
-            continue;
-        }
-        if (assignOrVerify(
-                frame.source_id,
-                *source_id,
-                "TrackedAudioFrame")) {
+        if (source_id.has_value() &&
+            !frame.source_id.has_value()) {
+            frame.source_id = *source_id;
             ++annotated;
         }
     }
@@ -231,12 +252,15 @@ void SpatialIdentityCoordinator::attachToEvent(
             "AcousticEvent already carries a conflicting spatial track ID"};
     }
 
+    verifyCompatibleSource(
+        event.source_id,
+        *track.source_id,
+        "AcousticEvent");
+
     event.track_id = track.track_id;
-    static_cast<void>(
-        assignOrVerify(
-            event.source_id,
-            *track.source_id,
-            "AcousticEvent"));
+    if (!event.source_id.has_value()) {
+        event.source_id = *track.source_id;
+    }
 }
 
 }  // namespace audition
