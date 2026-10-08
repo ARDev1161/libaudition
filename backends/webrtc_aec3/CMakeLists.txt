@@ -25,7 +25,11 @@ target_link_libraries(libaudition_backend_webrtc_aec3
 target_include_directories(libaudition_backend_webrtc_aec3
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+        "${LIBAUDITION_WEBRTC_AEC3_SOURCE_DIR}/src")
+add_dependencies(libaudition_backend_webrtc_aec3
+    libaudition_webrtc_aec3_external)
 libaudition_configure_target(libaudition_backend_webrtc_aec3)
 target_compile_features(libaudition_backend_webrtc_aec3 PRIVATE cxx_std_20)
 

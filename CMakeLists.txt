@@ -102,5 +102,7 @@ install(EXPORT libauditionTargets
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")
 install(FILES LICENSE NOTICE THIRD_PARTY.md DESTINATION "${CMAKE_INSTALL_DATADIR}/libaudition")
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/LICENSES" DESTINATION "${CMAKE_INSTALL_DATADIR}/libaudition")
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindODAS.cmake"
+install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindODAS.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSampleRate.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")

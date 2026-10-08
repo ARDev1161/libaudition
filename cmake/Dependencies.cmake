@@ -133,23 +133,37 @@ function(libaudition_find_or_fetch_webrtc_aec3)
         message(FATAL_ERROR "WebRTC AEC3 backend requires the pinned standalone AEC3 source; set LIBAUDITION_FETCH_DEPENDENCIES=ON")
     endif()
 
-    FetchContent_Declare(
-        webrtc_aec3
+    set(_webrtc_aec3_source_dir "${CMAKE_BINARY_DIR}/_deps/webrtc-aec3-src")
+    set(_webrtc_aec3_binary_dir "${CMAKE_BINARY_DIR}/_deps/webrtc-aec3-build")
+    set(_webrtc_aec3_library
+        "${_webrtc_aec3_binary_dir}/${CMAKE_SHARED_LIBRARY_PREFIX}webrtc_aec3${CMAKE_SHARED_LIBRARY_SUFFIX}")
+
+    ExternalProject_Add(libaudition_webrtc_aec3_external
         GIT_REPOSITORY https://github.com/Enaium/webrtc-aec3.git
         GIT_TAG 2cec2f52e26646f93bd2d5498bbabf59cba18da9
         GIT_SHALLOW FALSE
+        UPDATE_DISCONNECTED TRUE
+        SOURCE_DIR "${_webrtc_aec3_source_dir}"
+        BINARY_DIR "${_webrtc_aec3_binary_dir}"
         PATCH_COMMAND
             "${CMAKE_COMMAND}"
             -DSOURCE_DIR=<SOURCE_DIR>
-            -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PatchWebrtcAec3.cmake")
-    FetchContent_MakeAvailable(webrtc_aec3)
+            -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PatchWebrtcAec3.cmake"
+        CMAKE_ARGS
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DBUILD_TESTS=OFF
+        INSTALL_COMMAND ""
+        BUILD_BYPRODUCTS "${_webrtc_aec3_library}")
 
-    if(NOT TARGET webrtc_aec3)
-        message(FATAL_ERROR "Fetched WebRTC AEC3 source did not define target webrtc_aec3")
-    endif()
+    add_library(webrtc_aec3 SHARED IMPORTED GLOBAL)
+    set_target_properties(webrtc_aec3 PROPERTIES
+        IMPORTED_LOCATION "${_webrtc_aec3_library}")
+    add_dependencies(webrtc_aec3 libaudition_webrtc_aec3_external)
 
-    install(TARGETS webrtc_aec3
-        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    set(LIBAUDITION_WEBRTC_AEC3_SOURCE_DIR
+        "${_webrtc_aec3_source_dir}" PARENT_SCOPE)
+
+    install(FILES "${_webrtc_aec3_library}"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endfunction()
