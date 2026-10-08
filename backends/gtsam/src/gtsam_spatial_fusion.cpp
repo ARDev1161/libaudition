@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <exception>
 #include <limits>
 #include <optional>
 
@@ -138,7 +139,6 @@ void checkClock(
 void validateOptions(const GtsamSpatialFusionOptions& options) {
     const double numeric_options[] = {
         options.default_bearing_sigma_rad,
-        options.default_range_sigma_m,
         options.sensor_position_sigma_m,
         options.minimum_sigma,
         options.fallback_initial_range_m};
@@ -302,19 +302,13 @@ std::optional<PositionEstimate> GtsamSpatialFusion::fuse(
         const double sigma = clampSigma(
             std::sqrt(observation.distance_m.variance),
             options_.minimum_sigma);
-        const double effective_sigma =
-            observation.distance_m.variance > 0.0
-                ? sigma
-                : clampSigma(
-                      options_.default_range_sigma_m,
-                      options_.minimum_sigma);
 
         graph.emplace_shared<
             gtsam::RangeFactor<gtsam::Point3, gtsam::Point3>>(
             sensor_key,
             source_key,
             observation.distance_m.mean,
-            gtsam::noiseModel::Isotropic::Sigma(1, effective_sigma));
+            gtsam::noiseModel::Isotropic::Sigma(1, sigma));
     }
 
     for (const auto& observation : input.positions) {
