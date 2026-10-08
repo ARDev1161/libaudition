@@ -29,6 +29,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 - `SpeakerEmbedding::quality` is optional because Sherpa embedding extraction does not expose a calibrated quality score.
 - `ISpeakerEmbedder::embed()` may return no embedding for insufficient audio instead of forcing a fabricated result or exception.
 - Echo-canceller sessions now expose explicit stream-delay, echo-path-gain-change and metrics contracts.
+- Noise-suppressor sessions now expose explicit `flush()` semantics and backend capabilities.
 - AEC is documented as a speech-path processor; the raw spatial-array path remains unprocessed except for explicit calibrated channel alignment.
 
 ## [0.2.0] - 2026-10-08
