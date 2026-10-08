@@ -488,8 +488,9 @@ void TemporalSpatialTrackSmoother::update(
         }
     }
 
+    const SpatialTrackId track_id = track.track_id;
     track = std::move(candidate);
-    states_[track.track_id] = std::move(next_state);
+    states_[track_id] = std::move(next_state);
 }
 
 void TemporalSpatialTrackSmoother::endTrack(
