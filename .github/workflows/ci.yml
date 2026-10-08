@@ -208,6 +208,7 @@ jobs:
           CMAKE
           cat > /tmp/libaudition-sherpa-consumer/main.cpp <<'CPP'
           #include <audition/backends/sherpa.hpp>
+          #include <type_traits>
           int main() {
               audition::SherpaVadOptions options{};
               std::get<audition::SherpaSileroVadModel>(options.model).model = "model.onnx";
@@ -218,6 +219,16 @@ jobs:
                   "audio-tagger.onnx";
               tagging.labels = "labels.csv";
               audition::validateSherpaAudioTaggingOptions(tagging);
+
+              audition::SherpaSpeechDenoiserOptions denoiser{};
+              std::get<audition::SherpaSpeechDenoiserGtcrnModel>(denoiser.model).model =
+                  "gtcrn.onnx";
+              audition::validateSherpaOfflineSpeechDenoiserOptions(denoiser);
+              audition::validateSherpaStreamingSpeechDenoiserOptions(denoiser);
+              static_assert(std::is_base_of_v<audition::INoiseSuppressor,
+                                              audition::SherpaOfflineSpeechDenoiser>);
+              static_assert(std::is_base_of_v<audition::INoiseSuppressor,
+                                              audition::SherpaStreamingSpeechDenoiser>);
 
               audition::SherpaSpeakerIdentifier identifier{{2U, "test-model"}};
               audition::SpeakerEnrollment enrollment{};
