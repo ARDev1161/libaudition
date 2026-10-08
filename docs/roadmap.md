@@ -126,8 +126,15 @@ ID-01 persistent acoustic-source identity:
 - Resolver state enforces one clock identity and globally non-decreasing observation timestamps.
 - `reset()` clears transient track/geometry state while persistent registry fingerprints remain available for re-identification.
 
+ID-02 spatial/identity integration:
+- Backend-independent `SpatialIdentityCoordinator` composes `ISpatialFusion` with `ISourceIdentityResolver`.
+- Fused position is supplied to source identity before committing the updated track.
+- Fusion observations must share the track clock identity and must not be newer than `track.last_seen`.
+- Persistent `AcousticSourceId` propagates to `SpatialTrack`, matching `TrackedAudioFrame`, and `AcousticEvent`.
+- Batch propagation validates all conflicts before mutation, avoiding partial updates.
+- Track end/reset lifecycle is forwarded to the resolver and clears active coordinator bindings.
+
 Next slices:
-- ID-02 integration of spatial fusion output with source identity observations.
 - SPL/type range priors.
 - Multimodal observation ports suitable for vision/radar integration.
 
