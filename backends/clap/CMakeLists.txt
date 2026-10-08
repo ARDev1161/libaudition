@@ -1,4 +1,5 @@
 add_library(libaudition_backend_clap SHARED
+    src/clap_features.cpp
     src/clap_audio_embedder.cpp)
 add_library(audition::backend_clap ALIAS libaudition_backend_clap)
 
