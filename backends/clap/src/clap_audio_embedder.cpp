@@ -16,8 +16,16 @@
 
 #include <onnxruntime_cxx_api.h>
 
+#include "detail/clap_features.hpp"
+
 namespace audition {
 namespace {
+
+constexpr std::uint32_t kClapSampleRateHz = 48000U;
+constexpr std::size_t kClapEmbeddingDimension = 512U;
+constexpr std::int64_t kClapFeatureChannels = 1;
+constexpr std::int64_t kClapFeatureFrames = 1001;
+constexpr std::int64_t kClapMelBins = 64;
 
 void requireConfiguration(bool condition, const char* message) {
     if (!condition) {
@@ -81,39 +89,34 @@ void validateAudio(AudioView audio, std::uint32_t sample_rate_hz) {
     if (audio.format().channel_count != 1U ||
         audio.format().sample_rate_hz != sample_rate_hz) {
         throw Error{ErrorCode::UnsupportedFormat,
-                    "CLAP audio embedding requires mono audio at the configured sample rate"};
+                    "CLAP audio embedding requires mono audio at 48 kHz"};
     }
     if (audio.sampleCount() == 0U) {
         throw Error{ErrorCode::InvalidArgument,
                     "CLAP audio embedding requires non-empty audio"};
     }
-    if (audio.sampleCount() >
-        static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
-        throw Error{ErrorCode::InvalidArgument,
-                    "CLAP audio input exceeds ONNX Runtime tensor limits"};
-    }
 }
 
-std::optional<std::size_t> fixedFrameCount(
+bool compatibleDimension(std::int64_t actual,
+                         std::int64_t expected) {
+    return actual <= 0 || actual == expected;
+}
+
+void validateInputShape(
     const std::vector<std::int64_t>& shape) {
-    if (shape.size() == 1U) {
-        if (shape[0] > 0) {
-            return static_cast<std::size_t>(shape[0]);
-        }
-        return std::nullopt;
+    if (shape.size() != 4U) {
+        throw Error{
+            ErrorCode::ModelLoadError,
+            "CLAP audio model input must be rank 4 [batch,1,frames,64]"};
     }
-    if (shape.size() == 2U) {
-        if (shape[0] > 0 && shape[0] != 1) {
-            throw Error{ErrorCode::ModelLoadError,
-                        "CLAP audio model batch dimension must be one or dynamic"};
-        }
-        if (shape[1] > 0) {
-            return static_cast<std::size_t>(shape[1]);
-        }
-        return std::nullopt;
+    if (!compatibleDimension(shape[0], 1) ||
+        !compatibleDimension(shape[1], kClapFeatureChannels) ||
+        !compatibleDimension(shape[2], kClapFeatureFrames) ||
+        !compatibleDimension(shape[3], kClapMelBins)) {
+        throw Error{
+            ErrorCode::ModelLoadError,
+            "CLAP audio model input shape is incompatible with the HTSAT-unfused feature contract"};
     }
-    throw Error{ErrorCode::ModelLoadError,
-                "CLAP audio model input must be rank 1 or rank 2"};
 }
 
 void validateOutputShape(const std::vector<std::int64_t>& shape,
@@ -151,10 +154,12 @@ void validateClapOnnxAudioOptions(const ClapOnnxAudioOptions& options) {
                          "CLAP ONNX audio model path is required");
     requireConfiguration(options.intra_op_threads > 0,
                          "CLAP ONNX intra_op_threads must be positive");
-    requireConfiguration(options.sample_rate_hz > 0U,
-                         "CLAP ONNX sample rate must be positive");
-    requireConfiguration(options.embedding_dimension > 0U,
-                         "CLAP ONNX embedding dimension must be positive");
+    requireConfiguration(
+        options.sample_rate_hz == kClapSampleRateHz,
+        "CLAP HTSAT-unfused audio frontend requires 48 kHz input");
+    requireConfiguration(
+        options.embedding_dimension == kClapEmbeddingDimension,
+        "CLAP HTSAT-unfused joint embedding dimension must be 512");
     requireConfiguration(!options.model_id.empty(),
                          "CLAP ONNX model_id must not be empty");
 }
@@ -191,25 +196,12 @@ public:
         const auto input_type_info = session_->GetInputTypeInfo(0U);
         const auto input_info =
             input_type_info.GetTensorTypeAndShapeInfo();
-        const auto input_type = input_info.GetElementType();
-        input_shape_ = input_info.GetShape();
-        if (input_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-            std::string shape_text{"["};
-            for (std::size_t i = 0; i < input_shape_.size(); ++i) {
-                if (i != 0U) {
-                    shape_text += ",";
-                }
-                shape_text += std::to_string(input_shape_[i]);
-            }
-            shape_text += "]";
-            throw Error{
-                ErrorCode::ModelLoadError,
-                std::string{"CLAP audio model input '"} + input_name_ +
-                    "' must be float32; observed ONNX element type " +
-                    std::to_string(static_cast<int>(input_type)) +
-                    " with shape " + shape_text};
+        if (input_info.GetElementType() !=
+            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+            throw Error{ErrorCode::ModelLoadError,
+                        "CLAP audio model feature input must be float32"};
         }
-        fixed_frame_count_ = fixedFrameCount(input_shape_);
+        validateInputShape(input_info.GetShape());
 
         const auto output_type_info = session_->GetOutputTypeInfo(0U);
         const auto output_info =
@@ -230,33 +222,22 @@ public:
 
     [[nodiscard]] AudioEmbedding embed(AudioView audio) const {
         validateAudio(audio, options_.sample_rate_hz);
-        if (fixed_frame_count_.has_value() &&
-            audio.frameCount() != *fixed_frame_count_) {
-            throw Error{
-                ErrorCode::UnsupportedFormat,
-                "CLAP audio model requires an exact frame count; segment or pad explicitly"};
-        }
+        const auto features = feature_extractor_.extract(audio);
 
-        std::vector<float> input_samples(
-            audio.data(), audio.data() + audio.sampleCount());
-
-        std::vector<std::int64_t> input_shape;
-        if (input_shape_.size() == 1U) {
-            input_shape = {
-                static_cast<std::int64_t>(audio.sampleCount())};
-        } else {
-            input_shape = {
-                1,
-                static_cast<std::int64_t>(audio.frameCount())};
-        }
+        const std::array<std::int64_t, 4U> input_shape{
+            1,
+            1,
+            static_cast<std::int64_t>(features.frames),
+            static_cast<std::int64_t>(features.mel_bins)};
 
         try {
             auto memory_info = Ort::MemoryInfo::CreateCpu(
                 OrtArenaAllocator, OrtMemTypeDefault);
+            auto input_values = features.values;
             auto input_tensor = Ort::Value::CreateTensor<float>(
                 memory_info,
-                input_samples.data(),
-                input_samples.size(),
+                input_values.data(),
+                input_values.size(),
                 input_shape.data(),
                 input_shape.size());
 
@@ -326,8 +307,7 @@ public:
     std::unique_ptr<Ort::Session> session_{};
     std::string input_name_{};
     std::string output_name_{};
-    std::vector<std::int64_t> input_shape_{};
-    std::optional<std::size_t> fixed_frame_count_{};
+    clap_detail::ClapFeatureExtractor feature_extractor_{};
 };
 
 ClapAudioEmbedder::ClapAudioEmbedder(ClapOnnxAudioOptions options)
@@ -350,7 +330,7 @@ EmbeddingCapabilities ClapAudioEmbedder::capabilities() const {
     capabilities.audio.supported_layouts = {
         AudioLayout::Interleaved, AudioLayout::Planar};
     capabilities.audio.preferred_frame_count =
-        impl_->fixed_frame_count_;
+        impl_->feature_extractor_.targetSampleCount();
     capabilities.execution.device_classes = {DeviceClass::Cpu};
     capabilities.execution.providers = {"cpu"};
     capabilities.embedding_dimension =
