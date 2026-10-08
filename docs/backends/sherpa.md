@@ -56,7 +56,7 @@ Audio tagging:
 - Zipformer audio-tagging models;
 - CED audio-tagging models;
 - explicit label CSV and top-K selection;
-- mono input at the configured sample rate (16 kHz by default).
+- mono 16 kHz input for the pinned Sherpa audio-tagging families.
 
 Speaker intelligence:
 - speaker embedding models supported by Sherpa's `SpeakerEmbeddingExtractor`;
@@ -81,9 +81,11 @@ API represents this value as a probability in `[0, 1]`; libaudition validates
 the range and maps it directly to `Probability`. The top-K values are not
 renormalized and are not required to sum to one.
 
-The adapter performs no implicit resampling or channel mixing. Use libaudition's
-explicit frontend/resampler blocks when the source format does not match the
-configured mono sample rate.
+The pinned Sherpa audio-tagging stream is internally fixed to 16 kHz and would
+otherwise resample mismatched input inside Sherpa. To preserve libaudition's
+explicit-conversion contract, the adapter accepts mono 16 kHz only and rejects
+other sample rates before the native call. Use libaudition's frontend/resampler
+blocks explicitly when the source format differs.
 
 ## Missing scores are represented honestly
 
