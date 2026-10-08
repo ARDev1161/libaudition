@@ -74,8 +74,13 @@ CLAP audio-embedding slice:
 - Deterministic HTSAT frontend with model-defined repeat-padding for short clips and explicit segmentation for audio longer than 10 seconds.
 - 512-dimensional embedding-space isolation through explicit `model_id`.
 
+CLAP open-vocabulary slice:
+- Private RoBERTa byte-level BPE tokenizer loaded from the model's pinned `tokenizer.json`.
+- ONNX text encoder producing embeddings in the same 512-dimensional CLAP space.
+- `IOpenVocabularyAudioClassifier` using cosine similarity and explicit candidate-relative softmax temperature.
+- Candidate-relative values are normalized probabilities over the supplied label set, not calibrated real-world event probabilities.
+
 Follow-up slices:
-- CLAP text encoder/tokenizer and candidate-relative open-vocabulary classification.
 - AASIST authenticity backend.
 - WORLD voice feature backend.
 
