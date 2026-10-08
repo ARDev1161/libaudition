@@ -1,5 +1,6 @@
 #include <audition/backends/sherpa/streaming_speech_denoiser.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
