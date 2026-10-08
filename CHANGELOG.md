@@ -11,6 +11,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 - Optional sherpa-onnx speech backend family with typed configuration for Silero/TEN VAD, offline/streaming ASR, keyword spotting and spoken-language identification.
 - Sherpa speaker embedding, verification, transient identification index and offline diarization adapters.
 - Sherpa Zipformer/CED audio-tagging adapter implementing `IAudioClassifier` with explicit labels, top-K, sample-rate and provider configuration.
+- Sherpa GTCRN/DPDFNet offline and streaming speech-denoiser adapters implementing `INoiseSuppressor`, including explicit flush/reset semantics and model-derived audio requirements.
 - Backend-neutral speaker enrollment and diarization types that keep local diarization clusters separate from persistent `SpeakerId`.
 - Sherpa model-family support for common transducer, Paraformer, CTC, Whisper and SenseVoice deployments without exposing sherpa-native types.
 - Backend-neutral timed ASR tokens and optional VAD/KWS/language scores so unavailable native confidence values are not fabricated.
