@@ -42,6 +42,19 @@ because the runtime is Apache-2.0. Model artifacts remain subject to the normal
 `models/manifest.yaml` provenance/license/hash policy and are not bundled by
 this backend.
 
+The optional CLAP backend uses Microsoft ONNX Runtime under the MIT license.
+The Linux x86_64 fetch fallback is pinned to the 1.28.2 package published by
+`csukuangfj/onnxruntime-libs`, with SHA-256
+`c4f8994d56191d9d2c92a961b39fe790459f2c5d155f912b239506ea31359534`.
+The ONNX Runtime license text is retained in `LICENSES/onnxruntime.txt`.
+Other platforms may provide their own compatible ONNX Runtime installation.
+
+The CLAP backend does not bundle model weights. CI may download the permissively
+licensed `ConceptualMachines/magda-sample-tagger` audio-encoder fixture for
+runtime validation; its pinned model SHA-256 is
+`3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332`.
+Model artifacts remain subject to the normal provenance/license policy.
+
 Planned permissive backends also include GTSAM (BSD), WORLD (BSD-like), and
 selected permissively licensed model artifacts. Code licenses and model-artifact
 licenses are audited separately.
