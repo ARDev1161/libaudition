@@ -95,6 +95,12 @@ calibration transform. A generic spoof detector must not fabricate replay or
 synthetic-attribution probabilities when its model does not distinguish those
 attack classes.
 
+Voice-trait backends likewise report only quantities they actually estimate. A
+signal-processing backend that measures F0 may populate pitch statistics while
+leaving age, categorical traits, and speaking rate absent. Unvoiced or
+insufficient audio is represented by absent optional pitch fields rather than
+zero hertz.
+
 The core intentionally does not depend on a probability framework. Heavy
 inference/fusion implementations may use Eigen, GTSAM, or another library behind
 an adapter. This keeps the domain layer lightweight while preserving covariance
