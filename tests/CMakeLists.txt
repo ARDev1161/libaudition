@@ -9,7 +9,9 @@ add_executable(libaudition_tests
     model_registry_test.cpp
     public_headers_test.cpp
     memory_registry_test.cpp
-    dsp_test.cpp)
+    dsp_test.cpp
+    audio_frontend_test.cpp
+    quality_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces
@@ -25,4 +27,14 @@ gtest_discover_tests(libaudition_tests)
 if(TARGET audition::backend_odas)
     target_sources(libaudition_tests PRIVATE odas_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_odas)
+endif()
+
+if(TARGET audition::backend_samplerate)
+    target_sources(libaudition_tests PRIVATE samplerate_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_samplerate)
+endif()
+
+if(TARGET audition::backend_webrtc_aec3)
+    target_sources(libaudition_tests PRIVATE webrtc_aec3_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_webrtc_aec3)
 endif()

@@ -11,6 +11,8 @@ option(LIBAUDITION_BUILD_EXAMPLES "Build examples" ON)
 option(LIBAUDITION_BUILD_DOCS "Build Doxygen documentation" OFF)
 option(LIBAUDITION_WITH_SPDLOG "Build the spdlog logging adapter" ON)
 option(LIBAUDITION_WITH_ODAS "Build the direct libodas spatial-audio backend" OFF)
+option(LIBAUDITION_WITH_LIBSAMPLERATE "Build the libsamplerate resampling backend" OFF)
+option(LIBAUDITION_WITH_WEBRTC_AEC3 "Build the WebRTC AEC3 echo-cancellation backend" OFF)
 option(LIBAUDITION_FETCH_DEPENDENCIES "Fetch missing third-party build dependencies" ON)
 option(LIBAUDITION_WARNINGS_AS_ERRORS "Treat libaudition warnings as errors" OFF)
 
@@ -24,6 +26,11 @@ include(Dependencies)
 
 function(libaudition_configure_target target)
     target_compile_features(${target} PUBLIC cxx_std_17)
+    get_target_property(_libaudition_target_type ${target} TYPE)
+    if(_libaudition_target_type STREQUAL "STATIC_LIBRARY" OR
+       _libaudition_target_type STREQUAL "OBJECT_LIBRARY")
+        set_target_properties(${target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive-)
         if(LIBAUDITION_WARNINGS_AS_ERRORS)
@@ -48,6 +55,16 @@ endif()
 if(LIBAUDITION_WITH_ODAS)
     libaudition_find_or_fetch_odas()
     add_subdirectory(backends/odas)
+endif()
+
+if(LIBAUDITION_WITH_LIBSAMPLERATE)
+    libaudition_find_or_fetch_samplerate()
+    add_subdirectory(backends/samplerate)
+endif()
+
+if(LIBAUDITION_WITH_WEBRTC_AEC3)
+    libaudition_find_or_fetch_webrtc_aec3()
+    add_subdirectory(backends/webrtc_aec3)
 endif()
 
 if(LIBAUDITION_BUILD_EXAMPLES)
@@ -90,5 +107,7 @@ install(EXPORT libauditionTargets
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")
 install(FILES LICENSE NOTICE THIRD_PARTY.md DESTINATION "${CMAKE_INSTALL_DATADIR}/libaudition")
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/LICENSES" DESTINATION "${CMAKE_INSTALL_DATADIR}/libaudition")
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindODAS.cmake"
+install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindODAS.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSampleRate.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")

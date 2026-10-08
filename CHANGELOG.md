@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning after `1.0`; the `0.x` public API may evolve.
 
+## [Unreleased]
+
+### Added
+
+- Explicit stateful audio frontend for channel routing, gain/DC calibration and fractional-sample delay alignment.
+- Measured RMS/peak/DC/crest/clipping quality metrics and explicit-noise-floor SNR calculation.
+- Optional streaming `libsamplerate` backend with reset/flush and planar/interleaved support.
+- Optional WebRTC AEC3 adapter with render-reference input, stream-delay control, echo-path-gain-change notification and ERL/ERLE/delay metrics.
+- Dedicated backend CI jobs and installed-package smoke tests.
+
+### Changed
+
+- Echo-canceller sessions now expose explicit stream-delay, echo-path-gain-change and metrics contracts.
+- AEC is documented as a speech-path processor; the raw spatial-array path remains unprocessed except for explicit calibrated channel alignment.
+
 ## [0.2.0] - 2026-10-08
 
 ### Added
