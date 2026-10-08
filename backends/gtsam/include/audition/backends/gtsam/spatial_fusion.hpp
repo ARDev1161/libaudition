@@ -12,6 +12,8 @@ struct GtsamSpatialFusionOptions {
     double sensor_position_sigma_m{1e-6};
     double minimum_sigma{1e-6};
     double fallback_initial_range_m{2.0};
+    bool enable_huber_loss{false};
+    double huber_k{1.345};
     std::size_t max_iterations{50};
 };
 
@@ -27,6 +29,10 @@ struct GtsamSpatialFusionOptions {
  * The backend does not manufacture a calibrated confidence probability. The
  * returned covariance is the authoritative uncertainty result and confidence is
  * left at Probability::zero().
+ *
+ * Huber robustification is explicit and disabled by default. When enabled it is
+ * applied only to source measurements (bearing/range/position), never to the
+ * tight sensor-pose priors.
  */
 class AUDITION_API GtsamSpatialFusion final : public ISpatialFusion {
 public:
