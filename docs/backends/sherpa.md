@@ -95,6 +95,24 @@ accelerators.
 When provider is empty, Auto/CPU resolves to `cpu`. Generic GPU/NPU/Accelerator
 targets require an explicit provider.
 
+For a fetched sherpa-onnx runtime, provider support is a build-time concern and
+libaudition exposes pass-through CMake options rather than choosing hardware:
+
+```text
+LIBAUDITION_SHERPA_ENABLE_GPU
+LIBAUDITION_SHERPA_ENABLE_DIRECTML
+LIBAUDITION_SHERPA_ENABLE_RKNN
+LIBAUDITION_SHERPA_ENABLE_AXERA
+LIBAUDITION_SHERPA_ENABLE_AXCL
+LIBAUDITION_SHERPA_ENABLE_ASCEND_NPU
+LIBAUDITION_SHERPA_ENABLE_QNN
+LIBAUDITION_SHERPA_ENABLE_SPACEMIT
+```
+
+All are OFF by default. Required vendor SDK/toolchain environment remains the
+responsibility of the selected sherpa provider. A system-provided sherpa-onnx
+installation may of course be built with a different provider set.
+
 The first adapter version intentionally rejects execution fields that sherpa's
 current C++ configuration cannot represent directly:
 
