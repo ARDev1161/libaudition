@@ -101,6 +101,13 @@ leaving age, categorical traits, and speaking rate absent. Unvoiced or
 insufficient audio is represented by absent optional pitch fields rather than
 zero hertz.
 
+Frame-level acoustic analysis is a separate contract from semantic voice traits.
+`VoiceAcousticFeatures` may expose measured time/F0 contours, spectral envelopes
+and aperiodicity matrices without implying age, emotion, identity or another
+human-level inference. Spectral and aperiodicity matrices use row-major
+`frame * frequency_bin_count + bin` layout and carry their frame period, FFT
+size, sample rate and dimensions explicitly.
+
 The core intentionally does not depend on a probability framework. Heavy
 inference/fusion implementations may use Eigen, GTSAM, or another library behind
 an adapter. This keeps the domain layer lightweight while preserving covariance
