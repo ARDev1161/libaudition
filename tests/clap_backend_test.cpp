@@ -1,5 +1,6 @@
 #include <audition/backends/clap.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <string>
@@ -7,6 +8,8 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+
+#include "detail/clap_features.hpp"
 
 namespace {
 
@@ -92,6 +95,40 @@ TEST(ClapConfig, AcceptsDescriptorModelRoot) {
 TEST(ClapBackend, ImplementsAudioEmbedderContract) {
     static_assert(std::is_base_of_v<audition::IAudioEmbedder,
                                     audition::ClapAudioEmbedder>);
+}
+
+TEST(ClapFrontend, UnitSineMatchesReferenceDbRange) {
+    constexpr std::size_t sample_count = 480000U;
+    constexpr double pi = 3.14159265358979323846;
+    constexpr double frequency_hz = 1000.0;
+    constexpr double sample_rate_hz = 48000.0;
+
+    std::vector<float> samples(sample_count);
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        const double phase =
+            2.0 * pi * frequency_hz *
+            static_cast<double>(i) / sample_rate_hz;
+        samples[i] = static_cast<float>(std::sin(phase));
+    }
+
+    audition::AudioBuffer audio{
+        std::move(samples),
+        {48000U, 1U, audition::AudioLayout::Interleaved},
+        audition::Timestamp{}};
+
+    audition::clap_detail::ClapFeatureExtractor extractor;
+    const auto features = extractor.extract(audio.view());
+
+    EXPECT_EQ(features.frames, 1001U);
+    EXPECT_EQ(features.mel_bins, 64U);
+    ASSERT_EQ(features.values.size(), 1001U * 64U);
+
+    const auto bounds =
+        std::minmax_element(features.values.begin(), features.values.end());
+    ASSERT_NE(bounds.first, features.values.end());
+    ASSERT_NE(bounds.second, features.values.end());
+    EXPECT_NEAR(*bounds.second, 29.3F, 1.0F);
+    EXPECT_NEAR(*bounds.first, -100.0F, 1.0F);
 }
 
 TEST(ClapBackend, LoadsPinnedAudioFixtureAndEmbedsWhenAvailable) {
