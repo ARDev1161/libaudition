@@ -16,7 +16,7 @@ public:
     [[nodiscard]] virtual BackendInfo backendInfo() const = 0;
     [[nodiscard]] virtual AudioRequirements audioRequirements() const = 0;
     [[nodiscard]] virtual std::size_t embeddingDimension() const = 0;
-    [[nodiscard]] virtual SpeakerEmbedding embed(AudioView speech) const = 0;
+    [[nodiscard]] virtual std::optional<SpeakerEmbedding> embed(AudioView speech) const = 0;
 };
 
 class ISpeakerVerifier {

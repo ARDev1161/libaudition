@@ -22,7 +22,7 @@ TEST(SpeakerContracts, EnrollmentIsSeparateFromPersistentStorage) {
     audition::SpeakerEnrollment enrollment{};
     enrollment.speaker_id = audition::SpeakerId{42};
     enrollment.display_name = "speaker";
-    enrollment.embeddings.push_back({"model", {0.1F, 0.2F}, audition::Probability::one()});
+    enrollment.embeddings.push_back({"model", {0.1F, 0.2F}, std::nullopt});
 
     EXPECT_TRUE(enrollment.speaker_id.valid());
     EXPECT_EQ(enrollment.embeddings.size(), 1U);

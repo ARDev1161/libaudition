@@ -14,7 +14,7 @@ namespace audition {
 struct SpeakerEmbedding {
     std::string model_id{};
     std::vector<float> values{};
-    Probability quality{Probability::zero()};
+    std::optional<Probability> quality{};
 };
 
 struct SpeakerVerificationResult {
