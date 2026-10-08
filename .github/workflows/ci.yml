@@ -547,3 +547,61 @@ jobs:
           cmake --build /tmp/libaudition-world-consumer/build --parallel
           LD_LIBRARY_PATH="$PWD/install-world/lib:${LD_LIBRARY_PATH:-}" \
             /tmp/libaudition-world-consumer/build/consumer
+
+
+  gtsam-backend:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTSAM 4.2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common ninja-build
+          sudo add-apt-repository -y ppa:borglab/gtsam-release-4.2
+          sudo apt-get update
+          sudo apt-get install -y libgtsam-dev
+      - name: Configure GTSAM spatial fusion backend
+        run: >-
+          cmake -S . -B build-gtsam -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_GTSAM=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-gtsam --parallel
+      - name: Test
+        run: ctest --test-dir build-gtsam --output-on-failure
+      - name: Install
+        run: cmake --install build-gtsam --prefix "$PWD/install-gtsam"
+      - name: Verify installed GTSAM backend package
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-gtsam-consumer
+          cat > /tmp/libaudition-gtsam-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_gtsam_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_gtsam)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-gtsam-consumer/main.cpp <<'CPP'
+          #include <audition/backends/gtsam.hpp>
+          #include <type_traits>
+
+          int main() {
+              static_assert(std::is_base_of_v<
+                  audition::ISpatialFusion,
+                  audition::GtsamSpatialFusion>);
+              const audition::GtsamSpatialFusion fusion{};
+              return fusion.backendInfo().name == "gtsam" ? 0 : 1;
+          }
+          CPP
+          cmake -S /tmp/libaudition-gtsam-consumer \
+            -B /tmp/libaudition-gtsam-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-gtsam"
+          cmake --build /tmp/libaudition-gtsam-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-gtsam/lib:\${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-gtsam-consumer/build/consumer
