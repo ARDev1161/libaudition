@@ -29,6 +29,14 @@ audition::SherpaStreamingAsrOptions streamingOptions() {
     return options;
 }
 
+audition::SherpaAudioTaggingOptions audioTaggingOptions() {
+    audition::SherpaAudioTaggingOptions options{};
+    std::get<audition::SherpaAudioTaggingZipformerModel>(options.model).model =
+        "audio-tagger.onnx";
+    options.labels = "labels.csv";
+    return options;
+}
+
 }  // namespace
 
 TEST(SherpaConfig, AcceptsOfflineWhisperConfiguration) {
@@ -87,6 +95,64 @@ TEST(SherpaConfig, SupportsSileroAndTenVadModels) {
     ten_model.model = "ten-vad.onnx";
     ten.model = ten_model;
     EXPECT_NO_THROW(audition::validateSherpaVadOptions(ten));
+}
+
+TEST(SherpaConfig, AudioTaggingSupportsZipformerAndCed) {
+    auto options = audioTaggingOptions();
+    EXPECT_NO_THROW(audition::validateSherpaAudioTaggingOptions(options));
+
+    audition::SherpaAudioTaggingCedModel ced{};
+    ced.model = "ced.onnx";
+    options.model = ced;
+    EXPECT_NO_THROW(audition::validateSherpaAudioTaggingOptions(options));
+}
+
+TEST(SherpaConfig, AudioTaggingRejectsMissingModelAndLabels) {
+    auto options = audioTaggingOptions();
+    std::get<audition::SherpaAudioTaggingZipformerModel>(options.model).model.clear();
+    EXPECT_THROW(audition::validateSherpaAudioTaggingOptions(options), audition::Error);
+
+    options = audioTaggingOptions();
+    options.labels.clear();
+    EXPECT_THROW(audition::validateSherpaAudioTaggingOptions(options), audition::Error);
+}
+
+TEST(SherpaConfig, AudioTaggingRejectsInvalidTopKAndSampleRate) {
+    auto options = audioTaggingOptions();
+    options.top_k = 0;
+    EXPECT_THROW(audition::validateSherpaAudioTaggingOptions(options), audition::Error);
+
+    options = audioTaggingOptions();
+    options.sample_rate_hz = 0U;
+    EXPECT_THROW(audition::validateSherpaAudioTaggingOptions(options), audition::Error);
+}
+
+TEST(SherpaConfig, AudioTaggingRequiresExplicitProviderForAccelerator) {
+    auto options = audioTaggingOptions();
+    options.runtime.execution.device_class = audition::DeviceClass::Npu;
+    EXPECT_THROW(audition::validateSherpaAudioTaggingOptions(options), audition::Error);
+
+    options.runtime.execution.provider = "rknn";
+    EXPECT_NO_THROW(audition::validateSherpaAudioTaggingOptions(options));
+}
+
+TEST(SherpaConfig, AudioTaggingRejectsUnsupportedExecutionKnobs) {
+    auto options = audioTaggingOptions();
+    options.runtime.execution.precision = audition::PrecisionPreference::Float16;
+    EXPECT_THROW(audition::validateSherpaAudioTaggingOptions(options), audition::Error);
+
+    options = audioTaggingOptions();
+    options.runtime.execution.allow_fallback = false;
+    EXPECT_THROW(audition::validateSherpaAudioTaggingOptions(options), audition::Error);
+}
+
+TEST(SherpaConfig, AudioTaggingAcceptsDescriptorModelRoot) {
+    auto options = audioTaggingOptions();
+    audition::ModelDescriptor descriptor{};
+    descriptor.backend = "sherpa-onnx";
+    descriptor.artifact_path = "/opt/models/audio-tagging";
+    options.model_descriptor = descriptor;
+    EXPECT_NO_THROW(audition::validateSherpaAudioTaggingOptions(options));
 }
 
 TEST(SherpaConfig, LanguageIdRequiresWhisperPair) {
