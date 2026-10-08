@@ -91,6 +91,10 @@ add_library(libaudition_dsp
     dsp/quality.cpp)
 add_library(audition::dsp ALIAS libaudition_dsp)
 set_target_properties(libaudition_dsp PROPERTIES EXPORT_NAME dsp OUTPUT_NAME audition_dsp)
+target_compile_definitions(libaudition_dsp PRIVATE LIBAUDITION_BUILDING_LIBRARY)
+if(BUILD_SHARED_LIBS)
+    target_compile_definitions(libaudition_dsp PUBLIC LIBAUDITION_SHARED)
+endif()
 target_link_libraries(libaudition_dsp PUBLIC audition::core)
 libaudition_configure_target(libaudition_dsp)
 target_include_directories(libaudition_dsp PUBLIC
