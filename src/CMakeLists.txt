@@ -36,6 +36,28 @@ target_include_directories(libaudition_interfaces INTERFACE
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 install(TARGETS libaudition_interfaces EXPORT libauditionTargets)
 
+add_library(libaudition_spatial
+    spatial/level_range_prior.cpp)
+add_library(audition::spatial ALIAS libaudition_spatial)
+set_target_properties(libaudition_spatial PROPERTIES
+    EXPORT_NAME spatial
+    OUTPUT_NAME audition_spatial)
+target_compile_definitions(libaudition_spatial PRIVATE LIBAUDITION_BUILDING_LIBRARY)
+if(BUILD_SHARED_LIBS)
+    target_compile_definitions(libaudition_spatial PUBLIC LIBAUDITION_SHARED)
+endif()
+target_link_libraries(libaudition_spatial PUBLIC audition::interfaces)
+libaudition_configure_target(libaudition_spatial)
+target_include_directories(libaudition_spatial PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+install(TARGETS libaudition_spatial
+    EXPORT libauditionTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
 add_library(libaudition_model model/in_memory_model_registry.cpp)
 add_library(audition::model ALIAS libaudition_model)
 set_target_properties(libaudition_model PROPERTIES EXPORT_NAME model OUTPUT_NAME audition_model)

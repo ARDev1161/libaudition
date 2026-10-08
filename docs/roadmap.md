@@ -134,8 +134,16 @@ ID-02 spatial/identity integration:
 - Batch propagation validates all conflicts before mutation, avoiding partial updates.
 - Track end/reset lifecycle is forwarded to the resolver and clears active coordinator bindings.
 
+RNG-01 SPL/type range priors:
+- `SoundLevelObservation` carries calibrated dB SPL, explicit A/C/Z weighting, timestamp, and sensor pose; raw dBFS is intentionally not accepted as SPL.
+- `SourceLevelPrior` represents a source-type acoustic-level distribution at an explicit reference distance plus a non-negative relative hypothesis weight.
+- `SoundLevelRangePriorEstimator` implements `IRangeEstimator` with the configurable log-distance model `L(r)=L(r0)-10*n*log10(r/r0)`.
+- Gaussian uncertainty in dB is transformed to exact log-normal distance moments; multiple source-type hypotheses are combined by exact mixture first/second moments.
+- Propagation/environment uncertainty is explicit in dB² and defaults to zero rather than being silently invented.
+- Result confidence remains zero because this is a range prior, not a calibrated probability that the distance is correct.
+- The estimator can emit a pose-anchored `ScalarRangeObservation` directly for spatial fusion.
+
 Next slices:
-- SPL/type range priors.
 - Multimodal observation ports suitable for vision/radar integration.
 
 ## 1.0

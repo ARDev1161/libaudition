@@ -14,3 +14,4 @@
 #include <audition/model/model_descriptor.hpp>
 #include <audition/pipeline.hpp>
 #include <audition/registry/factory_registry.hpp>
+#include <audition/spatial/level_range_prior.hpp>

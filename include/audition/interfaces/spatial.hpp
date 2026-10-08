@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <audition/audio/audio_buffer.hpp>
@@ -45,9 +46,46 @@ struct ScalarRangeObservation {
     Pose3D sensor_pose{};
 };
 
+enum class SoundLevelWeighting {
+    Z,
+    A,
+    C,
+};
+
+/**
+ * @brief Calibrated sound-pressure level measured at one sensor pose.
+ *
+ * level_db_spl is expressed in dB SPL, never dBFS. Its variance is in dB^2.
+ * The weighting must match the source-level prior used for inference.
+ */
+struct SoundLevelObservation {
+    Timestamp timestamp{};
+    Gaussian1D level_db_spl{};
+    SoundLevelWeighting weighting{SoundLevelWeighting::Z};
+    Pose3D sensor_pose{};
+};
+
+/**
+ * @brief Prior acoustic level for one source-type hypothesis.
+ *
+ * level_db_spl_at_reference is the expected calibrated sound-pressure level at
+ * reference_distance_m. weight is a non-negative relative mixture weight; it is
+ * normalized across the supplied hypotheses and is not itself exposed as a
+ * calibrated confidence.
+ */
+struct SourceLevelPrior {
+    std::string source_type{};
+    Gaussian1D level_db_spl_at_reference{};
+    double reference_distance_m{1.0};
+    double weight{1.0};
+    SoundLevelWeighting weighting{SoundLevelWeighting::Z};
+};
+
 struct RangeEstimationInput {
     Span<const BearingObservation> bearings{};
     Span<const ScalarRangeObservation> scalar_ranges{};
+    std::optional<SoundLevelObservation> sound_level{};
+    Span<const SourceLevelPrior> source_level_priors{};
 };
 
 class IRangeEstimator {
