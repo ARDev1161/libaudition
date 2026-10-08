@@ -1,7 +1,10 @@
 #include <audition/memory/in_memory_registries.hpp>
 #include <audition/memory/sound_prototype_matcher.hpp>
 
+#include <initializer_list>
 #include <limits>
+#include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 
