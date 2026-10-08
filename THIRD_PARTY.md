@@ -65,9 +65,11 @@ The pinned SHA-256 values are:
 Model artifacts remain subject to the normal provenance/license policy.
 
 The optional AASIST authenticity backend uses ONNX Runtime and does not link
-the upstream PyTorch implementation. CI validates against the official AASIST
-ONNX export derived from `clovaai/aasist`, whose code and published model are
-MIT-licensed. The retained upstream license text is `LICENSES/AASIST.txt`.
+the upstream PyTorch implementation. CI validates against the
+`SpeechAntiSpoofingBenchmarks/AASIST` ONNX export derived from the official
+`clovaai/aasist` checkpoint. The upstream code and the published benchmark
+artifact are MIT-licensed. The retained upstream license text is
+`LICENSES/AASIST.txt`.
 
 The CI fixture is pinned to
 `SpeechAntiSpoofingBenchmarks/AASIST` revision
