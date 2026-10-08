@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include <audition/audio/audio_buffer.hpp>
 #include <audition/backend/capabilities.hpp>
@@ -15,12 +16,21 @@ public:
     virtual bool read(AudioBuffer& destination) = 0;
 };
 
+struct EchoCancellationMetrics {
+    std::optional<double> echo_return_loss_db{};
+    std::optional<double> echo_return_loss_enhancement_db{};
+    std::optional<Duration> estimated_delay{};
+};
+
 class IEchoCancellerSession {
 public:
     virtual ~IEchoCancellerSession() = default;
     virtual void reset() = 0;
     virtual void acceptReference(AudioView playback) = 0;
+    virtual void setStreamDelay(Duration delay) = 0;
+    virtual void notifyEchoPathChange() = 0;
     [[nodiscard]] virtual AudioBuffer process(AudioView captured) = 0;
+    [[nodiscard]] virtual EchoCancellationMetrics metrics() const = 0;
 };
 
 class IEchoCanceller {
