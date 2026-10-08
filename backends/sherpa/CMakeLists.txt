@@ -4,7 +4,12 @@ add_library(libaudition_backend_sherpa SHARED
     src/sherpa_offline_asr.cpp
     src/sherpa_streaming_asr.cpp
     src/sherpa_keyword_spotter.cpp
-    src/sherpa_language_identifier.cpp)
+    src/sherpa_language_identifier.cpp
+    src/sherpa_speaker_config.cpp
+    src/sherpa_speaker_embedder.cpp
+    src/sherpa_speaker_verifier.cpp
+    src/sherpa_speaker_identifier.cpp
+    src/sherpa_speaker_diarizer.cpp)
 add_library(audition::backend_sherpa ALIAS libaudition_backend_sherpa)
 
 set_target_properties(libaudition_backend_sherpa PROPERTIES
