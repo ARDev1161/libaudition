@@ -171,6 +171,16 @@ TEST(WorldAcousticBackend,
         features.f0_hz.size(),
         features.frame_count);
     EXPECT_EQ(
+        features.voiced_mask.size(),
+        features.frame_count);
+    for (std::size_t i = 0U;
+         i < features.frame_count;
+         ++i) {
+        EXPECT_EQ(
+            features.voiced_mask[i],
+            features.f0_hz[i] > 0.0 ? 1U : 0U);
+    }
+    EXPECT_EQ(
         features.spectral_envelope.size(),
         features.frame_count *
             features.frequency_bin_count);
