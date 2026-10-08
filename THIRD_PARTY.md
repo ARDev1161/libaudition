@@ -43,16 +43,25 @@ because the runtime is Apache-2.0. Model artifacts remain subject to the normal
 this backend.
 
 The optional CLAP backend uses Microsoft ONNX Runtime under the MIT license.
+Its private tokenizer JSON parsing uses nlohmann/json 3.11.3 under the MIT
+license; the retained license text is `LICENSES/nlohmann-json.txt`.
 The Linux x86_64 fetch fallback is pinned to the 1.28.2 package published by
 `csukuangfj/onnxruntime-libs`, with SHA-256
 `c4f8994d56191d9d2c92a961b39fe790459f2c5d155f912b239506ea31359534`.
 The ONNX Runtime license text is retained in `LICENSES/onnxruntime.txt`.
 Other platforms may provide their own compatible ONNX Runtime installation.
 
-The CLAP backend does not bundle model weights. CI may download the permissively
-licensed `ConceptualMachines/magda-sample-tagger` audio-encoder fixture for
-runtime validation; its pinned model SHA-256 is
-`3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332`.
+The CLAP backend does not bundle model weights. CI may download the
+`ConceptualMachines/magda-sample-tagger` fixtures for runtime validation.
+The pinned SHA-256 values are:
+
+- `clap_audio.onnx`:
+  `3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332`
+- `clap_text.onnx`:
+  `c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf`
+- `tokenizer.json`:
+  `4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a`
+
 Model artifacts remain subject to the normal provenance/license policy.
 
 Planned permissive backends also include GTSAM (BSD), WORLD (BSD-like), and

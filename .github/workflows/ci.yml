@@ -323,16 +323,60 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-clap --parallel
-      - name: Download pinned CLAP audio inference fixture
+      - name: Download pinned CLAP inference fixtures
         shell: bash
         run: |
           curl --fail --location --retry 3 \
             --output "$PWD/build-clap/clap_audio.onnx" \
             "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_audio.onnx?download=true"
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-clap/clap_text.onnx" \
+            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_text.onnx?download=true"
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-clap/tokenizer.json" \
+            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/tokenizer.json?download=true"
           echo "3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332  $PWD/build-clap/clap_audio.onnx" | sha256sum --check
+          echo "c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf  $PWD/build-clap/clap_text.onnx" | sha256sum --check
+          echo "4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a  $PWD/build-clap/tokenizer.json" | sha256sum --check
+      - name: Generate tokenizer parity vectors
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check --no-input "tokenizers==0.22.1"
+          python3 - <<'PY'
+          from pathlib import Path
+          from tokenizers import Tokenizer
+
+          root = Path("build-clap")
+          tokenizer = Tokenizer.from_file(str(root / "tokenizer.json"))
+          tokenizer.enable_truncation(max_length=77)
+          tokenizer.enable_padding(length=77, pad_id=1, pad_token="<pad>")
+
+          prompts = [
+              "warm analog pad",
+              "glass breaking",
+              "door knock",
+              "speech",
+              "a loud alarm ringing",
+          ]
+
+          with (root / "tokenizer_golden.tsv").open("w", encoding="utf-8") as out:
+              for prompt in prompts:
+                  encoded = tokenizer.encode(prompt)
+                  out.write(
+                      prompt
+                      + "\t"
+                      + ",".join(str(value) for value in encoded.ids)
+                      + "\t"
+                      + ",".join(str(value) for value in encoded.attention_mask)
+                      + "\n"
+                  )
+          PY
       - name: Test
         env:
           LIBAUDITION_TEST_CLAP_AUDIO_MODEL: ${{ github.workspace }}/build-clap/clap_audio.onnx
+          LIBAUDITION_TEST_CLAP_TEXT_MODEL: ${{ github.workspace }}/build-clap/clap_text.onnx
+          LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
+          LIBAUDITION_TEST_CLAP_TOKENIZER_GOLDEN: ${{ github.workspace }}/build-clap/tokenizer_golden.tsv
         run: ctest --test-dir build-clap --output-on-failure
       - name: Install
         run: cmake --install build-clap --prefix "$PWD/install-clap"
@@ -352,11 +396,24 @@ jobs:
           #include <audition/backends/clap.hpp>
           #include <type_traits>
           int main() {
-              audition::ClapOnnxAudioOptions options{};
-              options.model = "clap_audio.onnx";
-              audition::validateClapOnnxAudioOptions(options);
+              audition::ClapOnnxAudioOptions audio{};
+              audio.model = "clap_audio.onnx";
+              audition::validateClapOnnxAudioOptions(audio);
+
+              audition::ClapOnnxTextOptions text{};
+              text.model = "clap_text.onnx";
+              text.tokenizer = "tokenizer.json";
+              audition::validateClapOnnxTextOptions(text);
+
+              audition::ClapOpenVocabularyOptions classifier{};
+              classifier.audio = audio;
+              classifier.text = text;
+              audition::validateClapOpenVocabularyOptions(classifier);
+
               static_assert(std::is_base_of_v<audition::IAudioEmbedder,
                                               audition::ClapAudioEmbedder>);
+              static_assert(std::is_base_of_v<audition::IOpenVocabularyAudioClassifier,
+                                              audition::ClapOpenVocabularyClassifier>);
               return 0;
           }
           CPP
