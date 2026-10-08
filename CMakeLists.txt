@@ -26,6 +26,11 @@ include(Dependencies)
 
 function(libaudition_configure_target target)
     target_compile_features(${target} PUBLIC cxx_std_17)
+    get_target_property(_libaudition_target_type ${target} TYPE)
+    if(_libaudition_target_type STREQUAL "STATIC_LIBRARY" OR
+       _libaudition_target_type STREQUAL "OBJECT_LIBRARY")
+        set_target_properties(${target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive-)
         if(LIBAUDITION_WARNINGS_AS_ERRORS)
