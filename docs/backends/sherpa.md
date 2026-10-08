@@ -19,6 +19,10 @@ Pinned upstream revision:
 | `SherpaStreamingAsr` | `IStreamingAsrEngine` | `OnlineRecognizer` |
 | `SherpaKeywordSpotter` | `IKeywordSpotter` | `KeywordSpotter` |
 | `SherpaLanguageIdentifier` | `ILanguageIdentifier` | `SpokenLanguageIdentification` |
+| `SherpaSpeakerEmbedder` | `ISpeakerEmbedder` | `SpeakerEmbeddingExtractor` |
+| `SherpaSpeakerVerifier` | `ISpeakerVerifier` | `SpeakerEmbeddingManager` |
+| `SherpaSpeakerIdentifier` | `ISpeakerIdentifier` | `SpeakerEmbeddingManager` |
+| `SherpaSpeakerDiarizer` | `ISpeakerDiarizer` | `OfflineSpeakerDiarization` |
 
 All algorithm scheduling remains application-owned.
 
@@ -47,6 +51,11 @@ VAD:
 Spoken-language identification:
 - Whisper encoder/decoder pair.
 
+Speaker intelligence:
+- speaker embedding models supported by Sherpa's `SpeakerEmbeddingExtractor`;
+- cosine-style verification and transient identification through `SpeakerEmbeddingManager`;
+- offline diarization through pyannote segmentation + speaker embedding + fast clustering.
+
 The upstream project supports additional families. They are deliberately added
 to libaudition only when a typed public configuration and contract tests exist;
 unknown native fields are not exposed through stringly typed escape hatches.
@@ -72,6 +81,26 @@ Therefore:
 - `KeywordHit::probability` may be empty.
 
 The adapter never substitutes 0 or 1 for unavailable confidence.
+
+## Speaker identity semantics
+
+`SherpaSpeakerIdentifier` is an in-memory computational search index, not a
+persistent profile database. Applications can populate it from
+`ISpeakerRegistry` or another durable store.
+
+The index uses stable `SpeakerId` keys supplied by the application, but Sherpa's
+native manager stores only its normalized enrollment vector and search metadata.
+
+Diarization is deliberately different: `SpeakerDiarizationSegment::speaker_index`
+is a local cluster label valid only within that diarization result. It must not be
+promoted directly to `SpeakerId`.
+
+Sherpa native speaker-manager similarity is preserved as a generic `Score`.
+It is not relabeled as a probability. Likewise speaker embedding quality remains
+unset because the native extractor does not expose a calibrated quality measure.
+
+If an input is too short for the embedding extractor to become ready,
+`SherpaSpeakerEmbedder::embed()` returns `std::nullopt`.
 
 ## Token timestamps
 
@@ -164,8 +193,9 @@ cmake --build build --parallel
 ```
 
 When dependency fetching is enabled, sherpa-onnx is built as an isolated shared
-ExternalProject with demos, TTS, speaker diarization, PortAudio, websocket and
-upstream tests disabled for this speech-only slice.
+ExternalProject with demos, TTS, PortAudio, websocket and upstream tests
+disabled. Speaker diarization is enabled because the speaker slice uses the
+native offline diarization pipeline.
 
 The resulting sherpa runtime libraries are installed beside
 `libaudition_backend_sherpa`; its install RPATH is relative to its own library
@@ -177,7 +207,10 @@ target_link_libraries(app PRIVATE audition::backend_sherpa)
 
 ## Future additions
 
-Speaker embeddings, verification/identification, diarization, audio tagging,
-speech enhancement and TTS remain separate capabilities and will be added as
-separate classes instead of expanding these speech classes into a monolithic
-`SherpaBackend`.
+Audio tagging, speech enhancement and TTS remain separate capabilities and will
+be added as separate classes instead of expanding these adapters into a
+monolithic `SherpaBackend`.
+
+Persistent speaker memory is intentionally implemented outside the Sherpa
+backend so another embedder/index can replace Sherpa without changing stored
+identity semantics.

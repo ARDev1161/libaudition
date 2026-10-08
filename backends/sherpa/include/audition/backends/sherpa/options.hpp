@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -218,6 +219,45 @@ struct SherpaLanguageIdOptions {
     std::uint32_t sample_rate_hz{16000};
     std::int32_t tail_paddings{0};
 };
+
+
+struct SherpaSpeakerEmbeddingOptions {
+    std::filesystem::path model{};
+    std::optional<ModelDescriptor> model_descriptor{};
+    SherpaRuntimeOptions runtime{};
+    std::uint32_t sample_rate_hz{16000};
+    std::string model_id{};
+};
+
+struct SherpaSpeakerVerifierOptions {
+    bool require_same_model_id{true};
+};
+
+struct SherpaSpeakerIdentifierOptions {
+    std::size_t embedding_dimension{0};
+    std::string model_id{};
+};
+
+struct SherpaSpeakerDiarizationOptions {
+    std::filesystem::path segmentation_model{};
+    std::optional<ModelDescriptor> segmentation_model_descriptor{};
+    SherpaRuntimeOptions segmentation_runtime{};
+    float segmentation_window_shift_ratio{0.1F};
+
+    std::filesystem::path embedding_model{};
+    std::optional<ModelDescriptor> embedding_model_descriptor{};
+    SherpaRuntimeOptions embedding_runtime{};
+
+    std::int32_t num_clusters{0};
+    float clustering_threshold{0.5F};
+    bool compute_confidence{false};
+    float min_duration_on{0.0F};
+    float min_duration_off{0.0F};
+};
+
+AUDITION_API void validateSherpaSpeakerEmbeddingOptions(const SherpaSpeakerEmbeddingOptions& options);
+AUDITION_API void validateSherpaSpeakerIdentifierOptions(const SherpaSpeakerIdentifierOptions& options);
+AUDITION_API void validateSherpaSpeakerDiarizationOptions(const SherpaSpeakerDiarizationOptions& options);
 
 AUDITION_API void validateSherpaOfflineAsrOptions(const SherpaOfflineAsrOptions& options);
 AUDITION_API void validateSherpaStreamingAsrOptions(const SherpaStreamingAsrOptions& options);

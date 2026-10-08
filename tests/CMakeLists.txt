@@ -12,7 +12,8 @@ add_executable(libaudition_tests
     dsp_test.cpp
     audio_frontend_test.cpp
     quality_test.cpp
-    speech_contracts_test.cpp)
+    speech_contracts_test.cpp
+    speaker_contracts_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces
@@ -42,6 +43,6 @@ endif()
 
 
 if(TARGET audition::backend_sherpa)
-    target_sources(libaudition_tests PRIVATE sherpa_backend_test.cpp)
+    target_sources(libaudition_tests PRIVATE sherpa_backend_test.cpp sherpa_speaker_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_sherpa)
 endif()
