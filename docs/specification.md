@@ -102,9 +102,11 @@ insufficient audio is represented by absent optional pitch fields rather than
 zero hertz.
 
 Frame-level acoustic analysis is a separate contract from semantic voice traits.
-`VoiceAcousticFeatures` may expose measured time/F0 contours, spectral envelopes
-and aperiodicity matrices without implying age, emotion, identity or another
-human-level inference. Spectral and aperiodicity matrices use row-major
+`VoiceAcousticFeatures` may expose measured time/F0 contours, an explicit
+per-frame voiced mask, spectral envelopes and aperiodicity matrices without
+implying age, emotion, identity or another human-level inference. The voiced
+mask prevents downstream code from depending on a backend-specific unvoiced-F0
+sentinel. Spectral and aperiodicity matrices use row-major
 `frame * frequency_bin_count + bin` layout and carry their frame period, FFT
 size, sample rate and dimensions explicitly.
 
