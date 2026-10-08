@@ -524,12 +524,20 @@ jobs:
           #include <type_traits>
 
           int main() {
-              audition::WorldVoiceTraitsOptions options{};
-              audition::validateWorldVoiceTraitsOptions(options);
+              audition::WorldVoiceTraitsOptions traits{};
+              audition::validateWorldVoiceTraitsOptions(traits);
+
+              audition::WorldAcousticAnalysisOptions acoustic{};
+              audition::validateWorldAcousticAnalysisOptions(acoustic);
+
               static_assert(
                   std::is_base_of_v<
                       audition::IVoiceTraitsEstimator,
                       audition::WorldVoiceTraitsEstimator>);
+              static_assert(
+                  std::is_base_of_v<
+                      audition::IVoiceAcousticAnalyzer,
+                      audition::WorldAcousticAnalyzer>);
               return 0;
           }
           CPP
