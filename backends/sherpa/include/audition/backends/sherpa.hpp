@@ -6,3 +6,8 @@
 #include <audition/backends/sherpa/options.hpp>
 #include <audition/backends/sherpa/streaming_asr.hpp>
 #include <audition/backends/sherpa/vad.hpp>
+
+#include <audition/backends/sherpa/speaker_embedder.hpp>
+#include <audition/backends/sherpa/speaker_verifier.hpp>
+#include <audition/backends/sherpa/speaker_identifier.hpp>
+#include <audition/backends/sherpa/speaker_diarizer.hpp>
