@@ -128,8 +128,11 @@ its `AcousticSourceId` when its spatial tracker ID changes.
 
 The default in-memory identity resolver treats an active tracker binding as
 authoritative until `endTrack()`. Re-identification after a tracker handoff is
-conservative: it requires compatible persistent fingerprint evidence or recent
-geometry; recency alone is never sufficient. A source already bound to another
+conservative: it requires compatible persistent fingerprint evidence or a recent
+world/canonical position; recency alone is never sufficient. Direction and range
+may refine an already anchored candidate but do not establish identity by
+themselves because the identity observation contract does not carry a sensor pose
+for cross-frame direction comparison. A source already bound to another
 active track is excluded from association candidates.
 
 Fingerprint matching is isolated by `model_id` and embedding dimension. High
