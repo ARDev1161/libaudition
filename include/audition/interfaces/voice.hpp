@@ -14,6 +14,14 @@ public:
     [[nodiscard]] virtual VoiceTraits estimate(AudioView speech) const = 0;
 };
 
+class IVoiceAcousticAnalyzer {
+public:
+    virtual ~IVoiceAcousticAnalyzer() = default;
+    [[nodiscard]] virtual BackendInfo backendInfo() const = 0;
+    [[nodiscard]] virtual VoiceAcousticCapabilities capabilities() const = 0;
+    [[nodiscard]] virtual VoiceAcousticFeatures analyze(AudioView speech) const = 0;
+};
+
 class IVoiceStateEstimator {
 public:
     virtual ~IVoiceStateEstimator() = default;

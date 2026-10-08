@@ -94,6 +94,12 @@ WORLD voice-feature slice:
 - Unvoiced/insufficient speech yields absent pitch fields rather than fabricated zero.
 - Age, categorical voice traits and speaking rate remain unsupported/absent.
 
+WORLD acoustic-feature slice:
+- Backend-neutral `IVoiceAcousticAnalyzer` for frame-level voice measurements.
+- F0 contour and time axis from DIO + StoneMask or Harvest.
+- CheapTrick spectral envelope and D4C aperiodicity in row-major frame/bin matrices.
+- Explicit frame period, FFT size and frequency-bin dimensions without leaking WORLD-native types.
+
 Follow-up slices:
 - GTSAM spatial inference and acoustic-source fusion.
 

@@ -1,5 +1,6 @@
 add_library(libaudition_backend_world SHARED
-    src/world_voice_traits_estimator.cpp)
+    src/world_voice_traits_estimator.cpp
+    src/world_acoustic_analyzer.cpp)
 add_library(audition::backend_world ALIAS libaudition_backend_world)
 
 set_target_properties(libaudition_backend_world PROPERTIES

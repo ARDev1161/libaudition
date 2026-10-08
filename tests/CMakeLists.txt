@@ -70,6 +70,8 @@ endif()
 
 
 if(TARGET audition::backend_world)
-    target_sources(libaudition_tests PRIVATE world_backend_test.cpp)
+    target_sources(libaudition_tests PRIVATE
+        world_backend_test.cpp
+        world_acoustic_features_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_world)
 endif()
