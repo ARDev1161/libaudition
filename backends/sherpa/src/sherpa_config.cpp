@@ -516,8 +516,8 @@ Transcript transcriptFromOffline(
     for (std::size_t i = 0; i < count; ++i) {
         if (std::isfinite(result.durations[i]) && result.durations[i] >= 0.0F) {
             transcript.tokens[i].end_offset =
-                transcript.tokens[i].start_offset.advancedBy(
-                    secondsToDuration(result.durations[i]));
+                transcript.tokens[i].start_offset +
+                secondsToDuration(result.durations[i]);
         }
     }
     return transcript;
