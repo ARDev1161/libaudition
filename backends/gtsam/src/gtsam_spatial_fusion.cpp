@@ -8,6 +8,8 @@
 #include <optional>
 
 #include <gtsam/geometry/Point3.h>
+#include <gtsam/geometry/Pose3.h>
+#include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Unit3.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
@@ -93,6 +95,35 @@ namespace {
         throw Error{ErrorCode::InvalidArgument, "Position must contain only finite values"};
     }
     return gtsam::Point3{value.x, value.y, value.z};
+}
+
+[[nodiscard]] gtsam::Pose3 toPose(const Pose3D& value) {
+    if (!finiteVec(value.position) ||
+        !finite(value.orientation.w) ||
+        !finite(value.orientation.x) ||
+        !finite(value.orientation.y) ||
+        !finite(value.orientation.z)) {
+        throw Error{
+            ErrorCode::InvalidArgument,
+            "Sensor pose must contain only finite values"};
+    }
+
+    const double norm = std::sqrt(
+        value.orientation.w * value.orientation.w +
+        value.orientation.x * value.orientation.x +
+        value.orientation.y * value.orientation.y +
+        value.orientation.z * value.orientation.z);
+    if (!finite(norm) || norm <= 1e-12) {
+        throw Error{ErrorCode::InvalidArgument, "Sensor quaternion must be non-zero"};
+    }
+
+    return gtsam::Pose3{
+        gtsam::Rot3::Quaternion(
+            value.orientation.w / norm,
+            value.orientation.x / norm,
+            value.orientation.y / norm,
+            value.orientation.z / norm),
+        toPoint(value.position)};
 }
 
 [[nodiscard]] gtsam::SharedNoiseModel positionNoise(
@@ -258,13 +289,13 @@ std::optional<PositionEstimate> GtsamSpatialFusion::fuse(
                                gtsam::Values& target_initial,
                                std::size_t index) -> gtsam::Key {
         const gtsam::Key sensor_key = gtsam::Symbol{'s', index};
-        const gtsam::Point3 sensor_point = toPoint(sensor_pose.position);
-        target_initial.insert(sensor_key, sensor_point);
-        target_graph.emplace_shared<gtsam::PriorFactor<gtsam::Point3>>(
+        const gtsam::Pose3 sensor = toPose(sensor_pose);
+        target_initial.insert(sensor_key, sensor);
+        target_graph.emplace_shared<gtsam::PriorFactor<gtsam::Pose3>>(
             sensor_key,
-            sensor_point,
+            sensor,
             gtsam::noiseModel::Isotropic::Sigma(
-                3,
+                6,
                 clampSigma(
                     options_.sensor_position_sigma_m,
                     options_.minimum_sigma)));
@@ -274,20 +305,17 @@ std::optional<PositionEstimate> GtsamSpatialFusion::fuse(
     for (const auto& observation : input.bearings) {
         const gtsam::Key sensor_key =
             addSensor(observation.sensor_pose, graph, initial, sensor_index++);
-        const Vec3 world_direction = Direction3D::fromVector(
-            rotateLocalToWorld(
-                observation.sensor_pose.orientation,
-                observation.bearing.direction.vector()))
-                                         .vector();
+        const Vec3 local_direction =
+            observation.bearing.direction.vector();
 
         graph.emplace_shared<
-            gtsam::BearingFactor<gtsam::Point3, gtsam::Point3>>(
+            gtsam::BearingFactor<gtsam::Pose3, gtsam::Point3>>(
             sensor_key,
             source_key,
             gtsam::Unit3{gtsam::Point3{
-                world_direction.x,
-                world_direction.y,
-                world_direction.z}},
+                local_direction.x,
+                local_direction.y,
+                local_direction.z}},
             gtsam::noiseModel::Isotropic::Sigma(
                 2,
                 sigmaFromVariance(
@@ -304,7 +332,7 @@ std::optional<PositionEstimate> GtsamSpatialFusion::fuse(
             options_.minimum_sigma);
 
         graph.emplace_shared<
-            gtsam::RangeFactor<gtsam::Point3, gtsam::Point3>>(
+            gtsam::RangeFactor<gtsam::Pose3, gtsam::Point3>>(
             sensor_key,
             source_key,
             observation.distance_m.mean,
