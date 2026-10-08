@@ -71,18 +71,23 @@ Authoritative Mermaid source: `docs/images/architecture.mmd`.
 
 ```mermaid
 flowchart LR
-    T1[SpatialTrack 12] --> R[ISourceIdentityResolver]
-    T2[SpatialTrack 37] --> R
-    F1[Fingerprint] --> R
-    G[Geometry + time] --> R
-    R --> S[AcousticSourceId 5]
+    OBS[Bearing / range / position observations] --> F[ISpatialFusion]
+    F --> C[SpatialIdentityCoordinator]
+    T[SpatialTrack] --> C
+    C --> R[ISourceIdentityResolver]
+    FP[Fingerprint] --> R
+    R --> S[AcousticSourceId]
+    C --> T2[Resolved SpatialTrack]
+    C --> A[TrackedAudioFrame / AcousticEvent]
     S --> H[Persistent history]
-    SP[Speaker embedding] --> P[SpeakerId Ivan]
-    P -. may annotate .-> S
+    SP[Speaker embedding] --> P[SpeakerId]
+    P -. optional evidence .-> S
 ```
 
 A persistent acoustic source is generic; speaker identity is optional evidence,
-not the definition of a source.
+not the definition of a source. `SpatialIdentityCoordinator` is a composition
+helper rather than a new inference backend: applications still choose the
+`ISpatialFusion` and `ISourceIdentityResolver` implementations explicitly.
 
 ## Application-controlled scheduling
 
