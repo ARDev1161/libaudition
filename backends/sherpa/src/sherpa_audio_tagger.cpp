@@ -76,11 +76,8 @@ void validateSherpaAudioTaggingOptions(const SherpaAudioTaggingOptions& options)
 
     require(!options.labels.empty(),
             "Sherpa audio-tagging labels path is required");
-    require(options.sample_rate_hz > 0U,
-            "Sherpa audio-tagging sample rate must be non-zero");
-    require(options.sample_rate_hz <=
-                static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()),
-            "Sherpa audio-tagging sample rate exceeds backend range");
+    require(options.sample_rate_hz == 16000U,
+            "Sherpa audio tagging requires a 16000 Hz model/input contract");
     require(options.top_k > 0,
             "Sherpa audio-tagging top_k must be positive");
 
