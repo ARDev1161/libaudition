@@ -31,8 +31,10 @@ Such cases return `std::nullopt` instead of fabricating a position.
 
 ## Uncertainty
 
-Measured angular/range variance is used when present and valid. Otherwise the
-explicit backend defaults from `GtsamSpatialFusionOptions` are used.
+Measured angular variance is used when present; otherwise the explicit bearing
+sigma from `GtsamSpatialFusionOptions` is used. Range variance is always
+explicit in `Gaussian1D`; zero variance is preserved semantically and only
+regularized by `minimum_sigma` for numerical stability.
 
 The returned `PositionEstimate::covariance_m2` comes from GTSAM marginals.
 GTSAM does not provide a calibrated probability that maps to
