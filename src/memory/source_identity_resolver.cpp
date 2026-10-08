@@ -505,9 +505,10 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
             }
         }
 
-        const bool geometry_anchor =
-            position_anchor ||
-            (range_anchor && direction_anchor);
+        // DirectionEstimate has no sensor-pose/frame metadata in the identity
+        // contract, so direction/range may refine an already anchored candidate
+        // but cannot establish cross-track identity by themselves.
+        const bool geometry_anchor = position_anchor;
 
         if (!fingerprint_anchor && !geometry_anchor) {
             continue;
