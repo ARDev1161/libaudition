@@ -105,10 +105,12 @@ SourceIdentityDecision SpatialIdentityCoordinator::observe(
     validateTrack(track);
     validateFusionTimes(fusion_input, track.last_seen);
 
+    std::optional<PositionEstimate> resolved_position =
+        track.position;
     if (hasFusionObservations(fusion_input)) {
         const auto fused_position = fusion_->fuse(fusion_input);
         if (fused_position.has_value()) {
-            track.position = *fused_position;
+            resolved_position = *fused_position;
         }
     }
 
@@ -117,7 +119,7 @@ SourceIdentityDecision SpatialIdentityCoordinator::observe(
     identity_observation.timestamp = track.last_seen;
     identity_observation.direction = track.direction;
     identity_observation.range = track.range;
-    identity_observation.position = track.position;
+    identity_observation.position = resolved_position;
     identity_observation.fingerprint = track.fingerprint;
 
     const SourceIdentityDecision decision =
@@ -128,6 +130,7 @@ SourceIdentityDecision SpatialIdentityCoordinator::observe(
             "Identity resolver returned an invalid source ID"};
     }
 
+    track.position = resolved_position;
     track.source_id = decision.source_id;
     active_sources_[track.track_id] = decision.source_id;
     return decision;
