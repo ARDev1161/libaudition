@@ -22,6 +22,7 @@ Pinned upstream revision:
 | `SherpaAudioTagger` | `IAudioClassifier` | `AudioTagging` |
 | `SherpaOfflineSpeechDenoiser` | `INoiseSuppressor` | `OfflineSpeechDenoiser` |
 | `SherpaStreamingSpeechDenoiser` | `INoiseSuppressor` | `OnlineSpeechDenoiser` |
+| `SherpaTts` | `ISpeechSynthesizer` | `OfflineTts` |
 | `SherpaSpeakerEmbedder` | `ISpeakerEmbedder` | `SpeakerEmbeddingExtractor` |
 | `SherpaSpeakerVerifier` | `ISpeakerVerifier` | `SpeakerEmbeddingManager` |
 | `SherpaSpeakerIdentifier` | `ISpeakerIdentifier` | `SpeakerEmbeddingManager` |
@@ -73,6 +74,22 @@ Sherpa's internal resampler to run implicitly. Convert explicitly with an
 `IAudioResampler` when required. Streaming sessions preserve a continuous
 output timeline across buffered chunks and return the remaining tail from
 `flush()`.
+
+Text-to-speech (when `LIBAUDITION_SHERPA_ENABLE_TTS=ON`):
+- VITS, including Sherpa-compatible Piper model packages;
+- Matcha acoustic model + vocoder;
+- Kokoro;
+- configured speaker ID and request-time speed;
+- optional declared language list used to reject unsupported language requests.
+
+This first TTS slice implements the existing offline `ISpeechSynthesizer`
+contract. Sherpa's native progress callback does not make the libaudition
+capability streaming: `TtsCapabilities::streaming` remains false until a
+streaming synthesis interface exists.
+
+`VoiceReference` is rejected with `UnsupportedCapability` in this slice and
+`voice_cloning` is false. ZipVoice/Pocket reference-audio synthesis remains a
+separate follow-up so reference semantics are never silently ignored.
 
 Speaker intelligence:
 - speaker embedding models supported by Sherpa's `SpeakerEmbeddingExtractor`;
@@ -229,9 +246,16 @@ cmake --build build --parallel
 ```
 
 When dependency fetching is enabled, sherpa-onnx is built as an isolated shared
-ExternalProject with demos, TTS, PortAudio, websocket and upstream tests
-disabled. Speaker diarization is enabled because the speaker slice uses the
-native offline diarization pipeline.
+ExternalProject with demos, PortAudio, websocket and upstream tests disabled.
+TTS is OFF by default and enabled explicitly with:
+
+```bash
+-DLIBAUDITION_WITH_SHERPA=ON -DLIBAUDITION_SHERPA_ENABLE_TTS=ON
+```
+
+A system-provided Sherpa installation used with that option must itself include
+TTS support. Speaker diarization remains enabled because the speaker slice uses
+the native offline diarization pipeline.
 
 The resulting sherpa runtime libraries are installed beside
 `libaudition_backend_sherpa`; its install RPATH is relative to its own library
@@ -243,8 +267,9 @@ target_link_libraries(app PRIVATE audition::backend_sherpa)
 
 ## Future additions
 
-TTS remains a separate capability and will be added as its own adapter instead of
-expanding these classes into a monolithic `SherpaBackend`.
+Advanced TTS reference-audio/voice-cloning families such as ZipVoice and Pocket
+remain separate follow-up work. Source separation also remains independent
+rather than expanding these adapters into a monolithic `SherpaBackend`.
 
 Persistent speaker memory is intentionally implemented outside the Sherpa
 backend so another embedder/index can replace Sherpa without changing stored
