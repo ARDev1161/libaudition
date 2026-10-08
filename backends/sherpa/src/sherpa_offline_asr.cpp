@@ -36,13 +36,14 @@ public:
     }
 
     Transcript transcribe(const SpeechSegment& segment) const {
+        const auto audio = segment.audio.view();
         sherpa_detail::validateMonoAudio(
-            segment.audio.view(), options_.features.sample_rate_hz, "offline ASR");
-        if (segment.audio.sampleCount() == 0U) {
+            audio, options_.features.sample_rate_hz, "offline ASR");
+        if (audio.sampleCount() == 0U) {
             throw Error{ErrorCode::InvalidArgument,
                         "Sherpa offline ASR requires non-empty audio"};
         }
-        if (segment.audio.sampleCount() >
+        if (audio.sampleCount() >
             static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
             throw Error{ErrorCode::InvalidArgument,
                         "Sherpa offline ASR input exceeds backend range"};
@@ -58,9 +59,9 @@ public:
         }
 
         stream.AcceptWaveform(
-            static_cast<std::int32_t>(segment.audio.format().sample_rate_hz),
-            segment.audio.data(),
-            static_cast<std::int32_t>(segment.audio.sampleCount()));
+            static_cast<std::int32_t>(audio.format().sample_rate_hz),
+            audio.data(),
+            static_cast<std::int32_t>(audio.sampleCount()));
         recognizer_.Decode(&stream);
         return sherpa_detail::transcriptFromOffline(
             recognizer_.GetResult(&stream), segment.segment_id);
