@@ -54,6 +54,12 @@ struct ClassifierCapabilities {
     ExecutionCapabilities execution{};
 };
 
+struct EmbeddingCapabilities {
+    AudioRequirements audio{};
+    ExecutionCapabilities execution{};
+    std::optional<std::size_t> embedding_dimension{};
+};
+
 struct NoiseSuppressorCapabilities {
     bool streaming{false};
     AudioRequirements audio{};
