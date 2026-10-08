@@ -8,6 +8,8 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Added
 
+- Optional GTSAM 4.2 spatial-fusion backend implementing `ISpatialFusion` for bearing/range/position observations with marginal 3D covariance.
+- Spatial range observations now carry an explicit sensor pose so metric range factors are anchored in the canonical frame.
 - Optional WORLD voice-traits backend using DIO+StoneMask or Harvest to expose measured pitch mean/stddev without fabricating age, speaking-rate or categorical traits.
 - WORLD frame-level acoustic analysis exposing F0 contour, CheapTrick spectral envelope and D4C aperiodicity through `IVoiceAcousticAnalyzer`.
 - Optional AASIST ONNX authenticity backend with raw bona-fide/spoof scores, explicit 16 kHz/64600-frame contract and optional external Platt calibration.

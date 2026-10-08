@@ -392,3 +392,17 @@ function(libaudition_find_or_fetch_world)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_world_install_dir}/include")
     add_dependencies(World::world libaudition_world_external)
 endfunction()
+
+function(libaudition_find_gtsam)
+    if(TARGET gtsam)
+        return()
+    endif()
+
+    find_package(GTSAM 4.2 CONFIG QUIET)
+    if(TARGET gtsam)
+        return()
+    endif()
+
+    message(FATAL_ERROR
+        "GTSAM 4.2 not found. Install GTSAM 4.2 and make it discoverable via CMAKE_PREFIX_PATH.")
+endfunction()

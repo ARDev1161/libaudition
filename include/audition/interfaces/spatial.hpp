@@ -20,17 +20,29 @@ public:
     [[nodiscard]] virtual SpatialProcessingResult process(AudioView multichannel_audio) = 0;
 };
 
+/**
+ * @brief Direction measured in the local sensor frame.
+ *
+ * sensor_pose places that local frame in the canonical/world frame.
+ */
 struct BearingObservation {
     Timestamp timestamp{};
     Pose3D sensor_pose{};
     DirectionEstimate bearing{};
 };
 
+/**
+ * @brief Scalar source range measured from a sensor pose.
+ *
+ * sensor_pose is intentionally the last field to preserve source compatibility
+ * with the original aggregate field order.
+ */
 struct ScalarRangeObservation {
     Timestamp timestamp{};
     Gaussian1D distance_m{};
     Probability confidence{Probability::zero()};
     RangeEstimate::Method method{RangeEstimate::Method::Unknown};
+    Pose3D sensor_pose{};
 };
 
 struct RangeEstimationInput {
@@ -51,6 +63,11 @@ struct PositionObservation {
     PositionEstimate estimate{};
 };
 
+/**
+ * @brief Observations belonging to one spatial source hypothesis.
+ *
+ * All timestamps must be comparable (same ClockIdentity) before fusion.
+ */
 struct SpatialFusionInput {
     Span<const BearingObservation> bearings{};
     Span<const ScalarRangeObservation> ranges{};

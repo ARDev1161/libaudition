@@ -75,3 +75,8 @@ if(TARGET audition::backend_world)
         world_acoustic_features_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_world)
 endif()
+
+if(TARGET audition::backend_gtsam)
+    target_sources(libaudition_tests PRIVATE gtsam_spatial_fusion_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_gtsam)
+endif()
