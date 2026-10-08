@@ -52,8 +52,12 @@ endif()
 if(TARGET audition::backend_clap)
     target_sources(libaudition_tests PRIVATE
         clap_backend_test.cpp
-        ${PROJECT_SOURCE_DIR}/backends/clap/src/clap_features.cpp)
-    target_link_libraries(libaudition_tests PRIVATE audition::backend_clap)
+        clap_open_vocabulary_test.cpp
+        ${PROJECT_SOURCE_DIR}/backends/clap/src/clap_features.cpp
+        ${PROJECT_SOURCE_DIR}/backends/clap/src/roberta_tokenizer.cpp)
+    target_link_libraries(libaudition_tests PRIVATE
+        audition::backend_clap
+        nlohmann_json::nlohmann_json)
     target_include_directories(libaudition_tests PRIVATE
         ${PROJECT_SOURCE_DIR}/backends/clap/src)
 endif()
