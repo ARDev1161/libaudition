@@ -419,8 +419,6 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
         double available_weight = 0.0;
         bool fingerprint_anchor = false;
         bool position_anchor = false;
-        bool range_anchor = false;
-        bool direction_anchor = false;
 
         if (use_query_fingerprint) {
             const auto evidence =
@@ -490,7 +488,6 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
                     weighted_score +=
                         options_.range_weight * score;
                     available_weight += options_.range_weight;
-                    range_anchor = true;
                 }
             }
 
@@ -506,7 +503,6 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
                 weighted_score +=
                     options_.direction_weight * score;
                 available_weight += options_.direction_weight;
-                direction_anchor = true;
             }
         }
 
