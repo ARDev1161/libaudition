@@ -398,6 +398,14 @@ public:
         result.time_axis_seconds =
             std::move(pitch.time_axis);
         result.f0_hz = std::move(pitch.f0);
+        result.voiced_mask.resize(
+            result.f0_hz.size(), 0U);
+        for (std::size_t i = 0U;
+             i < result.f0_hz.size();
+             ++i) {
+            result.voiced_mask[i] =
+                result.f0_hz[i] > 0.0 ? 1U : 0U;
+        }
         result.spectral_envelope =
             flattenAndValidate(
                 spectrum,
