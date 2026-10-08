@@ -9,7 +9,6 @@ namespace audition {
 
 struct GtsamSpatialFusionOptions {
     double default_bearing_sigma_rad{0.15};
-    double default_range_sigma_m{0.50};
     double sensor_position_sigma_m{1e-6};
     double minimum_sigma{1e-6};
     double fallback_initial_range_m{2.0};
