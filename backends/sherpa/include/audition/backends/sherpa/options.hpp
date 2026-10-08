@@ -1,0 +1,228 @@
+#pragma once
+
+#include <cstdint>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <variant>
+
+#include <audition/core/execution.hpp>
+#include <audition/model/model_descriptor.hpp>
+
+namespace audition {
+
+struct SherpaRuntimeOptions {
+    std::int32_t num_threads{1};
+    bool debug{false};
+    ExecutionTarget execution{};
+};
+
+struct SherpaFeatureOptions {
+    std::uint32_t sample_rate_hz{16000};
+    std::uint32_t feature_dim{80};
+};
+
+struct SherpaHomophoneOptions {
+    std::filesystem::path dict_dir{};
+    std::filesystem::path lexicon{};
+    std::filesystem::path rule_fsts{};
+};
+
+struct SherpaCtcFstOptions {
+    std::filesystem::path graph{};
+    std::int32_t max_active{3000};
+};
+
+struct SherpaOnlineTransducerModel {
+    std::filesystem::path encoder{};
+    std::filesystem::path decoder{};
+    std::filesystem::path joiner{};
+};
+
+struct SherpaOnlineParaformerModel {
+    std::filesystem::path encoder{};
+    std::filesystem::path decoder{};
+};
+
+struct SherpaOnlineZipformer2CtcModel {
+    std::filesystem::path model{};
+};
+
+struct SherpaOnlineNemoCtcModel {
+    std::filesystem::path model{};
+};
+
+struct SherpaOnlineToneCtcModel {
+    std::filesystem::path model{};
+};
+
+using SherpaOnlineModel = std::variant<
+    SherpaOnlineTransducerModel,
+    SherpaOnlineParaformerModel,
+    SherpaOnlineZipformer2CtcModel,
+    SherpaOnlineNemoCtcModel,
+    SherpaOnlineToneCtcModel>;
+
+struct SherpaOfflineTransducerModel {
+    std::filesystem::path encoder{};
+    std::filesystem::path decoder{};
+    std::filesystem::path joiner{};
+};
+
+struct SherpaOfflineParaformerModel {
+    std::filesystem::path model{};
+};
+
+struct SherpaOfflineNemoCtcModel {
+    std::filesystem::path model{};
+};
+
+struct SherpaOfflineWhisperModel {
+    std::filesystem::path encoder{};
+    std::filesystem::path decoder{};
+    std::string language{};
+    std::string task{"transcribe"};
+    std::int32_t tail_paddings{-1};
+    bool enable_token_timestamps{false};
+    bool enable_segment_timestamps{false};
+};
+
+struct SherpaOfflineSenseVoiceModel {
+    std::filesystem::path model{};
+    std::string language{"auto"};
+    bool use_itn{false};
+};
+
+struct SherpaOfflineZipformerCtcModel {
+    std::filesystem::path model{};
+};
+
+struct SherpaOfflineWenetCtcModel {
+    std::filesystem::path model{};
+};
+
+using SherpaOfflineModel = std::variant<
+    SherpaOfflineTransducerModel,
+    SherpaOfflineParaformerModel,
+    SherpaOfflineNemoCtcModel,
+    SherpaOfflineWhisperModel,
+    SherpaOfflineSenseVoiceModel,
+    SherpaOfflineZipformerCtcModel,
+    SherpaOfflineWenetCtcModel>;
+
+struct SherpaOfflineAsrOptions {
+    SherpaOfflineModel model{SherpaOfflineWhisperModel{}};
+    std::filesystem::path tokens{};
+    std::optional<ModelDescriptor> model_descriptor{};
+    SherpaRuntimeOptions runtime{};
+    SherpaFeatureOptions features{};
+
+    std::string model_type{};
+    std::string modeling_unit{"cjkchar"};
+    std::filesystem::path bpe_vocab{};
+    std::string decoding_method{"greedy_search"};
+    std::int32_t max_active_paths{4};
+
+    std::filesystem::path hotwords_file{};
+    std::string hotwords{};
+    float hotwords_score{1.5F};
+    std::filesystem::path rule_fsts{};
+    std::filesystem::path rule_fars{};
+    float blank_penalty{0.0F};
+
+    std::filesystem::path lm_model{};
+    float lm_scale{1.0F};
+    SherpaCtcFstOptions ctc_fst{};
+    SherpaHomophoneOptions homophone{};
+};
+
+struct SherpaStreamingAsrOptions {
+    SherpaOnlineModel model{SherpaOnlineTransducerModel{}};
+    std::filesystem::path tokens{};
+    std::optional<ModelDescriptor> model_descriptor{};
+    SherpaRuntimeOptions runtime{};
+    SherpaFeatureOptions features{};
+
+    std::string model_type{};
+    std::string modeling_unit{"cjkchar"};
+    std::filesystem::path bpe_vocab{};
+    std::string decoding_method{"greedy_search"};
+    std::int32_t max_active_paths{4};
+
+    bool enable_endpoint{false};
+    float rule1_min_trailing_silence{2.4F};
+    float rule2_min_trailing_silence{1.2F};
+    float rule3_min_utterance_length{20.0F};
+
+    std::filesystem::path hotwords_file{};
+    std::string hotwords{};
+    float hotwords_score{1.5F};
+    std::filesystem::path rule_fsts{};
+    std::filesystem::path rule_fars{};
+    float blank_penalty{0.0F};
+    SherpaCtcFstOptions ctc_fst{};
+    SherpaHomophoneOptions homophone{};
+};
+
+struct SherpaKeywordSpotterOptions {
+    SherpaOnlineModel model{SherpaOnlineTransducerModel{}};
+    std::filesystem::path tokens{};
+    std::optional<ModelDescriptor> model_descriptor{};
+    SherpaRuntimeOptions runtime{};
+    SherpaFeatureOptions features{};
+
+    std::string model_type{};
+    std::string modeling_unit{"cjkchar"};
+    std::filesystem::path bpe_vocab{};
+    std::int32_t max_active_paths{4};
+    std::int32_t num_trailing_blanks{1};
+    float keywords_score{1.0F};
+    float keywords_threshold{0.25F};
+    std::filesystem::path keywords_file{};
+    std::string keywords{};
+};
+
+struct SherpaSileroVadModel {
+    std::filesystem::path model{};
+    float threshold{0.5F};
+    float min_silence_duration{0.5F};
+    float min_speech_duration{0.25F};
+    std::int32_t window_size{512};
+    float max_speech_duration{20.0F};
+};
+
+struct SherpaTenVadModel {
+    std::filesystem::path model{};
+    float threshold{0.5F};
+    float min_silence_duration{0.5F};
+    float min_speech_duration{0.25F};
+    std::int32_t window_size{256};
+    float max_speech_duration{20.0F};
+};
+
+using SherpaVadModel = std::variant<SherpaSileroVadModel, SherpaTenVadModel>;
+
+struct SherpaVadOptions {
+    SherpaVadModel model{SherpaSileroVadModel{}};
+    std::optional<ModelDescriptor> model_descriptor{};
+    SherpaRuntimeOptions runtime{};
+    std::uint32_t sample_rate_hz{16000};
+    float buffer_size_seconds{30.0F};
+};
+
+struct SherpaLanguageIdOptions {
+    std::filesystem::path encoder{};
+    std::filesystem::path decoder{};
+    std::optional<ModelDescriptor> model_descriptor{};
+    SherpaRuntimeOptions runtime{};
+    std::uint32_t sample_rate_hz{16000};
+    std::int32_t tail_paddings{0};
+};
+
+void validateSherpaOfflineAsrOptions(const SherpaOfflineAsrOptions& options);
+void validateSherpaStreamingAsrOptions(const SherpaStreamingAsrOptions& options);
+void validateSherpaKeywordSpotterOptions(const SherpaKeywordSpotterOptions& options);
+void validateSherpaVadOptions(const SherpaVadOptions& options);
+void validateSherpaLanguageIdOptions(const SherpaLanguageIdOptions& options);
+
+}  // namespace audition
