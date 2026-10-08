@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
 #include <audition/audio/audio_buffer.hpp>
+#include <audition/core/export.hpp>
 
 namespace audition::dsp {
 
@@ -33,7 +35,7 @@ struct AudioFrontendConfig {
  * delay_samples must be non-negative. Fractional delays use first-order linear
  * interpolation and keep the necessary history across process() calls.
  */
-class AudioFrontend {
+class AUDITION_API AudioFrontend {
 public:
     explicit AudioFrontend(AudioFrontendConfig config);
 

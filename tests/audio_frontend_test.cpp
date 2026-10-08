@@ -51,7 +51,9 @@ TEST(AudioFrontend, FractionalDelayKeepsHistoryAcrossBlocks) {
 }
 
 TEST(AudioFrontend, RejectsMissingInputChannel) {
-    audition::dsp::AudioFrontend frontend{{{{2U, {}}}, audition::AudioLayout::Interleaved}};
+    audition::dsp::AudioFrontendConfig config{};
+    config.routes = {{2U, {}}};
+    audition::dsp::AudioFrontend frontend{config};
     audition::AudioBuffer input{{0.0F, 0.0F},
                                 {16000U, 2U, audition::AudioLayout::Interleaved},
                                 audition::Timestamp{}};

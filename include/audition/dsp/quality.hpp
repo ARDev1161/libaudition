@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <vector>
 
 #include <audition/audio/audio_buffer.hpp>
+#include <audition/core/export.hpp>
 
 namespace audition::dsp {
 
@@ -21,13 +23,13 @@ struct AudioQualityReport {
     std::vector<SignalMetrics> channels{};
 };
 
-[[nodiscard]] SignalMetrics signalMetrics(AudioView audio, double clipping_threshold = 0.999);
-[[nodiscard]] SignalMetrics channelSignalMetrics(AudioView audio, std::size_t channel_index,
+[[nodiscard]] AUDITION_API SignalMetrics signalMetrics(AudioView audio, double clipping_threshold = 0.999);
+[[nodiscard]] AUDITION_API SignalMetrics channelSignalMetrics(AudioView audio, std::size_t channel_index,
                                                  double clipping_threshold = 0.999);
-[[nodiscard]] AudioQualityReport analyzeQuality(AudioView audio,
+[[nodiscard]] AUDITION_API AudioQualityReport analyzeQuality(AudioView audio,
                                                 double clipping_threshold = 0.999);
 
 /** Computes RMS-based SNR. The noise floor must be measured/provided explicitly. */
-[[nodiscard]] double snrDb(double signal_rms, double noise_rms);
+[[nodiscard]] AUDITION_API double snrDb(double signal_rms, double noise_rms);
 
 }  // namespace audition::dsp
