@@ -98,12 +98,14 @@ TEST(SoundPrototypeMatcher, RejectsInvalidQueryAndThreshold) {
     audition::CosineSoundPrototypeMatcher matcher{registry};
 
     EXPECT_THROW(
-        matcher.match(embedding("clap", {0.0F, 0.0F})),
+        static_cast<void>(
+            matcher.match(embedding("clap", {0.0F, 0.0F}))),
         audition::Error);
 
     audition::SoundPrototypeMatchOptions options{};
     options.min_similarity = audition::Score{1.1};
     EXPECT_THROW(
-        matcher.match(embedding("clap", {1.0F, 0.0F}), options),
+        static_cast<void>(
+            matcher.match(embedding("clap", {1.0F, 0.0F}), options)),
         audition::Error);
 }
