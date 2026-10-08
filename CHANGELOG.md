@@ -29,6 +29,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Changed
 
+- `AuthenticityResult` now preserves optional raw bona-fide/spoof `Score` values and makes calibrated probabilities optional; authenticity interfaces also expose explicit backend capabilities.
 - `VadResult::speech_probability`, `KeywordHit::probability` and `LanguageScore::probability` are optional when a backend does not expose a calibrated score.
 - `AsrCapabilities` distinguishes token timestamps from word timestamps.
 - `SpeakerEmbedding::quality` is optional because Sherpa embedding extraction does not expose a calibrated quality score.
