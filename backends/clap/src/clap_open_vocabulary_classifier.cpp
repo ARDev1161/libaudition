@@ -61,7 +61,8 @@ void validateCandidates(
                 ErrorCode::InvalidArgument,
                 "CLAP candidate labels must not be empty"};
         }
-        for (unsigned char byte : label) {
+        for (char character : label) {
+            const auto byte = static_cast<unsigned char>(character);
             if (byte >= 0x80U) {
                 throw Error{
                     ErrorCode::UnsupportedFormat,
