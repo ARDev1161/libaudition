@@ -18,3 +18,9 @@ TEST(DirectionEstimate, UnknownDirectionVarianceIsRepresentable) {
     audition::DirectionEstimate estimate{};
     EXPECT_FALSE(estimate.angular_variance_rad2.has_value());
 }
+
+
+TEST(PositionEstimate, ConfidenceMayBeUnknown) {
+    audition::PositionEstimate estimate{};
+    EXPECT_FALSE(estimate.confidence.has_value());
+}
