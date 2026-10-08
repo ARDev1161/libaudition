@@ -34,7 +34,9 @@ target_include_directories(libaudition_backend_sherpa
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-add_dependencies(libaudition_backend_sherpa libaudition_sherpa_external)
+if(TARGET libaudition_sherpa_external)
+    add_dependencies(libaudition_backend_sherpa libaudition_sherpa_external)
+endif()
 libaudition_configure_target(libaudition_backend_sherpa)
 
 install(TARGETS libaudition_backend_sherpa
