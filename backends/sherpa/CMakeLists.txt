@@ -6,6 +6,9 @@ add_library(libaudition_backend_sherpa SHARED
     src/sherpa_keyword_spotter.cpp
     src/sherpa_language_identifier.cpp
     src/sherpa_audio_tagger.cpp
+    src/sherpa_speech_denoiser_config.cpp
+    src/sherpa_offline_speech_denoiser.cpp
+    src/sherpa_streaming_speech_denoiser.cpp
     src/sherpa_speaker_config.cpp
     src/sherpa_speaker_embedder.cpp
     src/sherpa_speaker_verifier.cpp
