@@ -105,7 +105,13 @@ Follow-up slices:
 
 ## v0.5 — spatial inference and fusion
 
-- GTSAM bearing/range/position fusion.
+GTSAM foundation:
+- Backend-neutral bearing/range/position observations remain in core interfaces.
+- Range observations are anchored to an explicit sensor pose.
+- Optional GTSAM 4.2 backend performs batch bearing/range/position fusion and returns marginal covariance.
+- Mixed clock identities are rejected before geometric fusion.
+
+Next slices:
 - SPL/type range priors.
 - Persistent acoustic-source identity resolver.
 - Multimodal observation ports suitable for vision/radar integration.
