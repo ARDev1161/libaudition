@@ -26,3 +26,8 @@ if(TARGET audition::backend_odas)
     target_sources(libaudition_tests PRIVATE odas_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_odas)
 endif()
+
+if(TARGET audition::backend_samplerate)
+    target_sources(libaudition_tests PRIVATE samplerate_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_samplerate)
+endif()

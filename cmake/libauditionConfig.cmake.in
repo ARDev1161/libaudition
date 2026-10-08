@@ -6,10 +6,20 @@ if(@LIBAUDITION_WITH_SPDLOG@)
     find_dependency(spdlog 1.15 CONFIG)
 endif()
 
-if(@LIBAUDITION_WITH_ODAS@)
+if(@LIBAUDITION_WITH_ODAS@ OR @LIBAUDITION_WITH_LIBSAMPLERATE@)
     set(_libaudition_saved_module_path "${CMAKE_MODULE_PATH}")
     list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+endif()
+
+if(@LIBAUDITION_WITH_ODAS@)
     find_dependency(ODAS)
+endif()
+
+if(@LIBAUDITION_WITH_LIBSAMPLERATE@)
+    find_dependency(SampleRate)
+endif()
+
+if(@LIBAUDITION_WITH_ODAS@ OR @LIBAUDITION_WITH_LIBSAMPLERATE@)
     set(CMAKE_MODULE_PATH "${_libaudition_saved_module_path}")
     unset(_libaudition_saved_module_path)
 endif()

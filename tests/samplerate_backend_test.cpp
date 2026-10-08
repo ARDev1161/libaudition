@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <memory>
-#include <numbers>
 #include <vector>
 
 #include <gtest/gtest.h>

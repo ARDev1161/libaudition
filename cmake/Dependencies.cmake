@@ -77,3 +77,50 @@ function(libaudition_find_or_fetch_odas)
     install(FILES "${_odas_library}"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endfunction()
+
+function(libaudition_find_or_fetch_samplerate)
+    find_package(SampleRate QUIET)
+    if(TARGET SampleRate::samplerate)
+        return()
+    endif()
+    if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR "libsamplerate not found. Install it or set LIBAUDITION_FETCH_DEPENDENCIES=ON")
+    endif()
+
+    set(_samplerate_install_dir "${CMAKE_BINARY_DIR}/_deps/samplerate-install")
+    set(_samplerate_library
+        "${_samplerate_install_dir}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}samplerate${CMAKE_STATIC_LIBRARY_SUFFIX}")
+    file(MAKE_DIRECTORY
+        "${_samplerate_install_dir}/include"
+        "${_samplerate_install_dir}/lib")
+
+    ExternalProject_Add(libaudition_samplerate_external
+        GIT_REPOSITORY https://github.com/libsndfile/libsamplerate.git
+        GIT_TAG c96f5e3de9c4488f4e6c97f59f5245f22fda22f7
+        GIT_SHALLOW FALSE
+        UPDATE_DISCONNECTED TRUE
+        INSTALL_DIR "${_samplerate_install_dir}"
+        CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DBUILD_SHARED_LIBS=OFF
+            -DBUILD_TESTING=OFF
+            -DLIBSAMPLERATE_EXAMPLES=OFF
+            -DLIBSAMPLERATE_INSTALL=ON
+        BUILD_BYPRODUCTS "${_samplerate_library}")
+
+    add_library(SampleRate::samplerate STATIC IMPORTED GLOBAL)
+    set_target_properties(SampleRate::samplerate PROPERTIES
+        IMPORTED_LOCATION "${_samplerate_library}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_samplerate_install_dir}/include")
+    if(UNIX AND NOT APPLE)
+        set_property(TARGET SampleRate::samplerate APPEND PROPERTY
+            INTERFACE_LINK_LIBRARIES m)
+    endif()
+    add_dependencies(SampleRate::samplerate libaudition_samplerate_external)
+
+    install(FILES "${_samplerate_install_dir}/include/samplerate.h"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+    install(FILES "${_samplerate_library}"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+endfunction()
