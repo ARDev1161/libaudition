@@ -87,6 +87,11 @@ retained in `LICENSES/WORLD.txt`. WORLD is linked privately into the optional
 backend and no WORLD type appears in libaudition public APIs. The upstream
 README states that the WORLD algorithms are patent-free.
 
-Planned permissive backends also include GTSAM (BSD) and selected permissively
-licensed model artifacts. Code licenses and model-artifact licenses are audited
-separately.
+The optional GTSAM spatial-fusion backend uses GTSAM 4.3.0 under the
+BSD-3-Clause license. The fallback build is pinned to commit
+`71a25ca36c084cbad1f872e812d6d97fbadfdb05`; the upstream BSD license text is
+retained in `LICENSES/GTSAM.txt`. GTSAM and Eigen types remain private to the
+backend and do not appear in libaudition domain interfaces.
+
+Selected permissively licensed model artifacts may be added later. Code licenses
+and model-artifact licenses are audited separately.
