@@ -13,6 +13,7 @@ option(LIBAUDITION_WITH_SPDLOG "Build the spdlog logging adapter" ON)
 option(LIBAUDITION_WITH_ODAS "Build the direct libodas spatial-audio backend" OFF)
 option(LIBAUDITION_WITH_LIBSAMPLERATE "Build the libsamplerate resampling backend" OFF)
 option(LIBAUDITION_WITH_WEBRTC_AEC3 "Build the WebRTC AEC3 echo-cancellation backend" OFF)
+option(LIBAUDITION_WITH_SHERPA "Build sherpa-onnx speech backends" OFF)
 option(LIBAUDITION_FETCH_DEPENDENCIES "Fetch missing third-party build dependencies" ON)
 option(LIBAUDITION_WARNINGS_AS_ERRORS "Treat libaudition warnings as errors" OFF)
 
@@ -67,6 +68,11 @@ if(LIBAUDITION_WITH_WEBRTC_AEC3)
     add_subdirectory(backends/webrtc_aec3)
 endif()
 
+if(LIBAUDITION_WITH_SHERPA)
+    libaudition_find_or_fetch_sherpa()
+    add_subdirectory(backends/sherpa)
+endif()
+
 if(LIBAUDITION_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
@@ -110,4 +116,5 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/LICENSES" DESTINATION "${CMAKE_IN
 install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindODAS.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSampleRate.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSherpaOnnx.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")
