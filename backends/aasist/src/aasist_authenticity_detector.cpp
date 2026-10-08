@@ -168,9 +168,6 @@ void validateAasistOnnxOptions(
             std::isfinite(options.calibration->slope) &&
                 std::isfinite(options.calibration->intercept),
             "AASIST calibration coefficients must be finite");
-        requireConfiguration(
-            options.calibration->slope != 0.0,
-            "AASIST calibration slope must be non-zero");
     }
 }
 
