@@ -12,7 +12,8 @@ add_executable(libaudition_tests
     dsp_test.cpp
     audio_frontend_test.cpp
     quality_test.cpp
-    speech_contracts_test.cpp)
+    speech_contracts_test.cpp
+    speaker_contracts_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces
