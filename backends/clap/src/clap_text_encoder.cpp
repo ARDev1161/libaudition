@@ -67,6 +67,31 @@ void validateDescriptor(
         "ModelDescriptor backend must identify the CLAP ONNX backend");
 }
 
+ClapOnnxTextOptions validatedTextOptions(
+    ClapOnnxTextOptions options) {
+    validateDescriptor(options.model_descriptor);
+    validateExecution(options.execution);
+    requireConfiguration(
+        !options.model.empty(),
+        "CLAP ONNX text model path is required");
+    requireConfiguration(
+        !options.tokenizer.empty(),
+        "CLAP tokenizer.json path is required");
+    requireConfiguration(
+        options.intra_op_threads > 0,
+        "CLAP ONNX text intra_op_threads must be positive");
+    requireConfiguration(
+        options.sequence_length == kSequenceLength,
+        "CLAP RoBERTa sequence length must be 77");
+    requireConfiguration(
+        options.embedding_dimension == kEmbeddingDimension,
+        "CLAP text embedding dimension must be 512");
+    requireConfiguration(
+        !options.model_id.empty(),
+        "CLAP text model_id must not be empty");
+    return options;
+}
+
 std::filesystem::path resolveArtifact(
     const std::filesystem::path& artifact,
     const std::optional<ModelDescriptor>& descriptor) {
@@ -178,26 +203,8 @@ namespace audition {
 
 void validateClapOnnxTextOptions(
     const ClapOnnxTextOptions& options) {
-    clap_detail::validateDescriptor(options.model_descriptor);
-    clap_detail::validateExecution(options.execution);
-    clap_detail::requireConfiguration(
-        !options.model.empty(),
-        "CLAP ONNX text model path is required");
-    clap_detail::requireConfiguration(
-        !options.tokenizer.empty(),
-        "CLAP tokenizer.json path is required");
-    clap_detail::requireConfiguration(
-        options.intra_op_threads > 0,
-        "CLAP ONNX text intra_op_threads must be positive");
-    clap_detail::requireConfiguration(
-        options.sequence_length == 77U,
-        "CLAP RoBERTa sequence length must be 77");
-    clap_detail::requireConfiguration(
-        options.embedding_dimension == 512U,
-        "CLAP text embedding dimension must be 512");
-    clap_detail::requireConfiguration(
-        !options.model_id.empty(),
-        "CLAP text model_id must not be empty");
+    static_cast<void>(
+        clap_detail::validatedTextOptions(options));
 }
 
 }  // namespace audition
@@ -207,15 +214,13 @@ namespace audition::clap_detail {
 class ClapTextEncoder::Impl {
 public:
     explicit Impl(ClapOnnxTextOptions options) try
-        : options_(std::move(options)),
+        : options_(validatedTextOptions(std::move(options))),
           tokenizer_(
               resolveArtifact(
                   options_.tokenizer,
                   options_.model_descriptor)),
           env_(ORT_LOGGING_LEVEL_WARNING,
                "libaudition-clap-text") {
-        validateClapOnnxTextOptions(options_);
-
         session_options_.SetIntraOpNumThreads(
             options_.intra_op_threads);
         session_options_.SetGraphOptimizationLevel(
