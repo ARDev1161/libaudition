@@ -80,6 +80,13 @@ The CI fixture is pinned to
 
 The model artifact is not bundled by libaudition.
 
-Planned permissive backends also include GTSAM (BSD), WORLD (BSD-like), and
-selected permissively licensed model artifacts. Code licenses and model-artifact
-licenses are audited separately.
+The optional WORLD voice-analysis backend uses `mmorise/World` under its
+modified BSD license, pinned to commit
+`d625e7608ca23a870018f01e7c562ac683d9847f`. The upstream license text is
+retained in `LICENSES/WORLD.txt`. WORLD is linked privately into the optional
+backend and no WORLD type appears in libaudition public APIs. The upstream
+README states that the WORLD algorithms are patent-free.
+
+Planned permissive backends also include GTSAM (BSD) and selected permissively
+licensed model artifacts. Code licenses and model-artifact licenses are audited
+separately.
