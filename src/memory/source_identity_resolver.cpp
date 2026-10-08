@@ -95,11 +95,13 @@ struct FingerprintEvidence {
 
 [[nodiscard]] FingerprintEvidence fingerprintEvidence(
     const SourceFingerprint& query,
-    const AcousticSourceProfile& profile) {
+    const AcousticSourceProfile& profile,
+    double min_quality) {
     FingerprintEvidence evidence{};
 
     for (const auto& stored : profile.fingerprints) {
-        if (stored.model_id != query.model_id ||
+        if (stored.quality.value() < min_quality ||
+            stored.model_id != query.model_id ||
             stored.embedding.size() != query.embedding.size()) {
             continue;
         }
@@ -422,7 +424,10 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
 
         if (use_query_fingerprint) {
             const auto evidence =
-                fingerprintEvidence(*observation.fingerprint, profile);
+                fingerprintEvidence(
+                    *observation.fingerprint,
+                    profile,
+                    options_.min_fingerprint_quality);
 
             if (evidence.has_compatible) {
                 if (!evidence.best_similarity.has_value() ||
