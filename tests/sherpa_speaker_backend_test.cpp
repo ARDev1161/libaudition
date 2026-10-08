@@ -66,10 +66,13 @@ TEST(SherpaSpeakerVerifier, ReturnsNativeCosineSimilarity) {
 TEST(SherpaSpeakerVerifier, RejectsModelMismatch) {
     audition::SherpaSpeakerVerifier verifier{};
     EXPECT_THROW(
-        verifier.compare(
-            embedding("model-a", {1.0F, 0.0F}),
-            embedding("model-b", {1.0F, 0.0F}),
-            audition::Score{0.5}),
+        {
+            const auto result = verifier.compare(
+                embedding("model-a", {1.0F, 0.0F}),
+                embedding("model-b", {1.0F, 0.0F}),
+                audition::Score{0.5});
+            (void)result;
+        },
         audition::Error);
 }
 
