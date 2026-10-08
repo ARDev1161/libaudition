@@ -54,6 +54,10 @@ TEST(SherpaConfig, RejectsUnsupportedExecutionKnobsRatherThanIgnoringThem) {
     auto options = streamingOptions();
     options.runtime.execution.precision = audition::PrecisionPreference::Float16;
     EXPECT_THROW(audition::validateSherpaStreamingAsrOptions(options), audition::Error);
+
+    options = streamingOptions();
+    options.runtime.execution.allow_fallback = false;
+    EXPECT_THROW(audition::validateSherpaStreamingAsrOptions(options), audition::Error);
 }
 
 TEST(SherpaConfig, KeywordSpotterRequiresKeywordDefinitions) {

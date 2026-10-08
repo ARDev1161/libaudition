@@ -100,7 +100,8 @@ current C++ configuration cannot represent directly:
 
 - `device_index`;
 - explicit `PrecisionPreference`;
-- arbitrary `provider_options`.
+- arbitrary `provider_options`;
+- `allow_fallback=false`.
 
 This is preferable to silently ignoring caller intent.
 

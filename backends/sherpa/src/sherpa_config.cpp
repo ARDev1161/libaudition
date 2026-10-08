@@ -51,6 +51,8 @@ void validateRuntime(const SherpaRuntimeOptions& runtime) {
             "Sherpa adapter does not yet expose precision selection");
     require(runtime.execution.provider_options.empty(),
             "Sherpa adapter does not yet expose provider_options");
+    require(runtime.execution.allow_fallback,
+            "Sherpa adapter cannot currently enforce allow_fallback=false");
 
     if (runtime.execution.provider.empty()) {
         require(runtime.execution.device_class == DeviceClass::Auto ||

@@ -3,6 +3,7 @@
 #include <string>
 
 #include <audition/backends/sherpa/options.hpp>
+#include <audition/backend/capabilities.hpp>
 #include <audition/speech/types.hpp>
 
 #include <sherpa-onnx/c-api/cxx-api.h>
