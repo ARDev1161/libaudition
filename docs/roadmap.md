@@ -105,7 +105,8 @@ Follow-up slices:
 
 ## v0.5 — spatial inference and fusion
 
-- GTSAM bearing/range/position fusion.
+- GTSAM bearing/range/position fusion: first static single-source batch backend with
+  known sensor poses and marginal covariance.
 - SPL/type range priors.
 - Persistent acoustic-source identity resolver.
 - Multimodal observation ports suitable for vision/radar integration.
