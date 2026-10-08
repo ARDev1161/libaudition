@@ -181,7 +181,16 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-sherpa --parallel 2
+      - name: Download pinned Silero VAD inference fixture
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-sherpa/silero_vad.onnx" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+          echo "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6  $PWD/build-sherpa/silero_vad.onnx" | sha256sum --check
       - name: Test
+        env:
+          LIBAUDITION_TEST_SILERO_MODEL: ${{ github.workspace }}/build-sherpa/silero_vad.onnx
         run: ctest --test-dir build-sherpa --output-on-failure
       - name: Install
         run: cmake --install build-sherpa --prefix "$PWD/install-sherpa"

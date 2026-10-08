@@ -1,5 +1,8 @@
 #include <audition/backends/sherpa.hpp>
 
+#include <cstdlib>
+#include <vector>
+
 #include <gtest/gtest.h>
 
 namespace {
@@ -101,4 +104,35 @@ TEST(SherpaConfig, DescriptorCanProvideModelRoot) {
     descriptor.artifact_path = "/opt/models/whisper";
     options.model_descriptor = descriptor;
     EXPECT_NO_THROW(audition::validateSherpaOfflineAsrOptions(options));
+}
+
+
+TEST(SherpaVad, LoadsPinnedSileroFixtureAndProcessesAudioWhenAvailable) {
+    const char* model_path = std::getenv("LIBAUDITION_TEST_SILERO_MODEL");
+    if (model_path == nullptr || *model_path == '\0') {
+        GTEST_SKIP() << "CI-only Silero model fixture is not configured";
+    }
+
+    audition::SherpaVadOptions options{};
+    auto& model = std::get<audition::SherpaSileroVadModel>(options.model);
+    model.model = model_path;
+
+    audition::SherpaVad vad{options};
+    const auto requirements = vad.audioRequirements();
+    ASSERT_EQ(requirements.supported_sample_rates_hz.size(), 1U);
+    EXPECT_EQ(requirements.supported_sample_rates_hz.front(), 16000U);
+    ASSERT_TRUE(requirements.preferred_frame_count.has_value());
+    EXPECT_EQ(*requirements.preferred_frame_count, 512U);
+
+    auto session = vad.createSession();
+    audition::AudioBuffer silence{
+        std::vector<float>(512U, 0.0F),
+        {16000U, 1U, audition::AudioLayout::Interleaved},
+        audition::Timestamp{}};
+
+    for (int i = 0; i < 10; ++i) {
+        const auto result = session->process(silence.view());
+        EXPECT_FALSE(result.speech_probability.has_value());
+    }
+    EXPECT_NO_THROW(session->reset());
 }
