@@ -1,6 +1,9 @@
 add_library(libaudition_backend_clap SHARED
     src/clap_features.cpp
-    src/clap_audio_embedder.cpp)
+    src/clap_audio_embedder.cpp
+    src/roberta_tokenizer.cpp
+    src/clap_text_encoder.cpp
+    src/clap_open_vocabulary_classifier.cpp)
 add_library(audition::backend_clap ALIAS libaudition_backend_clap)
 
 set_target_properties(libaudition_backend_clap PROPERTIES
@@ -23,7 +26,9 @@ target_compile_definitions(libaudition_backend_clap
 
 target_link_libraries(libaudition_backend_clap
     PUBLIC audition::interfaces
-    PRIVATE OnnxRuntime::onnxruntime)
+    PRIVATE
+        OnnxRuntime::onnxruntime
+        nlohmann_json::nlohmann_json)
 
 target_include_directories(libaudition_backend_clap
     PUBLIC
