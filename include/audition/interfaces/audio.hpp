@@ -46,12 +46,14 @@ public:
     virtual ~INoiseSuppressorSession() = default;
     virtual void reset() = 0;
     [[nodiscard]] virtual AudioBuffer process(AudioView input) = 0;
+    [[nodiscard]] virtual AudioBuffer flush() = 0;
 };
 
 class INoiseSuppressor {
 public:
     virtual ~INoiseSuppressor() = default;
     [[nodiscard]] virtual BackendInfo backendInfo() const = 0;
+    [[nodiscard]] virtual NoiseSuppressorCapabilities capabilities() const = 0;
     [[nodiscard]] virtual std::unique_ptr<INoiseSuppressorSession> createSession(
         const AudioFormat& format) const = 0;
 };
