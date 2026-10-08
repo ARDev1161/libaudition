@@ -213,6 +213,12 @@ jobs:
               std::get<audition::SherpaSileroVadModel>(options.model).model = "model.onnx";
               audition::validateSherpaVadOptions(options);
 
+              audition::SherpaAudioTaggingOptions tagging{};
+              std::get<audition::SherpaAudioTaggingZipformerModel>(tagging.model).model =
+                  "audio-tagger.onnx";
+              tagging.labels = "labels.csv";
+              audition::validateSherpaAudioTaggingOptions(tagging);
+
               audition::SherpaSpeakerIdentifier identifier{{2U, "test-model"}};
               audition::SpeakerEnrollment enrollment{};
               enrollment.speaker_id = audition::SpeakerId{1U};
