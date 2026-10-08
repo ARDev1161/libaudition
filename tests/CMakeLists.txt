@@ -11,7 +11,8 @@ add_executable(libaudition_tests
     memory_registry_test.cpp
     dsp_test.cpp
     audio_frontend_test.cpp
-    quality_test.cpp)
+    quality_test.cpp
+    speech_contracts_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces
@@ -37,4 +38,10 @@ endif()
 if(TARGET audition::backend_webrtc_aec3)
     target_sources(libaudition_tests PRIVATE webrtc_aec3_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_webrtc_aec3)
+endif()
+
+
+if(TARGET audition::backend_sherpa)
+    target_sources(libaudition_tests PRIVATE sherpa_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_sherpa)
 endif()

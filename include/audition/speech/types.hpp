@@ -19,6 +19,13 @@ struct SpeechSegment {
     AudioQuality quality{};
 };
 
+struct TimedToken {
+    std::string text{};
+    Duration start_offset{};
+    std::optional<Duration> end_offset{};
+    std::optional<Probability> confidence{};
+};
+
 struct WordTimestamp {
     std::string text{};
     Duration start_offset{};
@@ -32,17 +39,18 @@ struct Transcript {
     std::string language{};
     std::optional<Probability> language_confidence{};
     std::optional<Probability> confidence{};
+    std::vector<TimedToken> tokens{};
     std::vector<WordTimestamp> words{};
 };
 
 struct VadResult {
-    Probability speech_probability{Probability::zero()};
+    std::optional<Probability> speech_probability{};
     bool speech_active{false};
 };
 
 struct KeywordHit {
     std::string keyword{};
-    Probability probability{Probability::zero()};
+    std::optional<Probability> probability{};
     Duration offset{};
 };
 

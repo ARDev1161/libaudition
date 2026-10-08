@@ -1,6 +1,8 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -62,6 +64,7 @@ public:
     virtual void reset() = 0;
     virtual void accept(AudioView audio) = 0;
     [[nodiscard]] virtual Transcript partial() const = 0;
+    [[nodiscard]] virtual bool endpointDetected() const = 0;
     [[nodiscard]] virtual Transcript finalize() = 0;
 };
 
@@ -84,18 +87,20 @@ class IKeywordSpotter {
 public:
     virtual ~IKeywordSpotter() = default;
     [[nodiscard]] virtual BackendInfo backendInfo() const = 0;
+    [[nodiscard]] virtual AudioRequirements audioRequirements() const = 0;
     [[nodiscard]] virtual std::unique_ptr<IKeywordSpotterSession> createSession() const = 0;
 };
 
 struct LanguageScore {
     std::string language{};
-    Probability probability{Probability::zero()};
+    std::optional<Probability> probability{};
 };
 
 class ILanguageIdentifier {
 public:
     virtual ~ILanguageIdentifier() = default;
     [[nodiscard]] virtual BackendInfo backendInfo() const = 0;
+    [[nodiscard]] virtual AudioRequirements audioRequirements() const = 0;
     [[nodiscard]] virtual std::vector<LanguageScore> identify(AudioView speech) const = 0;
 };
 

@@ -28,9 +28,18 @@
 
 ## v0.3 — sherpa-onnx backend family
 
-- VAD, offline/streaming ASR, KWS, language ID.
+First speech slice:
+- Silero/TEN VAD.
+- Offline ASR: transducer, Paraformer, NeMo CTC, Whisper, SenseVoice, Zipformer CTC and WeNet CTC.
+- Streaming ASR: transducer, Paraformer, Zipformer2 CTC, NeMo CTC and T-One CTC.
+- Keyword spotting.
+- Whisper spoken-language identification.
+- Hardware-neutral provider pass-through through `ExecutionTarget`.
+
+Follow-up slices:
 - Speaker embedding/verification/diarization.
-- Audio tagging, enhancement, TTS and permitted voice-cloning models.
+- Audio tagging and speech enhancement.
+- TTS and permitted voice-cloning models.
 
 ## v0.4 — extended perception
 

@@ -19,6 +19,7 @@ if(@LIBAUDITION_WITH_LIBSAMPLERATE@)
     find_dependency(SampleRate)
 endif()
 
+
 if(@LIBAUDITION_WITH_ODAS@ OR @LIBAUDITION_WITH_LIBSAMPLERATE@)
     set(CMAKE_MODULE_PATH "${_libaudition_saved_module_path}")
     unset(_libaudition_saved_module_path)

@@ -167,3 +167,66 @@ function(libaudition_find_or_fetch_webrtc_aec3)
     install(FILES "${_webrtc_aec3_library}"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endfunction()
+
+
+function(libaudition_find_or_fetch_sherpa)
+    find_package(SherpaOnnx QUIET)
+    if(TARGET SherpaOnnx::cxx_api)
+        return()
+    endif()
+    if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR "sherpa-onnx not found. Install it or set LIBAUDITION_FETCH_DEPENDENCIES=ON")
+    endif()
+
+    set(_sherpa_install_dir "${CMAKE_BINARY_DIR}/_deps/sherpa-onnx-install")
+    set(_sherpa_cxx_api
+        "${_sherpa_install_dir}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}sherpa-onnx-cxx-api${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    file(MAKE_DIRECTORY
+        "${_sherpa_install_dir}/include"
+        "${_sherpa_install_dir}/lib"
+        "${_sherpa_install_dir}/bin")
+
+    ExternalProject_Add(libaudition_sherpa_external
+        GIT_REPOSITORY https://github.com/k2-fsa/sherpa-onnx.git
+        GIT_TAG 99ddefaa92129858b80a71a426903dd4215c83fa
+        GIT_SHALLOW FALSE
+        UPDATE_DISCONNECTED TRUE
+        INSTALL_DIR "${_sherpa_install_dir}"
+        CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DBUILD_SHARED_LIBS=ON
+            -DSHERPA_ONNX_ENABLE_PORTAUDIO=OFF
+            -DSHERPA_ONNX_ENABLE_WEBSOCKET=OFF
+            -DSHERPA_ONNX_ENABLE_BINARY=OFF
+            -DSHERPA_ONNX_ENABLE_C_API=ON
+            -DSHERPA_ONNX_ENABLE_TTS=OFF
+            -DSHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION=OFF
+            -DSHERPA_ONNX_ENABLE_TESTS=OFF
+            -DSHERPA_ONNX_ENABLE_CHECK=OFF
+            -DSHERPA_ONNX_BUILD_C_API_EXAMPLES=OFF
+            -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=OFF
+            -DSHERPA_ONNX_ENABLE_GPU=${LIBAUDITION_SHERPA_ENABLE_GPU}
+            -DSHERPA_ONNX_ENABLE_DIRECTML=${LIBAUDITION_SHERPA_ENABLE_DIRECTML}
+            -DSHERPA_ONNX_ENABLE_RKNN=${LIBAUDITION_SHERPA_ENABLE_RKNN}
+            -DSHERPA_ONNX_ENABLE_AXERA=${LIBAUDITION_SHERPA_ENABLE_AXERA}
+            -DSHERPA_ONNX_ENABLE_AXCL=${LIBAUDITION_SHERPA_ENABLE_AXCL}
+            -DSHERPA_ONNX_ENABLE_ASCEND_NPU=${LIBAUDITION_SHERPA_ENABLE_ASCEND_NPU}
+            -DSHERPA_ONNX_ENABLE_QNN=${LIBAUDITION_SHERPA_ENABLE_QNN}
+            -DSHERPA_ONNX_ENABLE_SPACEMIT=${LIBAUDITION_SHERPA_ENABLE_SPACEMIT}
+        BUILD_BYPRODUCTS "${_sherpa_cxx_api}")
+
+    add_library(SherpaOnnx::cxx_api SHARED IMPORTED GLOBAL)
+    set_target_properties(SherpaOnnx::cxx_api PROPERTIES
+        IMPORTED_LOCATION "${_sherpa_cxx_api}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_sherpa_install_dir}/include"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_sherpa_install_dir}/include")
+    add_dependencies(SherpaOnnx::cxx_api libaudition_sherpa_external)
+
+    install(DIRECTORY "${_sherpa_install_dir}/lib/"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+    install(DIRECTORY "${_sherpa_install_dir}/bin/"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        OPTIONAL)
+endfunction()

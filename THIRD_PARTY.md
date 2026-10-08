@@ -31,6 +31,17 @@ does not contain that file. For that reason the adapter is opt-in and this
 exact extraction/provenance must receive a final redistribution/patent-file
 audit before it is treated as a default binary-distribution dependency.
 
-Planned permissive backends also include sherpa-onnx (Apache-2.0), GTSAM (BSD),
-WORLD (BSD-like), and selected permissively licensed model artifacts. Code
-licenses and model-artifact licenses are audited separately.
+The optional speech backend uses `k2-fsa/sherpa-onnx` under Apache-2.0,
+pinned to commit `99ddefaa92129858b80a71a426903dd4215c83fa`. The Apache-2.0
+license text is retained separately in `LICENSES/sherpa-onnx.txt`. The adapter
+uses the upstream C++ wrapper over its C API and does not expose sherpa types
+through libaudition public interfaces.
+
+Sherpa model packages are **not** licensed by the sherpa-onnx code license merely
+because the runtime is Apache-2.0. Model artifacts remain subject to the normal
+`models/manifest.yaml` provenance/license/hash policy and are not bundled by
+this backend.
+
+Planned permissive backends also include GTSAM (BSD), WORLD (BSD-like), and
+selected permissively licensed model artifacts. Code licenses and model-artifact
+licenses are audited separately.

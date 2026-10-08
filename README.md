@@ -52,6 +52,15 @@ The public API remains C++17. The pinned standalone AEC3 implementation is built
 behind a shared-library boundary with C++20 internally. See
 [`docs/audio_frontend.md`](docs/audio_frontend.md).
 
+The sherpa-onnx speech backend is also optional:
+
+```bash
+cmake -S . -B build -DLIBAUDITION_WITH_SHERPA=ON
+```
+
+See [`docs/backends/sherpa.md`](docs/backends/sherpa.md). Models are not bundled
+and retain their own independent licenses/provenance.
+
 ## Consume from CMake
 
 ```cmake
