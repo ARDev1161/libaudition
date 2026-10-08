@@ -8,6 +8,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Added
 
+- Optional CLAP ONNX audio-embedding backend implementing `IAudioEmbedder` with strict model-shape, sample-rate and embedding-space contracts.
 - Optional sherpa-onnx speech backend family with typed configuration for Silero/TEN VAD, offline/streaming ASR, keyword spotting and spoken-language identification.
 - Sherpa speaker embedding, verification, transient identification index and offline diarization adapters.
 - Sherpa Zipformer/CED audio-tagging adapter implementing `IAudioClassifier` with explicit labels, top-K, sample-rate and provider configuration.

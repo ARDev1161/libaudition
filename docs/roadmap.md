@@ -68,8 +68,14 @@ Semantic embedding foundation:
 - Backend-neutral cosine sound-prototype matching over persistent few-shot memory.
 - Strict `model_id`/dimension isolation between embedding spaces.
 
+CLAP audio-embedding slice:
+- Standalone ONNX Runtime adapter through `IAudioEmbedder`.
+- Strict mono 48 kHz input with no hidden resampling or downmixing.
+- Deterministic HTSAT frontend with model-defined repeat-padding for short clips and explicit segmentation for audio longer than 10 seconds.
+- 512-dimensional embedding-space isolation through explicit `model_id`.
+
 Follow-up slices:
-- CLAP embeddings and candidate-relative open-vocabulary classification.
+- CLAP text encoder/tokenizer and candidate-relative open-vocabulary classification.
 - AASIST authenticity backend.
 - WORLD voice feature backend.
 

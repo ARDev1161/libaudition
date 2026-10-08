@@ -230,3 +230,77 @@ function(libaudition_find_or_fetch_sherpa)
         DESTINATION "${CMAKE_INSTALL_BINDIR}"
         OPTIONAL)
 endfunction()
+
+
+function(libaudition_find_or_fetch_onnxruntime)
+    if(TARGET OnnxRuntime::onnxruntime)
+        return()
+    endif()
+
+    find_path(LIBAUDITION_ONNXRUNTIME_INCLUDE_DIR
+        NAMES onnxruntime_cxx_api.h
+        HINTS "${LIBAUDITION_ONNXRUNTIME_ROOT}" "$ENV{ONNXRUNTIME_ROOT}"
+        PATH_SUFFIXES include)
+    find_library(LIBAUDITION_ONNXRUNTIME_LIBRARY
+        NAMES onnxruntime
+        HINTS "${LIBAUDITION_ONNXRUNTIME_ROOT}" "$ENV{ONNXRUNTIME_ROOT}"
+        PATH_SUFFIXES lib lib64)
+
+    if(LIBAUDITION_ONNXRUNTIME_INCLUDE_DIR AND
+       LIBAUDITION_ONNXRUNTIME_LIBRARY)
+        add_library(OnnxRuntime::onnxruntime SHARED IMPORTED GLOBAL)
+        set_target_properties(OnnxRuntime::onnxruntime PROPERTIES
+            IMPORTED_LOCATION "${LIBAUDITION_ONNXRUNTIME_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${LIBAUDITION_ONNXRUNTIME_INCLUDE_DIR}"
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${LIBAUDITION_ONNXRUNTIME_INCLUDE_DIR}")
+        return()
+    endif()
+
+    if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR
+            "ONNX Runtime not found. Set LIBAUDITION_ONNXRUNTIME_ROOT/ONNXRUNTIME_ROOT "
+            "or enable LIBAUDITION_FETCH_DEPENDENCIES.")
+    endif()
+
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
+       NOT (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR
+            CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64"))
+        message(FATAL_ERROR
+            "Automatic ONNX Runtime fetching is currently provided only for Linux x86_64. "
+            "Install ONNX Runtime and set LIBAUDITION_ONNXRUNTIME_ROOT for this platform.")
+    endif()
+
+    set(_onnxruntime_url
+        "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.2/onnxruntime-linux-x64-glibc2_17-Release-1.28.2.zip")
+    set(_onnxruntime_hash
+        "SHA256=c4f8994d56191d9d2c92a961b39fe790459f2c5d155f912b239506ea31359534")
+
+    FetchContent_Declare(libaudition_onnxruntime
+        URL "${_onnxruntime_url}"
+        URL_HASH "${_onnxruntime_hash}")
+    FetchContent_GetProperties(libaudition_onnxruntime)
+    if(NOT libaudition_onnxruntime_POPULATED)
+        FetchContent_Populate(libaudition_onnxruntime)
+    endif()
+
+    find_library(_libaudition_onnxruntime_library
+        NAMES onnxruntime
+        PATHS "${libaudition_onnxruntime_SOURCE_DIR}/lib"
+        NO_DEFAULT_PATH)
+    if(NOT _libaudition_onnxruntime_library)
+        message(FATAL_ERROR "Fetched ONNX Runtime archive does not contain libonnxruntime")
+    endif()
+
+    add_library(OnnxRuntime::onnxruntime SHARED IMPORTED GLOBAL)
+    set_target_properties(OnnxRuntime::onnxruntime PROPERTIES
+        IMPORTED_LOCATION "${_libaudition_onnxruntime_library}"
+        INTERFACE_INCLUDE_DIRECTORIES
+            "${libaudition_onnxruntime_SOURCE_DIR}/include"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+            "${libaudition_onnxruntime_SOURCE_DIR}/include")
+
+    file(GLOB _libaudition_onnxruntime_libraries
+        "${libaudition_onnxruntime_SOURCE_DIR}/lib/libonnxruntime*")
+    install(FILES ${_libaudition_onnxruntime_libraries}
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+endfunction()
