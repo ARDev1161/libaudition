@@ -88,6 +88,7 @@ private:
     };
 
     struct TrackState {
+        std::optional<Timestamp> last_observation{};
         std::optional<RangeState> range{};
         std::optional<PositionState> position{};
     };
