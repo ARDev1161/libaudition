@@ -108,7 +108,7 @@ The current adapter:
 - processes exactly 10 ms frames;
 - permits different render and capture channel counts;
 - accepts explicit stream delay through `setStreamDelay()`;
-- exposes one-shot `notifyEchoPathChange()`;
+- exposes one-shot `notifyEchoPathGainChange()`;
 - reports backend ERL, ERLE and estimated delay when available;
 - creates no application scheduler threads.
 

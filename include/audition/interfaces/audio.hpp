@@ -28,7 +28,7 @@ public:
     virtual void reset() = 0;
     virtual void acceptReference(AudioView playback) = 0;
     virtual void setStreamDelay(Duration delay) = 0;
-    virtual void notifyEchoPathChange() = 0;
+    virtual void notifyEchoPathGainChange() = 0;
     [[nodiscard]] virtual AudioBuffer process(AudioView captured) = 0;
     [[nodiscard]] virtual EchoCancellationMetrics metrics() const = 0;
 };

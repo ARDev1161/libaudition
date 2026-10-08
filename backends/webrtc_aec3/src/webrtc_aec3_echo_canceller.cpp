@@ -120,7 +120,7 @@ public:
         echo_control_->SetAudioBufferDelay(*delay_ms_);
     }
 
-    void notifyEchoPathChange() override {
+    void notifyEchoPathGainChange() override {
         echo_path_change_ = true;
     }
 
