@@ -4,7 +4,11 @@ find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets REQUIRED)
 add_executable(libaudition_qt_demo
     main.cpp
     demo_window.cpp
-    demo_window.hpp)
+    demo_window.hpp
+    backend_workbench.cpp
+    backend_workbench.hpp
+    wav_io.cpp
+    wav_io.hpp)
 
 target_link_libraries(libaudition_qt_demo PRIVATE
     audition::core
@@ -27,3 +31,24 @@ target_compile_definitions(libaudition_qt_demo PRIVATE
     LIBAUDITION_DEMO_HAS_GTSAM=$<BOOL:${LIBAUDITION_WITH_GTSAM}>)
 
 libaudition_configure_target(libaudition_qt_demo)
+
+
+if(LIBAUDITION_WITH_ODAS)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_odas)
+endif()
+
+if(LIBAUDITION_WITH_SHERPA)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_sherpa)
+endif()
+
+if(LIBAUDITION_WITH_CLAP)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_clap)
+endif()
+
+if(LIBAUDITION_WITH_AASIST)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_aasist)
+endif()
+
+if(LIBAUDITION_WITH_WORLD)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_world)
+endif()
