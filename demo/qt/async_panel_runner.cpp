@@ -2,7 +2,6 @@
 
 #include <QFutureWatcher>
 #include <QLabel>
-#include <QList>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -25,8 +24,8 @@ AsyncPanelRunner::AsyncPanelRunner(
       progress_{new QProgressBar{page}},
       discard_{new QPushButton{"Discard result", page}},
       output_{output},
-      actions_{actions.begin(), actions.end()} {
-    if (layout == nullptr || output_ == nullptr || actions_.isEmpty()) {
+      actions_{actions} {
+    if (layout == nullptr || output_ == nullptr || actions_.empty()) {
         throw std::invalid_argument{"Invalid async runner UI"};
     }
 
