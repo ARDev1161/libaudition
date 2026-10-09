@@ -347,6 +347,39 @@ QString testSilero(QMainWindow& window, const QTemporaryDir& dir) {
 #endif
 }
 
+QString testSherpaAsyncFailures(QMainWindow& window) {
+#if LIBAUDITION_DEMO_HAS_SHERPA
+    auto* sherpa = runnerPage(window, "Sherpa");
+    auto* tabs = sherpa->findChild<QTabWidget*>();
+    auto* asr = requireTab(tabs, "Offline ASR");
+    auto* button = requireButton(asr, "Run offline Whisper ASR");
+
+    // Exercise worker error propagation, completion, and panel reuse without
+    // requiring an unpinned Whisper model asset.
+    button->click();
+    const QString first = awaitAsyncCompletion(asr, button);
+    requireContains(first, "error:");
+    button->click();
+    const QString second = awaitAsyncCompletion(asr, button);
+    requireContains(second, "error:");
+
+#if LIBAUDITION_DEMO_HAS_SHERPA_TTS
+    auto* tts = requireTab(tabs, "VITS / Piper TTS");
+    auto* synth = requireButton(tts, "Synthesize with VITS/Piper");
+    synth->click();
+    const QString ttsError = awaitAsyncCompletion(tts, synth);
+    requireContains(ttsError, "error:");
+    return "qt-model-self-test=ok backend=sherpa-asr-tts-error-paths";
+#else
+    return "qt-model-self-test=ok backend=sherpa-asr-error-path";
+#endif
+#else
+    static_cast<void>(window);
+    throw std::runtime_error{
+        "Qt demo was built without LIBAUDITION_WITH_SHERPA"};
+#endif
+}
+
 }  // namespace
 
 bool runQtModelFixtureSelfTest(
@@ -366,9 +399,11 @@ bool runQtModelFixtureSelfTest(
             result = testAasist(window, dir);
         } else if (which == "silero") {
             result = testSilero(window, dir);
+        } else if (which == "sherpa-errors") {
+            result = testSherpaAsyncFailures(window);
         } else {
             throw std::runtime_error{
-                "Unknown model fixture (expected clap, aasist or silero)"};
+                "Unknown model fixture (expected clap, aasist, silero or sherpa-errors)"};
         }
         if (report != nullptr) {
             *report = result;
