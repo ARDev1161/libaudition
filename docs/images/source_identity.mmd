@@ -5,6 +5,8 @@ flowchart LR
     COORD --> RESOLVE[ISourceIdentityResolver]
     FP[Acoustic fingerprint] --> RESOLVE
     RESOLVE --> SOURCE[Persistent AcousticSourceId]
-    COORD --> OUT[SpatialTrack / TrackedAudioFrame / AcousticEvent]
+    COORD --> OUT[Resolved SpatialTrack / TrackedAudioFrame]
+    OUT --> EVENTASM[AcousticEventAssembler]
+    EVENTASM --> EVENT[AcousticEvent]
     SPEECH[Speaker embedding] --> SPEAKER[SpeakerId]
     SPEAKER -. optional evidence .-> SOURCE

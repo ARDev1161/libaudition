@@ -10,6 +10,7 @@ flowchart TB
     subgraph LIB[libaudition]
       subgraph PIPE[Composition and infrastructure]
         QUEUE[BoundedQueue]
+        EVENTASM[AcousticEventAssembler]
         REG[FactoryRegistry]
         MODEL[ModelRegistry]
       end
@@ -91,7 +92,9 @@ flowchart LR
     FP[Fingerprint] --> R
     R --> S[AcousticSourceId]
     C --> T2[Resolved SpatialTrack]
-    C --> A[TrackedAudioFrame / AcousticEvent]
+    C --> T2[Resolved SpatialTrack]
+    T2 --> E[AcousticEventAssembler]
+    E --> A[AcousticEvent]
     S --> H[Persistent history]
     SP[Speaker embedding] --> P[SpeakerId]
     P -. optional evidence .-> S
