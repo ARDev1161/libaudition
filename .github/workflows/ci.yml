@@ -167,6 +167,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-odas --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-odas/demo/qt/libaudition_qt_demo --self-test
       - name: Test
         run: ctest --test-dir build-odas --output-on-failure
       - name: Install
@@ -214,6 +218,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-samplerate --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-samplerate/demo/qt/libaudition_qt_demo --self-test
       - name: Test
         run: ctest --test-dir build-samplerate --output-on-failure
       - name: Install
@@ -260,6 +268,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-aec3 --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-aec3/demo/qt/libaudition_qt_demo --self-test
       - name: Test
         run: ctest --test-dir build-aec3 --output-on-failure
       - name: Install
@@ -308,6 +320,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-sherpa --parallel 2
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-sherpa/demo/qt/libaudition_qt_demo --self-test
       - name: Download pinned Silero VAD inference fixture
         shell: bash
         run: |
@@ -396,6 +412,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-sherpa-tts --parallel 2
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-sherpa-tts/demo/qt/libaudition_qt_demo --self-test
       - name: Test
         run: ctest --test-dir build-sherpa-tts --output-on-failure
       - name: Install
@@ -460,6 +480,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-clap --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-clap/demo/qt/libaudition_qt_demo --self-test
       - name: Download pinned CLAP inference fixtures
         shell: bash
         run: |
@@ -582,6 +606,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-aasist --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-aasist/demo/qt/libaudition_qt_demo --self-test
       - name: Download pinned AASIST inference fixture
         shell: bash
         run: |
@@ -650,6 +678,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-world --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-world/demo/qt/libaudition_qt_demo --self-test
       - name: Test
         run: ctest --test-dir build-world --output-on-failure
       - name: Install
@@ -719,6 +751,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-gtsam --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-gtsam/demo/qt/libaudition_qt_demo --self-test
       - name: Test
         run: ctest --test-dir build-gtsam --output-on-failure
       - name: Install
