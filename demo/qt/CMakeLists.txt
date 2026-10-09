@@ -1,5 +1,5 @@
-find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets REQUIRED)
-find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets REQUIRED)
+find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Concurrent REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Concurrent REQUIRED)
 
 add_executable(libaudition_qt_demo
     main.cpp
@@ -7,6 +7,8 @@ add_executable(libaudition_qt_demo
     demo_window.hpp
     backend_workbench.cpp
     backend_workbench.hpp
+    async_panel_runner.cpp
+    async_panel_runner.hpp
     model_fixture_selftest.cpp
     model_fixture_selftest.hpp
     optional_backend_workbench.cpp
@@ -25,7 +27,8 @@ target_link_libraries(libaudition_qt_demo PRIVATE
     audition::spatial
     audition::memory
     audition::pipeline
-    Qt${QT_VERSION_MAJOR}::Widgets)
+    Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::Concurrent)
 
 target_compile_definitions(libaudition_qt_demo PRIVATE
     LIBAUDITION_DEMO_HAS_ODAS=$<BOOL:${LIBAUDITION_WITH_ODAS}>

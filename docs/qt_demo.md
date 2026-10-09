@@ -350,6 +350,27 @@ fallback initialization range are editable. This panel intentionally remains
 acoustic-only; camera, radar, robot-state, and other cross-modal fusion belong
 in the application consuming libaudition.
 
+## Asynchronous CLAP and AASIST inference
+
+CLAP embedding, CLAP open-vocabulary classification, and AASIST authenticity
+inference execute on a QtConcurrent worker, including WAV parsing and model
+loading. UI controls are read and copied **before** starting; worker closures
+never access widgets. A single panel allows only one active invocation.
+
+While a job runs, the panel shows an **indeterminate** progress indicator
+because the ONNX adapters do not expose a meaningful percentage. The action
+buttons remain disabled until the backend returns, so requests cannot pile up.
+**Discard result** suppresses the response but does **not** terminate a model
+inference already executing. The panel explicitly states this limitation;
+it remains busy until the backend has safely completed, then becomes usable
+again. Closing the panel destroys GUI callbacks without a worker dereferencing
+its widgets. No ROS 2 or sensor dependencies are introduced.
+
+The pinned-model headless Qt tests additionally verify that a timer callback
+runs while each backend executes and that actions are disabled until
+completion. AASIST exercises the discard path and recovery. Qt's Concurrent
+module is required only for the optional demo, not for libaudition itself.
+
 ## Building the backend workbench
 
 Example:

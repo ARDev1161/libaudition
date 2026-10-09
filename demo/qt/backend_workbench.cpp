@@ -1,4 +1,5 @@
 #include "backend_workbench.hpp"
+#include "async_panel_runner.hpp"
 
 #include "wav_io.hpp"
 #include "optional_backend_workbench.hpp"
@@ -480,66 +481,65 @@ QWidget* createAasistPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                const auto wav = loadWavFrom(wavPath);
-                auto mono =
-                    monoFrom(wav, channel->value());
-
-                audition::AasistOnnxOptions options{};
-                options.model = fsPath(modelPath);
-                if (calibrated->isChecked()) {
-                    options.calibration =
-                        audition::AasistPlattCalibration{
-                            slope->value(),
-                            intercept->value()};
-                }
-
-                audition::AasistAuthenticityDetector detector{
-                    options};
-                const auto result =
-                    detector.analyze(mono.view());
-
-                std::ostringstream text;
-                text << "input="
-                     << wavSummary(wav).toStdString()
-                     << "\nbackend="
-                     << detector.backendInfo().name
-                     << "\nbona_fide_score=";
-                if (result.bona_fide_score.has_value()) {
-                    text << result.bona_fide_score->value;
-                } else {
-                    text << "<absent>";
-                }
-                text << "\nspoof_score=";
-                if (result.spoof_score.has_value()) {
-                    text << result.spoof_score->value;
-                } else {
-                    text << "<absent>";
-                }
-                text << "\nbona_fide_probability=";
-                if (result.bona_fide_probability.has_value()) {
-                    text << result.bona_fide_probability->value();
-                } else {
-                    text << "<uncalibrated>";
-                }
-                text << "\nspoof_probability=";
-                if (result.spoof_probability.has_value()) {
-                    text << result.spoof_probability->value();
-                } else {
-                    text << "<uncalibrated>";
-                }
-
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(
-                    exceptionText(error));
+            // Read widgets only on the GUI thread; the worker owns copies.
+            const auto wavFile = fsPath(wavPath);
+            const auto selectedChannel = channel->value();
+            audition::AasistOnnxOptions options{};
+            options.model = fsPath(modelPath);
+            if (calibrated->isChecked()) {
+                options.calibration =
+                    audition::AasistPlattCalibration{
+                        slope->value(),
+                        intercept->value()};
             }
+
+            runner->start(
+                [wavFile, selectedChannel, options]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    const auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
+
+                    audition::AasistAuthenticityDetector detector{options};
+                    const auto result = detector.analyze(mono.view());
+
+                    std::ostringstream text;
+                    text << "input="
+                         << wavSummary(wav).toStdString()
+                         << "\nbackend="
+                         << detector.backendInfo().name
+                         << "\nbona_fide_score=";
+                    if (result.bona_fide_score.has_value()) {
+                        text << result.bona_fide_score->value;
+                    } else {
+                        text << "<absent>";
+                    }
+                    text << "\nspoof_score=";
+                    if (result.spoof_score.has_value()) {
+                        text << result.spoof_score->value;
+                    } else {
+                        text << "<absent>";
+                    }
+                    text << "\nbona_fide_probability=";
+                    if (result.bona_fide_probability.has_value()) {
+                        text << result.bona_fide_probability->value();
+                    } else {
+                        text << "<uncalibrated>";
+                    }
+                    text << "\nspoof_probability=";
+                    if (result.spoof_probability.has_value()) {
+                        text << result.spoof_probability->value();
+                    } else {
+                        text << "<uncalibrated>";
+                    }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -645,63 +645,62 @@ QWidget* createClapPanel(QWidget* parent) {
     auto* output = outputBox();
     layout->addWidget(output);
 
+    // Both CLAP actions share one execution slot: repeated clicks cannot
+    // cause overlapping model loads or concurrent updates to this panel.
+    auto* runner = new AsyncPanelRunner{
+        page, layout, {embed, classify}, output};
+
     QObject::connect(
         embed,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                const auto wav = loadWavFrom(wavPath);
-                auto mono =
-                    monoFrom(wav, channel->value());
+            const auto wavFile = fsPath(wavPath);
+            const int selectedChannel = channel->value();
+            const auto modelFile = fsPath(audioModel);
+            runner->start(
+                [wavFile, selectedChannel, modelFile]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    const auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
+                    const auto result = runClapEmbedding(mono, modelFile);
 
-                const auto result =
-                    runClapEmbedding(
-                        mono,
-                        fsPath(audioModel));
-
-                double norm2 = 0.0;
-                for (const float value : result.values) {
-                    norm2 +=
-                        static_cast<double>(value) *
-                        static_cast<double>(value);
-                }
-
-                std::ostringstream text;
-                text << "input="
-                     << wavSummary(wav).toStdString()
-                     << "\nmodel_id="
-                     << result.model_id
-                     << "\ndimension="
-                     << result.values.size()
-                     << "\nl2_norm="
-                     << std::sqrt(norm2)
-                     << "\nquality=";
-                if (result.quality.has_value()) {
-                    text << result.quality->value();
-                } else {
-                    text << "<absent>";
-                }
-                text << "\nfirst_values=";
-                const std::size_t preview =
-                    std::min<std::size_t>(
-                        result.values.size(),
-                        10U);
-                for (std::size_t index = 0U;
-                     index < preview;
-                     ++index) {
-                    if (index != 0U) {
-                        text << ", ";
+                    double norm2 = 0.0;
+                    for (const float value : result.values) {
+                        norm2 +=
+                            static_cast<double>(value) *
+                            static_cast<double>(value);
                     }
-                    text << result.values[index];
-                }
 
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(
-                    exceptionText(error));
-            }
+                    std::ostringstream text;
+                    text << "input="
+                         << wavSummary(wav).toStdString()
+                         << "\nmodel_id="
+                         << result.model_id
+                         << "\ndimension="
+                         << result.values.size()
+                         << "\nl2_norm="
+                         << std::sqrt(norm2)
+                         << "\nquality=";
+                    if (result.quality.has_value()) {
+                        text << result.quality->value();
+                    } else {
+                        text << "<absent>";
+                    }
+                    text << "\nfirst_values=";
+                    const std::size_t preview =
+                        std::min<std::size_t>(result.values.size(), 10U);
+                    for (std::size_t index = 0U;
+                         index < preview;
+                         ++index) {
+                        if (index != 0U) {
+                            text << ", ";
+                        }
+                        text << result.values[index];
+                    }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     QObject::connect(
@@ -709,52 +708,52 @@ QWidget* createClapPanel(QWidget* parent) {
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                const auto wav = loadWavFrom(wavPath);
-                auto mono =
-                    monoFrom(wav, channel->value());
+            std::vector<std::string> candidates{};
+            for (const auto& part :
+                 labels->text().split(',', Qt::SkipEmptyParts)) {
+                candidates.push_back(part.trimmed().toStdString());
+            }
+            const auto wavFile = fsPath(wavPath);
+            const int selectedChannel = channel->value();
+            const auto audioModelFile = fsPath(audioModel);
+            const auto textModelFile = fsPath(textModel);
+            const auto tokenizerFile = fsPath(tokenizer);
+            const double selectedTemperature = temperature->value();
 
-                std::vector<std::string> candidates{};
-                for (const auto& part :
-                     labels->text().split(
-                         ',',
-                         Qt::SkipEmptyParts)) {
-                    candidates.push_back(
-                        part.trimmed().toStdString());
-                }
-                if (candidates.empty()) {
-                    throw std::runtime_error{
-                        "Enter at least one candidate label"};
-                }
-
-                const auto result =
-                    runClapClassification(
+            runner->start(
+                [wavFile, selectedChannel, audioModelFile, textModelFile,
+                 tokenizerFile, selectedTemperature,
+                 candidates = std::move(candidates)]() -> QString {
+                    if (candidates.empty()) {
+                        throw std::runtime_error{
+                            "Enter at least one candidate label"};
+                    }
+                    const auto wav = demo::loadWav(wavFile);
+                    const auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
+                    const auto result = runClapClassification(
                         mono,
-                        fsPath(audioModel),
-                        fsPath(textModel),
-                        fsPath(tokenizer),
-                        temperature->value(),
+                        audioModelFile,
+                        textModelFile,
+                        tokenizerFile,
+                        selectedTemperature,
                         candidates);
 
-                std::ostringstream text;
-                text << "input="
-                     << wavSummary(wav).toStdString()
-                     << "\n";
-                for (const auto& item : result.classes) {
-                    text << item.label
-                         << "="
-                         << item.probability.value()
+                    std::ostringstream text;
+                    text << "input="
+                         << wavSummary(wav).toStdString()
                          << "\n";
-                }
-                text << "\nNote: probabilities are normalized only "
-                        "over the supplied candidate set.";
-
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(
-                    exceptionText(error));
-            }
+                    for (const auto& item : result.classes) {
+                        text << item.label
+                             << "="
+                             << item.probability.value()
+                             << "\n";
+                    }
+                    text << "\nNote: probabilities are normalized only "
+                            "over the supplied candidate set.";
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
