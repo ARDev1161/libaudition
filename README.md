@@ -91,8 +91,9 @@ cmake --build build-qt -j
 ```
 
 It includes interactive DSP, SPL/range, temporal smoothing, source-identity,
-AcousticEvent and synthetic-pipeline tabs plus a build-status matrix for
-optional ODAS/Sherpa/CLAP/AASIST/WORLD/GTSAM/etc. adapters.
+AcousticEvent and synthetic-pipeline tabs, plus a real WAV/model backend
+workbench for enabled WORLD, AASIST, CLAP, Sherpa VAD/ASR/TTS and ODAS
+adapters. Disabled adapters remain visible with their required CMake option.
 
 See [`docs/qt_demo.md`](docs/qt_demo.md).
 
