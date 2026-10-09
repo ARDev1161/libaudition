@@ -215,8 +215,7 @@ void verifyWorkbench(QWidget* root) {
         {"Diarization", "Run speaker diarization"},
     };
     const int expectedCount =
-        static_cast<int>(sizeof(sherpaRunners) / sizeof(sherpaRunners[0])) +
-        LIBAUDITION_DEMO_HAS_SHERPA_TTS;
+        static_cast<int>(sizeof(sherpaRunners) / sizeof(sherpaRunners[0])) + 1;
     if (sherpa->count() != expectedCount) {
         throw std::runtime_error{"Qt self-test: unexpected Sherpa runner count"};
     }
@@ -225,8 +224,10 @@ void verifyWorkbench(QWidget* root) {
     }
 #if LIBAUDITION_DEMO_HAS_SHERPA_TTS
     requireAction(
-        requireTab(sherpa, "VITS/Piper TTS"),
+        requireTab(sherpa, "VITS / Piper TTS"),
         "Synthesize with VITS/Piper");
+#else
+    static_cast<void>(requireTab(sherpa, "TTS"));
 #endif
 #endif
 
