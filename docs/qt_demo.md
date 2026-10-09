@@ -246,8 +246,16 @@ When TTS is also enabled:
 a VITS/Piper synthesis panel appears. It accepts model/tokens/espeak-ng data,
 text, language, speed, and speaker ID, then writes synthesized PCM16 WAV.
 
-The remaining Sherpa features without dedicated runner panels are the speaker
-embedding, verification, identification, and diarization stack.
+Dedicated speaker panels also cover:
+
+- speaker embedding extraction with dimension, norm, quality, and vector preview;
+- end-to-end speaker verification from a reference and candidate WAV;
+- in-memory speaker identification from one or more enrollment WAVs per speaker;
+- offline speaker diarization with editable clustering and segmentation controls.
+
+The enrollment index used by the demo is deliberately temporary; it demonstrates
+the computational `ISpeakerIdentifier` contract rather than pretending to be
+application persistence.
 
 ### ODAS runner
 

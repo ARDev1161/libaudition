@@ -2,6 +2,7 @@
 
 #include "wav_io.hpp"
 #include "sherpa_extended_workbench.hpp"
+#include "sherpa_speaker_workbench.hpp"
 
 #include <audition/audition.hpp>
 
@@ -1053,6 +1054,7 @@ QWidget* createSherpaPanel(QWidget* parent) {
     }
 
     addSherpaExtendedWorkbenchTabs(tabs);
+    addSherpaSpeakerWorkbenchTabs(tabs);
 
 #if LIBAUDITION_DEMO_HAS_SHERPA_TTS
     // VITS/Piper TTS
