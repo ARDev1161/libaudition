@@ -980,68 +980,56 @@ QWidget* createSherpaPanel(QWidget* parent) {
         asrLayout->addWidget(run);
         asrLayout->addWidget(output);
 
+        auto* runner = new AsyncPanelRunner{
+            asrPage, asrLayout, {run}, output};
         QObject::connect(
             run,
             &QPushButton::clicked,
             asrPage,
             [=]() {
-                try {
-                    const auto wav =
-                        loadWavFrom(wavPath);
-                    auto mono =
-                        monoFrom(
-                            wav,
-                            channel->value());
+                // Never read widgets from a worker thread.
+                const auto wavFile = fsPath(wavPath);
+                const int selectedChannel = channel->value();
 
-                    audition::SherpaOfflineAsrOptions options{};
-                    audition::SherpaOfflineWhisperModel model{};
-                    model.encoder = fsPath(encoder);
-                    model.decoder = fsPath(decoder);
-                    model.language =
-                        language->text().toStdString();
-                    model.task = "transcribe";
-                    model.enable_token_timestamps = true;
-                    options.model = std::move(model);
-                    options.tokens = fsPath(tokens);
-                    options.features.sample_rate_hz =
-                        mono.format().sample_rate_hz;
+                audition::SherpaOfflineAsrOptions options{};
+                audition::SherpaOfflineWhisperModel model{};
+                model.encoder = fsPath(encoder);
+                model.decoder = fsPath(decoder);
+                model.language = language->text().toStdString();
+                model.task = "transcribe";
+                model.enable_token_timestamps = true;
+                options.model = std::move(model);
+                options.tokens = fsPath(tokens);
 
-                    audition::SherpaOfflineAsr asr{
-                        options};
+                runner->start(
+                    [wavFile, selectedChannel,
+                     options = std::move(options)]() mutable -> QString {
+                        const auto wav = demo::loadWav(wavFile);
+                        auto mono = demo::selectMonoChannel(
+                            wav.audio.view(),
+                            static_cast<std::size_t>(selectedChannel));
+                        options.features.sample_rate_hz =
+                            mono.format().sample_rate_hz;
+                        audition::SherpaOfflineAsr asr{options};
 
-                    audition::SpeechSegment segment{};
-                    segment.segment_id =
-                        audition::SpeechSegmentId{1U};
-                    segment.audio =
-                        std::move(mono);
+                        audition::SpeechSegment segment{};
+                        segment.segment_id = audition::SpeechSegmentId{1U};
+                        segment.audio = std::move(mono);
+                        const auto transcript = asr.transcribe(segment);
 
-                    const auto transcript =
-                        asr.transcribe(segment);
-
-                    std::ostringstream text;
-                    text << "text="
-                         << transcript.text
-                         << "\nlanguage="
-                         << transcript.language
-                         << "\ntokens="
-                         << transcript.tokens.size()
-                         << "\nwords="
-                         << transcript.words.size()
-                         << "\nconfidence=";
-                    if (transcript.confidence
-                            .has_value()) {
-                        text << transcript.confidence
-                                    ->value();
-                    } else {
-                        text << "<absent>";
-                    }
-                    output->setPlainText(
-                        QString::fromStdString(
-                            text.str()));
-                } catch (const std::exception& error) {
-                    output->setPlainText(
-                        exceptionText(error));
-                }
+                        std::ostringstream text;
+                        text << "text=" << transcript.text
+                             << "\nlanguage=" << transcript.language
+                             << "\ntokens=" << transcript.tokens.size()
+                             << "\nwords=" << transcript.words.size()
+                             << "\nconfidence=";
+                        if (transcript.confidence.has_value()) {
+                            text << transcript.confidence->value();
+                        } else {
+                            text << "<absent>";
+                        }
+                        return QString::fromStdString(text.str());
+                    });
             });
 
         tabs->addTab(asrPage, "Offline ASR");
@@ -1141,71 +1129,54 @@ QWidget* createSherpaPanel(QWidget* parent) {
         ttsLayout->addWidget(run);
         ttsLayout->addWidget(output);
 
+        auto* runner = new AsyncPanelRunner{
+            ttsPage, ttsLayout, {run}, output};
         QObject::connect(
             run,
             &QPushButton::clicked,
             ttsPage,
             [=]() {
-                try {
-                    audition::SherpaTtsOptions options{};
-                    auto& vits =
-                        std::get<
-                            audition::SherpaTtsVitsModel>(
-                            options.model);
-                    vits.model =
-                        fsPath(model);
-                    vits.tokens =
-                        fsPath(tokens);
-                    vits.data_dir =
-                        fsPath(dataDir);
-                    if (!lexicon->text().isEmpty()) {
-                        vits.lexicon =
-                            fsPath(lexicon);
-                    }
-                    options.speaker_id =
-                        speaker->value();
-                    if (!language->text().isEmpty()) {
-                        options.languages = {
-                            language->text().toStdString()};
-                    }
-
-                    audition::SherpaTts tts{
-                        options};
-
-                    audition::SpeechSynthesisRequest request{};
-                    request.text =
-                        textInput->text().toStdString();
-                    request.language =
-                        language->text().toStdString();
-                    request.speed =
-                        speed->value();
-
-                    const auto audio =
-                        tts.synthesize(request);
-                    demo::saveWavPcm16(
-                        std::filesystem::path{
-                            outputPath->text()
-                                .toStdString()},
-                        audio.view());
-
-                    std::ostringstream text;
-                    text << "backend="
-                         << tts.backendInfo().name
-                         << "\nsample_rate_hz="
-                         << audio.format().sample_rate_hz
-                         << "\nframes="
-                         << audio.frameCount()
-                         << "\nduration_s="
-                         << audio.duration().seconds()
-                         << "\nsaved="
-                         << outputPath->text().toStdString();
-                    output->setPlainText(
-                        QString::fromStdString(
-                            text.str()));
-                } catch (const std::exception& error) {
-                    output->setPlainText(
-                        exceptionText(error));
+                audition::SherpaTtsOptions options{};
+                auto& vits = std::get<
+                    audition::SherpaTtsVitsModel>(options.model);
+                vits.model = fsPath(model);
+                vits.tokens = fsPath(tokens);
+                vits.data_dir = fsPath(dataDir);
+                if (!lexicon->text().isEmpty()) {
+                    vits.lexicon = fsPath(lexicon);
                 }
+                options.speaker_id = speaker->value();
+                if (!language->text().isEmpty()) {
+                    options.languages = {
+                        language->text().toStdString()};
+                }
+
+                audition::SpeechSynthesisRequest request{};
+                request.text = textInput->text().toStdString();
+                request.language = language->text().toStdString();
+                request.speed = speed->value();
+                const auto wavFile = fsPath(outputPath);
+
+                runner->start(
+                    [options = std::move(options),
+                     request = std::move(request),
+                     wavFile]() -> QString {
+                        audition::SherpaTts tts{options};
+                        const auto audio = tts.synthesize(request);
+                        // Writes are a side-effect: discarding the UI result
+                        // does NOT roll back the completed output WAV.
+                        demo::saveWavPcm16(wavFile, audio.view());
+
+                        std::ostringstream text;
+                        text << "backend=" << tts.backendInfo().name
+                             << "\nsample_rate_hz="
+                             << audio.format().sample_rate_hz
+                             << "\nframes=" << audio.frameCount()
+                             << "\nduration_s="
+                             << audio.duration().seconds()
+                             << "\nsaved=" << wavFile.string();
+                        return QString::fromStdString(text.str());
+                    });
             });
 
         tabs->addTab(ttsPage, "VITS / Piper TTS");
