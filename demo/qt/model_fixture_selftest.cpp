@@ -378,6 +378,22 @@ QString testSherpaAsyncFailures(QMainWindow& window) {
         }
     }
 
+    for (const auto& item : {
+             std::pair<const char*, const char*>{
+                 "Language ID", "Identify language"},
+             {"Audio tagging", "Run audio tagging"},
+             {"Denoise", "Run denoiser"}}) {
+        auto* panel = requireTab(tabs, item.first);
+        auto* action = requireButton(panel, item.second);
+        action->click();
+        const QString error = awaitAsyncCompletion(panel, action);
+        requireContains(error, "error:");
+        if (!action->isEnabled()) {
+            throw std::runtime_error{
+                "Sherpa secondary runner remained disabled after failure"};
+        }
+    }
+
     // All speaker panels must keep the Qt event loop responsive while
     // model/WAV validation and inference run off-thread.
     for (const auto& item : {
