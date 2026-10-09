@@ -8,6 +8,7 @@ include(CTest)
 
 option(LIBAUDITION_BUILD_TESTS "Build GoogleTest unit tests" ${BUILD_TESTING})
 option(LIBAUDITION_BUILD_EXAMPLES "Build examples" ON)
+option(LIBAUDITION_BUILD_QT_DEMO "Build the optional Qt Widgets playground" OFF)
 option(LIBAUDITION_BUILD_DOCS "Build Doxygen documentation" OFF)
 option(LIBAUDITION_WITH_SPDLOG "Build the spdlog logging adapter" ON)
 option(LIBAUDITION_WITH_ODAS "Build the direct libodas spatial-audio backend" OFF)
@@ -109,6 +110,10 @@ endif()
 
 if(LIBAUDITION_BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+if(LIBAUDITION_BUILD_QT_DEMO)
+    add_subdirectory(demo/qt)
 endif()
 
 if(LIBAUDITION_BUILD_TESTS)
