@@ -3,6 +3,7 @@
 
 #include <audition/audio/audio_buffer.hpp>
 
+#include <QByteArray>
 #include <QElapsedTimer>
 #include <QFormLayout>
 #include <QLabel>
