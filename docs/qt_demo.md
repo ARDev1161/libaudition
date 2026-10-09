@@ -467,3 +467,18 @@ Headless `--model-self-test=world` processes an actual generated sine-wave WAV
 through WORLD and checks output dimensions. `--model-self-test=odas-errors`
 checks ODAS asynchronous error propagation and retry without pretending that a
 synthetic microphone arrangement validates source localization performance.
+
+## Asynchronous optional DSP and fusion runners
+
+libsamplerate WAV resampling, WebRTC AEC3 playback/capture processing, and
+acoustic-only GTSAM fusion now run on background Qt workers. All controls
+are snapshotted on the GUI thread. Each panel offers a single in-flight
+operation with honest indeterminate progress and non-interrupting result
+discard. Resampler/AEC3 output WAV writes remain filesystem side effects
+even if a result is discarded.
+
+The headless model-fixture harness checks complete WAV resampling at 16 to
+48 kHz, AEC3 processing of full 10 ms frames with WAV export, and a
+position-observation GTSAM fusion run, all through the real Qt buttons.
+These tests validate functionality and lifecycle, not acoustic cancellation
+or spatial-estimation accuracy across real recordings.
