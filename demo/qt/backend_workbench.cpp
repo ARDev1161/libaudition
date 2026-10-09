@@ -815,39 +815,38 @@ QWidget* createSherpaPanel(QWidget* parent) {
         vadLayout->addWidget(run);
         vadLayout->addWidget(output);
 
+        auto* runner = new AsyncPanelRunner{
+            vadPage, vadLayout, {run}, output};
         QObject::connect(
             run,
             &QPushButton::clicked,
             vadPage,
             [=]() {
-                try {
-                    const auto wav =
-                        loadWavFrom(wavPath);
-                    auto mono =
-                        monoFrom(
-                            wav,
-                            channel->value());
+                const auto wavFile = fsPath(wavPath);
+                const int selectedChannel = channel->value();
+                const auto modelFile = fsPath(modelPath);
+                const int selectedModel = modelType->currentIndex();
+                const float selectedThreshold =
+                    static_cast<float>(threshold->value());
 
+                runner->start(
+                    [wavFile, selectedChannel, modelFile,
+                     selectedModel, selectedThreshold]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    const auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
                     audition::SherpaVadOptions options{};
-                    if (modelType->currentIndex() == 0) {
-                        auto& model =
-                            std::get<
-                                audition::SherpaSileroVadModel>(
-                                options.model);
-                        model.model =
-                            fsPath(modelPath);
-                        model.threshold =
-                            static_cast<float>(
-                                threshold->value());
+                    if (selectedModel == 0) {
+                        auto& model = std::get<
+                            audition::SherpaSileroVadModel>(options.model);
+                        model.model = modelFile;
+                        model.threshold = selectedThreshold;
                     } else {
                         audition::SherpaTenVadModel model{};
-                        model.model =
-                            fsPath(modelPath);
-                        model.threshold =
-                            static_cast<float>(
-                                threshold->value());
-                        options.model =
-                            std::move(model);
+                        model.model = modelFile;
+                        model.threshold = selectedThreshold;
+                        options.model = std::move(model);
                     }
                     options.sample_rate_hz =
                         mono.format().sample_rate_hz;
@@ -922,13 +921,8 @@ QWidget* createSherpaPanel(QWidget* parent) {
                     } else {
                         text << "<backend does not expose calibrated probability>";
                     }
-                    output->setPlainText(
-                        QString::fromStdString(
-                            text.str()));
-                } catch (const std::exception& error) {
-                    output->setPlainText(
-                        exceptionText(error));
-                }
+                    return QString::fromStdString(text.str());
+                    });
             });
 
         tabs->addTab(vadPage, "VAD");
