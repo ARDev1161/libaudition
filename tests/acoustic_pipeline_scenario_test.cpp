@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 
 #include <gtest/gtest.h>
 
