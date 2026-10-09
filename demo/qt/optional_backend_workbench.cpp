@@ -42,7 +42,7 @@
 
 namespace {
 
-QString exceptionText(const std::exception& error) {
+[[maybe_unused]] QString exceptionText(const std::exception& error) {
     return QStringLiteral("error: ") + QString::fromUtf8(error.what());
 }
 
@@ -53,14 +53,14 @@ QLabel* description(const QString& text) {
     return label;
 }
 
-QPlainTextEdit* outputBox() {
+[[maybe_unused]] QPlainTextEdit* outputBox() {
     auto* output = new QPlainTextEdit;
     output->setReadOnly(true);
     output->setMinimumHeight(220);
     return output;
 }
 
-QSpinBox* intBox(
+[[maybe_unused]] QSpinBox* intBox(
     int minimum,
     int maximum,
     int value,
@@ -72,7 +72,7 @@ QSpinBox* intBox(
     return box;
 }
 
-QDoubleSpinBox* doubleBox(
+[[maybe_unused]] QDoubleSpinBox* doubleBox(
     double minimum,
     double maximum,
     double value,
@@ -86,7 +86,7 @@ QDoubleSpinBox* doubleBox(
     return box;
 }
 
-QWidget* inputPathEditor(
+[[maybe_unused]] QWidget* inputPathEditor(
     QLineEdit*& edit,
     QWidget* parent,
     const QString& filter = QStringLiteral("All files (*)")) {
@@ -114,7 +114,7 @@ QWidget* inputPathEditor(
     return row;
 }
 
-QWidget* outputPathEditor(
+[[maybe_unused]] QWidget* outputPathEditor(
     QLineEdit*& edit,
     QWidget* parent,
     const QString& defaultName) {
@@ -142,18 +142,18 @@ QWidget* outputPathEditor(
     return row;
 }
 
-std::filesystem::path fsPath(const QLineEdit* edit) {
+[[maybe_unused]] std::filesystem::path fsPath(const QLineEdit* edit) {
     return std::filesystem::path{edit->text().toStdString()};
 }
 
-demo::LoadedWav loadWav(const QLineEdit* edit) {
+[[maybe_unused]] demo::LoadedWav loadWav(const QLineEdit* edit) {
     if (edit->text().trimmed().isEmpty()) {
         throw std::runtime_error{"WAV path is required"};
     }
     return demo::loadWav(fsPath(edit));
 }
 
-QString audioSummary(audition::AudioView audio) {
+[[maybe_unused]] QString audioSummary(audition::AudioView audio) {
     std::ostringstream text;
     text << "sample_rate_hz=" << audio.format().sample_rate_hz
          << " channels=" << audio.format().channel_count
@@ -162,7 +162,7 @@ QString audioSummary(audition::AudioView audio) {
     return QString::fromStdString(text.str());
 }
 
-audition::AudioBuffer sliceFrames(
+[[maybe_unused]] audition::AudioBuffer sliceFrames(
     audition::AudioView audio,
     std::size_t firstFrame,
     std::size_t frameCount,
@@ -206,7 +206,7 @@ audition::AudioBuffer sliceFrames(
         sequence};
 }
 
-void appendAudio(
+[[maybe_unused]] void appendAudio(
     std::vector<float>& destination,
     const audition::AudioBuffer& source) {
     if (source.format().layout != audition::AudioLayout::Interleaved) {
