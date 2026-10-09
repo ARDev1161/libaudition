@@ -78,6 +78,24 @@ for SPL/range calibration, temporal smoothing, persistent source identity,
 See [`docs/cli_examples.md`](docs/cli_examples.md) for arguments and expected
 output.
 
+## Qt playground
+
+An optional Qt Widgets application provides an interactive overview of the
+library without bringing Qt into libaudition itself:
+
+```bash
+cmake -S . -B build-qt \
+  -DLIBAUDITION_BUILD_QT_DEMO=ON
+cmake --build build-qt -j
+./build-qt/demo/qt/libaudition_qt_demo
+```
+
+It includes interactive DSP, SPL/range, temporal smoothing, source-identity,
+AcousticEvent and synthetic-pipeline tabs plus a build-status matrix for
+optional ODAS/Sherpa/CLAP/AASIST/WORLD/GTSAM/etc. adapters.
+
+See [`docs/qt_demo.md`](docs/qt_demo.md).
+
 ## Consume from CMake
 
 ```cmake

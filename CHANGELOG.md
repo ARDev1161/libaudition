@@ -6,6 +6,10 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ## [Unreleased]
 
+### Added
+
+- Optional Qt Widgets playground covering dependency-free DSP, SPL/range, temporal smoothing, source identity, AcousticEvent and synthetic pipeline flows, plus a feature/status matrix for optional backends.
+
 ## [0.5.0] - 2026-10-09
 
 ### Added
