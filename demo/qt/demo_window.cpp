@@ -1,6 +1,7 @@
 #include "demo_window.hpp"
 
 #include "backend_workbench.hpp"
+#include "wav_io.hpp"
 
 #include <audition/audition.hpp>
 
@@ -17,10 +18,14 @@
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QTemporaryDir>
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <stdexcept>
 #include <cstdint>
 #include <exception>
 #include <iomanip>
@@ -125,6 +130,148 @@ QString methodName(audition::RangeEstimate::Method method) {
         return "Fused";
     }
     return "Unknown";
+}
+
+
+QWidget* requireTab(QTabWidget* tabs, const char* name) {
+    if (tabs == nullptr) {
+        throw std::runtime_error{"Qt self-test: missing tab widget"};
+    }
+    const auto title = QString::fromLatin1(name);
+    for (int index = 0; index < tabs->count(); ++index) {
+        if (tabs->tabText(index) == title) {
+            return tabs->widget(index);
+        }
+    }
+    throw std::runtime_error{
+        "Qt self-test: missing tab '" + title.toStdString() + "'"};
+}
+
+void requireAction(QWidget* page, const char* action) {
+    const auto expected = QString::fromLatin1(action);
+    const auto buttons = page->findChildren<QPushButton*>();
+    const auto found = std::any_of(
+        buttons.begin(),
+        buttons.end(),
+        [&](const QPushButton* button) {
+            return button->text() == expected && button->isEnabled();
+        });
+    if (!found) {
+        throw std::runtime_error{
+            "Qt self-test: missing enabled action '" +
+            expected.toStdString() + "'"};
+    }
+}
+
+void verifyWorkbench(QWidget* root) {
+    auto* appTabs = qobject_cast<QTabWidget*>(root);
+    if (appTabs == nullptr || appTabs->count() != 9) {
+        throw std::runtime_error{"Qt self-test: unexpected application tab count"};
+    }
+    for (const char* name : {
+             "Overview",
+             "Audio / DSP",
+             "SPL / Range",
+             "Smoothing",
+             "Source identity",
+             "AcousticEvent",
+             "Pipeline",
+             "Backend workbench",
+             "Backends"}) {
+        static_cast<void>(requireTab(appTabs, name));
+    }
+
+    auto* backendPage = requireTab(appTabs, "Backend workbench");
+    auto* backends = backendPage->findChild<QTabWidget*>();
+    if (backends == nullptr || backends->count() != 9) {
+        throw std::runtime_error{"Qt self-test: unexpected backend tab count"};
+    }
+    for (const char* name : {
+             "WAV", "WORLD", "AASIST", "CLAP", "Sherpa",
+             "ODAS", "libsamplerate", "AEC3", "GTSAM"}) {
+        static_cast<void>(requireTab(backends, name));
+    }
+
+#if LIBAUDITION_DEMO_HAS_SHERPA
+    auto* sherpa = requireTab(backends, "Sherpa")->findChild<QTabWidget*>();
+    if (sherpa == nullptr) {
+        throw std::runtime_error{"Qt self-test: Sherpa runner tabs missing"};
+    }
+    struct Runner {
+        const char* tab;
+        const char* button;
+    };
+    const Runner sherpaRunners[] = {
+        {"VAD", "Run VAD"},
+        {"Offline ASR", "Run offline Whisper ASR"},
+        {"Streaming ASR", "Run streaming ASR"},
+        {"KWS", "Run keyword spotting"},
+        {"Language ID", "Identify language"},
+        {"Audio tagging", "Run audio tagging"},
+        {"Denoise", "Run denoiser"},
+        {"Speaker embedding", "Extract speaker embedding"},
+        {"Speaker verification", "Verify speaker"},
+        {"Speaker identification", "Build index and identify"},
+        {"Diarization", "Run speaker diarization"},
+    };
+    const int expectedCount =
+        static_cast<int>(sizeof(sherpaRunners) / sizeof(sherpaRunners[0])) +
+        LIBAUDITION_DEMO_HAS_SHERPA_TTS;
+    if (sherpa->count() != expectedCount) {
+        throw std::runtime_error{"Qt self-test: unexpected Sherpa runner count"};
+    }
+    for (const auto& runner : sherpaRunners) {
+        requireAction(requireTab(sherpa, runner.tab), runner.button);
+    }
+#if LIBAUDITION_DEMO_HAS_SHERPA_TTS
+    requireAction(
+        requireTab(sherpa, "VITS/Piper TTS"),
+        "Synthesize with VITS/Piper");
+#endif
+#endif
+
+#if LIBAUDITION_DEMO_HAS_SAMPLERATE
+    requireAction(requireTab(backends, "libsamplerate"), "Resample WAV");
+#endif
+#if LIBAUDITION_DEMO_HAS_AEC3
+    requireAction(requireTab(backends, "AEC3"), "Run AEC3");
+#endif
+#if LIBAUDITION_DEMO_HAS_GTSAM
+    requireAction(requireTab(backends, "GTSAM"), "Fuse observations");
+#endif
+}
+
+void verifyWavRoundTrip() {
+    QTemporaryDir directory;
+    if (!directory.isValid()) {
+        throw std::runtime_error{"Qt self-test: failed to create temporary directory"};
+    }
+    const std::filesystem::path path{
+        directory.filePath("roundtrip.wav").toStdString()};
+
+    audition::AudioBuffer input{
+        {-1.0F, 0.0F, 0.5F, -0.5F, 0.25F, -0.25F, 0.0F, 1.0F},
+        {48000U, 2U, audition::AudioLayout::Interleaved},
+        ts(0)};
+    demo::saveWavPcm16(path, input.view());
+    const auto loaded = demo::loadWav(path);
+    if (loaded.info.format_tag != 1U ||
+        loaded.info.bits_per_sample != 16U ||
+        loaded.audio.format().sample_rate_hz != 48000U ||
+        loaded.audio.format().channel_count != 2U ||
+        loaded.audio.frameCount() != 4U) {
+        throw std::runtime_error{"Qt self-test: WAV format round-trip"};
+    }
+    const auto mono = demo::selectMonoChannel(loaded.audio.view(), 1U);
+    const float expected[] = {0.0F, -0.5F, -0.25F, 1.0F};
+    if (mono.frameCount() != 4U || mono.format().channel_count != 1U) {
+        throw std::runtime_error{"Qt self-test: WAV channel selection"};
+    }
+    for (std::size_t index = 0U; index < 4U; ++index) {
+        if (std::abs(mono.samples()[index] - expected[index]) > 0.00004F) {
+            throw std::runtime_error{"Qt self-test: WAV sample mismatch"};
+        }
+    }
 }
 
 }  // namespace
@@ -911,6 +1058,9 @@ QWidget* DemoWindow::createCapabilitiesTab() {
 
 bool DemoWindow::runSelfTest(QString* report) {
     try {
+        verifyWorkbench(centralWidget());
+        verifyWavRoundTrip();
+
         std::vector<float> samples{
             -1.0F, 0.0F, 1.0F, 0.0F};
         audition::AudioBuffer audio{
