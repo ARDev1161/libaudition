@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -362,6 +363,20 @@ QString testSherpaAsyncFailures(QMainWindow& window) {
     button->click();
     const QString second = awaitAsyncCompletion(asr, button);
     requireContains(second, "error:");
+    for (const auto& item : {
+             std::pair<const char*, const char*>{
+                 "Streaming ASR", "Run streaming ASR"},
+             {"KWS", "Run keyword spotting"}}) {
+        auto* panel = requireTab(tabs, item.first);
+        auto* action = requireButton(panel, item.second);
+        action->click();
+        const QString error = awaitAsyncCompletion(panel, action);
+        requireContains(error, "error:");
+        if (!action->isEnabled()) {
+            throw std::runtime_error{
+                "Sherpa action remained disabled after worker failure"};
+        }
+    }
 
 #if LIBAUDITION_DEMO_HAS_SHERPA_TTS
     auto* tts = requireTab(tabs, "VITS / Piper TTS");

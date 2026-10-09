@@ -350,6 +350,18 @@ fallback initialization range are editable. This panel intentionally remains
 acoustic-only; camera, radar, robot-state, and other cross-modal fusion belong
 in the application consuming libaudition.
 
+## Asynchronous streaming ASR and keyword spotting
+
+Streaming ASR and keyword spotting now run WAV decoding, Sherpa session setup,
+and frame-by-frame processing inside Qt worker tasks. Model family, paths,
+tokenizer, sample-rate contract, chunk length and detection parameters are
+snapshotted on the GUI thread. Busy state, indeterminate progress and
+non-interrupting **Discard result** follow the existing async runner behavior.
+
+The Sherpa headless `sherpa-errors` scenario also checks both panels' error
+paths and action re-enabling. No pinned streaming ASR/KWS model is bundled in
+this stage; successful transcript/keyword inference is **not** claimed.
+
 ## Asynchronous offline ASR and VITS/Piper TTS
 
 Offline Whisper ASR (WAV decoding, model creation, transcription) and

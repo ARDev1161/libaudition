@@ -1,4 +1,5 @@
 #include "sherpa_extended_workbench.hpp"
+#include "async_panel_runner.hpp"
 
 #include "wav_io.hpp"
 
@@ -279,26 +280,35 @@ QWidget* createStreamingAsrPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                auto mono = loadMono(wavPath, channel);
+            // Capture widget values and complete model configuration on UI thread.
+            const auto wavFile = fsPath(wavPath);
+            const int selectedChannel = channel->value();
+            const auto selectedBlock =
+                static_cast<std::size_t>(chunkFrames->value());
+            audition::SherpaStreamingAsrOptions options{};
+            options.model = onlineModel(
+                modelKind->currentIndex(),
+                primary, decoder, joiner);
+            options.tokens = fsPath(tokens);
+            options.features.sample_rate_hz =
+                static_cast<std::uint32_t>(sampleRate->value());
+            options.features.feature_dim =
+                static_cast<std::uint32_t>(featureDim->value());
+            options.enable_endpoint = endpoint->isChecked();
 
-                audition::SherpaStreamingAsrOptions options{};
-                options.model = onlineModel(
-                    modelKind->currentIndex(),
-                    primary,
-                    decoder,
-                    joiner);
-                options.tokens = fsPath(tokens);
-                options.features.sample_rate_hz =
-                    static_cast<std::uint32_t>(sampleRate->value());
-                options.features.feature_dim =
-                    static_cast<std::uint32_t>(featureDim->value());
-                options.enable_endpoint = endpoint->isChecked();
+            runner->start(
+                [wavFile, selectedChannel, selectedBlock,
+                 options = std::move(options)]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
 
                 audition::SherpaStreamingAsr engine{options};
                 auto session = engine.createSession();
@@ -308,8 +318,7 @@ QWidget* createStreamingAsrPanel(QWidget* parent) {
                 bool endpointDetected = false;
                 std::string lastPartial{};
 
-                const std::size_t block =
-                    static_cast<std::size_t>(chunkFrames->value());
+                const std::size_t block = selectedBlock;
                 for (std::size_t offset = 0U;
                      offset < mono.frameCount();
                      offset += block) {
@@ -343,10 +352,8 @@ QWidget* createStreamingAsrPanel(QWidget* parent) {
                      << "\nlanguage=" << finalTranscript.language
                      << "\ntokens=" << finalTranscript.tokens.size()
                      << "\nwords=" << finalTranscript.words.size();
-                output->setPlainText(QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -412,40 +419,48 @@ QWidget* createKeywordSpotterPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                auto mono = loadMono(wavPath, channel);
+            // Capture widget values and complete model configuration on UI thread.
+            const auto wavFile = fsPath(wavPath);
+            const int selectedChannel = channel->value();
+            const auto selectedBlock =
+                static_cast<std::size_t>(chunkFrames->value());
+            audition::SherpaKeywordSpotterOptions options{};
+            options.model = onlineModel(
+                modelKind->currentIndex(),
+                primary, decoder, joiner);
+            options.tokens = fsPath(tokens);
+            options.features.sample_rate_hz =
+                static_cast<std::uint32_t>(sampleRate->value());
+            options.features.feature_dim =
+                static_cast<std::uint32_t>(featureDim->value());
+            options.keywords = keywords->text().toStdString();
+            options.keywords_score =
+                static_cast<float>(score->value());
+            options.keywords_threshold =
+                static_cast<float>(threshold->value());
+            options.num_trailing_blanks =
+                trailingBlanks->value();
 
-                audition::SherpaKeywordSpotterOptions options{};
-                options.model = onlineModel(
-                    modelKind->currentIndex(),
-                    primary,
-                    decoder,
-                    joiner);
-                options.tokens = fsPath(tokens);
-                options.features.sample_rate_hz =
-                    static_cast<std::uint32_t>(sampleRate->value());
-                options.features.feature_dim =
-                    static_cast<std::uint32_t>(featureDim->value());
-                options.keywords = keywords->text().toStdString();
-                options.keywords_score =
-                    static_cast<float>(score->value());
-                options.keywords_threshold =
-                    static_cast<float>(threshold->value());
-                options.num_trailing_blanks =
-                    trailingBlanks->value();
+            runner->start(
+                [wavFile, selectedChannel, selectedBlock,
+                 options = std::move(options)]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
 
                 audition::SherpaKeywordSpotter spotter{options};
                 auto session = spotter.createSession();
 
                 std::vector<audition::KeywordHit> hits;
                 std::size_t chunks = 0U;
-                const std::size_t block =
-                    static_cast<std::size_t>(chunkFrames->value());
+                const std::size_t block = selectedBlock;
 
                 for (std::size_t offset = 0U;
                      offset < mono.frameCount();
@@ -480,10 +495,8 @@ QWidget* createKeywordSpotterPanel(QWidget* parent) {
                     }
                     text << "\n";
                 }
-                output->setPlainText(QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
