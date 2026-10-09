@@ -539,6 +539,13 @@ jobs:
           LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
           LIBAUDITION_TEST_CLAP_TOKENIZER_GOLDEN: ${{ github.workspace }}/build-clap/tokenizer_golden.tsv
         run: ctest --test-dir build-clap --output-on-failure
+      - name: Test actual CLAP Qt workbench inference
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBAUDITION_TEST_CLAP_AUDIO_MODEL: ${{ github.workspace }}/build-clap/clap_audio.onnx
+          LIBAUDITION_TEST_CLAP_TEXT_MODEL: ${{ github.workspace }}/build-clap/clap_text.onnx
+          LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
+        run: ./build-clap/demo/qt/libaudition_qt_demo --model-self-test=clap
       - name: Install
         run: cmake --install build-clap --prefix "$PWD/install-clap"
       - name: Verify installed CLAP package from C++17 consumer
@@ -621,6 +628,11 @@ jobs:
         env:
           LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
         run: ctest --test-dir build-aasist --output-on-failure
+      - name: Test actual AASIST Qt workbench inference
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
+        run: ./build-aasist/demo/qt/libaudition_qt_demo --model-self-test=aasist
       - name: Install
         run: cmake --install build-aasist --prefix "$PWD/install-aasist"
       - name: Verify installed AASIST package from C++17 consumer
