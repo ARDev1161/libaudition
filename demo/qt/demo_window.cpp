@@ -191,6 +191,21 @@ void verifyWorkbench(QWidget* root) {
              "ODAS", "libsamplerate", "AEC3", "GTSAM"}) {
         static_cast<void>(requireTab(backends, name));
     }
+    requireAction(requireTab(backends, "WAV"), "Inspect WAV");
+
+#if LIBAUDITION_DEMO_HAS_WORLD
+    requireAction(requireTab(backends, "WORLD"), "Run WORLD analysis");
+#endif
+#if LIBAUDITION_DEMO_HAS_AASIST
+    requireAction(requireTab(backends, "AASIST"), "Run AASIST");
+#endif
+#if LIBAUDITION_DEMO_HAS_CLAP
+    requireAction(requireTab(backends, "CLAP"), "Embed audio");
+    requireAction(requireTab(backends, "CLAP"), "Open-vocabulary classify");
+#endif
+#if LIBAUDITION_DEMO_HAS_ODAS
+    requireAction(requireTab(backends, "ODAS"), "Run ODAS over WAV");
+#endif
 
 #if LIBAUDITION_DEMO_HAS_SHERPA
     auto* sherpa = requireTab(backends, "Sherpa")->findChild<QTabWidget*>();
