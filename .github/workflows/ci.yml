@@ -123,6 +123,30 @@ jobs:
       - name: Test under sanitizers
         run: ctest --test-dir build-sanitizers --output-on-failure
 
+  qt-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev
+      - name: Configure Qt playground
+        run: >-
+          cmake -S . -B build-qt-demo -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=OFF
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build Qt playground
+        run: cmake --build build-qt-demo --parallel
+      - name: Headless Qt playground self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-qt-demo/demo/qt/libaudition_qt_demo --self-test
+
   odas-backend:
     runs-on: ubuntu-latest
     steps:
