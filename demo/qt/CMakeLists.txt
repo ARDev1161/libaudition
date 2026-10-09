@@ -1,5 +1,5 @@
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Concurrent REQUIRED)
-find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Concurrent REQUIRED)
 
 add_executable(libaudition_qt_demo
     main.cpp
