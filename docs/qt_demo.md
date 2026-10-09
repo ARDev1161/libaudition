@@ -350,6 +350,19 @@ fallback initialization range are editable. This panel intentionally remains
 acoustic-only; camera, radar, robot-state, and other cross-modal fusion belong
 in the application consuming libaudition.
 
+## Asynchronous language ID, audio tagging and denoising
+
+The remaining Sherpa model-backed Qt panels — Whisper language identification,
+Zipformer/CED audio tagging, and offline/streaming GTCRN/DPDFNet denoising —
+use the same Qt worker as other model runners. Model selection, sample-rate
+settings, selected channel and output path are snapshotted before dispatch;
+no worker closure reads a QWidget. Denoising WAV export is a background
+side effect; discarding the result does **not** undo a written WAV.
+
+Headless Sherpa smoke tests assert the asynchronous error path and GUI
+recovery for these tabs. Runtime accuracy remains unverified without pinned
+model-specific fixtures.
+
 ## Asynchronous speaker intelligence
 
 Speaker embedding, speaker verification, ephemeral WAV-based enrollment and
