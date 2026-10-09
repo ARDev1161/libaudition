@@ -65,7 +65,9 @@ and retain their own independent licenses/provenance.
 
 ```cmake
 find_package(libaudition CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE audition::core audition::dsp audition::pipeline)
+target_link_libraries(my_app PRIVATE
+  audition::core audition::dsp audition::spatial
+  audition::memory audition::pipeline)
 ```
 
 ```cpp
@@ -74,4 +76,4 @@ target_link_libraries(my_app PRIVATE audition::core audition::dsp audition::pipe
 
 ## Status
 
-Version `0.2.x` adds the first direct spatial backend. Public APIs may evolve before `1.0`.
+Version `0.5.0` completes the planned acoustic perception pipeline: optional speech/classification/voice backends, acoustic spatial fusion and persistent source identity, calibrated SPL/range priors, temporal metric smoothing, and explicit `AcousticEvent` assembly. Public APIs may still evolve before `1.0`.

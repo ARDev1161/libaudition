@@ -5,5 +5,7 @@
 
 TEST(PublicHeaders, UmbrellaHeaderCompiles) {
     EXPECT_EQ(audition::kVersionMajor, 0);
-    EXPECT_EQ(audition::kVersionMinor, 2);
+    EXPECT_EQ(audition::kVersionMinor, 5);
+    EXPECT_EQ(audition::kVersionPatch, 0);
+    EXPECT_EQ(audition::kVersion, "0.5.0");
 }

@@ -1,4 +1,4 @@
-# libaudition v0.1 specification
+# libaudition specification
 
 ## Mission
 
