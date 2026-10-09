@@ -335,6 +335,11 @@ jobs:
         env:
           LIBAUDITION_TEST_SILERO_MODEL: ${{ github.workspace }}/build-sherpa/silero_vad.onnx
         run: ctest --test-dir build-sherpa --output-on-failure
+      - name: Test actual Silero VAD Qt workbench inference
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBAUDITION_TEST_SILERO_MODEL: ${{ github.workspace }}/build-sherpa/silero_vad.onnx
+        run: ./build-sherpa/demo/qt/libaudition_qt_demo --model-self-test=silero
       - name: Install
         run: cmake --install build-sherpa --prefix "$PWD/install-sherpa"
       - name: Verify installed sherpa backend package from C++17 consumer
