@@ -1,0 +1,122 @@
+name: Cleanup merged PR branches
+
+# Installing this workflow performs a one-time sweep when merged into main.
+# Later sweeps are explicitly manual to avoid surprise deletions.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cleanup-merged-branches.yml
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only report eligible branches without deleting"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    name: Delete safely merged feature branches
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const fullRepo = owner + "/" + repo;
+            const dryRun = context.eventName === "workflow_dispatch" &&
+              context.payload.inputs?.dry_run === "true";
+
+            // Only temporary engineering namespaces are eligible. Never delete
+            // main, release/*, or long-lived integration branches.
+            const eligible = /^(feat|fix|refactor|test|chore)\//;
+            const allBranches = await github.paginate(
+              github.rest.repos.listBranches, { owner, repo, per_page: 100 });
+            const closed = await github.paginate(
+              github.rest.pulls.list,
+              { owner, repo, state: "closed", per_page: 100 });
+            const opened = await github.paginate(
+              github.rest.pulls.list,
+              { owner, repo, state: "open", per_page: 100 });
+
+            const closedMerged = closed.filter(pr =>
+              pr.merged_at !== null &&
+              pr.head.repo?.full_name === fullRepo);
+            const openBranches = new Set(
+              opened.filter(pr => pr.head.repo?.full_name === fullRepo)
+                    .map(pr => pr.head.ref));
+
+            const deleted = [];
+            const skipped = [];
+            const errors = [];
+
+            for (const branch of allBranches) {
+              const name = branch.name;
+              if (!eligible.test(name) || branch.protected || name === "main") {
+                skipped.push({ name, reason: "protected or outside cleanup namespace" });
+                continue;
+              }
+              if (openBranches.has(name)) {
+                skipped.push({ name, reason: "open pull request" });
+                continue;
+              }
+
+              // PR merge graphs may diverge. A merged PR with exact head
+              // SHA is the required evidence. Never delete a branch after
+              // new commits have been pushed to it.
+              const matchingPr = closedMerged.find(pr =>
+                pr.head.ref === name &&
+                pr.head.sha === branch.commit.sha);
+              if (!matchingPr) {
+                skipped.push({ name, reason: "no merged PR with exact current head" });
+                continue;
+              }
+
+              if (dryRun) {
+                core.info("[dry-run] would delete " + name +
+                          " (PR #" + matchingPr.number + ")");
+                deleted.push({ name, pr: matchingPr.number });
+                continue;
+              }
+
+              // Re-check the exact head immediately before deleting.
+              const current = await github.rest.git.getRef({
+                owner, repo, ref: "heads/" + name });
+              if (current.data.object.sha !== branch.commit.sha) {
+                skipped.push({ name, reason: "branch head changed during sweep" });
+                continue;
+              }
+
+              try {
+                await github.rest.git.deleteRef({
+                  owner, repo, ref: "heads/" + name });
+                core.info("deleted " + name +
+                          " (merged PR #" + matchingPr.number + ")");
+                deleted.push({ name, pr: matchingPr.number });
+              } catch (error) {
+                errors.push({ name, reason: String(error) });
+                core.warning("could not delete " + name + ": " + error.message);
+              }
+            }
+
+            await core.summary
+              .addHeading(dryRun ? "Merged branch cleanup (dry-run)" : "Merged branch cleanup")
+              .addRaw("Deleted/eligible: " + deleted.length +
+                      "; skipped: " + skipped.length +
+                      "; errors: " + errors.length + "\n\n")
+              .addTable([
+                [{data:"Branch",header:true},{data:"Merged PR",header:true}],
+                ...deleted.map(v => [v.name, "#" + v.pr])
+              ])
+              .addDetails("Skipped branches", skipped.map(v =>
+                v.name + ": " + v.reason).join("\n") || "None")
+              .write();
+
+            if (errors.length) {
+              core.setFailed("Failed to delete " + errors.length + " eligible branches");
+            }
