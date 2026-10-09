@@ -1,6 +1,7 @@
 #include "backend_workbench.hpp"
 
 #include "wav_io.hpp"
+#include "sherpa_extended_workbench.hpp"
 
 #include <audition/audition.hpp>
 
@@ -1050,6 +1051,8 @@ QWidget* createSherpaPanel(QWidget* parent) {
 
         tabs->addTab(asrPage, "Offline ASR");
     }
+
+    addSherpaExtendedWorkbenchTabs(tabs);
 
 #if LIBAUDITION_DEMO_HAS_SHERPA_TTS
     // VITS/Piper TTS

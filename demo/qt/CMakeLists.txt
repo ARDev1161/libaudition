@@ -7,6 +7,8 @@ add_executable(libaudition_qt_demo
     demo_window.hpp
     backend_workbench.cpp
     backend_workbench.hpp
+    sherpa_extended_workbench.cpp
+    sherpa_extended_workbench.hpp
     wav_io.cpp
     wav_io.hpp)
 

@@ -226,7 +226,16 @@ When built with:
 the current runner provides:
 
 - Silero or TEN VAD over a WAV file in model-sized blocks;
-- offline Whisper ASR with encoder/decoder/tokens.
+- offline Whisper ASR with encoder/decoder/tokens;
+- streaming ASR over explicitly chunked WAV input, including partial-result and
+  endpoint status;
+- keyword spotting with selectable online model family, inline keywords,
+  score/threshold controls, and hit offsets;
+- Whisper spoken-language identification;
+- Zipformer or CED audio tagging with configurable top-k output;
+- GTCRN or DPDFNet speech denoising in offline or streaming mode. Streaming
+  mode uses the backend-reported `preferred_frame_count`, and denoised output
+  is written as PCM16 WAV.
 
 When TTS is also enabled:
 
@@ -237,8 +246,8 @@ When TTS is also enabled:
 a VITS/Piper synthesis panel appears. It accepts model/tokens/espeak-ng data,
 text, language, speed, and speaker ID, then writes synthesized PCM16 WAV.
 
-Other sherpa capabilities remain listed in the Backends feature matrix and can
-be added as runner panels without changing the library API.
+The remaining Sherpa features without dedicated runner panels are the speaker
+embedding, verification, identification, and diarization stack.
 
 ### ODAS runner
 
