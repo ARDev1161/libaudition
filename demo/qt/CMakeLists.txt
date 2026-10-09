@@ -43,6 +43,18 @@ if(LIBAUDITION_WITH_ODAS)
     target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_odas)
 endif()
 
+if(LIBAUDITION_WITH_LIBSAMPLERATE)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_samplerate)
+endif()
+
+if(LIBAUDITION_WITH_WEBRTC_AEC3)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_webrtc_aec3)
+endif()
+
+if(LIBAUDITION_WITH_GTSAM)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_gtsam)
+endif()
+
 if(LIBAUDITION_WITH_SHERPA)
     target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_sherpa)
 endif()
