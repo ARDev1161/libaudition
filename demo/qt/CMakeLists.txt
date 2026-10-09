@@ -7,6 +7,8 @@ add_executable(libaudition_qt_demo
     demo_window.hpp
     backend_workbench.cpp
     backend_workbench.hpp
+    model_fixture_selftest.cpp
+    model_fixture_selftest.hpp
     optional_backend_workbench.cpp
     optional_backend_workbench.hpp
     sherpa_extended_workbench.cpp
