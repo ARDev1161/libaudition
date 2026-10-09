@@ -26,7 +26,7 @@
 
 namespace {
 
-QWidget* requireTab(QTabWidget* tabs, const QString& name) {
+[[maybe_unused]] QWidget* requireTab(QTabWidget* tabs, const QString& name) {
     if (tabs == nullptr) {
         throw std::runtime_error{"Missing QTabWidget"};
     }
@@ -39,14 +39,14 @@ QWidget* requireTab(QTabWidget* tabs, const QString& name) {
         "Missing tab: " + name.toStdString()};
 }
 
-QWidget* runnerPage(QMainWindow& window, const QString& name) {
+[[maybe_unused]] QWidget* runnerPage(QMainWindow& window, const QString& name) {
     auto* root = qobject_cast<QTabWidget*>(window.centralWidget());
     auto* workbench = requireTab(root, "Backend workbench");
     auto* tabs = workbench->findChild<QTabWidget*>();
     return requireTab(tabs, name);
 }
 
-QLineEdit* requireFormEdit(QWidget* panel, const QString& fieldName) {
+[[maybe_unused]] QLineEdit* requireFormEdit(QWidget* panel, const QString& fieldName) {
     auto* form = panel->findChild<QFormLayout*>();
     if (form == nullptr) {
         throw std::runtime_error{"Missing backend form"};
@@ -78,7 +78,7 @@ QLineEdit* requireFormEdit(QWidget* panel, const QString& fieldName) {
         "Missing field: " + fieldName.toStdString()};
 }
 
-QPushButton* requireButton(QWidget* panel, const QString& caption) {
+[[maybe_unused]] QPushButton* requireButton(QWidget* panel, const QString& caption) {
     for (auto* button : panel->findChildren<QPushButton*>()) {
         if (button->text() == caption) {
             return button;
@@ -88,7 +88,7 @@ QPushButton* requireButton(QWidget* panel, const QString& caption) {
         "Missing button: " + caption.toStdString()};
 }
 
-QString clickAndRead(QWidget* panel, const QString& buttonText) {
+[[maybe_unused]] QString clickAndRead(QWidget* panel, const QString& buttonText) {
     auto* button = requireButton(panel, buttonText);
     auto* output = static_cast<QPlainTextEdit*>(nullptr);
     for (auto* candidate :
@@ -115,7 +115,7 @@ QString clickAndRead(QWidget* panel, const QString& buttonText) {
     return result;
 }
 
-std::filesystem::path requireModelEnv(const char* name) {
+[[maybe_unused]] std::filesystem::path requireModelEnv(const char* name) {
     const QByteArray value = qgetenv(name);
     if (value.isEmpty()) {
         throw std::runtime_error{
@@ -130,7 +130,7 @@ std::filesystem::path requireModelEnv(const char* name) {
     return path;
 }
 
-std::filesystem::path createFixture(
+[[maybe_unused]] std::filesystem::path createFixture(
     const QTemporaryDir& dir,
     std::uint32_t rate,
     std::size_t frames) {
@@ -153,7 +153,7 @@ std::filesystem::path createFixture(
     return path;
 }
 
-void requireContains(
+[[maybe_unused]] void requireContains(
     const QString& text,
     const QString& fragment) {
     if (!text.contains(fragment)) {
