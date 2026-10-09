@@ -139,3 +139,144 @@ qt-demo-self-test=ok
 
 The self-test executes real dependency-free DSP, SPL calibration, range-prior,
 temporal-smoothing, source-identity, and AcousticEvent code.
+
+
+## Real backend workbench
+
+The **Backend workbench** tab runs concrete libaudition backend classes when
+those adapters are enabled at build time.
+
+### WAV loader
+
+The demo owns a small explicit file adapter for uncompressed RIFF/WAV input:
+
+- PCM 8/16/24/32-bit;
+- IEEE float32;
+- arbitrary channel count;
+- interleaved conversion into `AudioBuffer`.
+
+The loader does **not** resample, normalize, or automatically downmix. Model
+panels expose an explicit channel selector when a mono backend is used. A
+sample-rate mismatch is allowed to fail through the backend contract rather
+than being silently corrected.
+
+The demo can also write interleaved PCM16 WAV output for generated audio.
+
+### WORLD runner
+
+When built with:
+
+```bash
+-DLIBAUDITION_WITH_WORLD=ON
+```
+
+the WORLD panel loads a selected WAV channel and runs both:
+
+- `WorldVoiceTraitsEstimator`;
+- `WorldAcousticAnalyzer`.
+
+The GUI exposes DIO+StoneMask/Harvest selection, F0 bounds, and frame period,
+then reports pitch statistics, voiced-frame count, FFT size, feature dimensions,
+and a preview of the F0 contour.
+
+### AASIST runner
+
+When built with:
+
+```bash
+-DLIBAUDITION_WITH_AASIST=ON
+```
+
+the panel accepts an AASIST ONNX path plus mono WAV input and runs
+`AasistAuthenticityDetector`.
+
+Raw bona-fide/spoof scores are shown separately from probabilities. Optional
+Platt slope/intercept controls explicitly enable calibrated probabilities.
+
+The backend's existing mono 16 kHz / 64600-frame contract remains authoritative.
+
+### CLAP runner
+
+When built with:
+
+```bash
+-DLIBAUDITION_WITH_CLAP=ON
+```
+
+the panel supports two real operations:
+
+- audio embedding through `ClapAudioEmbedder`;
+- open-vocabulary classification through `ClapOpenVocabularyClassifier`.
+
+For open-vocabulary use, select the audio ONNX, text ONNX, tokenizer JSON, and
+enter a comma-separated candidate set. Returned probabilities are explicitly
+candidate-relative.
+
+CLAP keeps its strict mono 48 kHz input contract; the demo does not hide a
+resampler in front of it.
+
+### Sherpa runner
+
+When built with:
+
+```bash
+-DLIBAUDITION_WITH_SHERPA=ON
+```
+
+the current runner provides:
+
+- Silero or TEN VAD over a WAV file in model-sized blocks;
+- offline Whisper ASR with encoder/decoder/tokens.
+
+When TTS is also enabled:
+
+```bash
+-DLIBAUDITION_SHERPA_ENABLE_TTS=ON
+```
+
+a VITS/Piper synthesis panel appears. It accepts model/tokens/espeak-ng data,
+text, language, speed, and speaker ID, then writes synthesized PCM16 WAV.
+
+Other sherpa capabilities remain listed in the Backends feature matrix and can
+be added as runner panels without changing the library API.
+
+### ODAS runner
+
+When built with:
+
+```bash
+-DLIBAUDITION_WITH_ODAS=ON
+```
+
+the ODAS panel processes a multichannel WAV one configured hop at a time using
+`OdasSpatialEngine`.
+
+The microphone geometry and 0-based input-channel mapping are editable. The
+pre-filled four-microphone cross is only an example and is not treated as a
+hidden ReSpeaker calibration.
+
+The output reports processed hops, hops containing tracks, maximum simultaneous
+tracks, and the last azimuth/elevation/activity for each observed transient
+track ID.
+
+## Building the backend workbench
+
+Example:
+
+```bash
+cmake -S . -B build-workbench \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLIBAUDITION_BUILD_QT_DEMO=ON \
+  -DLIBAUDITION_WITH_ODAS=ON \
+  -DLIBAUDITION_WITH_WORLD=ON \
+  -DLIBAUDITION_WITH_AASIST=ON \
+  -DLIBAUDITION_WITH_CLAP=ON \
+  -DLIBAUDITION_WITH_SHERPA=ON \
+  -DLIBAUDITION_SHERPA_ENABLE_TTS=ON
+
+cmake --build build-workbench -j
+./build-workbench/demo/qt/libaudition_qt_demo
+```
+
+Only adapters enabled by CMake are linked into the executable. Disabled runner
+tabs remain visible and explain which option is required.

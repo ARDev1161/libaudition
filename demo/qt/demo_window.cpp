@@ -1,5 +1,7 @@
 #include "demo_window.hpp"
 
+#include "backend_workbench.hpp"
+
 #include <audition/audition.hpp>
 
 #include <QDoubleSpinBox>
@@ -143,6 +145,7 @@ DemoWindow::DemoWindow(QWidget* parent)
     tabs->addTab(createIdentityTab(), "Source identity");
     tabs->addTab(createEventsTab(), "AcousticEvent");
     tabs->addTab(createPipelineTab(), "Pipeline");
+    tabs->addTab(createBackendWorkbench(tabs), "Backend workbench");
     tabs->addTab(createCapabilitiesTab(), "Backends");
     setCentralWidget(tabs);
 }
