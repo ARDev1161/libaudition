@@ -77,7 +77,7 @@ QPlainTextEdit* outputBox() {
     return output;
 }
 
-QDoubleSpinBox* doubleBox(
+[[maybe_unused]] QDoubleSpinBox* doubleBox(
     double minimum,
     double maximum,
     double value,
@@ -1209,7 +1209,7 @@ QWidget* createSherpaPanel(QWidget* parent) {
 #endif
 }
 
-std::vector<std::size_t> parseChannelMap(
+[[maybe_unused]] std::vector<std::size_t> parseChannelMap(
     const QString& text) {
     std::vector<std::size_t> result{};
     for (const auto& part :
@@ -1231,7 +1231,7 @@ std::vector<std::size_t> parseChannelMap(
     return result;
 }
 
-std::vector<audition::MicrophoneGeometry>
+[[maybe_unused]] std::vector<audition::MicrophoneGeometry>
 parseGeometry(const QString& text) {
     std::vector<audition::MicrophoneGeometry> result{};
     for (const auto& line :
