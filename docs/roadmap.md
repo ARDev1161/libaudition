@@ -154,8 +154,16 @@ TMP-01 acoustic temporal smoothing:
 - Gaps beyond `max_gap` reinitialize the affected metric state instead of mixing stale estimates.
 - `endTrack()` must be called on tracker termination so reused numeric track IDs cannot inherit old state.
 
+CAL-01 SPL calibration:
+- `SoundPressureCalibrationProfile` records an auditable reference SPL, measured dBFS, reference frequency, explicit frequency weighting, named digital signal path, and uncertainty.
+- `SoundPressureLevelCalibrator` derives a dB offset from that reference and converts compatible dBFS observations to `SoundLevelObservation`.
+- Calibration uncertainty and current measurement uncertainty are propagated additively in dB².
+- Exact zero RMS (`-inf dBFS`) yields no finite SPL observation rather than a fabricated floor.
+- Signal-path and weighting mismatches are rejected so a profile cannot silently be reused after gain/routing/filter changes.
+- The helper does not implement A/C weighting filters or microphone frequency-response compensation; those transformations must be part of the calibrated signal path.
+- End-to-end tests cover dBFS -> calibrated SPL -> source-level range prior.
+
 Next slices:
-- SPL calibration helpers and calibration-data contracts.
 - AcousticEvent pipeline completion and end-to-end acoustic scenario tests.
 
 ## 1.0

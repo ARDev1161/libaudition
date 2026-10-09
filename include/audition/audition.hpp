@@ -15,4 +15,5 @@
 #include <audition/pipeline.hpp>
 #include <audition/registry/factory_registry.hpp>
 #include <audition/spatial/level_range_prior.hpp>
+#include <audition/spatial/spl_calibration.hpp>
 #include <audition/spatial/temporal_smoother.hpp>

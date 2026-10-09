@@ -38,6 +38,7 @@ install(TARGETS libaudition_interfaces EXPORT libauditionTargets)
 
 add_library(libaudition_spatial
     spatial/level_range_prior.cpp
+    spatial/spl_calibration.cpp
     spatial/temporal_smoother.cpp)
 add_library(audition::spatial ALIAS libaudition_spatial)
 set_target_properties(libaudition_spatial PROPERTIES
