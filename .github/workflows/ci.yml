@@ -226,6 +226,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-samplerate/demo/qt/libaudition_qt_demo --self-test
+      - name: Qt async samplerate functional smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-samplerate/demo/qt/libaudition_qt_demo --model-self-test=samplerate
       - name: Test
         run: ctest --test-dir build-samplerate --output-on-failure
       - name: Install
@@ -276,6 +280,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-aec3/demo/qt/libaudition_qt_demo --self-test
+      - name: Qt async aec3 functional smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-aec3/demo/qt/libaudition_qt_demo --model-self-test=aec3
       - name: Test
         run: ctest --test-dir build-aec3 --output-on-failure
       - name: Install
@@ -788,6 +796,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-gtsam/demo/qt/libaudition_qt_demo --self-test
+      - name: Qt async gtsam functional smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-gtsam/demo/qt/libaudition_qt_demo --model-self-test=gtsam
       - name: Test
         run: ctest --test-dir build-gtsam --output-on-failure
       - name: Install

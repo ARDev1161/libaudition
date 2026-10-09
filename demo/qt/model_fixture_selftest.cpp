@@ -465,6 +465,102 @@ QString testOdasErrors(QMainWindow& window) {
 #endif
 }
 
+[[maybe_unused]] QPlainTextEdit* requireFormMultiline(
+    QWidget* panel, const QString& name) {
+    auto* form = panel->findChild<QFormLayout*>();
+    if (form == nullptr) {
+        throw std::runtime_error{"Missing form in optional panel"};
+    }
+    for (int i = 0; i < form->rowCount(); ++i) {
+        auto* labelItem = form->itemAt(i, QFormLayout::LabelRole);
+        const auto* label = labelItem
+            ? qobject_cast<QLabel*>(labelItem->widget()) : nullptr;
+        if (label == nullptr || label->text() != name) {
+            continue;
+        }
+        auto* field = form->itemAt(i, QFormLayout::FieldRole);
+        auto* edit = field
+            ? qobject_cast<QPlainTextEdit*>(field->widget()) : nullptr;
+        if (edit != nullptr) {
+            return edit;
+        }
+    }
+    throw std::runtime_error{
+        "Missing multiline field: " + name.toStdString()};
+}
+
+QString testSamplerate(QMainWindow& window, const QTemporaryDir& dir) {
+#if LIBAUDITION_DEMO_HAS_SAMPLERATE
+    const auto wav = createFixture(dir, 16000U, 16000U);
+    const auto saved =
+        std::filesystem::path{dir.filePath("resampled.wav").toStdString()};
+    auto* panel = runnerPage(window, "libsamplerate");
+    requireFormEdit(panel, "Input WAV")->setText(
+        QString::fromStdString(wav.string()));
+    requireFormEdit(panel, "Output WAV")->setText(
+        QString::fromStdString(saved.string()));
+    const auto result = clickAndRead(panel, "Resample WAV");
+    requireContains(result, "saved=");
+    requireContains(result, "flush_frames=");
+    const auto output = demo::loadWav(saved);
+    if (output.audio.format().sample_rate_hz != 48000U ||
+        output.audio.frameCount() < 47000U ||
+        output.audio.frameCount() > 49000U) {
+        throw std::runtime_error{"Unexpected resampling output format"};
+    }
+    return "qt-model-self-test=ok backend=samplerate";
+#else
+    static_cast<void>(window);
+    static_cast<void>(dir);
+    throw std::runtime_error{"Qt demo was built without libsamplerate"};
+#endif
+}
+
+QString testAec3(QMainWindow& window, const QTemporaryDir& dir) {
+#if LIBAUDITION_DEMO_HAS_AEC3
+    const auto wav = createFixture(dir, 16000U, 3200U);
+    const auto saved =
+        std::filesystem::path{dir.filePath("aec3.wav").toStdString()};
+    auto* panel = runnerPage(window, "AEC3");
+    requireFormEdit(panel, "Captured WAV")->setText(
+        QString::fromStdString(wav.string()));
+    requireFormEdit(panel, "Playback/reference WAV")->setText(
+        QString::fromStdString(wav.string()));
+    requireFormEdit(panel, "Output WAV")->setText(
+        QString::fromStdString(saved.string()));
+    const auto result = clickAndRead(panel, "Run AEC3");
+    requireContains(result, "processed_blocks=");
+    requireContains(result, "echo_return_loss_db=");
+    const auto output = demo::loadWav(saved);
+    if (output.audio.format().sample_rate_hz != 16000U ||
+        output.audio.frameCount() != 3200U) {
+        throw std::runtime_error{"AEC3 produced unexpected WAV dimensions"};
+    }
+    return "qt-model-self-test=ok backend=aec3";
+#else
+    static_cast<void>(window);
+    static_cast<void>(dir);
+    throw std::runtime_error{"Qt demo was built without WebRTC AEC3"};
+#endif
+}
+
+QString testGtsam(QMainWindow& window) {
+#if LIBAUDITION_DEMO_HAS_GTSAM
+    auto* panel = runnerPage(window, "GTSAM");
+    requireFormMultiline(panel, "Position observations")->setPlainText(
+        "2,0,0,0.04,0.04,0.04\n"
+        "2.1,0.1,0,0.09,0.09,0.09");
+    const QString result = clickAndRead(panel, "Fuse observations");
+    requireContains(result, "backend=");
+    requireContains(result, "positions=2");
+    requireContains(result, "result=");
+    return "qt-model-self-test=ok backend=gtsam";
+#else
+    static_cast<void>(window);
+    throw std::runtime_error{"Qt demo was built without GTSAM"};
+#endif
+}
+
 }  // namespace
 
 bool runQtModelFixtureSelfTest(
@@ -490,6 +586,12 @@ bool runQtModelFixtureSelfTest(
             result = testWorld(window, dir);
         } else if (which == "odas-errors") {
             result = testOdasErrors(window);
+        } else if (which == "samplerate") {
+            result = testSamplerate(window, dir);
+        } else if (which == "aec3") {
+            result = testAec3(window, dir);
+        } else if (which == "gtsam") {
+            result = testGtsam(window);
         } else {
             throw std::runtime_error{
                 "Unknown model fixture (clap, aasist, silero, sherpa-errors, world, odas-errors)"};
