@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <exception>
 #include <iostream>
+#include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace {
 
