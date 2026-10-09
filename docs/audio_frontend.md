@@ -76,6 +76,36 @@ SNR is intentionally separate. `dsp::snrDb(signal_rms, noise_rms)` requires an
 explicit measured/estimated noise RMS. The library does not infer a trustworthy
 noise floor from an arbitrary single frame.
 
+### SPL calibration
+
+`SignalMetrics::rms_dbfs` remains a digital level. To convert it to physical
+sound-pressure level, use an explicit `SoundPressureCalibrationProfile` and
+`SoundPressureLevelCalibrator`.
+
+A profile records the SPL of a reference calibrator/source and the dBFS measured
+through the exact digital signal path being calibrated. For example, if a
+94 dB SPL / 1 kHz reference produces -26 dBFS RMS, the resulting calibration
+offset is +120 dB.
+
+The `signal_path_id` is deliberately opaque but mandatory. It should identify
+the complete capture path relevant to level, for example:
+
+```text
+respeaker_usb_v2.capture -> frontend.route.0 -> unity_post_gain
+```
+
+Changing microphone gain, frontend gain, routing, EQ, AGC, normalization, or any
+other level-changing processing invalidates that profile unless the same change
+was part of the calibrated path.
+
+The helper does not apply A- or C-weighting filters. A/C/Z is metadata checked
+between the calibration profile and observation; if weighted SPL is required,
+the corresponding weighting filter must be applied before the dBFS measurement
+and included in the named calibrated signal path.
+
+Exact digital silence produces `-inf dBFS`; calibration returns no
+`SoundLevelObservation` rather than inventing a finite acoustic noise floor.
+
 ## Noise suppression lifecycle
 
 `INoiseSuppressorSession` is a stateful stream contract. `process()` may return
