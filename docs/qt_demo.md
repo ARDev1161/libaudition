@@ -350,6 +350,18 @@ fallback initialization range are editable. This panel intentionally remains
 acoustic-only; camera, radar, robot-state, and other cross-modal fusion belong
 in the application consuming libaudition.
 
+## Asynchronous offline ASR and VITS/Piper TTS
+
+Offline Whisper ASR (WAV decoding, model creation, transcription) and
+VITS/Piper TTS (synthesis and WAV writing) use the same worker controller as
+CLAP/AASIST/VAD. All options are snapshotted on the GUI thread before the
+background invocation. The **Discard result** action only hides the result:
+in particular, it **does not undo an output WAV** already written by TTS.
+
+Without a pinned Whisper/VITS fixture, the headless `--model-self-test=sherpa-errors`
+scenario verifies worker error delivery, action re-enabling, and retry on
+Sherpa builds. It does **not** claim successful Whisper or TTS model inference.
+
 ## Asynchronous CLAP and AASIST inference
 
 CLAP embedding, CLAP open-vocabulary classification, and AASIST authenticity
