@@ -137,6 +137,31 @@ Successful output:
 qt-demo-self-test=ok
 ```
 
+### Real-model GUI smoke tests
+
+With optional CLAP/AASIST model fixtures available, the same executable can
+exercise the actual Qt buttons (not a parallel backend API path). It generates
+a WAV at the model's exact required sample rate, fills the file selectors in
+the workbench, clicks the button, validates the displayed output, and prints
+elapsed milliseconds without imposing an unstable CI performance threshold.
+
+```bash
+QT_QPA_PLATFORM=offscreen \
+LIBAUDITION_TEST_CLAP_AUDIO_MODEL=/path/to/clap_audio.onnx \
+LIBAUDITION_TEST_CLAP_TEXT_MODEL=/path/to/clap_text.onnx \
+LIBAUDITION_TEST_CLAP_TOKENIZER=/path/to/tokenizer.json \
+./build-workbench/demo/qt/libaudition_qt_demo --model-self-test=clap
+
+QT_QPA_PLATFORM=offscreen \
+LIBAUDITION_TEST_AASIST_MODEL=/path/to/aasist.onnx \
+./build-workbench/demo/qt/libaudition_qt_demo --model-self-test=aasist
+```
+
+CI reuses the pinned, checksum-verified model fixtures in the CLAP and AASIST
+jobs to run both tests, in addition to the existing direct backend tests. These
+smoke tests validate real inference and Qt wiring, not perceptual accuracy or
+UI responsiveness under sustained load.
+
 The self-test executes real dependency-free DSP, SPL calibration, range-prior,
 temporal-smoothing, source-identity, and AcousticEvent code. It also verifies
 the application and workbench tab tree, checks the actual enabled runner
