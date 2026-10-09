@@ -455,3 +455,15 @@ cmake --build build-workbench -j
 
 Only adapters enabled by CMake are linked into the executable. Disabled runner
 tabs remain visible and explain which option is required.
+
+## Asynchronous WORLD / ODAS runners
+
+WORLD voice-trait and acoustic analysis and ODAS multichannel WAV hops now
+run on worker threads. GUI settings are snapshotted first, and model
+processing never touches Qt widgets. Both panels have indeterminate progress,
+single-in-flight action guards, and result-discard semantics.
+
+Headless `--model-self-test=world` processes an actual generated sine-wave WAV
+through WORLD and checks output dimensions. `--model-self-test=odas-errors`
+checks ODAS asynchronous error propagation and retry without pretending that a
+synthetic microphone arrangement validates source localization performance.
