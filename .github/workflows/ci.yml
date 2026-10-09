@@ -324,6 +324,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-sherpa/demo/qt/libaudition_qt_demo --self-test
+      - name: Test asynchronous Sherpa GUI error and restart paths
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-sherpa/demo/qt/libaudition_qt_demo --model-self-test=sherpa-errors
       - name: Download pinned Silero VAD inference fixture
         shell: bash
         run: |
@@ -421,6 +425,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-sherpa-tts/demo/qt/libaudition_qt_demo --self-test
+      - name: Test asynchronous Sherpa GUI error and restart paths
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-sherpa-tts/demo/qt/libaudition_qt_demo --model-self-test=sherpa-errors
       - name: Test
         run: ctest --test-dir build-sherpa-tts --output-on-failure
       - name: Install
