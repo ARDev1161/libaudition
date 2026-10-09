@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <initializer_list>
+#include <vector>
 
 class QLabel;
 class QPlainTextEdit;
@@ -40,7 +41,7 @@ private:
     QProgressBar* progress_;
     QPushButton* discard_;
     QPlainTextEdit* output_;
-    QList<QPushButton*> actions_;
+    std::vector<QPushButton*> actions_;
     bool busy_{false};
     bool discarded_{false};
 };
