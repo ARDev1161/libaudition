@@ -52,3 +52,13 @@ endif()
 if(LIBAUDITION_WITH_WORLD)
     target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_world)
 endif()
+
+
+# GCC 13 can emit a false-positive -Wmaybe-uninitialized from the libstdc++
+# std::map destructor while inlining the default ExecutionTarget inside CLAP
+# option aggregates. Keep the diagnostic visible, but do not promote this one
+# compiler false-positive to an error for the demo target.
+if(LIBAUDITION_WITH_CLAP AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(libaudition_qt_demo PRIVATE
+        -Wno-error=maybe-uninitialized)
+endif()
