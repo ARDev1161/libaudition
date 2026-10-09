@@ -5,14 +5,17 @@
 
 #include <QByteArray>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QTabWidget>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QWidget>
 
 #include <cmath>
@@ -88,27 +91,71 @@ namespace {
         "Missing button: " + caption.toStdString()};
 }
 
-[[maybe_unused]] QString clickAndRead(QWidget* panel, const QString& buttonText) {
-    auto* button = requireButton(panel, buttonText);
-    auto* output = static_cast<QPlainTextEdit*>(nullptr);
-    for (auto* candidate :
-         panel->findChildren<QPlainTextEdit*>()) {
+[[maybe_unused]] QPlainTextEdit* requireOutput(QWidget* panel) {
+    for (auto* candidate : panel->findChildren<QPlainTextEdit*>()) {
         if (candidate->isReadOnly()) {
-            output = candidate;
-            break;
+            return candidate;
         }
     }
-    if (output == nullptr) {
-        throw std::runtime_error{"Missing result output widget"};
+    throw std::runtime_error{"Missing result output widget"};
+}
+
+[[maybe_unused]] QString awaitAsyncCompletion(
+    QWidget* panel,
+    QPushButton* runButton) {
+    auto* output = requireOutput(panel);
+    auto* progress = panel->findChild<QProgressBar*>("asyncProgress");
+    if (progress == nullptr || progress->isHidden() ||
+        runButton->isEnabled()) {
+        throw std::runtime_error{
+            "Inference did not enter asynchronous busy state"};
     }
+
+    bool eventLoopAlive = false;
+    // This callback can only execute if the GUI event loop is responsive.
+    QTimer::singleShot(0, panel, [&eventLoopAlive]() {
+        eventLoopAlive = true;
+    });
+
+    QEventLoop loop;
+    QTimer poll;
+    poll.setInterval(10);
+    QObject::connect(
+        &poll, &QTimer::timeout,
+        &loop, [&]() {
+            if (progress->isHidden()) {
+                loop.quit();
+            }
+        });
+    bool timedOut = false;
+    QTimer::singleShot(120000, &loop, [&]() {
+        timedOut = true;
+        loop.quit();
+    });
+    poll.start();
+    loop.exec();
+
+    if (timedOut || !progress->isHidden()) {
+        throw std::runtime_error{"Async GUI runner timed out"};
+    }
+    if (!eventLoopAlive || !runButton->isEnabled()) {
+        throw std::runtime_error{
+            "GUI event loop stalled or action remained disabled"};
+    }
+    return output->toPlainText();
+}
+
+[[maybe_unused]] QString clickAndRead(
+    QWidget* panel,
+    const QString& buttonText) {
+    auto* button = requireButton(panel, buttonText);
+    auto* output = requireOutput(panel);
     output->clear();
     button->click();
-    const QString result = output->toPlainText();
-    if (result.isEmpty()) {
-        throw std::runtime_error{
-            "Runner returned no output: " + buttonText.toStdString()};
-    }
-    if (result.startsWith("error:", Qt::CaseInsensitive)) {
+
+    const QString result = awaitAsyncCompletion(panel, button);
+    if (result.isEmpty() ||
+        result.startsWith("error:", Qt::CaseInsensitive)) {
         throw std::runtime_error{
             "Backend runner failed: " + result.toStdString()};
     }
@@ -237,6 +284,24 @@ QString testAasist(QMainWindow& window, const QTemporaryDir& dir) {
     requireContains(result, "spoof_score=");
     requireContains(result, "bona_fide_probability=<uncalibrated>");
     requireContains(result, "spoof_probability=<uncalibrated>");
+
+    // Cancellation is intentionally non-interrupting: discard the result,
+    // let the backend finish, then ensure the panel becomes reusable.
+    auto* action = requireButton(panel, "Run AASIST");
+    auto* discard = requireButton(panel, "Discard result");
+    action->click();
+    if (!discard->isEnabled()) {
+        throw std::runtime_error{
+            "Discard result was not enabled while inference ran"};
+    }
+    discard->click();
+    const QString discarded = awaitAsyncCompletion(panel, action);
+    requireContains(discarded, "Result discarded.");
+    if (discard->isEnabled()) {
+        throw std::runtime_error{
+            "Discard result remained enabled after completion"};
+    }
+
 
     return QStringLiteral(
         "qt-model-self-test=ok backend=aasist inference_ms=%1")
