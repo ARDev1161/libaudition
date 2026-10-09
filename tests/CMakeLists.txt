@@ -12,6 +12,7 @@ add_executable(libaudition_tests
     sound_prototype_matcher_test.cpp
     source_identity_resolver_test.cpp
     spatial_identity_coordinator_test.cpp
+    acoustic_event_assembler_test.cpp
     level_range_prior_test.cpp
     spl_calibration_test.cpp
     temporal_spatial_smoother_test.cpp
