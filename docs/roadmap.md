@@ -143,8 +143,18 @@ RNG-01 SPL/type range priors:
 - Result confidence remains zero because this is a range prior, not a calibrated probability that the distance is correct.
 - The estimator can emit a pose-anchored `ScalarRangeObservation` directly for spatial fusion.
 
+TMP-01 acoustic temporal smoothing:
+- `TemporalSpatialTrackSmoother` keeps bounded state per `SpatialTrackId` and smooths only acoustic metric range/position fields.
+- Successive estimates are not assumed independent; previous/current distributions are combined by exact two-component first/second moments.
+- Estimate disagreement therefore increases covariance instead of producing unjustified variance collapse.
+- Optional random-walk process variance rates are explicit and default to zero; libaudition does not invent source-motion uncertainty.
+- Range provenance becomes `Fused` and scalar confidence becomes zero only when temporal combination actually occurs.
+- Position covariance is validated as finite, symmetric and positive semidefinite before use.
+- Missing metric fields remain missing, while per-track timestamp ordering is still enforced after smoothing state exists.
+- Gaps beyond `max_gap` reinitialize the affected metric state instead of mixing stale estimates.
+- `endTrack()` must be called on tracker termination so reused numeric track IDs cannot inherit old state.
+
 Next slices:
-- Acoustic range/position temporal smoothing and track-level uncertainty handling.
 - SPL calibration helpers and calibration-data contracts.
 - AcousticEvent pipeline completion and end-to-end acoustic scenario tests.
 
