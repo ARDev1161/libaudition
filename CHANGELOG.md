@@ -9,7 +9,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 ### Added
 
 - Optional Qt Widgets playground covering dependency-free DSP, SPL/range, temporal smoothing, source identity, AcousticEvent and synthetic pipeline flows, plus a feature/status matrix for optional backends.
-- Qt backend workbench with explicit WAV I/O and runnable WORLD, AASIST, CLAP, Sherpa VAD/offline-ASR/streaming-ASR/KWS/language-ID/audio-tagging/speech-denoise/speaker-embedding/speaker-verification/speaker-identification/diarization/VITS-Piper-TTS, and ODAS panels when their adapters are enabled.
+- Qt backend workbench with explicit WAV I/O and runnable WORLD, AASIST, CLAP, Sherpa VAD/offline-ASR/streaming-ASR/KWS/language-ID/audio-tagging/speech-denoise/speaker-embedding/speaker-verification/speaker-identification/diarization/VITS-Piper-TTS, ODAS, libsamplerate, WebRTC AEC3, and GTSAM fusion panels when their adapters are enabled.
 
 ## [0.5.0] - 2026-10-09
 

@@ -1,6 +1,7 @@
 #include "backend_workbench.hpp"
 
 #include "wav_io.hpp"
+#include "optional_backend_workbench.hpp"
 #include "sherpa_extended_workbench.hpp"
 #include "sherpa_speaker_workbench.hpp"
 
@@ -1534,6 +1535,7 @@ QWidget* createBackendWorkbench(QWidget* parent) {
     tabs->addTab(
         createOdasPanel(tabs),
         "ODAS");
+    addOptionalBackendWorkbenchTabs(tabs);
 
     layout->addWidget(tabs);
     return page;

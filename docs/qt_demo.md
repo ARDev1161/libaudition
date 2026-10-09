@@ -276,6 +276,47 @@ The output reports processed hops, hops containing tracks, maximum simultaneous
 tracks, and the last azimuth/elevation/activity for each observed transient
 track ID.
 
+### libsamplerate runner
+
+When built with:
+
+```bash
+-DLIBAUDITION_WITH_LIBSAMPLERATE=ON
+```
+
+the runner resamples a WAV through the public `IAudioResamplerSession`,
+including `flush()`, preserves the input channel count, exposes all five
+libsamplerate converter modes, and writes PCM16 WAV output.
+
+### WebRTC AEC3 runner
+
+When built with:
+
+```bash
+-DLIBAUDITION_WITH_WEBRTC_AEC3=ON
+```
+
+the runner accepts separate captured and playback/reference WAVs. It feeds
+exact 10 ms frames to `IEchoCancellerSession`, exposes stream delay and the
+initial-filter controls, reports ERL/ERLE/delay metrics when available, and
+writes the processed capture to WAV. The backend contract remains visible:
+capture/reference sample rates must match and must be 16, 32, or 48 kHz.
+
+### GTSAM fusion runner
+
+When built with:
+
+```bash
+-DLIBAUDITION_WITH_GTSAM=ON
+```
+
+the runner accepts acoustic bearing, scalar-range, and position observations,
+then calls `GtsamSpatialFusion` and displays the resulting 3D mean and full
+3x3 covariance. Huber robustification, iteration count, bearing sigma, and
+fallback initialization range are editable. This panel intentionally remains
+acoustic-only; camera, radar, robot-state, and other cross-modal fusion belong
+in the application consuming libaudition.
+
 ## Building the backend workbench
 
 Example:
@@ -289,7 +330,10 @@ cmake -S . -B build-workbench \
   -DLIBAUDITION_WITH_AASIST=ON \
   -DLIBAUDITION_WITH_CLAP=ON \
   -DLIBAUDITION_WITH_SHERPA=ON \
-  -DLIBAUDITION_SHERPA_ENABLE_TTS=ON
+  -DLIBAUDITION_SHERPA_ENABLE_TTS=ON \
+  -DLIBAUDITION_WITH_LIBSAMPLERATE=ON \
+  -DLIBAUDITION_WITH_WEBRTC_AEC3=ON \
+  -DLIBAUDITION_WITH_GTSAM=ON
 
 cmake --build build-workbench -j
 ./build-workbench/demo/qt/libaudition_qt_demo

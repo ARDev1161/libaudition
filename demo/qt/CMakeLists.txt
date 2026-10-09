@@ -7,6 +7,8 @@ add_executable(libaudition_qt_demo
     demo_window.hpp
     backend_workbench.cpp
     backend_workbench.hpp
+    optional_backend_workbench.cpp
+    optional_backend_workbench.hpp
     sherpa_extended_workbench.cpp
     sherpa_extended_workbench.hpp
     sherpa_speaker_workbench.cpp
@@ -39,6 +41,18 @@ libaudition_configure_target(libaudition_qt_demo)
 
 if(LIBAUDITION_WITH_ODAS)
     target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_odas)
+endif()
+
+if(LIBAUDITION_WITH_LIBSAMPLERATE)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_samplerate)
+endif()
+
+if(LIBAUDITION_WITH_WEBRTC_AEC3)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_webrtc_aec3)
+endif()
+
+if(LIBAUDITION_WITH_GTSAM)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_gtsam)
 endif()
 
 if(LIBAUDITION_WITH_SHERPA)
