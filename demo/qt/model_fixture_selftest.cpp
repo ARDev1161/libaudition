@@ -378,6 +378,25 @@ QString testSherpaAsyncFailures(QMainWindow& window) {
         }
     }
 
+    // All speaker panels must keep the Qt event loop responsive while
+    // model/WAV validation and inference run off-thread.
+    for (const auto& item : {
+             std::pair<const char*, const char*>{
+                 "Speaker embedding", "Extract speaker embedding"},
+             {"Speaker verification", "Verify speaker"},
+             {"Speaker identification", "Build index and identify"},
+             {"Diarization", "Run speaker diarization"}}) {
+        auto* panel = requireTab(tabs, item.first);
+        auto* action = requireButton(panel, item.second);
+        action->click();
+        const QString error = awaitAsyncCompletion(panel, action);
+        requireContains(error, "error:");
+        if (!action->isEnabled()) {
+            throw std::runtime_error{
+                "Speaker panel did not recover after worker failure"};
+        }
+    }
+
 #if LIBAUDITION_DEMO_HAS_SHERPA_TTS
     auto* tts = requireTab(tabs, "VITS / Piper TTS");
     auto* synth = requireButton(tts, "Synthesize with VITS/Piper");

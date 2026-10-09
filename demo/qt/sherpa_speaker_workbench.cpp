@@ -1,4 +1,5 @@
 #include "sherpa_speaker_workbench.hpp"
+#include "async_panel_runner.hpp"
 
 #include "wav_io.hpp"
 
@@ -38,7 +39,7 @@ namespace {
 
 #if LIBAUDITION_DEMO_HAS_SHERPA
 
-QString exceptionText(const std::exception& error) {
+[[maybe_unused]] QString exceptionText(const std::exception& error) {
     return QStringLiteral("error: ") + QString::fromUtf8(error.what());
 }
 
@@ -124,7 +125,7 @@ audition::AudioBuffer loadMonoPath(
     return demo::selectMonoChannel(wav.audio.view(), channel);
 }
 
-audition::AudioBuffer loadMono(
+[[maybe_unused]] audition::AudioBuffer loadMono(
     const QLineEdit* wavPath,
     const QSpinBox* channel) {
     if (wavPath->text().isEmpty()) {
@@ -234,15 +235,24 @@ QWidget* createSpeakerEmbeddingPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                auto mono = loadMono(wavPath, channel);
+            const auto wavFile = fsPath(wavPath);
+            const int selectedChannel = channel->value();
+            const auto options = embeddingOptions(
+                model, sampleRate, modelId);
+
+            runner->start(
+                [wavFile, selectedChannel, options]() -> QString {
+                    auto mono = loadMonoPath(
+                        wavFile,
+                        static_cast<std::size_t>(selectedChannel));
                 audition::SherpaSpeakerEmbedder embedder{
-                    embeddingOptions(model, sampleRate, modelId)};
+                    options};
                 const auto embedding = requireEmbedding(
                     embedder,
                     mono.view(),
@@ -280,11 +290,8 @@ QWidget* createSpeakerEmbeddingPanel(QWidget* parent) {
                 }
                 text << "]";
 
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -338,19 +345,31 @@ QWidget* createSpeakerVerificationPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                auto reference =
-                    loadMono(referencePath, referenceChannel);
-                auto candidate =
-                    loadMono(candidatePath, candidateChannel);
+            const auto referenceFile = fsPath(referencePath);
+            const auto candidateFile = fsPath(candidatePath);
+            const int referenceIndex = referenceChannel->value();
+            const int candidateIndex = candidateChannel->value();
+            const double decisionThreshold = threshold->value();
+            const auto options = embeddingOptions(
+                model, sampleRate, modelId);
 
+            runner->start(
+                [referenceFile, candidateFile, referenceIndex, candidateIndex,
+                 decisionThreshold, options]() -> QString {
+                    auto reference = loadMonoPath(
+                        referenceFile,
+                        static_cast<std::size_t>(referenceIndex));
+                    auto candidate = loadMonoPath(
+                        candidateFile,
+                        static_cast<std::size_t>(candidateIndex));
                 audition::SherpaSpeakerEmbedder embedder{
-                    embeddingOptions(model, sampleRate, modelId)};
+                    options};
                 const auto referenceEmbedding =
                     requireEmbedding(
                         embedder,
@@ -366,7 +385,7 @@ QWidget* createSpeakerVerificationPanel(QWidget* parent) {
                 const auto result = verifier.compare(
                     referenceEmbedding,
                     candidateEmbedding,
-                    audition::Score{threshold->value()});
+                    audition::Score{decisionThreshold});
 
                 std::ostringstream text;
                 text << "embedder_backend="
@@ -384,7 +403,7 @@ QWidget* createSpeakerVerificationPanel(QWidget* parent) {
                      << "\nsimilarity="
                      << result.similarity.value
                      << "\nthreshold="
-                     << threshold->value()
+                     << decisionThreshold
                      << "\nmatched="
                      << (result.matched ? "yes" : "no")
                      << "\ncalibrated_probability=";
@@ -394,11 +413,8 @@ QWidget* createSpeakerVerificationPanel(QWidget* parent) {
                     text << "<absent>";
                 }
 
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -524,20 +540,30 @@ QWidget* createSpeakerIdentificationPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
+            const auto queryFile = fsPath(queryPath);
+            const int queryIndex = queryChannel->value();
+            const QString specification = enrollmentText->toPlainText();
+            const double decisionThreshold = threshold->value();
+            const int selectedTopK = topK->value();
+            const auto options = embeddingOptions(
+                model, sampleRate, modelId);
+
+            runner->start(
+                [queryFile, queryIndex, specification,
+                 decisionThreshold, selectedTopK, options]() -> QString {
                 audition::SherpaSpeakerEmbedder embedder{
-                    embeddingOptions(model, sampleRate, modelId)};
+                    options};
                 auto enrollments = buildEnrollments(
-                    enrollmentText->toPlainText(),
+                    specification,
                     embedder);
 
-                auto query =
-                    loadMono(queryPath, queryChannel);
+                auto query = loadMonoPath(queryFile, static_cast<std::size_t>(queryIndex));
                 const auto queryEmbedding =
                     requireEmbedding(
                         embedder,
@@ -571,8 +597,8 @@ QWidget* createSpeakerIdentificationPanel(QWidget* parent) {
 
                 const auto matches = identifier.identifyTopK(
                     queryEmbedding,
-                    audition::Score{threshold->value()},
-                    static_cast<std::size_t>(topK->value()));
+                    audition::Score{decisionThreshold},
+                    static_cast<std::size_t>(selectedTopK));
 
                 std::ostringstream text;
                 text << "embedder_backend="
@@ -590,7 +616,7 @@ QWidget* createSpeakerIdentificationPanel(QWidget* parent) {
                      << "\nenrolled_embeddings="
                      << enrolledEmbeddings
                      << "\nthreshold="
-                     << threshold->value()
+                     << decisionThreshold
                      << "\nmatches="
                      << matches.size()
                      << "\n\n";
@@ -605,11 +631,8 @@ QWidget* createSpeakerIdentificationPanel(QWidget* parent) {
                          << "\n";
                 }
 
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -684,33 +707,32 @@ QWidget* createSpeakerDiarizationPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                auto mono = loadMono(wavPath, channel);
+            const auto wavFile = fsPath(wavPath);
+            const int selectedChannel = channel->value();
+            audition::SherpaSpeakerDiarizationOptions options{};
+            options.segmentation_model = fsPath(segmentationModel);
+            options.embedding_model = fsPath(embeddingModel);
+            options.segmentation_window_shift_ratio =
+                static_cast<float>(windowShift->value());
+            options.num_clusters = numClusters->value();
+            options.clustering_threshold =
+                static_cast<float>(clusteringThreshold->value());
+            options.compute_confidence = confidence->isChecked();
+            options.min_duration_on =
+                static_cast<float>(minDurationOn->value());
+            options.min_duration_off =
+                static_cast<float>(minDurationOff->value());
 
-                audition::SherpaSpeakerDiarizationOptions options{};
-                options.segmentation_model =
-                    fsPath(segmentationModel);
-                options.embedding_model =
-                    fsPath(embeddingModel);
-                options.segmentation_window_shift_ratio =
-                    static_cast<float>(windowShift->value());
-                options.num_clusters =
-                    numClusters->value();
-                options.clustering_threshold =
-                    static_cast<float>(
-                        clusteringThreshold->value());
-                options.compute_confidence =
-                    confidence->isChecked();
-                options.min_duration_on =
-                    static_cast<float>(minDurationOn->value());
-                options.min_duration_off =
-                    static_cast<float>(minDurationOff->value());
-
+            runner->start(
+                [wavFile, selectedChannel, options]() -> QString {
+                    auto mono = loadMonoPath(
+                        wavFile, static_cast<std::size_t>(selectedChannel));
                 audition::SherpaSpeakerDiarizer diarizer{
                     options};
                 const auto result =
@@ -744,11 +766,8 @@ QWidget* createSpeakerDiarizationPanel(QWidget* parent) {
                     text << "\n";
                 }
 
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;

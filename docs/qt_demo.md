@@ -350,6 +350,20 @@ fallback initialization range are editable. This panel intentionally remains
 acoustic-only; camera, radar, robot-state, and other cross-modal fusion belong
 in the application consuming libaudition.
 
+## Asynchronous speaker intelligence
+
+Speaker embedding, speaker verification, ephemeral WAV-based enrollment and
+identification, and diarization all execute WAV loading and Sherpa inference
+on a Qt worker. Model selections, speaker enrollment text, confidence and
+clustering parameters are snapshotted before dispatch; workers access no
+Qt widgets. Each panel permits one operation in flight and offers the same
+non-interrupting **Discard result** control.
+
+Headless Sherpa GUI error-path checks cover all four panels and their
+transition back to idle state. No heavyweight speaker inference fixtures are
+pinned for this test, so the GUI error checks alone do **not** establish
+speaker-recognition or diarization accuracy.
+
 ## Asynchronous streaming ASR and keyword spotting
 
 Streaming ASR and keyword spotting now run WAV decoding, Sherpa session setup,
