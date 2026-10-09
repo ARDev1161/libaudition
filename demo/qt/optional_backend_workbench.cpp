@@ -220,7 +220,7 @@ QLabel* description(const QString& text) {
         samples.end());
 }
 
-QWidget* unavailablePanel(
+[[maybe_unused]] QWidget* unavailablePanel(
     const QString& name,
     const QString& option,
     QWidget* parent) {
