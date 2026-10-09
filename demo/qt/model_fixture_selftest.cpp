@@ -314,6 +314,39 @@ QString testAasist(QMainWindow& window, const QTemporaryDir& dir) {
 #endif
 }
 
+QString testSilero(QMainWindow& window, const QTemporaryDir& dir) {
+#if LIBAUDITION_DEMO_HAS_SHERPA
+    const auto model = requireModelEnv("LIBAUDITION_TEST_SILERO_MODEL");
+    const auto wav = createFixture(dir, 16000U, 32000U);
+
+    auto* sherpa = runnerPage(window, "Sherpa");
+    auto* panel = requireTab(
+        sherpa->findChild<QTabWidget*>(), "VAD");
+    requireFormEdit(panel, "WAV")->setText(
+        QString::fromStdString(wav.string()));
+    requireFormEdit(panel, "VAD model")->setText(
+        QString::fromStdString(model.string()));
+
+    QElapsedTimer timer;
+    timer.start();
+    const QString result = clickAndRead(panel, "Run VAD");
+    const qint64 elapsedMs = timer.elapsed();
+    requireContains(result, "preferred_frame_count=");
+    requireContains(result, "processed_blocks=");
+    requireContains(result, "speech_active_blocks=");
+    requireContains(result, "last_probability=");
+
+    return QStringLiteral(
+        "qt-model-self-test=ok backend=silero_vad inference_ms=%1")
+        .arg(elapsedMs);
+#else
+    static_cast<void>(window);
+    static_cast<void>(dir);
+    throw std::runtime_error{
+        "Qt demo was built without LIBAUDITION_WITH_SHERPA"};
+#endif
+}
+
 }  // namespace
 
 bool runQtModelFixtureSelfTest(
@@ -331,9 +364,11 @@ bool runQtModelFixtureSelfTest(
             result = testClap(window, dir);
         } else if (which == "aasist") {
             result = testAasist(window, dir);
+        } else if (which == "silero") {
+            result = testSilero(window, dir);
         } else {
             throw std::runtime_error{
-                "Unknown model fixture (expected clap or aasist)"};
+                "Unknown model fixture (expected clap, aasist or silero)"};
         }
         if (report != nullptr) {
             *report = result;
