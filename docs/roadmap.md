@@ -174,7 +174,14 @@ EVT-01 AcousticEvent pipeline:
 - Finalization returns an immutable event value and removes the active assembler state.
 - End-to-end tests verify persistent-source continuity across tracker handoff and separation of simultaneous sources.
 
-v0.5 feature implementation is complete. Remaining work before tagging v0.5 is release hardening: public API review, install/export smoke coverage, sanitizers/edge cases, documentation consistency, and release metadata.
+v0.5 feature implementation is complete.
+
+Release-hardening requirements:
+- Package/project/public-header version metadata is synchronized at 0.5.0.
+- The dependency-free installed package is compiled and executed from a separate C++17 consumer.
+- The default dependency-free test suite runs under AddressSanitizer + UndefinedBehaviorSanitizer in CI.
+- Optional backend jobs continue to build, test, install, and compile downstream consumers.
+- README/specification/changelog/release checklist are synchronized with the acoustic-only v0.5 boundary.
 
 ## 1.0
 
