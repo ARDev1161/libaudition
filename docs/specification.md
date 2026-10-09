@@ -164,6 +164,16 @@ ROS 2 integration maps naturally to this model:
 - stop external scheduling in `on_deactivate`
 - destroy objects in `on_cleanup`
 
+`AcousticEvent` follows the same rule. libaudition provides an explicit
+`AcousticEventAssembler`, but event-boundary detection is not hidden in that
+component. The caller begins and finishes events according to its chosen acoustic
+segmentation policy. Multiple events may overlap.
+
+Within one event, `AcousticSourceId` is persistent identity and cannot change.
+A transient `SpatialTrackId` may change only when the update explicitly carries
+the same persistent source ID, which permits tracker handoff without silently
+merging unrelated sources.
+
 ## Backend discovery
 
 v0.x uses explicitly linked backends plus typed `FactoryRegistry` objects.
