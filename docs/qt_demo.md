@@ -104,8 +104,8 @@ Shows the build-time availability and role of optional adapters:
 - GTSAM.
 
 Model-backed adapters are intentionally not given guessed model paths. The table
-shows which external assets are required. Model-specific runner panels can be
-added on top of this demo without changing libaudition itself.
+shows which external assets are required; model-specific runner panels are in
+the Backend workbench tab.
 
 ## Build with optional backends
 
@@ -138,7 +138,15 @@ qt-demo-self-test=ok
 ```
 
 The self-test executes real dependency-free DSP, SPL calibration, range-prior,
-temporal-smoothing, source-identity, and AcousticEvent code.
+temporal-smoothing, source-identity, and AcousticEvent code. It also verifies
+the application and workbench tab tree, checks the actual enabled runner
+actions for each configured backend, and tests stereo PCM16 WAV save/load
+and explicit mono channel selection without any external model files.
+
+CI runs this headless test in the standalone Qt job and in each
+backend-enabled Qt build, so an optional runner is checked with its
+actual compile-time feature flags. Model inference and audio quality still
+require separate fixtures and manual/automated end-to-end tests.
 
 
 ## Real backend workbench
