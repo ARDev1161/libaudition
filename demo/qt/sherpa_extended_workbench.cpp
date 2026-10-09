@@ -40,7 +40,7 @@ namespace {
 
 #if LIBAUDITION_DEMO_HAS_SHERPA
 
-QString exceptionText(const std::exception& error) {
+[[maybe_unused]] QString exceptionText(const std::exception& error) {
     return QStringLiteral("error: ") + QString::fromUtf8(error.what());
 }
 
@@ -132,14 +132,14 @@ std::filesystem::path fsPath(const QLineEdit* edit) {
     return std::filesystem::path{edit->text().toStdString()};
 }
 
-demo::LoadedWav loadWavFrom(const QLineEdit* edit) {
+[[maybe_unused]] demo::LoadedWav loadWavFrom(const QLineEdit* edit) {
     if (edit->text().isEmpty()) {
         throw std::runtime_error{"WAV path is required"};
     }
     return demo::loadWav(fsPath(edit));
 }
 
-audition::AudioBuffer loadMono(
+[[maybe_unused]] audition::AudioBuffer loadMono(
     const QLineEdit* wavPath,
     const QSpinBox* channel) {
     auto wav = loadWavFrom(wavPath);
@@ -541,21 +541,27 @@ QWidget* createLanguageIdPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                auto mono = loadMono(wavPath, channel);
+            const auto wavFile = fsPath(wavPath);
+            const int selectedChannel = channel->value();
+            audition::SherpaLanguageIdOptions options{};
+            options.encoder = fsPath(encoder);
+            options.decoder = fsPath(decoder);
+            options.sample_rate_hz =
+                static_cast<std::uint32_t>(sampleRate->value());
+            options.tail_paddings = tailPaddings->value();
 
-                audition::SherpaLanguageIdOptions options{};
-                options.encoder = fsPath(encoder);
-                options.decoder = fsPath(decoder);
-                options.sample_rate_hz =
-                    static_cast<std::uint32_t>(sampleRate->value());
-                options.tail_paddings = tailPaddings->value();
-
+            runner->start(
+                [wavFile, selectedChannel, options]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
                 audition::SherpaLanguageIdentifier identifier{options};
                 const auto scores = identifier.identify(mono.view());
 
@@ -573,10 +579,8 @@ QWidget* createLanguageIdPanel(QWidget* parent) {
                     }
                     text << "\n";
                 }
-                output->setPlainText(QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -624,27 +628,33 @@ QWidget* createAudioTaggerPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                auto mono = loadMono(wavPath, channel);
+            const auto wavFile = fsPath(wavPath);
+            const int selectedChannel = channel->value();
+            audition::SherpaAudioTaggingOptions options{};
+            if (family->currentIndex() == 0) {
+                options.model =
+                    audition::SherpaAudioTaggingZipformerModel{
+                        fsPath(model)};
+            } else {
+                options.model =
+                    audition::SherpaAudioTaggingCedModel{
+                        fsPath(model)};
+            }
+            options.labels = fsPath(labels);
+            options.top_k = topK->value();
 
-                audition::SherpaAudioTaggingOptions options{};
-                if (family->currentIndex() == 0) {
-                    options.model =
-                        audition::SherpaAudioTaggingZipformerModel{
-                            fsPath(model)};
-                } else {
-                    options.model =
-                        audition::SherpaAudioTaggingCedModel{
-                            fsPath(model)};
-                }
-                options.labels = fsPath(labels);
-                options.top_k = topK->value();
-
+            runner->start(
+                [wavFile, selectedChannel, options]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
                 audition::SherpaAudioTagger tagger{options};
                 const auto result = tagger.classify(mono.view());
 
@@ -659,10 +669,8 @@ QWidget* createAudioTaggerPanel(QWidget* parent) {
                          << classScore.probability.value()
                          << "\n";
                 }
-                output->setPlainText(QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -738,32 +746,39 @@ QWidget* createDenoiserPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                auto mono = loadMono(wavPath, channel);
-
-                audition::SherpaSpeechDenoiserOptions options{};
-                if (family->currentIndex() == 0) {
-                    options.model =
-                        audition::SherpaSpeechDenoiserGtcrnModel{
-                            fsPath(model)};
-                } else {
-                    audition::SherpaSpeechDenoiserDpdfNetModel dpdf{
-                        fsPath(model),
-                        0.0F};
-                    if (mode->currentIndex() == 0) {
-                        dpdf.attenuation_limit_db =
-                            static_cast<float>(attenuation->value());
-                    }
-                    options.model = dpdf;
+            const auto wavFile = fsPath(wavPath);
+            const auto outputFile = fsPath(outputPath);
+            const int selectedChannel = channel->value();
+            const bool selectedStreaming = mode->currentIndex() != 0;
+            audition::SherpaSpeechDenoiserOptions options{};
+            if (family->currentIndex() == 0) {
+                options.model = audition::SherpaSpeechDenoiserGtcrnModel{
+                    fsPath(model)};
+            } else {
+                audition::SherpaSpeechDenoiserDpdfNetModel dpdf{
+                    fsPath(model), 0.0F};
+                if (!selectedStreaming) {
+                    dpdf.attenuation_limit_db =
+                        static_cast<float>(attenuation->value());
                 }
+                options.model = dpdf;
+            }
 
+            runner->start(
+                [wavFile, outputFile, selectedChannel,
+                 selectedStreaming, options]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
                 std::unique_ptr<audition::INoiseSuppressor> denoiser;
-                if (mode->currentIndex() == 0) {
+                if (!selectedStreaming) {
                     denoiser =
                         std::make_unique<
                             audition::SherpaOfflineSpeechDenoiser>(
@@ -817,8 +832,7 @@ QWidget* createDenoiserPanel(QWidget* parent) {
                     mono.captureTime(),
                     mono.sequenceNumber()};
                 demo::saveWavPcm16(
-                    std::filesystem::path{
-                        outputPath->text().toStdString()},
+                    outputFile,
                     denoised.view());
 
                 std::ostringstream text;
@@ -835,11 +849,9 @@ QWidget* createDenoiserPanel(QWidget* parent) {
                 text << "\nchunks=" << chunks
                      << "\noutput_frames=" << denoised.frameCount()
                      << "\noutput_duration_s=" << denoised.duration().seconds()
-                     << "\nsaved=" << outputPath->text().toStdString();
-                output->setPlainText(QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                     << "\nsaved=" << outputFile.string();
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
