@@ -169,7 +169,7 @@ audition::AudioBuffer monoFrom(
         static_cast<std::size_t>(channel));
 }
 
-QString wavSummary(const demo::LoadedWav& wav) {
+[[maybe_unused]] QString wavSummary(const demo::LoadedWav& wav) {
     const auto format = wav.audio.format();
     return QStringLiteral(
                "%1 Hz, %2 ch, %3 frames, WAV tag %4, %5 bit")
@@ -548,6 +548,34 @@ QWidget* createAasistPanel(QWidget* parent) {
 #endif
 }
 
+#if LIBAUDITION_DEMO_HAS_CLAP
+audition::AudioEmbedding runClapEmbedding(
+    const audition::AudioBuffer& mono,
+    const std::filesystem::path& audio_model) {
+    audition::ClapOnnxAudioOptions options;
+    options.model = audio_model;
+    audition::ClapAudioEmbedder embedder{options};
+    return embedder.embed(mono.view());
+}
+
+audition::ClassificationResult runClapClassification(
+    const audition::AudioBuffer& mono,
+    const std::filesystem::path& audio_model,
+    const std::filesystem::path& text_model,
+    const std::filesystem::path& tokenizer_path,
+    double temperature,
+    const std::vector<std::string>& candidates) {
+    audition::ClapOpenVocabularyOptions options;
+    options.audio.model = audio_model;
+    options.text.model = text_model;
+    options.text.tokenizer = tokenizer_path;
+    options.similarity_temperature = temperature;
+
+    audition::ClapOpenVocabularyClassifier classifier{options};
+    return classifier.classify(mono.view(), candidates);
+}
+#endif
+
 QWidget* createClapPanel(QWidget* parent) {
 #if LIBAUDITION_DEMO_HAS_CLAP
     auto* page = new QWidget{parent};
@@ -624,12 +652,10 @@ QWidget* createClapPanel(QWidget* parent) {
                 auto mono =
                     monoFrom(wav, channel->value());
 
-                audition::ClapOnnxAudioOptions options{};
-                options.model = fsPath(audioModel);
-                audition::ClapAudioEmbedder embedder{
-                    options};
                 const auto result =
-                    embedder.embed(mono.view());
+                    runClapEmbedding(
+                        mono,
+                        fsPath(audioModel));
 
                 double norm2 = 0.0;
                 for (const float value : result.values) {
@@ -685,13 +711,6 @@ QWidget* createClapPanel(QWidget* parent) {
                 auto mono =
                     monoFrom(wav, channel->value());
 
-                audition::ClapOpenVocabularyOptions options{};
-                options.audio.model = fsPath(audioModel);
-                options.text.model = fsPath(textModel);
-                options.text.tokenizer = fsPath(tokenizer);
-                options.similarity_temperature =
-                    temperature->value();
-
                 std::vector<std::string> candidates{};
                 for (const auto& part :
                      labels->text().split(
@@ -705,11 +724,13 @@ QWidget* createClapPanel(QWidget* parent) {
                         "Enter at least one candidate label"};
                 }
 
-                audition::ClapOpenVocabularyClassifier classifier{
-                    options};
                 const auto result =
-                    classifier.classify(
-                        mono.view(),
+                    runClapClassification(
+                        mono,
+                        fsPath(audioModel),
+                        fsPath(textModel),
+                        fsPath(tokenizer),
+                        temperature->value(),
                         candidates);
 
                 std::ostringstream text;
