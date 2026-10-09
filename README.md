@@ -65,7 +65,9 @@ and retain their own independent licenses/provenance.
 
 ```cmake
 find_package(libaudition CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE\n  audition::core audition::dsp audition::spatial\n  audition::memory audition::pipeline)
+target_link_libraries(my_app PRIVATE
+  audition::core audition::dsp audition::spatial
+  audition::memory audition::pipeline)
 ```
 
 ```cpp
