@@ -328,35 +328,35 @@ QWidget* createWorldPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                const auto wav = loadWavFrom(wavPath);
-                auto mono =
-                    monoFrom(wav, channel->value());
+            const auto wavFile = fsPath(wavPath);
+            const int selectedChannel = channel->value();
+            audition::WorldVoiceTraitsOptions traitsOptions{};
+            audition::WorldAcousticAnalysisOptions acousticOptions{};
+            const auto selectedAlgorithm =
+                algorithm->currentIndex() == 0
+                    ? audition::WorldF0Algorithm::DioStoneMask
+                    : audition::WorldF0Algorithm::Harvest;
+            traitsOptions.algorithm = selectedAlgorithm;
+            traitsOptions.f0_floor_hz = f0Floor->value();
+            traitsOptions.f0_ceil_hz = f0Ceil->value();
+            traitsOptions.frame_period_ms = framePeriod->value();
+            acousticOptions.algorithm = selectedAlgorithm;
+            acousticOptions.f0_floor_hz = f0Floor->value();
+            acousticOptions.f0_ceil_hz = f0Ceil->value();
+            acousticOptions.frame_period_ms = framePeriod->value();
 
-                audition::WorldVoiceTraitsOptions traitsOptions{};
-                audition::WorldAcousticAnalysisOptions acousticOptions{};
-
-                const auto selectedAlgorithm =
-                    algorithm->currentIndex() == 0
-                        ? audition::WorldF0Algorithm::DioStoneMask
-                        : audition::WorldF0Algorithm::Harvest;
-
-                traitsOptions.algorithm = selectedAlgorithm;
-                traitsOptions.f0_floor_hz = f0Floor->value();
-                traitsOptions.f0_ceil_hz = f0Ceil->value();
-                traitsOptions.frame_period_ms =
-                    framePeriod->value();
-
-                acousticOptions.algorithm = selectedAlgorithm;
-                acousticOptions.f0_floor_hz = f0Floor->value();
-                acousticOptions.f0_ceil_hz = f0Ceil->value();
-                acousticOptions.frame_period_ms =
-                    framePeriod->value();
+            runner->start(
+                [wavFile, selectedChannel, traitsOptions, acousticOptions]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    auto mono = demo::selectMonoChannel(
+                        wav.audio.view(),
+                        static_cast<std::size_t>(selectedChannel));
 
                 audition::WorldVoiceTraitsEstimator traits{
                     traitsOptions};
@@ -420,12 +420,9 @@ QWidget* createWorldPanel(QWidget* parent) {
                          << features.f0_hz[index];
                 }
 
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(
-                    exceptionText(error));
-            }
+
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -1308,42 +1305,38 @@ QWidget* createOdasPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                const auto wav =
-                    loadWavFrom(wavPath);
-                const auto format =
-                    wav.audio.format();
+            const auto wavFile = fsPath(wavPath);
+            const auto geometryText = geometry->toPlainText();
+            const auto channelText = channelMap->text();
+            audition::OdasOptions options{};
+            options.hop_size = static_cast<std::uint32_t>(hop->value());
+            options.frame_size = static_cast<std::uint32_t>(frame->value());
+            options.sss.enabled = separation->isChecked();
 
-                audition::OdasOptions options{};
-                options.microphone_array.microphones =
-                    parseGeometry(
-                        geometry->toPlainText());
-                options.input_channels =
-                    parseChannelMap(
-                        channelMap->text());
-                options.sample_rate_hz =
-                    format.sample_rate_hz;
-                options.hop_size =
-                    static_cast<std::uint32_t>(
-                        hop->value());
-                options.frame_size =
-                    static_cast<std::uint32_t>(
-                        frame->value());
-                options.sss.enabled =
-                    separation->isChecked();
+            runner->start(
+                [wavFile, geometryText, channelText, options]() -> QString {
+                    const auto wav = demo::loadWav(wavFile);
+                    const auto format = wav.audio.format();
+                    auto configured = options;
+                    configured.microphone_array.microphones =
+                        parseGeometry(geometryText);
+                    configured.input_channels =
+                        parseChannelMap(channelText);
+                    configured.sample_rate_hz = format.sample_rate_hz;
 
                 audition::OdasSpatialEngine engine{
-                    options};
+                    configured};
 
                 const std::size_t channelCount =
                     format.channel_count;
                 const std::size_t hopFrames =
-                    options.hop_size;
+                    configured.hop_size;
                 const auto& samples =
                     wav.audio.samples();
 
@@ -1451,12 +1444,9 @@ QWidget* createOdasPanel(QWidget* parent) {
                          << "\n";
                 }
 
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(
-                    exceptionText(error));
-            }
+
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;

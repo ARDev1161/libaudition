@@ -430,6 +430,41 @@ QString testSherpaAsyncFailures(QMainWindow& window) {
 #endif
 }
 
+QString testWorld(QMainWindow& window, const QTemporaryDir& dir) {
+#if LIBAUDITION_DEMO_HAS_WORLD
+    const auto wav = createFixture(dir, 16000U, 32000U);
+    auto* panel = runnerPage(window, "WORLD");
+    requireFormEdit(panel, "WAV")->setText(
+        QString::fromStdString(wav.string()));
+    const QString result = clickAndRead(panel, "Run WORLD analysis");
+    requireContains(result, "pitch_mean_hz=");
+    requireContains(result, "frame_count=");
+    requireContains(result, "frequency_bins=");
+    return "qt-model-self-test=ok backend=world";
+#else
+    static_cast<void>(window);
+    static_cast<void>(dir);
+    throw std::runtime_error{"Qt demo was built without WORLD"};
+#endif
+}
+
+QString testOdasErrors(QMainWindow& window) {
+#if LIBAUDITION_DEMO_HAS_ODAS
+    auto* panel = runnerPage(window, "ODAS");
+    auto* action = requireButton(panel, "Run ODAS over WAV");
+    action->click();
+    const QString first = awaitAsyncCompletion(panel, action);
+    requireContains(first, "error:");
+    action->click();
+    const QString second = awaitAsyncCompletion(panel, action);
+    requireContains(second, "error:");
+    return "qt-model-self-test=ok backend=odas-error-path";
+#else
+    static_cast<void>(window);
+    throw std::runtime_error{"Qt demo was built without ODAS"};
+#endif
+}
+
 }  // namespace
 
 bool runQtModelFixtureSelfTest(
@@ -451,9 +486,13 @@ bool runQtModelFixtureSelfTest(
             result = testSilero(window, dir);
         } else if (which == "sherpa-errors") {
             result = testSherpaAsyncFailures(window);
+        } else if (which == "world") {
+            result = testWorld(window, dir);
+        } else if (which == "odas-errors") {
+            result = testOdasErrors(window);
         } else {
             throw std::runtime_error{
-                "Unknown model fixture (expected clap, aasist, silero or sherpa-errors)"};
+                "Unknown model fixture (clap, aasist, silero, sherpa-errors, world, odas-errors)"};
         }
         if (report != nullptr) {
             *report = result;

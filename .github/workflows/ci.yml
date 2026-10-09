@@ -171,6 +171,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-odas/demo/qt/libaudition_qt_demo --self-test
+      - name: Qt async odas-errors smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-odas/demo/qt/libaudition_qt_demo --model-self-test=odas-errors
       - name: Test
         run: ctest --test-dir build-odas --output-on-failure
       - name: Install
@@ -707,6 +711,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-world/demo/qt/libaudition_qt_demo --self-test
+      - name: Qt async world smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-world/demo/qt/libaudition_qt_demo --model-self-test=world
       - name: Test
         run: ctest --test-dir build-world --output-on-failure
       - name: Install
