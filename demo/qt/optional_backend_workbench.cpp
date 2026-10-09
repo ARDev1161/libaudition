@@ -537,8 +537,8 @@ QWidget* createAec3Panel(QWidget* parent) {
                 text << "\nestimated_delay_ms=";
                 if (metrics.estimated_delay.has_value()) {
                     text << (
-                        metrics.estimated_delay->nanoseconds() /
-                        1'000'000.0);
+                        metrics.estimated_delay->seconds() *
+                        1000.0);
                 } else {
                     text << "<absent>";
                 }
