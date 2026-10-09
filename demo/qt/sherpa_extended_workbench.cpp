@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
