@@ -147,7 +147,7 @@ QWidget* requireTab(QTabWidget* tabs, const char* name) {
         "Qt self-test: missing tab '" + title.toStdString() + "'"};
 }
 
-void requireAction(QWidget* page, const char* action) {
+[[maybe_unused]] void requireAction(QWidget* page, const char* action) {
     const auto expected = QString::fromLatin1(action);
     const auto buttons = page->findChildren<QPushButton*>();
     const auto found = std::any_of(
