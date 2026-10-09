@@ -1,6 +1,7 @@
 #include <audition/pipeline/acoustic_event_assembler.hpp>
 
 #include <cstdint>
+#include <limits>
 
 #include <gtest/gtest.h>
 
