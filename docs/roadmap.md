@@ -163,8 +163,18 @@ CAL-01 SPL calibration:
 - The helper does not implement A/C weighting filters or microphone frequency-response compensation; those transformations must be part of the calibrated signal path.
 - End-to-end tests cover dBFS -> calibrated SPL -> source-level range prior.
 
-Next slices:
-- AcousticEvent pipeline completion and end-to-end acoustic scenario tests.
+EVT-01 AcousticEvent pipeline:
+- `AcousticEventAssembler` provides an explicit caller-controlled begin/update/finish lifecycle; libaudition does not invent event boundaries or scheduling policy.
+- Active events are bounded and may overlap.
+- `AcousticEventPatch` updates are transactional and leave omitted fields unchanged.
+- Event updates enforce one `ClockIdentity` and non-decreasing timestamps.
+- A persistent `AcousticSourceId` cannot change during an event.
+- Transient `SpatialTrackId` handoff is accepted only when the update explicitly carries the same persistent source identity.
+- Track snapshots propagate direction/range/position without erasing previously known optional geometry when a later snapshot omits it.
+- Finalization returns an immutable event value and removes the active assembler state.
+- End-to-end tests verify persistent-source continuity across tracker handoff and separation of simultaneous sources.
+
+v0.5 feature implementation is complete. Remaining work before tagging v0.5 is release hardening: public API review, install/export smoke coverage, sanitizers/edge cases, documentation consistency, and release metadata.
 
 ## 1.0
 
