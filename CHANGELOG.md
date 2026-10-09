@@ -14,6 +14,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 - Spatial identity coordinator composing `ISpatialFusion` and `ISourceIdentityResolver`, propagating persistent `AcousticSourceId` values into tracks, separated frames, and acoustic events with clock/order safety and transactional conflict checks.
 - Dependency-free calibrated sound-level range-prior estimator using source-type SPL priors, configurable log-distance propagation, exact log-normal/mixture moments, and explicit A/C/Z weighting.
 - Dependency-free temporal acoustic track smoother for range/position estimates using conservative moment mixtures, explicit process-variance rates, bounded per-track state, and strict clock/order validation.
+- Auditable dBFS-to-dB-SPL calibration profiles and helper with named signal-path binding, explicit uncertainty propagation, weighting checks, and direct compatibility with sound-level range priors.
 - Spatial range observations now carry an explicit sensor pose so metric range factors are anchored in the canonical frame.
 - Optional WORLD voice-traits backend using DIO+StoneMask or Harvest to expose measured pitch mean/stddev without fabricating age, speaking-rate or categorical traits.
 - WORLD frame-level acoustic analysis exposing F0 contour, CheapTrick spectral envelope and D4C aperiodicity through `IVoiceAcousticAnalyzer`.
