@@ -371,6 +371,15 @@ runs while each backend executes and that actions are disabled until
 completion. AASIST exercises the discard path and recovery. Qt's Concurrent
 module is required only for the optional demo, not for libaudition itself.
 
+### Sherpa VAD
+
+The VAD subtab (Silero and TEN) uses the worker-based execution controller:
+waveform loading and frame-level processing no longer block Qt event
+dispatch. The `--model-self-test=silero` mode uses the already
+checksum-pinned Silero VAD ONNX fixture in `sherpa-backend` CI to click
+**Run VAD**, assert live event processing, and verify frame counts.
+This validates runtime GUI wiring, not speech-detection accuracy.
+
 ## Building the backend workbench
 
 Example:
