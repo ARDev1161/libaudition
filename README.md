@@ -61,6 +61,23 @@ cmake -S . -B build -DLIBAUDITION_WITH_SHERPA=ON
 See [`docs/backends/sherpa.md`](docs/backends/sherpa.md). Models are not bundled
 and retain their own independent licenses/provenance.
 
+## CLI examples
+
+With `LIBAUDITION_BUILD_EXAMPLES=ON`, the build provides small CLI utilities
+for SPL/range calibration, temporal smoothing, persistent source identity,
+`AcousticEvent` lifecycle, and a synthetic end-to-end acoustic pipeline.
+
+```bash
+./build/examples/libaudition_spl_cli
+./build/examples/libaudition_smoothing_cli 2.0 2.4 1.8 2.2
+./build/examples/libaudition_identity_cli
+./build/examples/libaudition_event_cli alarm help
+./build/examples/libaudition_pipeline_cli
+```
+
+See [`docs/cli_examples.md`](docs/cli_examples.md) for arguments and expected
+output.
+
 ## Consume from CMake
 
 ```cmake

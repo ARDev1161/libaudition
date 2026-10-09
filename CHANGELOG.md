@@ -10,6 +10,7 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Added
 
+- Runnable CLI block examples for SPL/range calibration, temporal smoothing, persistent source identity, AcousticEvent lifecycle, and a synthetic end-to-end acoustic pipeline, with CTest smoke coverage.
 - Optional GTSAM 4.2 spatial-fusion backend implementing `ISpatialFusion` for bearing/range/position observations with marginal 3D covariance.
 - GTSAM fusion robustness support: multi-bearing triangulation initialization, range-only 3D geometry checks, covariance PSD validation, and optional Huber loss for source measurements.
 - Backend-independent persistent acoustic-source resolver with active-track continuity, fingerprint/geometry reacquisition, one-source-per-active-track safety, bounded transient state, and explicit clock/order checks.
