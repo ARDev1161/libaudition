@@ -1,12 +1,10 @@
 name: Cleanup merged PR branches
 
-# Installing this workflow performs a one-time sweep when merged into main.
-# Later sweeps are explicitly manual to avoid surprise deletions.
+# Sweep after each merge into main; only branches with a merged PR and an
+# exact matching head SHA are eligible. Manual dry-run remains available.
 on:
   push:
     branches: [main]
-    paths:
-      - .github/workflows/cleanup-merged-branches.yml
   workflow_dispatch:
     inputs:
       dry_run:
