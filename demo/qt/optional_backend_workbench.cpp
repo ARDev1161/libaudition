@@ -1,4 +1,5 @@
 #include "optional_backend_workbench.hpp"
+#include "async_panel_runner.hpp"
 
 #include "wav_io.hpp"
 
@@ -277,16 +278,24 @@ QWidget* createSampleratePanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                const auto wav = loadWav(inputPath);
+            const auto inputFile = fsPath(inputPath);
+            const auto outputFile = fsPath(outputPath);
+            const int selectedConverter = converter->currentIndex();
+            const auto targetRate =
+                static_cast<std::uint32_t>(outputRate->value());
+
+            runner->start(
+                [inputFile, outputFile, selectedConverter, targetRate]() -> QString {
+                const auto wav = demo::loadWav(inputFile);
 
                 audition::SamplerateOptions options{};
-                switch (converter->currentIndex()) {
+                switch (selectedConverter) {
                 case 0:
                     options.converter =
                         audition::SamplerateConverter::SincBest;
@@ -316,7 +325,7 @@ QWidget* createSampleratePanel(QWidget* parent) {
                 config.input_sample_rate_hz =
                     wav.audio.format().sample_rate_hz;
                 config.output_sample_rate_hz =
-                    static_cast<std::uint32_t>(outputRate->value());
+                    static_cast<std::uint32_t>(targetRate);
                 config.channel_count =
                     wav.audio.format().channel_count;
 
@@ -345,7 +354,7 @@ QWidget* createSampleratePanel(QWidget* parent) {
                     mainOutput.captureTime(),
                     mainOutput.sequenceNumber()};
                 demo::saveWavPcm16(
-                    fsPath(outputPath),
+                    outputFile,
                     resampled.view());
 
                 std::ostringstream text;
@@ -357,12 +366,10 @@ QWidget* createSampleratePanel(QWidget* parent) {
                      << "\nflush_frames="
                      << tailOutput.frameCount()
                      << "\nsaved="
-                     << outputPath->text().toStdString();
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+                     << outputFile.string();
+
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -424,20 +431,24 @@ QWidget* createAec3Panel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
-                const auto capture = loadWav(capturePath);
-                const auto reference = loadWav(referencePath);
+            const auto captureFile = fsPath(capturePath);
+            const auto referenceFile = fsPath(referencePath);
+            const auto outputFile = fsPath(outputPath);
+            audition::WebRtcAec3Options options{};
+            options.filter_initial_state_seconds = initialState->value();
+            options.conservative_initial_phase = conservative->isChecked();
+            const auto streamDelayMs = delayMs->value();
 
-                audition::WebRtcAec3Options options{};
-                options.filter_initial_state_seconds =
-                    initialState->value();
-                options.conservative_initial_phase =
-                    conservative->isChecked();
+            runner->start(
+                [captureFile, referenceFile, outputFile, options, streamDelayMs]() -> QString {
+                const auto capture = demo::loadWav(captureFile);
+                const auto reference = demo::loadWav(referenceFile);
 
                 audition::WebRtcAec3EchoCanceller canceller{
                     options};
@@ -447,7 +458,7 @@ QWidget* createAec3Panel(QWidget* parent) {
                 session->setStreamDelay(
                     audition::Duration{
                         static_cast<std::int64_t>(
-                            delayMs->value()) *
+                            streamDelayMs) *
                         1'000'000});
 
                 const auto sampleRate =
@@ -499,7 +510,7 @@ QWidget* createAec3Panel(QWidget* parent) {
                     capture.audio.captureTime(),
                     capture.audio.sequenceNumber()};
                 demo::saveWavPcm16(
-                    fsPath(outputPath),
+                    outputFile,
                     processed.view());
 
                 const auto metrics = session->metrics();
@@ -543,13 +554,11 @@ QWidget* createAec3Panel(QWidget* parent) {
                     text << "<absent>";
                 }
                 text << "\nsaved="
-                     << outputPath->text().toStdString();
+                     << outputFile.string();
 
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
@@ -755,34 +764,34 @@ QWidget* createGtsamPanel(QWidget* parent) {
     layout->addWidget(run);
     layout->addWidget(output);
 
+    auto* runner = new AsyncPanelRunner{page, layout, {run}, output};
     QObject::connect(
         run,
         &QPushButton::clicked,
         page,
         [=]() {
-            try {
+            const QString bearingText = bearings->toPlainText();
+            const QString rangeText = ranges->toPlainText();
+            const QString positionText = positions->toPlainText();
+            audition::GtsamSpatialFusionOptions options{};
+            options.default_bearing_sigma_rad = bearingSigma->value();
+            options.fallback_initial_range_m = fallbackRange->value();
+            options.enable_huber_loss = huber->isChecked();
+            options.huber_k = huberK->value();
+            options.max_iterations =
+                static_cast<std::size_t>(iterations->value());
+
+            runner->start(
+                [bearingText, rangeText, positionText, options]() -> QString {
                 const auto bearingValues =
                     parseBearings(
-                        bearings->toPlainText());
+                        bearingText);
                 const auto rangeValues =
                     parseRanges(
-                        ranges->toPlainText());
+                        rangeText);
                 const auto positionValues =
                     parsePositions(
-                        positions->toPlainText());
-
-                audition::GtsamSpatialFusionOptions options{};
-                options.default_bearing_sigma_rad =
-                    bearingSigma->value();
-                options.fallback_initial_range_m =
-                    fallbackRange->value();
-                options.enable_huber_loss =
-                    huber->isChecked();
-                options.huber_k =
-                    huberK->value();
-                options.max_iterations =
-                    static_cast<std::size_t>(
-                        iterations->value());
+                        positionText);
 
                 audition::GtsamSpatialFusion fusion{
                     options};
@@ -840,11 +849,9 @@ QWidget* createGtsamPanel(QWidget* parent) {
                     }
                 }
 
-                output->setPlainText(
-                    QString::fromStdString(text.str()));
-            } catch (const std::exception& error) {
-                output->setPlainText(exceptionText(error));
-            }
+
+                    return QString::fromStdString(text.str());
+                });
         });
 
     return page;
