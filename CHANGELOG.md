@@ -6,6 +6,8 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-09
+
 ### Added
 
 - Optional GTSAM 4.2 spatial-fusion backend implementing `ISpatialFusion` for bearing/range/position observations with marginal 3D covariance.
