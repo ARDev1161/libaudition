@@ -31,6 +31,10 @@ struct LiveCaptureConfig {
     std::vector<std::size_t> input_channels{1, 2, 3, 4};
     std::vector<std::array<double, 3>> microphone_positions{};
     bool respeaker_angular_profile{false};
+    bool classify_sources{false};
+    bool tagging_ced_model{false};
+    std::string tagging_model_path{};
+    std::string tagging_labels_path{};
 };
 
 struct LiveCaptureSnapshot {
@@ -42,6 +46,7 @@ struct LiveCaptureSnapshot {
     std::vector<AcousticScenePotential> potentials{};
     std::vector<double> channel_rms_dbfs{};
     std::vector<double> channel_peak_dbfs{};
+    std::string classification_error{};
     std::string error{};
 };
 

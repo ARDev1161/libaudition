@@ -214,11 +214,17 @@ void verifyWorkbench(QWidget* root) {
         }
     }
     auto* sceneTable = scene->findChild<QTableWidget*>("acousticSceneTracks");
+    if (scene->findChild<QCheckBox*>("acousticSceneEnableTagging") == nullptr ||
+        scene->findChild<QLineEdit*>("acousticSceneTaggingModel") == nullptr ||
+        scene->findChild<QLineEdit*>("acousticSceneTaggingLabels") == nullptr) {
+        throw std::runtime_error{"Qt self-test: missing live source tagging controls"};
+    }
     auto* sceneStatus = scene->findChild<QLabel*>("acousticSceneStatus");
     if (scene->findChild<QLabel*>("acousticSceneDiagnostics") == nullptr) {
         throw std::runtime_error{"Qt self-test: missing live channel/SSL diagnostics"};
     }
-    if (sceneTable == nullptr || sceneTable->rowCount() != 3 ||
+    if (sceneTable == nullptr || sceneTable->columnCount() != 5 ||
+        sceneTable->rowCount() != 3 ||
         sceneStatus == nullptr ||
         !sceneStatus->text().contains("SYNTHETIC")) {
         throw std::runtime_error{"Qt self-test: 3D scene demo was not populated"};

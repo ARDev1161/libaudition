@@ -8,6 +8,8 @@ add_executable(libaudition_qt_demo
     acoustic_scene_page.hpp
     alsa_live_capture.cpp
     alsa_live_capture.hpp
+    live_audio_tagging_worker.cpp
+    live_audio_tagging_worker.hpp
     acoustic_sphere_widget.cpp
     acoustic_sphere_widget.hpp
     demo_window.hpp
