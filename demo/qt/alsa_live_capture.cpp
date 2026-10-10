@@ -316,8 +316,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
     }
 #else
     static_cast<void>(config);
-    std::lock_guard<std::mutex> lock{mutex_};
-    latest_.error = "ALSA live capture requires Linux, libasound and ODAS";
+    {
+        std::lock_guard<std::mutex> lock{mutex_};
+        latest_.error = "ALSA live capture requires Linux, libasound and ODAS";
+    }
 #endif
     {
         std::lock_guard<std::mutex> lock{mutex_};
