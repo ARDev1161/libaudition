@@ -1,0 +1,144 @@
+#include <audition/classify/source_classification_runtime.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+#include <utility>
+
+#include <audition/audio/audio_buffer.hpp>
+
+namespace audition {
+
+SourceClassificationRuntime::SourceClassificationRuntime(
+    std::unique_ptr<IAudioClassifier> classifier,
+    std::uint32_t sample_rate_hz, std::size_t window_samples,
+    std::size_t max_sources)
+    : sample_rate_hz_(sample_rate_hz),
+      window_samples_(window_samples),
+      max_sources_(max_sources),
+      classifier_(std::move(classifier)) {
+    if (!classifier_ || sample_rate_hz_ == 0U ||
+        window_samples_ == 0U || max_sources_ == 0U) {
+        throw std::invalid_argument{"Invalid source classification runtime configuration"};
+    }
+    worker_ = std::thread{[this] { run(); }};
+}
+
+SourceClassificationRuntime::~SourceClassificationRuntime() {
+    {
+        std::lock_guard<std::mutex> lock{mutex_};
+        stopping_ = true;
+        pending_.reset();
+    }
+    cv_.notify_one();
+    if (worker_.joinable()) worker_.join();
+}
+
+void SourceClassificationRuntime::push(
+    std::uint64_t source_id, const float* samples, std::size_t count) {
+    if (source_id == 0U || samples == nullptr || count == 0U) return;
+    std::lock_guard<std::mutex> lock{mutex_};
+    if (stopping_ || !error_.empty()) return;
+    auto it = buffers_.find(source_id);
+    if (it == buffers_.end()) {
+        if (buffers_.size() >= max_sources_) {
+            // Do not silently misattribute old source ID results.
+            if (active_source_.has_value() &&
+                buffers_.begin()->first == *active_source_) {
+                return;
+            }
+            buffers_.erase(buffers_.begin());
+        }
+        it = buffers_.emplace(source_id, Buffer{}).first;
+    }
+    auto& buffer = it->second.samples;
+    for (std::size_t i = 0U; i < count; ++i) {
+        if (!std::isfinite(samples[i])) {
+            error_ = "Nonfinite source audio sample";
+            return;
+        }
+        buffer.push_back(samples[i]);
+        if (buffer.size() == window_samples_) {
+            if (!pending_.has_value()) {
+                pending_ = Job{source_id, std::move(buffer)};
+                buffer.clear();
+                cv_.notify_one();
+            } else {
+                buffer.clear();
+                ++dropped_windows_;
+            }
+        }
+    }
+}
+
+SourceClassificationStatus SourceClassificationRuntime::status(
+    std::uint64_t source_id) const {
+    std::lock_guard<std::mutex> lock{mutex_};
+    SourceClassificationStatus result{};
+    result.required_samples = window_samples_;
+    result.dropped_windows = dropped_windows_;
+    if (!error_.empty()) {
+        result.state = SourceClassificationState::Error;
+        result.error = error_;
+        return result;
+    }
+    const auto it = buffers_.find(source_id);
+    if (it == buffers_.end()) return result;
+    result.collected_samples = it->second.samples.size();
+    result.result = it->second.result;
+    if (active_source_ == source_id) {
+        result.state = SourceClassificationState::Inferencing;
+    } else if (pending_.has_value() && pending_->source_id == source_id) {
+        result.state = SourceClassificationState::Queued;
+    } else if (result.result.has_value()) {
+        result.state = SourceClassificationState::Classified;
+    } else {
+        result.state = SourceClassificationState::Collecting;
+    }
+    return result;
+}
+
+void SourceClassificationRuntime::forget(std::uint64_t source_id) {
+    std::lock_guard<std::mutex> lock{mutex_};
+    buffers_.erase(source_id);
+    if (pending_.has_value() && pending_->source_id == source_id) {
+        pending_.reset();
+    }
+}
+
+void SourceClassificationRuntime::run() noexcept {
+    for (;;) {
+        Job job;
+        {
+            std::unique_lock<std::mutex> lock{mutex_};
+            cv_.wait(lock, [this] { return stopping_ || pending_.has_value(); });
+            if (stopping_) return;
+            job = std::move(*pending_);
+            pending_.reset();
+            active_source_ = job.source_id;
+        }
+        try {
+            AudioBuffer audio{std::move(job.samples),
+                              {sample_rate_hz_, 1U, AudioLayout::Interleaved},
+                              Timestamp{}, 0U};
+            auto result = classifier_->classify(audio.view());
+            std::lock_guard<std::mutex> lock{mutex_};
+            if (const auto it = buffers_.find(job.source_id);
+                it != buffers_.end()) {
+                it->second.result = std::move(result);
+            }
+            active_source_.reset();
+        } catch (const std::exception& exception) {
+            std::lock_guard<std::mutex> lock{mutex_};
+            error_ = exception.what();
+            active_source_.reset();
+            return;
+        } catch (...) {
+            std::lock_guard<std::mutex> lock{mutex_};
+            error_ = "Unknown classification exception";
+            active_source_.reset();
+            return;
+        }
+    }
+}
+} // namespace audition
