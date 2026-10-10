@@ -50,6 +50,12 @@ target_compile_definitions(libaudition_qt_demo PRIVATE
     LIBAUDITION_DEMO_HAS_WORLD=$<BOOL:${LIBAUDITION_WITH_WORLD}>
     LIBAUDITION_DEMO_HAS_GTSAM=$<BOOL:${LIBAUDITION_WITH_GTSAM}>)
 
+if(LIBAUDITION_WITH_YAMNET AND LIBAUDITION_DEMO_FETCH_YAMNET_MODEL)
+    target_compile_definitions(libaudition_qt_demo PRIVATE
+        LIBAUDITION_DEMO_YAMNET_MODEL="${LIBAUDITION_DEMO_YAMNET_MODEL}"
+        LIBAUDITION_DEMO_YAMNET_LABELS="${LIBAUDITION_DEMO_YAMNET_LABELS}")
+endif()
+
 libaudition_configure_target(libaudition_qt_demo)
 
 # ALSA is only a host-side capture adapter in this optional Qt executable.
