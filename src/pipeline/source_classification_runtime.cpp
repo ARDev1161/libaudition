@@ -42,13 +42,26 @@ void SourceClassificationRuntime::push(
     auto it = buffers_.find(source_id);
     if (it == buffers_.end()) {
         if (buffers_.size() >= max_sources_) {
-            // Do not silently misattribute old source ID results.
-            buffers_.erase(buffers_.begin());
+            // Evict the least-recently received source, not the lowest ID.
+            // Remove any pending job belonging to the retired generation.
+            const auto victim = std::min_element(buffers_.begin(), buffers_.end(),
+                [](const auto& a, const auto& b) {
+                    return a.second.last_seen_order < b.second.last_seen_order;
+                });
+            const auto evicted_id = victim->first;
+            const auto evicted_generation = victim->second.generation;
+            pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
+                [evicted_id, evicted_generation](const Job& job) {
+                    return job.source_id == evicted_id &&
+                           job.generation == evicted_generation;
+                }), pending_.end());
+            buffers_.erase(victim);
         }
         Buffer fresh{};
         fresh.generation = next_generation_++;
         it = buffers_.emplace(source_id, std::move(fresh)).first;
     }
+    it->second.last_seen_order = next_seen_order_++;
     auto& buffer = it->second.samples;
     for (std::size_t i = 0U; i < count; ++i) {
         if (!std::isfinite(samples[i])) {
