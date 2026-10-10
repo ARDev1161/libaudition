@@ -344,6 +344,15 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         taggingVariantLabel->setVisible(visible);
     };
     updateTaggingVariants(taggingFamily->currentIndex());
+    auto* vocabularyMode = new QComboBox{taggingSettings};
+    vocabularyMode->setObjectName("acousticSceneVocabularyMode");
+    vocabularyMode->addItems({"All classes (Top-5)", "Selected vocabulary"});
+    auto* vocabularyClasses = new QLineEdit{taggingSettings};
+    vocabularyClasses->setObjectName("acousticSceneVocabularyClasses");
+    vocabularyClasses->setPlaceholderText("Speech, Music, Dog bark");
+    vocabularyClasses->setVisible(false);
+    QObject::connect(vocabularyMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     vocabularyClasses, [=](int mode) { vocabularyClasses->setVisible(mode == 1); });
     auto* taggingModel = new QLineEdit{taggingSettings};
     taggingModel->setObjectName("acousticSceneTaggingModel");
 #ifdef LIBAUDITION_DEMO_YAMNET_MODEL
@@ -366,6 +375,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     labelsRow->addWidget(browseLabels);
     taggingForm->addRow("Model family", taggingFamily);
     taggingForm->addRow(taggingVariantLabel, taggingVariant);
+    taggingForm->addRow("Vocabulary mode", vocabularyMode);
+    taggingForm->addRow("Selected classes", vocabularyClasses);
     taggingForm->addRow("ONNX classifier", modelRow);
     taggingForm->addRow("Class labels", labelsRow);
     layout->addWidget(enableTagging);
@@ -539,6 +550,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
 #endif
         );
         taggingFamily->setEnabled(true);
+        vocabularyMode->setEnabled(true);
+        vocabularyClasses->setEnabled(true);
         taggingModel->setEnabled(true);
         taggingLabels->setEnabled(true);
         example->setEnabled(true);
@@ -629,6 +642,17 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 }
                 config.tagging_ced_model = taggingFamily->currentIndex() == 1;
                 config.tagging_yamnet_model = taggingFamily->currentIndex() == 2;
+                config.tagging_selected_vocabulary = vocabularyMode->currentIndex() == 1;
+                if (config.tagging_selected_vocabulary) {
+                    for (const auto& name : vocabularyClasses->text().split(',', Qt::SkipEmptyParts)) {
+                        const auto trimmed = name.trimmed();
+                        if (!trimmed.isEmpty())
+                            config.tagging_vocabulary_labels.push_back(trimmed.toStdString());
+                    }
+                    if (config.tagging_vocabulary_labels.empty()) {
+                        throw std::runtime_error{"Selected vocabulary requires at least one class"};
+                    }
+                }
                 config.tagging_model_path = modelFile.string();
                 config.tagging_labels_path = labelsFile.string();
             }
