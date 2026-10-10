@@ -66,6 +66,20 @@ Connect the **ReSpeaker 4-Mic USB v2.0**, open **Acoustic scene**, then:
 4. **Stop live capture** before starting offline WAV replay. Closing the
    window also joins/stops the capture worker.
 
+**ODAS ReSpeaker angular profile:** The checkbox **Apply upstream
+ReSpeaker USB 4-Mic 80°/100° angular profile** is enabled by default
+for the demonstration setup. It populates ODAS's microphone directivity
+and +Z spatial filter from the upstream ReSpeaker preset. These values
+are polar-angle *all-pass/no-pass transition limits*, **not** a hard
+±10° azimuth/elevation window and not microphone gain.
+The generic libaudition defaults are 180°/180°, admitting a larger
+angular region and possibly more mirror/ghost hypotheses for a planar
+array. Compare both modes with the same speaker position; neither
+guarantees true elevation resolution from coplanar microphones.
+Switching while live requires Stop → toggle profile → Start.
+
+Upstream ODAS config:
+https://github.com/introlab/odas/blob/master/config/odaslive/respeaker_usb_4_mic_array.cfg
 ALSA device parameters must support **exactly** the requested sample rate,
 number of channels and PCM format; there is no hidden resampling or
 downmixing. Inspect capabilities with
