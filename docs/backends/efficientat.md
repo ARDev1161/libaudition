@@ -61,3 +61,21 @@ https://github.com/fschmid56/EfficientAT/blob/main/models/preprocess.py
 
 The model's original license and the export's license must be reviewed
 independently before bundling artifacts.
+
+## Frontend parity harness
+
+CI's `efficientat-backend` job builds `efficientat_frontend_dump`, creates
+a deterministic 32 kHz signal (440 Hz, 1730 Hz and swept-tone component),
+then runs `compare_efficientat_frontend.py` using reference
+`torch.stft` and `torchaudio.compliance.kaldi.get_mel_banks`.
+The comparison reports max, mean and p99 absolute error, failing if
+max error exceeds 3e-3. This parity check tests the frontend only;
+it does not validate real EfficientAT model weights or accuracy.
+
+To reproduce locally with the backend enabled:
+
+```bash
+cmake --build build-efficientat --target efficientat_frontend_dump
+./build-efficientat/tests/efficientat_frontend_dump /tmp/efficientat_mel.f32
+python3 tests/fixtures/compare_efficientat_frontend.py /tmp/efficientat_mel.f32
+```
