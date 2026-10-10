@@ -156,3 +156,17 @@ TEST(EfficientAtFrontendSpec, RejectsSilentRateOrChannelMismatch) {
     EXPECT_THROW(spec.requireMono32k(16000U, 1U), std::invalid_argument);
     EXPECT_THROW(spec.requireMono32k(32000U, 2U), std::invalid_argument);
 }
+
+TEST(SourceClassificationRuntime, EvictsLeastRecentlyUpdatedSource) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 8U, 2U};
+    const float sample = 0.1F;
+    runtime.push(99U, &sample, 1U);
+    runtime.push(10U, &sample, 1U);
+    runtime.push(99U, &sample, 1U); // 99 is most recently updated
+    runtime.push(25U, &sample, 1U); // must retire 10, not smallest ID
+    EXPECT_EQ(runtime.status(10U).state,
+              audition::SourceClassificationState::WaitingForAudio);
+    EXPECT_EQ(runtime.status(99U).collected_samples, 2U);
+    EXPECT_EQ(runtime.status(25U).collected_samples, 1U);
+}
