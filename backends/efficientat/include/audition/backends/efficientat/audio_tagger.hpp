@@ -55,4 +55,16 @@ private:
     EfficientAtSpectrogramTagger model_;
 };
 
+// Explicit 16 kHz adapter for separated ODAS tracks. The upsampler is
+// part of the backend, not hidden in the generic inference runtime.
+class AUDITION_API EfficientAt16kAudioTagger final : public IAudioClassifier {
+public:
+    explicit EfficientAt16kAudioTagger(EfficientAtOnnxOptions options);
+    [[nodiscard]] BackendInfo backendInfo() const override;
+    [[nodiscard]] ClassifierCapabilities capabilities() const override;
+    [[nodiscard]] ClassificationResult classify(AudioView audio) const override;
+private:
+    EfficientAtAudioTagger classifier_;
+};
+
 } // namespace audition
