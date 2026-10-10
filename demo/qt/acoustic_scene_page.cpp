@@ -354,6 +354,177 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             }
         }
     };
+    auto capture = std::make_shared<demo::AlsaLiveCapture>();
+    auto* liveTimer = new QTimer{page};
+    liveTimer->setInterval(50);
+    auto seenGeneration = std::make_shared<std::uint64_t>(0);
+
+    const auto stopCapture = [=]() {
+        liveTimer->stop();
+        capture->stop(); // joins safely before the widget can be destroyed
+        stopLive->setEnabled(false);
+        startLive->setEnabled(
+#if LIBAUDITION_DEMO_HAS_ALSA
+            true
+#else
+            false
+#endif
+        );
+        refreshDevices->setEnabled(
+#if LIBAUDITION_DEMO_HAS_ALSA
+            true
+#else
+            false
+#endif
+        );
+        deviceSelector->setEnabled(true);
+        captureChannels->setEnabled(true);
+        captureRate->setEnabled(true);
+        map->setEnabled(true);
+        geometry->setEnabled(true);
+        hop->setEnabled(true);
+        frame->setEnabled(true);
+        example->setEnabled(true);
+        analyze->setEnabled(
+#if LIBAUDITION_DEMO_HAS_ODAS
+            true
+#else
+            false
+#endif
+        );
+    };
+    // A background thread may still be using ALSA when the window closes.
+    QObject::connect(page, &QObject::destroyed, [capture]() {
+        capture->stop();
+    });
+    QObject::connect(stopLive, &QPushButton::clicked, page, [=]() {
+        stopCapture();
+        status->setText("Live capture stopped. Last scene is retained.");
+    });
+
+#if LIBAUDITION_DEMO_HAS_ALSA
+    const auto refresh = [=]() {
+        const auto previous = deviceSelector->currentData().toString();
+        deviceSelector->clear();
+        const auto devices = demo::AlsaLiveCapture::discover();
+        int selectedIndex = -1;
+        for (const auto& device : devices) {
+            const auto pcm = QString::fromStdString(device.pcm_name);
+            const QString caption = pcm + " | " +
+                QString::fromStdString(device.description) +
+                (device.likely_respeaker ? " [ReSpeaker candidate]" : "");
+            deviceSelector->addItem(caption, pcm);
+            if (device.likely_respeaker && selectedIndex < 0) {
+                selectedIndex = deviceSelector->count() - 1;
+            }
+            if (pcm == previous) {
+                selectedIndex = deviceSelector->count() - 1;
+            }
+        }
+        if (selectedIndex >= 0) {
+            deviceSelector->setCurrentIndex(selectedIndex);
+        }
+        deviceStatus->setText(
+            devices.empty()
+            ? "No ALSA hardware capture devices detected. "
+              "Enter hw:N,M manually or check arecord -l."
+            : QString("Detected %1 capture PCM(s). ReSpeaker candidates are "
+                      "prioritized; confirm the hardware and microphone order.")
+                  .arg(static_cast<qulonglong>(devices.size())));
+    };
+    QObject::connect(refreshDevices, &QPushButton::clicked, page, refresh);
+    refresh();
+
+    QObject::connect(startLive, &QPushButton::clicked, page, [=]() {
+        try {
+            if (!analyze->isEnabled()) {
+                throw std::runtime_error{
+                    "Wait for WAV analysis to finish before starting live capture"};
+            }
+            demo::LiveCaptureConfig config;
+            QString pcmName = deviceSelector->currentData().toString();
+            const auto chosenText = deviceSelector->currentText().trimmed();
+            if (pcmName.isEmpty() || !chosenText.startsWith(pcmName)) {
+                pcmName = chosenText.section(" | ", 0, 0);
+            }
+            config.pcm_name = pcmName.toStdString();
+            config.channel_count =
+                static_cast<std::uint32_t>(captureChannels->value());
+            config.sample_rate_hz =
+                static_cast<std::uint32_t>(captureRate->value());
+            config.hop_size = static_cast<std::uint32_t>(hop->value());
+            config.frame_size = static_cast<std::uint32_t>(frame->value());
+            config.input_channels = parseChannels(map->text());
+            const auto microphoneGeometry = parseMicrophones(geometry->toPlainText());
+            for (const auto& microphone : microphoneGeometry) {
+                const auto& v = microphone.position_m;
+                config.microphone_positions.push_back({v.x, v.y, v.z});
+            }
+            if (config.input_channels.size() != config.microphone_positions.size()) {
+                throw std::runtime_error{
+                    "ODAS channel mapping length must match the microphone XYZ count"};
+            }
+            for (const auto index : config.input_channels) {
+                if (index >= config.channel_count) {
+                    throw std::runtime_error{
+                        "ODAS input channel index is outside the capture channel count"};
+                }
+            }
+            timer->stop();
+            play->setEnabled(false);
+            *cursor = 0;
+            replay->frames.clear();
+            sphere->clearTracks();
+            tracks->setRowCount(0);
+            selected->setText("Click a live track to inspect its direction.");
+            capture->start(std::move(config));
+            *seenGeneration = 0;
+            startLive->setEnabled(false);
+            stopLive->setEnabled(true);
+            refreshDevices->setEnabled(false);
+            deviceSelector->setEnabled(false);
+            captureChannels->setEnabled(false);
+            captureRate->setEnabled(false);
+            map->setEnabled(false);
+            geometry->setEnabled(false);
+            hop->setEnabled(false);
+            frame->setEnabled(false);
+            example->setEnabled(false);
+            analyze->setEnabled(false);
+            status->setText("Opening ALSA capture stream and initializing ODAS…");
+            liveTimer->start();
+        } catch (const std::exception& error) {
+            status->setText(QString("Live capture configuration error: ") +
+                            QString::fromUtf8(error.what()));
+        }
+    });
+#endif
+
+    QObject::connect(liveTimer, &QTimer::timeout, page, [=]() {
+        const auto snapshot = capture->snapshot();
+        if (snapshot.generation != *seenGeneration) {
+            *seenGeneration = snapshot.generation;
+            display(snapshot.tracks);
+        }
+        if (!snapshot.error.empty()) {
+            stopCapture();
+            status->setText("Live ALSA/ODAS error: " +
+                            QString::fromStdString(snapshot.error));
+            return;
+        }
+        if (!snapshot.running) {
+            stopCapture();
+            status->setText("Live capture completed or device disconnected.");
+            return;
+        }
+        status->setText(
+            QString("LIVE ALSA → ODAS · %1 hops · %2 tracked source(s) · "
+                    "ALSA overrun recoveries: %3 · UI 20 Hz")
+                .arg(static_cast<qulonglong>(snapshot.processed_hops))
+                .arg(static_cast<qulonglong>(snapshot.tracks.size()))
+                .arg(static_cast<qulonglong>(snapshot.recoveries)));
+    });
+
     sphere->setTrackClicked([=](std::uint64_t id) {
         for (const auto& snapshot : replay->frames) {
             // Hover/click remains usable when playback is paused.
