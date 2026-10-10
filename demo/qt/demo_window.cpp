@@ -195,6 +195,19 @@ void verifyWorkbench(QWidget* root) {
     }
     auto* scene = requireTab(appTabs, "Acoustic scene");
     requireAction(scene, "Show 3D example");
+    for (auto* button : scene->findChildren<QPushButton*>()) {
+        if (button->text() == "Show 3D example") {
+            button->click();
+            break;
+        }
+    }
+    auto* sceneTable = scene->findChild<QTableWidget*>("acousticSceneTracks");
+    auto* sceneStatus = scene->findChild<QLabel*>("acousticSceneStatus");
+    if (sceneTable == nullptr || sceneTable->rowCount() != 3 ||
+        sceneStatus == nullptr ||
+        !sceneStatus->text().contains("SYNTHETIC")) {
+        throw std::runtime_error{"Qt self-test: 3D scene demo was not populated"};
+    }
     if (scene->findChild<QWidget*>("acousticSphere") == nullptr) {
         throw std::runtime_error{"Qt self-test: missing 3D sphere"};
     }
