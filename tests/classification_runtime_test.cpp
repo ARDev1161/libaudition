@@ -114,3 +114,34 @@ TEST(SourceClassificationRuntime, ForgottenTrackCannotReceiveOldInference) {
         EXPECT_FALSE(state.result.has_value());
     }
 }
+
+TEST(SourceClassificationRuntime, ZeroValuedSourceIdIsAccepted) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U};
+    const float samples[4] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(0U, samples, 4U);
+    bool classified = false;
+    for (int i = 0; i < 200; ++i) {
+        if (runtime.status(0U).result.has_value()) {
+            classified = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(classified);
+}
+
+TEST(SourceClassificationRuntime, BoundedQueueDoesNotDropOtherTrackWindow) {
+    std::atomic<bool> started{false};
+    std::atomic<bool> finish{false};
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<SlowClassifier>(started, finish), 16000U, 4U, 2U};
+    const float samples[4] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(1U, samples, 4U);
+    for (int i = 0; i < 1000 && !started.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    runtime.push(2U, samples, 4U);
+    const auto pending = runtime.status(2U);
+    EXPECT_EQ(pending.state, audition::SourceClassificationState::Queued);
+    finish.store(true);
+}
