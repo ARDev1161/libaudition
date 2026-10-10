@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QSpinBox>
+#include <QStringList>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTimer>
@@ -298,6 +299,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     status->setObjectName("acousticSceneStatus");
     status->setWordWrap(true);
     layout->addWidget(status);
+    auto* diagnostics = new QLabel{
+        "Live signal diagnostics will show channel RMS/peak levels and "
+        "SSL proposal counts after capture starts.", page};
+    diagnostics->setObjectName("acousticSceneDiagnostics");
+    diagnostics->setWordWrap(true);
+    diagnostics->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    layout->addWidget(diagnostics);
 
     auto* split = new QSplitter{Qt::Horizontal, page};
     auto* sphere = new AcousticSphereWidget{split};
@@ -492,6 +500,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             example->setEnabled(false);
             analyze->setEnabled(false);
             status->setText("Opening ALSA capture stream and initializing ODAS…");
+            diagnostics->setText("Waiting for first ALSA audio frames…");
             liveTimer->start();
         } catch (const std::exception& error) {
             status->setText(QString("Live capture configuration error: ") +
@@ -505,6 +514,26 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         if (snapshot.generation != *seenGeneration) {
             *seenGeneration = snapshot.generation;
             display(snapshot.tracks);
+            sphere->setPotentials(snapshot.potentials);
+            QStringList levels;
+            for (std::size_t channel = 0; channel < snapshot.channel_rms_dbfs.size();
+                 ++channel) {
+                levels << QString("ch%1: %2 dBFS RMS / %3 peak")
+                              .arg(static_cast<qulonglong>(channel))
+                              .arg(snapshot.channel_rms_dbfs[channel], 0, 'f', 1)
+                              .arg(snapshot.channel_peak_dbfs[channel], 0, 'f', 1);
+            }
+            double strongest = 0.0;
+            for (const auto& proposal : snapshot.potentials) {
+                strongest = std::max(strongest, proposal.score);
+            }
+            diagnostics->setText(
+                QString("Raw ALSA input levels: %1\n"
+                        "ODAS SSL direction proposals: %2 (strongest raw score: %3) · "
+                        "outlined diamonds are SSL proposals, filled circles are SST tracks")
+                    .arg(levels.join("  |  "))
+                    .arg(static_cast<qulonglong>(snapshot.potentials.size()))
+                    .arg(strongest, 0, 'f', 3));
         }
         if (!snapshot.error.empty()) {
             stopCapture();
@@ -569,6 +598,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         *cursor = 0;
         play->setEnabled(false);
         sphere->clearTracks();
+        diagnostics->setText("Synthetic example (no live microphone levels).");
         const std::vector<AcousticSceneTrack> sample{
             {12, QVector3D{0.71F, 0.46F, 0.53F}, 0.92},
             {7, QVector3D{0.42F, -0.57F, -0.71F}, 0.61},
@@ -597,6 +627,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         selected->setText("Click a source on the sphere to inspect it.");
         play->setEnabled(false);
         status->setText("View data reset.");
+        diagnostics->setText("No live microphone diagnostics.");
     });
 
 #if LIBAUDITION_DEMO_HAS_ODAS
@@ -615,6 +646,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         play->setEnabled(false);
         analyze->setEnabled(false);
         status->setText("ODAS is analyzing WAV in a worker. Please wait…");
+        diagnostics->setText("WAV replay mode; live ALSA levels not available.");
         watcher->setFuture(QtConcurrent::run([=]() {
             return analyzeWav(wavFile, mapping, positions, hopSize, frameSize);
         }));
