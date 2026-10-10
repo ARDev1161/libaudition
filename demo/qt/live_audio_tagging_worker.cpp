@@ -7,6 +7,10 @@
 #include <audition/backends/yamnet/audio_tagger.hpp>
 #endif
 
+#if LIBAUDITION_DEMO_HAS_EFFICIENTAT
+#include <audition/backends/efficientat/audio_tagger.hpp>
+#endif
+
 #include <stdexcept>
 #include <sstream>
 #include <utility>
@@ -21,7 +25,17 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
             throw std::invalid_argument{"Audio tagging requires mono 16 kHz and model/labels"};
         }
         std::unique_ptr<audition::IAudioClassifier> classifier;
-        if (options.yamnet_model) {
+        if (options.efficientat_model) {
+#if LIBAUDITION_DEMO_HAS_EFFICIENTAT
+            audition::EfficientAtOnnxOptions cfg{};
+            cfg.model = options.model_path;
+            cfg.labels = options.labels_path;
+            cfg.top_k = 527U;
+            classifier = std::make_unique<audition::EfficientAt16kAudioTagger>(std::move(cfg));
+#else
+            throw std::runtime_error{"EfficientAT backend is not built"};
+#endif
+        } else if (options.yamnet_model) {
 #if LIBAUDITION_DEMO_HAS_YAMNET
             audition::YamnetOnnxOptions cfg{};
             cfg.model = options.model_path;
