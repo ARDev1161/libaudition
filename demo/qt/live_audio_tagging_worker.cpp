@@ -101,6 +101,18 @@ std::string LiveAudioTaggingWorker::error() const {
     return error_;
 }
 
+std::string LiveAudioTaggingWorker::status(std::uint64_t track_id) const {
+    std::lock_guard<std::mutex> lock{mutex_};
+    if (!error_.empty()) return "Error: " + error_;
+    const auto result = results_.find(track_id);
+    if (result != results_.end()) return "Classified";
+    const auto it = buffers_.find(track_id);
+    if (it == buffers_.end()) return "Waiting for SSS";
+    if (inferencing_ || pending_.has_value()) return "Inferencing";
+    return "Collecting " + std::to_string(it->second.samples.size()) +
+           "/" + std::to_string(window_samples_);
+}
+
 void LiveAudioTaggingWorker::run(LiveTaggingOptions options) noexcept {
 #if LIBAUDITION_DEMO_HAS_SHERPA || LIBAUDITION_DEMO_HAS_YAMNET
     try {
@@ -140,12 +152,17 @@ void LiveAudioTaggingWorker::run(LiveTaggingOptions options) noexcept {
                 }
                 job = std::move(*pending_);
                 pending_.reset();
+                inferencing_ = true;
             }
             audition::AudioBuffer audio{
                 std::move(job.samples),
                 {options.sample_rate_hz, 1U, audition::AudioLayout::Interleaved},
                 audition::Timestamp{}, job.hop};
             const auto classified = classifier->classify(audio.view());
+            {
+                std::lock_guard<std::mutex> lock{mutex_};
+                inferencing_ = false;
+            }
             if (classified.classes.empty()) {
                 continue;
             }
