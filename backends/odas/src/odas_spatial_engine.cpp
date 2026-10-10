@@ -61,6 +61,11 @@ public:
         SpatialProcessingResult result{};
         result.tracks.reserve(raw.active_slots.size());
         result.separated_frames.reserve(raw.active_slots.size());
+        result.potential_sources.reserve(raw.potential_slots.size());
+        for (const auto& proposal : raw.potential_slots) {
+            result.potential_sources.push_back({
+                Direction3D::fromVector(proposal.direction), proposal.score});
+        }
 
         for (const auto& slot : raw.active_slots) {
             if (!std::isfinite(slot.direction.x) || !std::isfinite(slot.direction.y) ||
