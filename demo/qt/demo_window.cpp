@@ -210,6 +210,9 @@ void verifyWorkbench(QWidget* root) {
     }
     auto* sceneTable = scene->findChild<QTableWidget*>("acousticSceneTracks");
     auto* sceneStatus = scene->findChild<QLabel*>("acousticSceneStatus");
+    if (scene->findChild<QLabel*>("acousticSceneDiagnostics") == nullptr) {
+        throw std::runtime_error{"Qt self-test: missing live channel/SSL diagnostics"};
+    }
     if (sceneTable == nullptr || sceneTable->rowCount() != 3 ||
         sceneStatus == nullptr ||
         !sceneStatus->text().contains("SYNTHETIC")) {
