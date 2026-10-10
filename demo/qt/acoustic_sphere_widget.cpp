@@ -319,13 +319,19 @@ void AcousticSphereWidget::mouseMoveEvent(QMouseEvent* event) {
             const auto azimuth = degrees(std::atan2(v.y(), v.x()));
             const auto elevation = degrees(std::atan2(
                 v.z(), std::hypot(v.x(), v.y())));
+            const auto classification = track.classification_label.empty()
+                ? QString("Not configured / pending")
+                : QString::fromStdString(track.classification_label) +
+                  QString(" (model probability %1)").arg(
+                      track.classification_probability, 0, 'f', 2);
             QToolTip::showText(
                 event->globalPos(),
-                QString("Track #%1\nAzimuth: %2°\nElevation: %3°\nActivity: %4\nClassification: not available")
-                    .arg(track.id)
+                QString("Track #%1\nAzimuth: %2°\nElevation: %3°\nActivity: %4\nClassification: %5")
+                    .arg(static_cast<qulonglong>(track.id))
                     .arg(azimuth, 0, 'f', 1)
                     .arg(elevation, 0, 'f', 1)
-                    .arg(track.activity, 0, 'f', 2),
+                    .arg(track.activity, 0, 'f', 2)
+                    .arg(classification),
                 this);
             break;
         }
