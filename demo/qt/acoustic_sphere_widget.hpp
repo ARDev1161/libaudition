@@ -24,11 +24,17 @@ struct AcousticSceneTrack {
     double activity{0.0};
 };
 
+struct AcousticScenePotential {
+    QVector3D direction{};
+    double score{0.0}; // Raw ODAS SSL score (uncalibrated)
+};
+
 class AcousticSphereWidget final : public QWidget {
 public:
     explicit AcousticSphereWidget(QWidget* parent = nullptr);
 
     void setTracks(const std::vector<AcousticSceneTrack>& tracks);
+    void setPotentials(const std::vector<AcousticScenePotential>& potentials);
     void clearTracks();
     void setTrackClicked(std::function<void(std::uint64_t)> callback);
     [[nodiscard]] std::size_t trackCount() const noexcept;
@@ -56,6 +62,7 @@ private:
     void drawTracks(QPainter& painter) const;
 
     std::vector<AcousticSceneTrack> tracks_{};
+    std::vector<AcousticScenePotential> potentials_{};
     std::map<std::uint64_t, std::deque<QVector3D>> trails_{};
     std::function<void(std::uint64_t)> onTrackClicked_{};
     QPoint lastMouse_{};

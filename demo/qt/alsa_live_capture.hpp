@@ -38,6 +38,9 @@ struct LiveCaptureSnapshot {
     std::uint64_t processed_hops{0};
     std::uint64_t recoveries{0};
     std::vector<AcousticSceneTrack> tracks{};
+    std::vector<AcousticScenePotential> potentials{};
+    std::vector<double> channel_rms_dbfs{};
+    std::vector<double> channel_peak_dbfs{};
     std::string error{};
 };
 

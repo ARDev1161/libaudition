@@ -77,6 +77,36 @@ The worker accumulates short ALSA reads, resets ODAS on XRUN recovery, and
 publishes only the latest tracked-source snapshot (bounded memory); the
 capture thread never updates GUI widgets directly.
 
+#### If the 3D sphere initially remains empty
+
+An empty sphere does **not** imply ALSA has failed: the GUI used to display
+only the confirmed ODAS SST tracks, which may take time to initialize or
+disappear when acoustic activity is low. The live readout now exposes two
+independent stages:
+
+- **Raw ALSA input levels** for every hardware channel: RMS and peak in
+  dBFS over the last display interval, before ODAS. Watch the four mapped
+  microphone channels when speaking/clapping; near -180 dBFS means digital
+  silence. Compare ch0/ch5 too, but they are not mapped as microphones.
+- **ODAS SSL proposals**: outlined small diamonds on the unit sphere,
+  separate from SST's larger filled/ID-labeled persistent tracks. A raw
+  score >0 represents a positive potential-source candidate, **not a
+  calibrated probability**. The readout also shows the proposal count
+  and strongest raw score.
+
+If mapped channels are active but SSL candidates remain zero, check
+microphone order/geometry and the ODAS SSL thresholds. If there are SSL
+candidates but SST stays empty or produces IDs with near-zero activity,
+investigate tracker initiation/thresholds and room reverberation. The
+published ODAS ReSpeaker USB 4-Mic configuration includes the
+`1,2,3,4` (zero-based) mapping and a 32 mm microphone radius, but this
+still needs orientation and real-hardware verification:
+https://github.com/introlab/odas/blob/master/config/odaslive/respeaker_usb_4_mic_array.cfg
+
+Because all four microphones are coplanar, elevation estimates can be
+ambiguous and should be verified experimentally. Neither SSL proposals nor
+SST tracks should be interpreted as metric position estimates.
+
 **Not yet implemented:** raw `odas.cfg` import, ReSpeaker microphone geometry
 auto-calibration, source classification, click-to-ASR, audio monitor/playback,
 and source-separated live recording. Tracks indicate **directions**, not

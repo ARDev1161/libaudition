@@ -91,6 +91,12 @@ TEST(OdasBackend, ProcessesOneConfiguredHopWithoutOwningScheduling) {
     const auto result = engine.process(silence.view());
     EXPECT_LE(result.tracks.size(), static_cast<std::size_t>(options.sst.max_tracks));
     EXPECT_EQ(result.separated_frames.size(), result.tracks.size());
+    EXPECT_LE(result.potential_sources.size(),
+              static_cast<std::size_t>(options.ssl.potential_source_count));
+    for (const auto& proposal : result.potential_sources) {
+        EXPECT_GT(proposal.score, 0.0);
+        EXPECT_NEAR(proposal.direction.vector().squaredNorm(), 1.0, 1e-5);
+    }
     for (const auto& frame : result.separated_frames) {
         const auto matching_track = std::find_if(
             result.tracks.begin(), result.tracks.end(),

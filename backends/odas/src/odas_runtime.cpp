@@ -1,6 +1,7 @@
 #include "detail/odas_runtime.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <memory>
@@ -129,6 +130,24 @@ private:
         OdasRuntimeResult result{};
         result.active_slots.reserve(options_.sst.max_tracks);
         result.live_tracker_ids.reserve(options_.sst.max_tracks);
+        result.potential_slots.reserve(options_.ssl.potential_source_count);
+        // ODAS SSL potentials are packed as [x,y,z,score] per candidate.
+        // A positive score indicates a direction proposal; it is NOT a
+        // calibrated confidence and does not imply an SST track exists.
+        for (std::size_t slot = 0; slot < static_cast<std::size_t>(pots_->pots->nPots);
+             ++slot) {
+            const float* candidate = pots_->pots->array + 4U * slot;
+            const double score = static_cast<double>(candidate[3]);
+            const Vec3 direction{
+                static_cast<double>(candidate[0]),
+                static_cast<double>(candidate[1]),
+                static_cast<double>(candidate[2])};
+            if (std::isfinite(score) && score > 0.0 &&
+                std::isfinite(direction.x) && std::isfinite(direction.y) &&
+                std::isfinite(direction.z) && direction.squaredNorm() > 1.0e-12) {
+                result.potential_slots.push_back({direction, score});
+            }
+        }
 
         for (std::size_t slot = 0; slot < static_cast<std::size_t>(options_.sst.max_tracks); ++slot) {
             const auto live_id = static_cast<std::uint64_t>(sst_->ids[slot]);

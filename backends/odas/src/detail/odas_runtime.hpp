@@ -18,9 +18,15 @@ struct OdasSlotResult {
     std::optional<std::vector<float>> separated_audio{};
 };
 
+struct OdasPotentialSlot {
+    Vec3 direction{};
+    double score{0.0};
+};
+
 struct OdasRuntimeResult {
     std::vector<OdasSlotResult> active_slots{};
     std::vector<std::uint64_t> live_tracker_ids{};
+    std::vector<OdasPotentialSlot> potential_slots{};
 };
 
 /** Private stateful composition of the libodas processing modules. */

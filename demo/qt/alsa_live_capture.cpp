@@ -231,6 +231,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::uint64_t hops = 0;
         std::uint64_t xruns = 0;
         std::size_t filled = 0;
+        // Aggregate per-channel PCM levels between UI snapshots (~50 ms).
+        // Raw hardware channels include the USB reference channels as well
+        // as the four actual microphone channels.
+        std::vector<double> sumSquares(channelCount, 0.0);
+        std::vector<double> maxAbs(channelCount, 0.0);
+        std::size_t measuredFrames = 0;
         const std::uint64_t visualStride = std::max<std::uint64_t>(
             1U, static_cast<std::uint64_t>(
                 std::round(static_cast<double>(config.sample_rate_hz) /
@@ -253,6 +259,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             if (result == -EPIPE || result == -ESTRPIPE) {
                 ++xruns;
                 filled = 0;
+                std::fill(sumSquares.begin(), sumSquares.end(), 0.0);
+                std::fill(maxAbs.begin(), maxAbs.end(), 0.0);
+                measuredFrames = 0;
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
                 continue;
@@ -272,9 +281,15 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             filled = 0;
             std::vector<float> samples;
             samples.reserve(native.size());
-            for (const auto sample : native) {
-                samples.push_back(static_cast<float>(sample) / 32768.0F);
+            for (std::size_t i = 0; i < native.size(); ++i) {
+                const float sample = static_cast<float>(native[i]) / 32768.0F;
+                samples.push_back(sample);
+                const auto channel = i % channelCount;
+                const double level = static_cast<double>(sample);
+                sumSquares[channel] += level * level;
+                maxAbs[channel] = std::max(maxAbs[channel], std::abs(level));
             }
+            measuredFrames += hop;
             const auto timestamp = audition::Timestamp{
                 static_cast<std::int64_t>(
                     (static_cast<double>(hops) *
@@ -302,8 +317,33 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                               static_cast<float>(xyz.z)},
                     t.activity.value()});
             }
+            std::vector<AcousticScenePotential> proposals;
+            proposals.reserve(resultFrame.potential_sources.size());
+            for (const auto& p : resultFrame.potential_sources) {
+                const auto d = p.direction.vector();
+                proposals.push_back({
+                    QVector3D{static_cast<float>(d.x),
+                              static_cast<float>(d.y),
+                              static_cast<float>(d.z)}, p.score});
+            }
+            std::vector<double> rmsDbfs;
+            std::vector<double> peakDbfs;
+            rmsDbfs.reserve(channelCount);
+            peakDbfs.reserve(channelCount);
+            for (std::size_t ch = 0; ch < channelCount; ++ch) {
+                const double rms = std::sqrt(
+                    sumSquares[ch] / static_cast<double>(measuredFrames));
+                rmsDbfs.push_back(20.0 * std::log10(std::max(rms, 1.0e-9)));
+                peakDbfs.push_back(20.0 * std::log10(std::max(maxAbs[ch], 1.0e-9)));
+            }
+            std::fill(sumSquares.begin(), sumSquares.end(), 0.0);
+            std::fill(maxAbs.begin(), maxAbs.end(), 0.0);
+            measuredFrames = 0;
             std::lock_guard<std::mutex> lock{mutex_};
             latest_.tracks = std::move(tracks);
+            latest_.potentials = std::move(proposals);
+            latest_.channel_rms_dbfs = std::move(rmsDbfs);
+            latest_.channel_peak_dbfs = std::move(peakDbfs);
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             ++latest_.generation;
