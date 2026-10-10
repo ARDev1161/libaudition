@@ -526,12 +526,17 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     });
 
     sphere->setTrackClicked([=](std::uint64_t id) {
-        for (const auto& snapshot : replay->frames) {
-            // Hover/click remains usable when playback is paused.
-            if (*cursor == 0 || &snapshot != &replay->frames[*cursor - 1]) {
-                continue;
+        const auto current = capture->snapshot();
+        if (current.running) {
+            for (const auto& track : current.tracks) {
+                if (track.id == id) {
+                    selected->setText(directionSummary(track));
+                    return;
+                }
             }
-            for (const auto& track : snapshot.tracks) {
+        }
+        if (*cursor > 0 && *cursor <= replay->frames.size()) {
+            for (const auto& track : replay->frames[*cursor - 1].tracks) {
                 if (track.id == id) {
                     selected->setText(directionSummary(track));
                     return;
@@ -558,6 +563,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     });
 
     QObject::connect(example, &QPushButton::clicked, page, [=]() {
+        stopCapture();
         timer->stop();
         replay->frames.clear();
         *cursor = 0;
@@ -582,6 +588,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         }
     });
     QObject::connect(stop, &QPushButton::clicked, page, [=]() {
+        stopCapture();
         timer->stop();
         *cursor = 0;
         replay->frames.clear();
@@ -595,6 +602,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
 #if LIBAUDITION_DEMO_HAS_ODAS
     auto* watcher = new QFutureWatcher<std::shared_ptr<SceneReplay>>{page};
     QObject::connect(analyze, &QPushButton::clicked, page, [=]() {
+        stopCapture();
         if (watcher->isRunning()) {
             return;
         }
