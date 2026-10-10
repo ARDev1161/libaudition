@@ -4,6 +4,21 @@ The optional `audition::backend_yamnet` implements `IAudioClassifier` using
 ONNX Runtime on CPU. It is independent of sherpa-onnx: CED/Zipformer and YAMNet
 remain alternative classifiers with the same public output contract.
 
+## Demo defaults
+
+When the Qt demo is enabled, `LIBAUDITION_WITH_YAMNET` defaults to ON, and
+`LIBAUDITION_DEMO_FETCH_YAMNET_MODEL` downloads the demo model and labels
+at CMake configuration time from the pinned Hugging Face revision `f25b741`.
+The Qt Acoustic Scene then selects YAMNet, prefills asset paths and checks
+classification by default. Stop/restart live capture after changing selection.
+The model cache is under the build tree (`demo-models/yamnet`).
+Set `LIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF` to build without downloading;
+then supply compatible ONNX and class-map paths manually.
+
+**Integrity caveat:** the current downloader pins an upstream revision but
+has not yet independently verified and recorded SHA-256 hashes. Do not treat
+this as a supply-chain-verified model distribution until hashes are added.
+
 ## Build
 
 ```sh
