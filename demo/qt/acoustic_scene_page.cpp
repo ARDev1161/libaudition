@@ -315,16 +315,28 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto* enableTagging = new QCheckBox{
         "Classify source audio (requires ONNX + labels)", page};
     enableTagging->setObjectName("acousticSceneEnableTagging");
+#if LIBAUDITION_DEMO_HAS_YAMNET && defined(LIBAUDITION_DEMO_YAMNET_MODEL)
+    enableTagging->setChecked(true);
+#endif
     auto* taggingSettings = new QWidget{page};
     auto* taggingForm = new QFormLayout{taggingSettings};
     taggingForm->setContentsMargins(4, 0, 4, 0);
     auto* taggingFamily = new QComboBox{taggingSettings};
     taggingFamily->addItems({"Zipformer", "CED", "YAMNet"});
+#if LIBAUDITION_DEMO_HAS_YAMNET
+    taggingFamily->setCurrentIndex(2);
+#endif
     auto* taggingModel = new QLineEdit{taggingSettings};
     taggingModel->setObjectName("acousticSceneTaggingModel");
+#ifdef LIBAUDITION_DEMO_YAMNET_MODEL
+    taggingModel->setText(QString::fromUtf8(LIBAUDITION_DEMO_YAMNET_MODEL));
+#endif
     taggingModel->setPlaceholderText("Path to audio-tagging .onnx");
     auto* taggingLabels = new QLineEdit{taggingSettings};
     taggingLabels->setObjectName("acousticSceneTaggingLabels");
+#ifdef LIBAUDITION_DEMO_YAMNET_LABELS
+    taggingLabels->setText(QString::fromUtf8(LIBAUDITION_DEMO_YAMNET_LABELS));
+#endif
     taggingLabels->setPlaceholderText("Corresponding class labels file");
     auto* browseModel = new QPushButton{"Browse model…", taggingSettings};
     auto* browseLabels = new QPushButton{"Browse labels…", taggingSettings};
@@ -339,7 +351,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     taggingForm->addRow("Class labels", labelsRow);
     layout->addWidget(enableTagging);
     layout->addWidget(taggingSettings);
-    taggingSettings->setVisible(false);
+    taggingSettings->setVisible(enableTagging->isChecked());
 #if !LIBAUDITION_DEMO_HAS_SHERPA && !LIBAUDITION_DEMO_HAS_YAMNET
     enableTagging->setEnabled(false);
     enableTagging->setToolTip(
