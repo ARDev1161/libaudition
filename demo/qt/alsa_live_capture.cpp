@@ -238,7 +238,13 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                    config.tagging_ced_model,
                                    config.tagging_yamnet_model,
                                    config.sample_rate_hz,
-                                   config.hop_size});
+                                   config.hop_size,
+                                   audition::VocabularySelection{
+                                       config.tagging_selected_vocabulary
+                                           ? audition::VocabularyMode::SelectedClasses
+                                           : audition::VocabularyMode::AllClasses,
+                                       config.tagging_vocabulary_labels,
+                                       5U}});
         }
         auto pcm = openPcm(config);
 
@@ -342,7 +348,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 if (classifier) {
                     const auto tag = classifier->result(t.track_id.value(), hops);
                     if (tag.has_value()) {
-                        track.classification_label = tag->label;
+                        track.classification_label = tag->top_classes.empty()
+                            ? (tag->unsupported_labels.empty()
+                                ? "No selected classes" : "Unsupported class")
+                            : tag->top_classes;
                         track.classification_probability = tag->probability;
                     }
                 }
