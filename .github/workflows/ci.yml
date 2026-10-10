@@ -54,7 +54,13 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-efficientat --parallel
+      - name: Generate deterministic ONNX fixture
+        run: |
+          python3 -m pip install --break-system-packages numpy onnx
+          python3 tests/fixtures/make_efficientat_onnx.py "$PWD/build-efficientat/fixture"
       - name: Test
+        env:
+          LIBAUDITION_EFFICIENTAT_FIXTURE_DIR: ${{ github.workspace }}/build-efficientat/fixture
         run: ctest --test-dir build-efficientat --output-on-failure
       - name: Install
         run: cmake --install build-efficientat --prefix "$PWD/install-efficientat"
