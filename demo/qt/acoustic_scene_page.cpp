@@ -326,6 +326,23 @@ QWidget* createAcousticScenePage(QWidget* parent) {
 #if LIBAUDITION_DEMO_HAS_YAMNET
     taggingFamily->setCurrentIndex(2);
 #endif
+    auto* taggingVariant = new QComboBox{taggingSettings};
+    taggingVariant->setObjectName("acousticSceneTaggingVariant");
+    taggingVariant->setToolTip(
+        "Model variant is a selection hint; load a matching ONNX file and labels below.");
+    auto* taggingVariantLabel = new QLabel{"Model variant", taggingSettings};
+    const auto updateTaggingVariants = [=](int family) {
+        taggingVariant->clear();
+        if (family == 1) {
+            taggingVariant->addItems({"Tiny", "Mini", "Small", "Base"});
+        } else if (family == 0) {
+            taggingVariant->addItems({"Small (FP32)", "Small (INT8)"});
+        }
+        const bool visible = family != 2;
+        taggingVariant->setVisible(visible);
+        taggingVariantLabel->setVisible(visible);
+    };
+    updateTaggingVariants(taggingFamily->currentIndex());
     auto* taggingModel = new QLineEdit{taggingSettings};
     taggingModel->setObjectName("acousticSceneTaggingModel");
 #ifdef LIBAUDITION_DEMO_YAMNET_MODEL
@@ -347,6 +364,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     labelsRow->addWidget(taggingLabels, 1);
     labelsRow->addWidget(browseLabels);
     taggingForm->addRow("Model family", taggingFamily);
+    taggingForm->addRow(taggingVariantLabel, taggingVariant);
     taggingForm->addRow("ONNX classifier", modelRow);
     taggingForm->addRow("Class labels", labelsRow);
     layout->addWidget(enableTagging);
@@ -359,8 +377,24 @@ QWidget* createAcousticScenePage(QWidget* parent) {
 #endif
     QObject::connect(taggingFamily, QOverload<int>::of(&QComboBox::currentIndexChanged),
                      page, [=](int index) {
+        updateTaggingVariants(index);
+        // Never silently reuse the YAMNet model/labels for an unrelated family.
+        taggingModel->clear();
+        taggingLabels->clear();
+#ifdef LIBAUDITION_DEMO_YAMNET_MODEL
+        if (index == 2) {
+            taggingModel->setText(QString::fromUtf8(LIBAUDITION_DEMO_YAMNET_MODEL));
+            taggingLabels->setText(QString::fromUtf8(LIBAUDITION_DEMO_YAMNET_LABELS));
+        }
+#endif
         enableTagging->setEnabled(index == 2 ? LIBAUDITION_DEMO_HAS_YAMNET : LIBAUDITION_DEMO_HAS_SHERPA);
         if (!enableTagging->isEnabled()) enableTagging->setChecked(false);
+    });
+    QObject::connect(taggingVariant, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     page, [=](int) {
+        // Variants have distinct ONNX weights; make user choose the correct file.
+        taggingModel->clear();
+        taggingLabels->clear();
     });
     QObject::connect(enableTagging, &QCheckBox::toggled,
                      taggingSettings, &QWidget::setVisible);
