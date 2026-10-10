@@ -63,6 +63,13 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-efficientat/demo/qt/libaudition_qt_demo --self-test
+      - name: PyTorch reference frontend parity
+        run: |
+          python3 -m venv "$RUNNER_TEMP/efficientat-parity"
+          "$RUNNER_TEMP/efficientat-parity/bin/pip" install numpy
+          "$RUNNER_TEMP/efficientat-parity/bin/pip" install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          ./build-efficientat/tests/efficientat_frontend_dump "$RUNNER_TEMP/efficientat_mel.f32"
+          "$RUNNER_TEMP/efficientat-parity/bin/python" tests/fixtures/compare_efficientat_frontend.py "$RUNNER_TEMP/efficientat_mel.f32"
       - name: Generate deterministic ONNX fixture
         run: |
           python3 -m pip install --break-system-packages numpy onnx
