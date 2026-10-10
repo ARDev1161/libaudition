@@ -1,4 +1,5 @@
 #include "alsa_live_capture.hpp"
+#include "live_audio_tagging_worker.hpp"
 #include "odas_respeaker_profile.hpp"
 
 #if LIBAUDITION_DEMO_HAS_ALSA
@@ -225,8 +226,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         if (config.respeaker_angular_profile) {
             applyReSpeakerUsb4MicAngularProfile(options);
         }
-        options.sss.enabled = false; // Direction-only live MVP; no fake ASR.
+        // Source-specific classification needs actual SSS mono audio. Avoid
+        // the extra DSP cost when no classifier model is configured.
+        options.sss.enabled = config.classify_sources;
         audition::OdasSpatialEngine engine{options};
+        std::unique_ptr<LiveAudioTaggingWorker> classifier;
+        if (config.classify_sources) {
+            classifier = std::make_unique<LiveAudioTaggingWorker>(
+                LiveTaggingOptions{config.tagging_model_path,
+                                   config.tagging_labels_path,
+                                   config.tagging_ced_model,
+                                   config.sample_rate_hz,
+                                   config.hop_size});
+        }
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -307,6 +319,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 timestamp, hops};
             const auto resultFrame = engine.process(block.view());
             ++hops;
+            if (classifier) {
+                for (const auto& separated : resultFrame.separated_frames) {
+                    classifier->push(separated.track_id.value(),
+                                     separated.audio.samples(), hops);
+                }
+            }
             if (hops % visualStride != 0U) {
                 continue;
             }
@@ -314,12 +332,20 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             tracks.reserve(resultFrame.tracks.size());
             for (const auto& t : resultFrame.tracks) {
                 const auto xyz = t.direction.direction.vector();
-                tracks.push_back({
+                AcousticSceneTrack track{
                     t.track_id.value(),
                     QVector3D{static_cast<float>(xyz.x),
                               static_cast<float>(xyz.y),
                               static_cast<float>(xyz.z)},
-                    t.activity.value()});
+                    t.activity.value()};
+                if (classifier) {
+                    const auto tag = classifier->result(t.track_id.value(), hops);
+                    if (tag.has_value()) {
+                        track.classification_label = tag->label;
+                        track.classification_probability = tag->probability;
+                    }
+                }
+                tracks.push_back(std::move(track));
             }
             std::vector<AcousticScenePotential> proposals;
             proposals.reserve(resultFrame.potential_sources.size());
@@ -350,6 +376,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.channel_peak_dbfs = std::move(peakDbfs);
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
+            latest_.classification_error = classifier ? classifier->error() : "";
             ++latest_.generation;
         }
     } catch (const std::exception& error) {
