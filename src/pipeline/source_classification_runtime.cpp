@@ -84,7 +84,7 @@ SourceClassificationStatus SourceClassificationRuntime::status(
     if (it == buffers_.end()) return result;
     result.collected_samples = it->second.samples.size();
     result.result = it->second.result;
-    if (active_source_ == source_id) {
+    if (active_source_ == source_id && active_generation_ == it->second.generation) {
         result.state = SourceClassificationState::Inferencing;
     } else if (pending_.has_value() && pending_->source_id == source_id) {
         result.state = SourceClassificationState::Queued;
@@ -114,6 +114,7 @@ void SourceClassificationRuntime::run() noexcept {
             job = std::move(*pending_);
             pending_.reset();
             active_source_ = job.source_id;
+            active_generation_ = job.generation;
         }
         try {
             AudioBuffer audio{std::move(job.samples),
