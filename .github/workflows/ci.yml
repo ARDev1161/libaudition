@@ -43,17 +43,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Qt Widgets
+        run: sudo apt-get update && sudo apt-get install -y qtbase5-dev
       - name: Configure EfficientAT ONNX adapter
         run: >-
           cmake -S . -B build-efficientat -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DLIBAUDITION_WITH_EFFICIENTAT=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WITH_YAMNET=OFF
+          -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-efficientat --parallel
+      - name: Qt smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-efficientat/demo/qt/libaudition_qt_demo --self-test
       - name: Generate deterministic ONNX fixture
         run: |
           python3 -m pip install --break-system-packages numpy onnx
