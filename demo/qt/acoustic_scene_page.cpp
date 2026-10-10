@@ -252,7 +252,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         "Live capture disabled. Build on Linux with ODAS and libasound2-dev.");
 #endif
 
-    auto* config = new QHBoxLayout;
+    auto* configRow = new QHBoxLayout;
     auto* configForm = new QFormLayout;
     auto* map = new QLineEdit{"1,2,3,4", page};
     auto* geometry = new QPlainTextEdit{
@@ -268,8 +268,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     configForm->addRow("Microphone XYZ [m] (verify geometry)", geometry);
     configForm->addRow("ODAS hop", hop);
     configForm->addRow("ODAS frame", frame);
-    config->addLayout(configForm);
-    layout->addLayout(config);
+    configRow->addLayout(configForm);
+    layout->addLayout(configRow);
 
     auto* actions = new QHBoxLayout;
     auto* example = new QPushButton{"Show 3D example", page};
