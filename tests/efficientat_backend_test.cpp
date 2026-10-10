@@ -1,4 +1,5 @@
 #include <audition/backends/efficientat/audio_tagger.hpp>
+#include <audition/audio/audio_buffer.hpp>
 #include <audition/core/error.hpp>
 
 #include <gtest/gtest.h>
@@ -35,4 +36,39 @@ TEST(EfficientAtBackend, SyntheticLogitsAndOrdering) {
     EXPECT_THROW(tagger.classifyLogMel(mel.data(), 127U, 10U), audition::Error);
     mel[0] = std::numeric_limits<float>::quiet_NaN();
     EXPECT_THROW(tagger.classifyLogMel(mel.data(), 128U, 10U), audition::Error);
+}
+
+TEST(EfficientAtFrontend, SilenceHasExpectedLogFloor) {
+    audition::EfficientAtWaveformFrontend frontend{};
+    std::vector<float> samples(32000U, 0.0F);
+    const audition::AudioBuffer buffer{
+        std::move(samples), {32000U, 1U, audition::AudioLayout::Interleaved},
+        audition::Timestamp{}, 0U};
+    const auto result = frontend.compute(buffer.view());
+    EXPECT_EQ(result.mel_bins, 128U);
+    EXPECT_EQ(result.frames, 100U);
+    ASSERT_EQ(result.values.size(), 128U * 100U);
+    const double expected = (std::log(1.e-5) + 4.5) / 5.0;
+    for (float v : result.values) EXPECT_NEAR(v, expected, 1.e-5);
+}
+
+TEST(EfficientAtBackend, EndToEndMonoWaveform) {
+    const auto root = fixtureDir();
+    if (root.empty()) GTEST_SKIP() << "Synthetic ONNX fixture not configured";
+    audition::EfficientAtOnnxOptions options{};
+    options.model = root / "efficientat_synthetic.onnx";
+    options.labels = root / "labels.txt";
+    const audition::EfficientAtAudioTagger tagger{options};
+    std::vector<float> samples(32000U, 0.0F);
+    const audition::AudioBuffer buffer{
+        std::move(samples), {32000U, 1U, audition::AudioLayout::Interleaved},
+        audition::Timestamp{}, 0U};
+    const auto result = tagger.classify(buffer.view());
+    ASSERT_FALSE(result.classes.empty());
+    EXPECT_EQ(result.classes.front().label, "class_526");
+    EXPECT_THROW(
+        tagger.classify(audition::AudioView{
+            buffer.samples().data(), buffer.samples().size(),
+            {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}}),
+        audition::Error);
 }
