@@ -5,11 +5,16 @@
 #include <QVector3D>
 #include <QWidget>
 
+#include <cstddef>
+
 #include <cstdint>
 #include <deque>
 #include <functional>
 #include <map>
 #include <vector>
+
+class QColor;
+class QPainter;
 
 // Unit directions in libaudition's sensor frame: +X forward, +Y left, +Z up.
 // ODAS provides directions, not metric positions.
