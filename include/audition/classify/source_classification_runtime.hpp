@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <condition_variable>
+#include <deque>
 #include <optional>
 #include <string>
 #include <thread>
@@ -68,7 +69,7 @@ private:
     mutable std::mutex mutex_{};
     std::condition_variable cv_{};
     std::map<std::uint64_t, Buffer> buffers_{};
-    std::optional<Job> pending_{};
+    std::deque<Job> pending_{};
     std::optional<std::uint64_t> active_source_{};
     std::uint64_t active_generation_{0};
     std::string error_{};
