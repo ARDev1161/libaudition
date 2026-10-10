@@ -104,8 +104,8 @@ sounds depending on the trained model), rebuild the Qt demo with the
 Sherpa backend **in addition to ODAS**:
 
 ```bash
-cmake -S . -B build-qt -DCMAKE_BUILD_TYPE=Release \\
-  -DLIBAUDITION_BUILD_QT_DEMO=ON \\
+cmake -S . -B build-qt -DCMAKE_BUILD_TYPE=Release \
+  -DLIBAUDITION_BUILD_QT_DEMO=ON \
   -DLIBAUDITION_WITH_ODAS=ON -DLIBAUDITION_WITH_SHERPA=ON
 cmake --build build-qt -j4
 ```
