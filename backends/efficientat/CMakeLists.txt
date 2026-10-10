@@ -1,4 +1,4 @@
-add_library(libaudition_backend_efficientat SHARED src/efficientat_audio_tagger.cpp)
+add_library(libaudition_backend_efficientat SHARED src/efficientat_audio_tagger.cpp src/frontend.cpp)
 add_library(audition::backend_efficientat ALIAS libaudition_backend_efficientat)
 set_target_properties(libaudition_backend_efficientat PROPERTIES
     EXPORT_NAME backend_efficientat OUTPUT_NAME audition_backend_efficientat
