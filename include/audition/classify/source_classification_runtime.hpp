@@ -53,6 +53,7 @@ private:
         std::vector<float> samples{};
         std::optional<ClassificationResult> result{};
         std::uint64_t generation{0};
+        std::uint64_t last_seen_order{0};
         std::chrono::steady_clock::time_point last_result_at{};
     };
     struct Job {
@@ -75,6 +76,7 @@ private:
     std::string error_{};
     std::uint64_t dropped_windows_{0};
     std::uint64_t next_generation_{1};
+    std::uint64_t next_seen_order_{1};
     static constexpr auto kResultTtl = std::chrono::seconds{3};
     bool stopping_{false};
     std::thread worker_{};
