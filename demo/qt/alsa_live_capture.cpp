@@ -6,6 +6,9 @@
 #endif
 
 #include <algorithm>
+#include <cerrno>
+#include <cctype>
+#include <cstdlib>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -21,7 +24,7 @@ namespace {
     return context + ": " + snd_strerror(error);
 }
 
-void requireAlsa(int result, const char* operation) {
+void requireAlsa(int result, const std::string& operation) {
     if (result < 0) {
         throw std::runtime_error{errorText(operation, result)};
     }
