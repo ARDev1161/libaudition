@@ -91,6 +91,47 @@ The worker accumulates short ALSA reads, resets ODAS on XRUN recovery, and
 publishes only the latest tracked-source snapshot (bounded memory); the
 capture thread never updates GUI widgets directly.
 
+#### Live source sound classification (optional Sherpa backend)
+
+The **Tracked sources** table now has an **Activity type** column.
+**Classification** in a track's 3D hover tooltip and selected-source
+details uses the same result, e.g. a model-provided sound class with its
+probability. This is distinct from ODAS's numeric *Activity* (SST
+tracking activity), and is not inferred from azimuth or signal gain.
+
+For real sound-event labels (speech, music, machinery, environmental
+sounds depending on the trained model), rebuild the Qt demo with the
+Sherpa backend **in addition to ODAS**:
+
+```bash
+cmake -S . -B build-qt -DCMAKE_BUILD_TYPE=Release \\
+  -DLIBAUDITION_BUILD_QT_DEMO=ON \\
+  -DLIBAUDITION_WITH_ODAS=ON -DLIBAUDITION_WITH_SHERPA=ON
+cmake --build build-qt -j4
+```
+
+On the **Acoustic scene** tab, check **Classify source audio with Sherpa**,
+choose **Zipformer** or **CED**, select the matching pre-trained audio
+tagging **ONNX model** and **labels file**, then **Start live capture**.
+The ONNX and labels paths must exist, and the capture rate must be
+16 kHz. The demo does **not** install or silently download a model.
+The existing standalone **Backend workbench → Audio tagging** panel can
+be used to verify the model on a WAV first.
+
+Enabling this option makes ODAS produce separate mono audio per tracked
+source ID (SSS); a bounded background thread classifies source-specific
+2-second windows, without blocking the ALSA/ODAS capture thread.
+The table shows **Analyzing…** until a model result arrives. Predictions
+are cached by track ID and expire after about five seconds to avoid
+sticking to reused IDs. If the model cannot load or inference fails, the
+GUI displays the tagging error while capture continues. Model scores
+reflect that model's outputs, not a universal confidence calibration.
+
+When Sherpa is absent, the checkbox is disabled and the column says
+**Not configured**; no label is fabricated from track activity.
+Classification in this release applies to **live ALSA** tracks, not
+offline WAV replay. The click-to-ASR feature remains separate future work.
+
 #### If the 3D sphere initially remains empty
 
 An empty sphere does **not** imply ALSA has failed: the GUI used to display
