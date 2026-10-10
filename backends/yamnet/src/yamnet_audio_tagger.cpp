@@ -86,8 +86,15 @@ public:
             if (info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
                 (shape.size() != 1U && shape.size() != 2U) ||
                 (shape.size() == 2U && !matchesDim(shape[0], 1))) {
-                throw Error{ErrorCode::ModelLoadError,
-                            "YAMNet requires float32 waveform [samples] or [1,samples]"};
+                std::string details = "YAMNet input mismatch: name=" + input_name_ +
+                    ", element_type=" + std::to_string(static_cast<int>(info.GetElementType())) +
+                    ", rank=" + std::to_string(shape.size()) + ", shape=[";
+                for (std::size_t dim = 0; dim < shape.size(); ++dim) {
+                    if (dim != 0U) details += ",";
+                    details += std::to_string(shape[dim]);
+                }
+                details += "]; expected float32 waveform [N] or [1,N]";
+                throw Error{ErrorCode::ModelLoadError, details};
             }
             input_rank_ = shape.size();
             fixed_samples_ = shape.back() > 0 ? static_cast<std::size_t>(shape.back()) : 0U;
