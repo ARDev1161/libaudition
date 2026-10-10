@@ -378,6 +378,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             latest_.classification_error = classifier ? classifier->error() : "";
+            latest_.classifier_status = classifier && !resultFrame.tracks.empty()
+                ? classifier->status(resultFrame.tracks.front().track_id.value())
+                : (classifier ? "Waiting for ODAS tracks" : "Disabled");
             ++latest_.generation;
         }
     } catch (const std::exception& error) {
