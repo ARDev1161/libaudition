@@ -59,6 +59,10 @@ function(libaudition_find_or_fetch_odas)
         INSTALL_DIR "${_odas_install_dir}"
         CMAKE_ARGS
             -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            # The pinned ODAS revision declares cmake_minimum_required(2.4.6..3.16).
+            # CMake 4 rejects a policy baseline below 3.5. This flag must be
+            # passed to the *child* ExternalProject, not just libaudition.
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON
             -DODAS_DISABLE_INSTALL=OFF
             -DODAS_INSTALL_EXECUTABLES=OFF
