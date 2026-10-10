@@ -100,10 +100,11 @@ TEST(SourceClassificationRuntime, ForgottenTrackCannotReceiveOldInference) {
         runtime.push(7U, samples, 4U);
         for (int i = 0; i < 1000 && !started.load(); ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
-        ASSERT_TRUE(started.load());
+        const bool began = started.load();
         runtime.forget(7U);
         runtime.push(7U, samples, 2U);
         finish.store(true);
+        EXPECT_TRUE(began);
         for (int i = 0; i < 1000; ++i) {
             const auto state = runtime.status(7U);
             if (state.state != audition::SourceClassificationState::Inferencing) break;
