@@ -244,7 +244,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                            ? audition::VocabularyMode::SelectedClasses
                                            : audition::VocabularyMode::AllClasses,
                                        config.tagging_vocabulary_labels,
-                                       5U}});
+                                       5U},
+                                   config.tagging_efficientat_model});
         }
         auto pcm = openPcm(config);
 
