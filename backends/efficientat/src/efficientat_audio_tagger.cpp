@@ -1,4 +1,5 @@
 #include <audition/backends/efficientat/audio_tagger.hpp>
+#include <audition/backends/efficientat/resampler.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -196,5 +197,33 @@ ClassifierCapabilities EfficientAtAudioTagger::capabilities() const {
 ClassificationResult EfficientAtAudioTagger::classify(AudioView audio) const {
     const auto logmel = frontend_.compute(audio);
     return model_.classifyLogMel(logmel.values.data(), logmel.mel_bins, logmel.frames);
+}
+
+EfficientAt16kAudioTagger::EfficientAt16kAudioTagger(EfficientAtOnnxOptions options)
+    : classifier_(std::move(options)) {}
+
+BackendInfo EfficientAt16kAudioTagger::backendInfo() const {
+    return classifier_.backendInfo();
+}
+
+ClassifierCapabilities EfficientAt16kAudioTagger::capabilities() const {
+    auto caps = classifier_.capabilities();
+    caps.audio.supported_sample_rates_hz = {16000U};
+    caps.audio.preferred_frame_count = 16000U;
+    return caps;
+}
+
+ClassificationResult EfficientAt16kAudioTagger::classify(AudioView audio) const {
+    if (!audio.format().valid() ||
+        audio.format().sample_rate_hz != 16000U ||
+        audio.format().channel_count != 1U) {
+        throw Error{ErrorCode::UnsupportedFormat,
+                    "EfficientAT ODAS adapter requires mono 16000 Hz audio"};
+    }
+    auto upsampled = efficientAtUpsample16To32(audio.data(), audio.sampleCount());
+    AudioBuffer converted{std::move(upsampled),
+        {32000U, 1U, AudioLayout::Interleaved},
+        audio.captureTime(), audio.sequenceNumber()};
+    return classifier_.classify(converted.view());
 }
 } // namespace audition
