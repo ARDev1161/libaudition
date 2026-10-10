@@ -175,6 +175,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-odas/demo/qt/libaudition_qt_demo --model-self-test=odas-errors
+      - name: Test ALSA live capture device-open failure and restart
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-odas/demo/qt/libaudition_qt_demo --model-self-test=alsa-errors
       - name: Test
         run: ctest --test-dir build-odas --output-on-failure
       - name: Install

@@ -29,6 +29,56 @@ cmake --build build-qt -j
 
 ### Acoustic scene (3D ODAS Studio-style viewer)
 
+#### Live ReSpeaker capture via ALSA (Linux)
+
+The **Acoustic scene** tab also supports direct multichannel hardware capture,
+without saving a WAV. ALSA belongs only to the Qt demo, never the library core.
+
+Install Linux ALSA development files (Ubuntu/Debian: `libasound2-dev`,
+`libfftw3-dev`, `libconfig-dev`, `libpulse-dev`; Arch/Manjaro: `alsa-lib`
+and ODAS build prerequisites). Configure with:
+
+```bash
+cmake -S . -B build-qt -DCMAKE_BUILD_TYPE=Release \
+  -DLIBAUDITION_BUILD_QT_DEMO=ON -DLIBAUDITION_WITH_ODAS=ON
+cmake --build build-qt -j4
+./build-qt/demo/qt/libaudition_qt_demo
+```
+
+Connect the **ReSpeaker 4-Mic USB v2.0**, open **Acoustic scene**, then:
+
+1. Click **Refresh ALSA devices**; the list shows real capture PCMs
+   (`hw:card,device`), prioritizing names that match ReSpeaker/Seeed/4 Mic
+   Array. If not found, check `arecord -l` and enter `hw:N,M` manually.
+2. Verify **Channels = 6**, **Rate = 16000 Hz**, microphone mapping
+   `1,2,3,4` (zero based), and accurate XYZ microphone positions (meters).
+   The default geometry is demonstrative, not a verified hardware preset.
+3. Press **Start live capture**. ALSA captures interleaved S16_LE; the
+   worker feeds each complete ODAS hop and the sphere updates at ~20 Hz.
+   Status reports hop count, tracks and capture overrun recovery count.
+4. **Stop live capture** before starting offline WAV replay. Closing the
+   window also joins/stops the capture worker.
+
+ALSA device parameters must support **exactly** the requested sample rate,
+number of channels and PCM format; there is no hidden resampling or
+downmixing. Inspect capabilities with
+`arecord -D hw:N,M --dump-hw-params -d 1 /dev/null`.
+USB device removal, busy PCMs and unsupported sample formats are surfaced
+as UI errors, rather than silently switching to another capture device.
+
+The worker accumulates short ALSA reads, resets ODAS on XRUN recovery, and
+publishes only the latest tracked-source snapshot (bounded memory); the
+capture thread never updates GUI widgets directly.
+
+**Not yet implemented:** raw `odas.cfg` import, ReSpeaker microphone geometry
+auto-calibration, source classification, click-to-ASR, audio monitor/playback,
+and source-separated live recording. Tracks indicate **directions**, not
+metric distances.
+
+Hardware-independent CI exercises ALSA discovery and an intentionally
+invalid PCM error/restart path. This does not substitute for hands-on
+capture and DOA validation with the physical ReSpeaker.
+
 The new first tab renders a genuine **three-dimensional unit sphere**, not a
 semicircle: latitude and longitude grids distinguish elevations above (blue)
 and below (orange) the equatorial plane; X (forward), Y (left), and Z (up)

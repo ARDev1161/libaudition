@@ -4,6 +4,7 @@
 #include <audition/audio/audio_buffer.hpp>
 
 #include <QByteArray>
+#include <QComboBox>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFormLayout>
@@ -448,6 +449,52 @@ QString testWorld(QMainWindow& window, const QTemporaryDir& dir) {
 #endif
 }
 
+QString testAlsaCaptureErrors(QMainWindow& window) {
+#if LIBAUDITION_DEMO_HAS_ALSA
+    auto* root = qobject_cast<QTabWidget*>(window.centralWidget());
+    auto* panel = requireTab(root, "Acoustic scene");
+    auto* device = panel->findChild<QComboBox*>("acousticSceneDevice");
+    auto* state = panel->findChild<QLabel*>("acousticSceneStatus");
+    if (device == nullptr || state == nullptr) {
+        throw std::runtime_error{"ALSA live controls missing"};
+    }
+    auto* start = requireButton(panel, "Start live capture");
+    auto* stop = requireButton(panel, "Stop live capture");
+    device->setEditText("hw:254,0"); // impossible ALSA card, no hardware necessary
+
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        start->click();
+        if (start->isEnabled() || !stop->isEnabled()) {
+            throw std::runtime_error{"Capture did not enter asynchronous state"};
+        }
+        QEventLoop loop;
+        QTimer poll;
+        bool responsive = false;
+        bool completed = false;
+        QTimer::singleShot(0, &loop, [&responsive]() { responsive = true; });
+        QObject::connect(&poll, &QTimer::timeout, &loop, [&]() {
+            if (state->text().startsWith("Live ALSA/ODAS error:")) {
+                completed = true;
+                loop.quit();
+            }
+        });
+        QTimer::singleShot(10000, &loop, [&]() { loop.quit(); });
+        poll.start(20);
+        loop.exec();
+        if (!completed || !responsive || !start->isEnabled() ||
+            stop->isEnabled()) {
+            throw std::runtime_error{
+                "ALSA open failure did not return control to responsive GUI: " +
+                state->text().toStdString()};
+        }
+    }
+    return "qt-model-self-test=ok backend=alsa-live-error-restart";
+#else
+    static_cast<void>(window);
+    throw std::runtime_error{"Qt demo was built without ALSA live capture"};
+#endif
+}
+
 QString testOdasErrors(QMainWindow& window) {
 #if LIBAUDITION_DEMO_HAS_ODAS
     auto* panel = runnerPage(window, "ODAS");
@@ -739,6 +786,8 @@ bool runQtModelFixtureSelfTest(
             result = testWorld(window, dir);
         } else if (which == "odas-errors") {
             result = testOdasErrors(window);
+        } else if (which == "alsa-errors") {
+            result = testAlsaCaptureErrors(window);
         } else if (which == "samplerate") {
             result = testSamplerate(window, dir);
         } else if (which == "aec3") {
