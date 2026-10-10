@@ -182,7 +182,7 @@ void AcousticSphereWidget::drawTracks(QPainter& painter) const {
             const auto a = project(trail[i - 1]);
             const auto b = project(trail[i]);
             QColor faded = color;
-            const double fraction = static_cast<double>(i) / trail.size();
+            const double fraction = static_cast<double>(i) / static_cast<double>(trail.size());
             faded.setAlpha(static_cast<int>((a.depth + b.depth < 0 ? 50 : 170) * fraction));
             painter.setPen(QPen(faded, 2.0));
             painter.drawLine(a.pixel, b.pixel);
@@ -212,7 +212,7 @@ void AcousticSphereWidget::drawTracks(QPainter& painter) const {
         painter.drawEllipse(dot.pixel, highlight ? 9 : 7, highlight ? 9 : 7);
         painter.setPen(back ? QColor(160, 170, 183) : color);
         painter.drawText(dot.pixel + QPointF(11, -9),
-                         QString("#%1").arg(track.id));
+                         QString("#%1").arg(static_cast<qulonglong>(track.id)));
     }
 }
 
