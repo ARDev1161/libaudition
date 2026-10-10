@@ -349,9 +349,15 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     const auto tag = classifier->result(t.track_id.value(), hops);
                     if (tag.has_value()) {
                         track.classification_label = tag->top_classes.empty()
-                            ? (tag->unsupported_labels.empty()
-                                ? "No selected classes" : "Unsupported class")
+                            ? "No selected classes above the displayed results"
                             : tag->top_classes;
+                        if (!tag->unsupported_labels.empty()) {
+                            track.classification_label += " | Unsupported: ";
+                            for (std::size_t j = 0; j < tag->unsupported_labels.size(); ++j) {
+                                if (j != 0U) track.classification_label += ", ";
+                                track.classification_label += tag->unsupported_labels[j];
+                            }
+                        }
                         track.classification_probability = tag->probability;
                     }
                 }
