@@ -80,7 +80,8 @@ target_include_directories(libaudition_logging PUBLIC
 
 add_library(libaudition_pipeline
     pipeline/acoustic_event_assembler.cpp
-    pipeline/spatial_identity.cpp)
+    pipeline/spatial_identity.cpp
+    pipeline/vocabulary.cpp)
 add_library(audition::pipeline ALIAS libaudition_pipeline)
 set_target_properties(libaudition_pipeline PROPERTIES
     EXPORT_NAME pipeline
