@@ -66,6 +66,7 @@ jobs:
       - name: Export genuine mn10_as weights and compare ONNX logits
         run: |
           cd "$RUNNER_TEMP/EfficientAT"
+          export PYTHONPATH="$RUNNER_TEMP/EfficientAT"
           "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model mn10_as --output "$RUNNER_TEMP/eat-real"
       - name: C++ classifier smoke against genuine weights
         run: |
