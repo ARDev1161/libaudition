@@ -41,6 +41,13 @@ The test suite generates a **synthetic** ONNX graph with fixed logits.
 It verifies ONNX execution, sigmoid, Top-K, label mapping and rejects
 non-finite / malformed inputs. A silence frontend regression test is included.
 
+Qt acoustic scene can select `EfficientAT` when built with
+`LIBAUDITION_WITH_EFFICIENTAT=ON`. The ODAS-separated 16 kHz source audio is
+explicitly upsampled to 32 kHz by the backend's windowed-sinc 2x adapter;
+this interpolation is not part of original EfficientAT evaluation and must
+be benchmarked for classification quality. Select a matching ONNX and its
+527 ordered labels manually; model files are not downloaded.
+
 **Numerical parity against the original Python
 `models/preprocess.py::AugmentMelSTFT` is not yet established.**
 Do not publish accuracy or latency benchmark claims from this C++ path
