@@ -8,11 +8,13 @@
 #endif
 
 #include <stdexcept>
+#include <sstream>
 #include <utility>
 
 namespace demo {
 
-LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options) {
+LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
+    : selection_(options.vocabulary) {
     try {
         if (options.sample_rate_hz != 16000U || options.hop_size == 0U ||
             options.model_path.empty() || options.labels_path.empty()) {
@@ -24,7 +26,7 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options) {
             audition::YamnetOnnxOptions cfg{};
             cfg.model = options.model_path;
             cfg.labels = options.labels_path;
-            cfg.top_k = 5U;
+            cfg.top_k = 521U;
             classifier = std::make_unique<audition::YamnetAudioTagger>(std::move(cfg));
 #else
             throw std::runtime_error{"YAMNet backend is not built"};
@@ -38,7 +40,7 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options) {
                 : audition::SherpaAudioTaggingModel{
                     audition::SherpaAudioTaggingZipformerModel{options.model_path}};
             cfg.labels = options.labels_path;
-            cfg.top_k = 5;
+            cfg.top_k = 527;
             classifier = std::make_unique<audition::SherpaAudioTagger>(std::move(cfg));
 #else
             throw std::runtime_error{"Sherpa backend is not built"};
@@ -70,8 +72,27 @@ std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
     if (!current.result.has_value() || current.result->classes.empty()) {
         return std::nullopt;
     }
-    const auto& top = current.result->classes.front();
-    return LiveTrackClassification{top.label, top.probability.value()};
+    std::vector<std::string> supported;
+    supported.reserve(current.result->classes.size());
+    for (const auto& cls : current.result->classes) {
+        supported.push_back(cls.label);
+    }
+    // Both backends are configured to return the full closed vocabulary.
+    auto filtered = audition::selectVocabulary(*current.result, selection_, supported);
+    LiveTrackClassification response{};
+    response.unsupported_labels = std::move(filtered.unsupported_labels);
+    std::ostringstream summary;
+    for (std::size_t i = 0; i < filtered.classes.size(); ++i) {
+        const auto& item = filtered.classes[i];
+        if (i != 0U) summary << ", ";
+        summary << item.label << " (" << item.probability.value() << ")";
+        if (i == 0U) {
+            response.label = item.label;
+            response.probability = item.probability.value();
+        }
+    }
+    response.top_classes = summary.str();
+    return response;
 }
 
 std::string LiveAudioTaggingWorker::error() const {
