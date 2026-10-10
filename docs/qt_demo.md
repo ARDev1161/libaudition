@@ -482,3 +482,36 @@ The headless model-fixture harness checks complete WAV resampling at 16 to
 position-observation GTSAM fusion run, all through the real Qt buttons.
 These tests validate functionality and lifecycle, not acoustic cancellation
 or spatial-estimation accuracy across real recordings.
+
+## Real Sherpa ONNX model fixtures
+
+Unlike the existing error-only smoke tests, these scenarios run **real
+model inference via the Qt buttons**:
+
+| Scenario | Model | Validated result |
+| --- | --- | --- |
+| `--model-self-test=whisper-real` | Whisper tiny.en INT8 | Encoder/decoder execute and return text/language/token fields |
+| `--model-self-test=piper-real` | Piper VITS Amy Low INT8 | Generated PCM16 WAV is nonempty and valid |
+| `--model-self-test=speaker-real` | NeMo TitaNet Small | Embedding, verification of identical WAV and identification |
+
+The Whisper and speaker tests use synthetic 16-kHz tones. Therefore these
+prove end-to-end execution and same-sample consistency, **not word-error
+rate or speaker-discrimination accuracy**. A labeled real-speech evaluation
+dataset is still necessary for accuracy claims.
+
+Pinned assets:
+
+- Whisper tiny.en at commit `d026532c022fa99fd789d6b32446a1df7b6bfc43`.
+  INT8 encoder SHA-256: `0ce578b827c94a961aacb8fa14b02f096504b337e5c94be37c36238cbe3e8bc6`;
+  decoder: `06c0e6ff6348d427e51839219d1c886c18cfdf411e629e33f5e1679bff9c1527`.
+  The tokenizer comes from that same fixed git revision.
+- NeMo TitaNet Small SHA-256:
+  `ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e`.
+- Sherpa release Piper Amy Low INT8 archive SHA-256:
+  `93070ac9fadf512e56c46bdd0c5d2ce96b424fdc4e683d560167410bd2c4df7d`.
+
+Set `QT_QPA_PLATFORM=offscreen` and the corresponding
+`LIBAUDITION_TEST_WHISPER_ENCODER`, `LIBAUDITION_TEST_WHISPER_DECODER`,
+`LIBAUDITION_TEST_WHISPER_TOKENS`, `LIBAUDITION_TEST_PIPER_DIR` or
+`LIBAUDITION_TEST_SPEAKER_MODEL` environment variables. Missing assets
+fail the test explicitly; no silent skip is allowed.
