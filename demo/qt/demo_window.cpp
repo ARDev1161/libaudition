@@ -1,5 +1,6 @@
 #include "demo_window.hpp"
 
+#include "acoustic_scene_page.hpp"
 #include "backend_workbench.hpp"
 #include "wav_io.hpp"
 
@@ -165,10 +166,11 @@ QWidget* requireTab(QTabWidget* tabs, const char* name) {
 
 void verifyWorkbench(QWidget* root) {
     auto* appTabs = qobject_cast<QTabWidget*>(root);
-    if (appTabs == nullptr || appTabs->count() != 9) {
+    if (appTabs == nullptr || appTabs->count() != 10) {
         throw std::runtime_error{"Qt self-test: unexpected application tab count"};
     }
     for (const char* name : {
+             "Acoustic scene",
              "Overview",
              "Audio / DSP",
              "SPL / Range",
@@ -190,6 +192,11 @@ void verifyWorkbench(QWidget* root) {
              "WAV", "WORLD", "AASIST", "CLAP", "Sherpa",
              "ODAS", "libsamplerate", "AEC3", "GTSAM"}) {
         static_cast<void>(requireTab(backends, name));
+    }
+    auto* scene = requireTab(appTabs, "Acoustic scene");
+    requireAction(scene, "Show 3D example");
+    if (scene->findChild<QWidget*>("acousticSphere") == nullptr) {
+        throw std::runtime_error{"Qt self-test: missing 3D sphere"};
     }
     requireAction(requireTab(backends, "WAV"), "Inspect WAV");
 
@@ -301,6 +308,7 @@ DemoWindow::DemoWindow(QWidget* parent)
     resize(1180, 780);
 
     auto* tabs = new QTabWidget;
+    tabs->addTab(createAcousticScenePage(tabs), "Acoustic scene");
     tabs->addTab(createOverviewTab(), "Overview");
     tabs->addTab(createAudioDspTab(), "Audio / DSP");
     tabs->addTab(createSpatialTab(), "SPL / Range");
