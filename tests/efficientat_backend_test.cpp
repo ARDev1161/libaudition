@@ -1,4 +1,5 @@
 #include <audition/backends/efficientat/audio_tagger.hpp>
+#include <audition/core/error.hpp>
 
 #include <gtest/gtest.h>
 
