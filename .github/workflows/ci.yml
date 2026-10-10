@@ -155,6 +155,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config libfftw3-dev libasound2-dev libconfig-dev libpulse-dev qtbase5-dev
+      - name: Use pinned CMake 4 for ODAS compatibility coverage
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cmake4"
+          "$RUNNER_TEMP/cmake4/bin/python" -m pip install "cmake==4.1.2"
+          echo "$RUNNER_TEMP/cmake4/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cmake4/bin/cmake" --version
       - name: Configure with direct ODAS backend
         run: >-
           cmake -S . -B build-odas -G Ninja
