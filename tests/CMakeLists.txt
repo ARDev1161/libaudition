@@ -73,6 +73,10 @@ endif()
 
 
 if(TARGET audition::backend_efficientat)
+    add_executable(efficientat_frontend_dump efficientat_frontend_dump.cpp)
+    target_link_libraries(efficientat_frontend_dump PRIVATE
+        audition::backend_efficientat audition::core)
+    libaudition_configure_target(efficientat_frontend_dump)
     target_sources(libaudition_tests PRIVATE efficientat_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_efficientat)
 endif()
