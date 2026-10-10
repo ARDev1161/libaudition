@@ -1,4 +1,5 @@
 #include "model_fixture_selftest.hpp"
+#include "live_audio_tagging_worker.hpp"
 #include "wav_io.hpp"
 
 #include <audition/audio/audio_buffer.hpp>
@@ -20,6 +21,8 @@
 #include <QWidget>
 
 #include <cmath>
+#include <chrono>
+#include <thread>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -761,6 +764,32 @@ QString testSpeakerReal(QMainWindow& window, const QTemporaryDir& dir) {
 #endif
 }
 
+QString testLiveSourceTaggingError() {
+#if LIBAUDITION_DEMO_HAS_SHERPA
+    demo::LiveTaggingOptions options{};
+    options.model_path = "/this/path/does-not-exist-audio-tagger.onnx";
+    options.labels_path = "/this/path/does-not-exist-labels.txt";
+    demo::LiveAudioTaggingWorker worker{options};
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds{10};
+    while (worker.error().empty() &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    }
+    if (worker.error().empty()) {
+        throw std::runtime_error{
+            "Source tagging worker did not surface model-load error"};
+    }
+    if (worker.result(123U, 0U).has_value()) {
+        throw std::runtime_error{
+            "Invalid model must never produce a fabricated classification"};
+    }
+    return "qt-model-self-test=ok backend=live-source-tagging-error";
+#else
+    throw std::runtime_error{"Qt demo was built without Sherpa"};
+#endif
+}
+
 }  // namespace
 
 bool runQtModelFixtureSelfTest(
@@ -788,6 +817,8 @@ bool runQtModelFixtureSelfTest(
             result = testOdasErrors(window);
         } else if (which == "alsa-errors") {
             result = testAlsaCaptureErrors(window);
+        } else if (which == "live-source-tagging-errors") {
+            result = testLiveSourceTaggingError();
         } else if (which == "samplerate") {
             result = testSamplerate(window, dir);
         } else if (which == "aec3") {
