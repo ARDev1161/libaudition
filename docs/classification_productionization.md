@@ -6,10 +6,11 @@ A model is not considered supported merely because an ONNX file exists.
 ## Current foundation (this branch)
 
 - `SourceClassificationRuntime`: per-track mono buffering, bounded source map,
-  bounded pending job, one background model inference worker, explicit states,
+  bounded per-source FIFO queue, one background model inference worker, explicit states,
   errors and `forget()` for track retirement. In-flight work has a separate
   generation identity so retiring/reusing a track ID never attaches stale
-  results to the new source. Capture and scheduling are not
+  results to the new source. Cached model classifications expire after 3s
+  (monotonic time); source ID 0 is accepted. Capture and scheduling are not
   coupled to Qt, ALSA, ODAS or ROS.
 - Qt's `LiveAudioTaggingWorker` is a thin adapter around the production runtime;
   it only constructs the selected model and formats diagnostics.
@@ -21,9 +22,9 @@ A model is not considered supported merely because an ONNX file exists.
 
 1. Qt now offers All classes (Top-5) or Selected vocabulary (exact, comma-separated labels). The selected mode currently uses a plain text field; a searchable class catalog / per-label status is still required.
 2. The Qt adapter requests up to 521 YAMNet or 527 Sherpa scores before filtering. Validate each actual model's complete class count and label mapping; a partial result must never be treated as a complete catalog.
-3. `SourceClassificationRuntime` currently caps the number of tracked source
-   buffers and only queues one job; fairness, worker shutdown deadlines, job
-   cancellation, sample discontinuities,
+3. `SourceClassificationRuntime` now caps both source buffers and pending jobs,
+   deduplicates queued windows per source and preserves FIFO ordering; worker shutdown
+   deadlines, job cancellation, sample discontinuities,
    stale-result TTL and immutable result snapshots require further tests.
 4. Model creation on the capture worker thread must become asynchronous
    with separately reported initialization state.
