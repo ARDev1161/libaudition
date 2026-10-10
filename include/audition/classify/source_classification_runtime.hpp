@@ -68,6 +68,7 @@ private:
     std::map<std::uint64_t, Buffer> buffers_{};
     std::optional<Job> pending_{};
     std::optional<std::uint64_t> active_source_{};
+    std::uint64_t active_generation_{0};
     std::string error_{};
     std::uint64_t dropped_windows_{0};
     std::uint64_t next_generation_{1};
