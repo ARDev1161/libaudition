@@ -7,6 +7,8 @@
 
 #include <audition/core/export.hpp>
 #include <audition/classify/types.hpp>
+#include <audition/interfaces/classify.hpp>
+#include <audition/backends/efficientat/frontend.hpp>
 
 namespace audition {
 
@@ -37,6 +39,20 @@ public:
 private:
     class Impl;
     std::unique_ptr<Impl> impl_;
+};
+
+// End-to-end mono 32 kHz classifier. It uses the reference-oriented
+// EfficientAT frontend and delegates ONNX logits inference to the
+// spectrogram adapter above.
+class AUDITION_API EfficientAtAudioTagger final : public IAudioClassifier {
+public:
+    explicit EfficientAtAudioTagger(EfficientAtOnnxOptions options);
+    [[nodiscard]] BackendInfo backendInfo() const override;
+    [[nodiscard]] ClassifierCapabilities capabilities() const override;
+    [[nodiscard]] ClassificationResult classify(AudioView audio) const override;
+private:
+    EfficientAtWaveformFrontend frontend_{};
+    EfficientAtSpectrogramTagger model_;
 };
 
 } // namespace audition
