@@ -41,6 +41,7 @@ public:
     [[nodiscard]] std::optional<LiveTrackClassification> result(
         std::uint64_t track_id, std::uint64_t processed_hops) const;
     [[nodiscard]] std::string error() const;
+    [[nodiscard]] std::string status(std::uint64_t track_id) const;
 
 private:
     struct TrackBuffer {
@@ -70,6 +71,7 @@ private:
     std::map<std::uint64_t, Labeled> results_{};
     std::string error_{};
     bool stopping_{false};
+    bool inferencing_{false};
     std::thread worker_{};
 };
 
