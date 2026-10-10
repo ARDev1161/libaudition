@@ -27,6 +27,35 @@ cmake --build build-qt -j
 
 ## Tabs
 
+### Acoustic scene (3D ODAS Studio-style viewer)
+
+The new first tab renders a genuine **three-dimensional unit sphere**, not a
+semicircle: latitude and longitude grids distinguish elevations above (blue)
+and below (orange) the equatorial plane; X (forward), Y (left), and Z (up)
+axes follow the library's sensor-frame convention. Mouse drag orbits the
+camera, wheel zooms and double-click resets. Hover over a source for ID,
+azimuth, **elevation**, activity and an explicit status for unavailable
+classification. Click to select; numbered markers retain fading direction
+trails. The markers represent *directions only*, not distances.
+
+Use **Show 3D example** to demonstrate three explicitly synthetic directions,
+including a source below the equator. This needs no third-party backend.
+
+With `LIBAUDITION_WITH_ODAS=ON`, **Analyze WAV with ODAS** takes a multichannel
+RIFF/WAV and a zero-based microphone channel map and XYZ geometry, processes
+ODAS hops on a background worker, then replays captured tracker snapshots at
+approximately 20 frames per second. Replay animates source **direction
+metadata**, not sound output. The default `1,2,3,4` mapping corresponds to a
+common ReSpeaker 4-Mic USB v2.0 six-channel recording but the example XYZ
+coordinates **must be checked against the actual microphone geometry**.
+The raw upstream `odas.cfg` format is not imported by this first viewer.
+
+**Not connected yet:** real-time ALSA device capture/auto-discovery, optional
+source classification, click-to-ASR from separated audio, and ODAS potential
+energy heatmaps. The hover tooltip clearly says `Classification: not available`.
+Existing diagnostic panels are unchanged.
+
+
 ### Overview
 
 A feature map of the library and the boundary between libaudition and consuming

@@ -4,6 +4,10 @@ find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Concurrent REQUIRED)
 add_executable(libaudition_qt_demo
     main.cpp
     demo_window.cpp
+    acoustic_scene_page.cpp
+    acoustic_scene_page.hpp
+    acoustic_sphere_widget.cpp
+    acoustic_sphere_widget.hpp
     demo_window.hpp
     backend_workbench.cpp
     backend_workbench.hpp
