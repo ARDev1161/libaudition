@@ -30,6 +30,7 @@ struct LiveCaptureConfig {
     std::uint32_t frame_size{256};
     std::vector<std::size_t> input_channels{1, 2, 3, 4};
     std::vector<std::array<double, 3>> microphone_positions{};
+    bool respeaker_angular_profile{false};
 };
 
 struct LiveCaptureSnapshot {
