@@ -177,12 +177,18 @@ QString directionSummary(const AcousticSceneTrack& track) {
     const auto v = track.direction;
     const double az = std::atan2(v.y(), v.x()) * 180.0 / kPi;
     const double el = std::atan2(v.z(), std::hypot(v.x(), v.y())) * 180.0 / kPi;
+    const auto classification = track.classification_label.empty()
+        ? QString("Not configured / pending")
+        : QString::fromStdString(track.classification_label) +
+          QString(" (model probability %1)").arg(
+              track.classification_probability, 0, 'f', 2);
     return QString("Track #%1\nAzimuth: %2°\nElevation: %3°\nActivity: %4\n"
-                   "Classification: not configured\nASR: not configured")
+                   "Classification: %5\nASR: not configured")
         .arg(static_cast<qulonglong>(track.id))
         .arg(az, 0, 'f', 1)
         .arg(el, 0, 'f', 1)
-        .arg(track.activity, 0, 'f', 2);
+        .arg(track.activity, 0, 'f', 2)
+        .arg(classification);
 }
 }  // namespace
 
@@ -304,6 +310,60 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     actions->addStretch();
     layout->addLayout(actions);
 
+    // Optional real sound-event recognition: CED/Zipformer ONNX tagging
+    // consumes the ODAS-separated audio of the source ID, not its direction.
+    auto* enableTagging = new QCheckBox{
+        "Classify source audio with Sherpa (requires ONNX + labels)", page};
+    enableTagging->setObjectName("acousticSceneEnableTagging");
+    auto* taggingSettings = new QWidget{page};
+    auto* taggingForm = new QFormLayout{taggingSettings};
+    taggingForm->setContentsMargins(4, 0, 4, 0);
+    auto* taggingFamily = new QComboBox{taggingSettings};
+    taggingFamily->addItems({"Zipformer", "CED"});
+    auto* taggingModel = new QLineEdit{taggingSettings};
+    taggingModel->setObjectName("acousticSceneTaggingModel");
+    taggingModel->setPlaceholderText("Path to audio-tagging .onnx");
+    auto* taggingLabels = new QLineEdit{taggingSettings};
+    taggingLabels->setObjectName("acousticSceneTaggingLabels");
+    taggingLabels->setPlaceholderText("Corresponding class labels file");
+    auto* browseModel = new QPushButton{"Browse model…", taggingSettings};
+    auto* browseLabels = new QPushButton{"Browse labels…", taggingSettings};
+    auto* modelRow = new QHBoxLayout;
+    modelRow->addWidget(taggingModel, 1);
+    modelRow->addWidget(browseModel);
+    auto* labelsRow = new QHBoxLayout;
+    labelsRow->addWidget(taggingLabels, 1);
+    labelsRow->addWidget(browseLabels);
+    taggingForm->addRow("Model family", taggingFamily);
+    taggingForm->addRow("ONNX classifier", modelRow);
+    taggingForm->addRow("Class labels", labelsRow);
+    layout->addWidget(enableTagging);
+    layout->addWidget(taggingSettings);
+    taggingSettings->setVisible(false);
+#if !LIBAUDITION_DEMO_HAS_SHERPA
+    enableTagging->setEnabled(false);
+    enableTagging->setToolTip(
+        "Build with LIBAUDITION_WITH_SHERPA=ON for real sound classification");
+#endif
+    QObject::connect(enableTagging, &QCheckBox::toggled,
+                     taggingSettings, &QWidget::setVisible);
+    QObject::connect(browseModel, &QPushButton::clicked, page, [=]() {
+        const auto selected = QFileDialog::getOpenFileName(
+            page, "Choose Sherpa audio-tagging model", taggingModel->text(),
+            "ONNX model (*.onnx);;All files (*)");
+        if (!selected.isEmpty()) {
+            taggingModel->setText(selected);
+        }
+    });
+    QObject::connect(browseLabels, &QPushButton::clicked, page, [=]() {
+        const auto selected = QFileDialog::getOpenFileName(
+            page, "Choose audio-tagging class labels", taggingLabels->text(),
+            "Labels (*.txt *.csv);;All files (*)");
+        if (!selected.isEmpty()) {
+            taggingLabels->setText(selected);
+        }
+    });
+
     auto* status = new QLabel{
 #if LIBAUDITION_DEMO_HAS_ODAS
         "Ready. Select WAV or show the explicitly synthetic 3D example.", page
@@ -327,9 +387,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     split->addWidget(sphere);
     auto* sidebar = new QWidget{split};
     auto* sideLayout = new QVBoxLayout{sidebar};
-    auto* tracks = new QTableWidget{0, 4, sidebar};
+    auto* tracks = new QTableWidget{0, 5, sidebar};
     tracks->setObjectName("acousticSceneTracks");
-    tracks->setHorizontalHeaderLabels({"ID", "Azimuth", "Elevation", "Activity"});
+    tracks->setHorizontalHeaderLabels({
+        "ID", "Azimuth", "Elevation", "Activity", "Activity type"});
     tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -343,8 +404,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     sideLayout->addWidget(new QLabel{
         "Orange grid: below equator\nBlue grid: above equator\n"
         "XYZ axes: +X forward / +Y left / +Z up\n"
-        "Hover: azimuth, elevation, activity\n"
-        "Classification/ASR are not connected in this viewer yet.", sidebar});
+        "Hover: direction, activity, sound class (if model loaded)\n"
+        "ASR is not connected in this viewer yet.", sidebar});
     split->addWidget(sidebar);
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 2);
@@ -362,13 +423,23 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const auto v = track.direction;
             const double az = std::atan2(v.y(), v.x()) * 180.0 / kPi;
             const double el = std::atan2(v.z(), std::hypot(v.x(), v.y())) * 180.0 / kPi;
-            for (int column = 0; column < 4; ++column) {
+            for (int column = 0; column < 5; ++column) {
                 QString data;
                 switch (column) {
                 case 0: data = QString::number(static_cast<qulonglong>(track.id)); break;
                 case 1: data = QString::number(az, 'f', 1) + "°"; break;
                 case 2: data = QString::number(el, 'f', 1) + "°"; break;
-                default: data = QString::number(track.activity, 'f', 2); break;
+                case 3: data = QString::number(track.activity, 'f', 2); break;
+                default:
+                    if (!track.classification_label.empty()) {
+                        data = QString::fromStdString(track.classification_label) +
+                            QString(" (%1)").arg(
+                                track.classification_probability, 0, 'f', 2);
+                    } else {
+                        data = enableTagging->isChecked() ? "Analyzing…" :
+                               "Not configured";
+                    }
+                    break;
                 }
                 tracks->setItem(i, column, new QTableWidgetItem{data});
             }
@@ -408,6 +479,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         hop->setEnabled(true);
         frame->setEnabled(true);
         angularPreset->setEnabled(true);
+        enableTagging->setEnabled(
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            true
+#else
+            false
+#endif
+        );
+        taggingFamily->setEnabled(true);
+        taggingModel->setEnabled(true);
+        taggingLabels->setEnabled(true);
         example->setEnabled(true);
         analyze->setEnabled(
 #if LIBAUDITION_DEMO_HAS_ODAS
@@ -479,6 +560,25 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.hop_size = static_cast<std::uint32_t>(hop->value());
             config.frame_size = static_cast<std::uint32_t>(frame->value());
             config.respeaker_angular_profile = angularPreset->isChecked();
+            config.classify_sources = enableTagging->isChecked();
+            if (config.classify_sources) {
+                const auto modelFile =
+                    std::filesystem::path{taggingModel->text().toStdString()};
+                const auto labelsFile =
+                    std::filesystem::path{taggingLabels->text().toStdString()};
+                if (!std::filesystem::is_regular_file(modelFile) ||
+                    !std::filesystem::is_regular_file(labelsFile)) {
+                    throw std::runtime_error{
+                        "Choose an existing Sherpa ONNX model and matching labels"};
+                }
+                if (config.sample_rate_hz != 16000U) {
+                    throw std::runtime_error{
+                        "Sherpa audio tagging requires 16000 Hz capture"};
+                }
+                config.tagging_ced_model = taggingFamily->currentIndex() == 1;
+                config.tagging_model_path = modelFile.string();
+                config.tagging_labels_path = labelsFile.string();
+            }
             config.input_channels = parseChannels(map->text());
             const auto microphoneGeometry = parseMicrophones(geometry->toPlainText());
             for (const auto& microphone : microphoneGeometry) {
@@ -515,6 +615,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             hop->setEnabled(false);
             frame->setEnabled(false);
             angularPreset->setEnabled(false);
+            enableTagging->setEnabled(false);
+            taggingFamily->setEnabled(false);
+            taggingModel->setEnabled(false);
+            taggingLabels->setEnabled(false);
             example->setEnabled(false);
             analyze->setEnabled(false);
             status->setText("Opening ALSA capture stream and initializing ODAS…");
@@ -533,6 +637,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             *seenGeneration = snapshot.generation;
             display(snapshot.tracks);
             sphere->setPotentials(snapshot.potentials);
+            if (!snapshot.classification_error.empty()) {
+                deviceStatus->setText(
+                    "Sherpa tagging error (capture still running): " +
+                    QString::fromStdString(snapshot.classification_error));
+            }
             QStringList levels;
             for (std::size_t channel = 0; channel < snapshot.channel_rms_dbfs.size();
                  ++channel) {
