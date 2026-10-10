@@ -39,9 +39,17 @@ struct TrackedAudioFrame {
     AudioBuffer audio{};
 };
 
+// Short-lived SSL direction proposal, not a tracked/acoustically identified
+// source. 'score' is a raw backend detection statistic, not a probability.
+struct SpatialPotentialSource {
+    Direction3D direction{};
+    double score{0.0};
+};
+
 struct SpatialProcessingResult {
     std::vector<SpatialTrack> tracks{};
     std::vector<TrackedAudioFrame> separated_frames{};
+    std::vector<SpatialPotentialSource> potential_sources{};
 };
 
 }  // namespace audition
