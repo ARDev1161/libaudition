@@ -322,6 +322,36 @@ jobs:
           LD_LIBRARY_PATH="$PWD/install-aec3/lib:${LD_LIBRARY_PATH:-}"             /tmp/libaudition-aec3-consumer/build/consumer
 
 
+  qt-odas-sherpa-classifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install combined audio backend dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config qtbase5-dev libasound2-dev libfftw3-dev libconfig-dev libpulse-dev
+      - name: Configure ODAS SSS and Sherpa tagging together
+        run: >-
+          cmake -S . -B build-acoustic-live -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_ODAS=ON
+          -DLIBAUDITION_WITH_SHERPA=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=OFF
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build combined live classifier demo
+        run: cmake --build build-acoustic-live --parallel 2
+      - name: Combined Qt scene and model controls smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-acoustic-live/demo/qt/libaudition_qt_demo --self-test
+      - name: Source-tagging invalid-model error handling
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-acoustic-live/demo/qt/libaudition_qt_demo --model-self-test=live-source-tagging-errors
+
   sherpa-backend:
     runs-on: ubuntu-latest
     steps:
