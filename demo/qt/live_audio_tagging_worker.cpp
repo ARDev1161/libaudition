@@ -2,8 +2,12 @@
 
 #if LIBAUDITION_DEMO_HAS_SHERPA
 #include <audition/backends/sherpa/audio_tagger.hpp>
-#include <audition/audio/audio_buffer.hpp>
 #endif
+#if LIBAUDITION_DEMO_HAS_YAMNET
+#include <audition/backends/yamnet/audio_tagger.hpp>
+#endif
+#include <audition/audio/audio_buffer.hpp>
+#include <audition/interfaces/classify.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -14,7 +18,7 @@
 namespace demo {
 
 LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
-    : window_samples_{static_cast<std::size_t>(options.sample_rate_hz) * 2U},
+    : window_samples_{static_cast<std::size_t>(options.sample_rate_hz) * (options.yamnet_model ? 1U : 2U)},
       stale_hops_{(static_cast<std::uint64_t>(options.sample_rate_hz) * 5U) /
                   std::max<std::uint32_t>(options.hop_size, 1U)} {
     if (options.sample_rate_hz != 16000U || options.hop_size == 0U ||
@@ -74,6 +78,9 @@ void LiveAudioTaggingWorker::push(
             pending_ = Job{track_id, processed_hops, std::move(track.samples)};
             track.samples.clear();
             cv_.notify_one();
+        } else {
+            // Avoid a permanently full source window when the worker queue is busy.
+            track.samples.clear();
         }
     }
 }
@@ -94,9 +101,34 @@ std::string LiveAudioTaggingWorker::error() const {
     return error_;
 }
 
+std::string LiveAudioTaggingWorker::status(std::uint64_t track_id) const {
+    std::lock_guard<std::mutex> lock{mutex_};
+    if (!error_.empty()) return "Error: " + error_;
+    const auto result = results_.find(track_id);
+    if (result != results_.end()) return "Classified";
+    const auto it = buffers_.find(track_id);
+    if (it == buffers_.end()) return "Waiting for SSS";
+    if (inferencing_ || pending_.has_value()) return "Inferencing";
+    return "Collecting " + std::to_string(it->second.samples.size()) +
+           "/" + std::to_string(window_samples_);
+}
+
 void LiveAudioTaggingWorker::run(LiveTaggingOptions options) noexcept {
-#if LIBAUDITION_DEMO_HAS_SHERPA
+#if LIBAUDITION_DEMO_HAS_SHERPA || LIBAUDITION_DEMO_HAS_YAMNET
     try {
+        std::unique_ptr<audition::IAudioClassifier> classifier;
+        if (options.yamnet_model) {
+#if LIBAUDITION_DEMO_HAS_YAMNET
+            audition::YamnetOnnxOptions cfg{};
+            cfg.model = options.model_path;
+            cfg.labels = options.labels_path;
+            cfg.top_k = 3U;
+            classifier = std::make_unique<audition::YamnetAudioTagger>(std::move(cfg));
+#else
+            throw std::runtime_error{"YAMNet backend is not built"};
+#endif
+        } else {
+#if LIBAUDITION_DEMO_HAS_SHERPA
         audition::SherpaAudioTaggingOptions cfg{};
         cfg.model = options.ced_model
             ? audition::SherpaAudioTaggingModel{
@@ -105,7 +137,11 @@ void LiveAudioTaggingWorker::run(LiveTaggingOptions options) noexcept {
                 audition::SherpaAudioTaggingZipformerModel{options.model_path}};
         cfg.labels = options.labels_path;
         cfg.top_k = 3;
-        audition::SherpaAudioTagger classifier{cfg};
+        classifier = std::make_unique<audition::SherpaAudioTagger>(std::move(cfg));
+#else
+        throw std::runtime_error{"Sherpa backend is not built"};
+#endif
+        }
         for (;;) {
             Job job;
             {
@@ -116,12 +152,17 @@ void LiveAudioTaggingWorker::run(LiveTaggingOptions options) noexcept {
                 }
                 job = std::move(*pending_);
                 pending_.reset();
+                inferencing_ = true;
             }
             audition::AudioBuffer audio{
                 std::move(job.samples),
                 {options.sample_rate_hz, 1U, audition::AudioLayout::Interleaved},
                 audition::Timestamp{}, job.hop};
-            const auto classified = classifier.classify(audio.view());
+            const auto classified = classifier->classify(audio.view());
+            {
+                std::lock_guard<std::mutex> lock{mutex_};
+                inferencing_ = false;
+            }
             if (classified.classes.empty()) {
                 continue;
             }
@@ -154,7 +195,7 @@ void LiveAudioTaggingWorker::run(LiveTaggingOptions options) noexcept {
 #else
     static_cast<void>(options);
     std::lock_guard<std::mutex> lock{mutex_};
-    error_ = "Rebuild the Qt demo with LIBAUDITION_WITH_SHERPA=ON";
+    error_ = "Rebuild Qt demo with LIBAUDITION_WITH_SHERPA or LIBAUDITION_WITH_YAMNET";
 #endif
 }
 
