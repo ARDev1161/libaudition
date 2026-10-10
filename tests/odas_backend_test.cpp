@@ -35,6 +35,22 @@ TEST(OdasOptions, AcceptsTypedFourMicrophoneConfiguration) {
     EXPECT_NO_THROW(audition::validateOdasOptions(options));
 }
 
+TEST(OdasOptions, AcceptsUpstreamReSpeakerAngularMask) {
+    auto options = makeFourMicOptions();
+    options.microphone_directivity.assign(
+        options.microphone_array.size(),
+        audition::OdasMicrophoneDirectivity{80.0, 100.0});
+    options.spatial_filters = {audition::OdasSpatialFilter{
+        audition::Direction3D::fromVector({0.0, 0.0, 1.0}), 80.0, 100.0}};
+    ASSERT_NO_THROW(audition::validateOdasOptions(options));
+    // This verifies the ODAS runtime can instantiate and process the profile;
+    // it does not imply DOA accuracy with real USB hardware.
+    options.sss.enabled = false;
+    audition::OdasSpatialEngine engine{options};
+    auto frame = makeSilence(options);
+    EXPECT_NO_THROW((void)engine.process(frame.view()));
+}
+
 TEST(OdasOptions, RejectsDuplicateInputChannelMapping) {
     auto options = makeFourMicOptions();
     options.input_channels = {1U, 1U, 3U, 4U};

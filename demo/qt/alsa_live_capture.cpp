@@ -1,4 +1,5 @@
 #include "alsa_live_capture.hpp"
+#include "odas_respeaker_profile.hpp"
 
 #if LIBAUDITION_DEMO_HAS_ALSA
 #include <audition/backends/odas.hpp>
@@ -220,6 +221,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         for (const auto& xyz : config.microphone_positions) {
             options.microphone_array.microphones.push_back(
                 audition::MicrophoneGeometry{{xyz[0], xyz[1], xyz[2]}});
+        }
+        if (config.respeaker_angular_profile) {
+            applyReSpeakerUsb4MicAngularProfile(options);
         }
         options.sss.enabled = false; // Direction-only live MVP; no fake ASR.
         audition::OdasSpatialEngine engine{options};

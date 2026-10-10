@@ -1,4 +1,5 @@
 #include "demo_window.hpp"
+#include <QCheckBox>
 
 #include "acoustic_scene_page.hpp"
 #include "backend_workbench.hpp"
@@ -195,6 +196,10 @@ void verifyWorkbench(QWidget* root) {
     }
     auto* scene = requireTab(appTabs, "Acoustic scene");
     requireAction(scene, "Show 3D example");
+    auto* preset = scene->findChild<QCheckBox*>("acousticSceneReSpeakerAngularPreset");
+    if (preset == nullptr || !preset->isChecked()) {
+        throw std::runtime_error{"Qt self-test: default ReSpeaker ODAS profile missing"};
+    }
 #if LIBAUDITION_DEMO_HAS_ALSA
     requireAction(scene, "Refresh ALSA devices");
     requireAction(scene, "Start live capture");
