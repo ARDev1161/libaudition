@@ -18,6 +18,7 @@ struct LiveTaggingOptions {
     std::string model_path{};
     std::string labels_path{};
     bool ced_model{false};
+    bool yamnet_model{false};
     std::uint32_t sample_rate_hz{16000};
     std::uint32_t hop_size{128};
 };
