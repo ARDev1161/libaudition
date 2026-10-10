@@ -58,8 +58,27 @@ void AcousticSphereWidget::setTracks(const std::vector<AcousticSceneTrack>& trac
     update();
 }
 
+void AcousticSphereWidget::setPotentials(
+    const std::vector<AcousticScenePotential>& potentials) {
+    potentials_.clear();
+    for (auto potential : potentials) {
+        if (!std::isfinite(potential.direction.x()) ||
+            !std::isfinite(potential.direction.y()) ||
+            !std::isfinite(potential.direction.z()) ||
+            !std::isfinite(potential.score) ||
+            potential.score <= 0.0 ||
+            potential.direction.lengthSquared() < 1.0e-12F) {
+            continue;
+        }
+        potential.direction.normalize();
+        potentials_.push_back(potential);
+    }
+    update();
+}
+
 void AcousticSphereWidget::clearTracks() {
     tracks_.clear();
+    potentials_.clear();
     trails_.clear();
     selected_ = 0;
     hovered_ = 0;
@@ -187,6 +206,23 @@ void AcousticSphereWidget::drawTracks(QPainter& painter) const {
             painter.setPen(QPen(faded, 2.0));
             painter.drawLine(a.pixel, b.pixel);
         }
+    }
+
+    // SSL proposals have no persistent ID: small outlined diamonds, not
+    // clickable track markers. These are instantaneous direction candidates.
+    for (const auto& proposal : potentials_) {
+        const auto dot = project(proposal.direction);
+        const QColor ink = dot.depth < 0
+            ? QColor(105, 146, 166, 90)
+            : QColor(104, 182, 225, 190);
+        painter.setPen(QPen(ink, 1.4));
+        painter.setBrush(Qt::NoBrush);
+        const QPointF vertices[4]{
+            dot.pixel + QPointF(0.0, -5.0),
+            dot.pixel + QPointF(5.0, 0.0),
+            dot.pixel + QPointF(0.0, 5.0),
+            dot.pixel + QPointF(-5.0, 0.0)};
+        painter.drawPolygon(vertices, 4);
     }
 
     // Render hidden-side sources first and foreground sources last.
