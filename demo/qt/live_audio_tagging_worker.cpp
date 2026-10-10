@@ -78,6 +78,9 @@ void LiveAudioTaggingWorker::push(
             pending_ = Job{track_id, processed_hops, std::move(track.samples)};
             track.samples.clear();
             cv_.notify_one();
+        } else {
+            // Avoid a permanently full source window when the worker queue is busy.
+            track.samples.clear();
         }
     }
 }
