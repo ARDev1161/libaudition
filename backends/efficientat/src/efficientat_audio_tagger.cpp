@@ -174,4 +174,27 @@ ClassificationResult EfficientAtSpectrogramTagger::classifyLogMel(
     const float* mel, std::size_t bins, std::size_t frames) const {
     return impl_->classify(mel, bins, frames);
 }
+
+EfficientAtAudioTagger::EfficientAtAudioTagger(EfficientAtOnnxOptions options)
+    : model_(std::move(options)) {}
+
+BackendInfo EfficientAtAudioTagger::backendInfo() const {
+    return {"efficientat-onnx", OrtGetApiBase()->GetVersionString()};
+}
+
+ClassifierCapabilities EfficientAtAudioTagger::capabilities() const {
+    ClassifierCapabilities out{};
+    out.audio.supported_sample_rates_hz = {32000U};
+    out.audio.min_channels = 1U;
+    out.audio.max_channels = 1U;
+    out.audio.preferred_frame_count = 32000U;
+    out.execution.device_classes = {DeviceClass::Cpu};
+    out.execution.providers = {"cpu"};
+    return out;
+}
+
+ClassificationResult EfficientAtAudioTagger::classify(AudioView audio) const {
+    const auto logmel = frontend_.compute(audio);
+    return model_.classifyLogMel(logmel.values.data(), logmel.mel_bins, logmel.frames);
+}
 } // namespace audition
