@@ -7,7 +7,9 @@ A model is not considered supported merely because an ONNX file exists.
 
 - `SourceClassificationRuntime`: per-track mono buffering, bounded source map,
   bounded pending job, one background model inference worker, explicit states,
-  errors and `forget()` for track retirement. Capture and scheduling are not
+  errors and `forget()` for track retirement. In-flight work has a separate
+  generation identity so retiring/reusing a track ID never attaches stale
+  results to the new source. Capture and scheduling are not
   coupled to Qt, ALSA, ODAS or ROS.
 - Qt's `LiveAudioTaggingWorker` is a thin adapter around the production runtime;
   it only constructs the selected model and formats diagnostics.
@@ -23,7 +25,7 @@ A model is not considered supported merely because an ONNX file exists.
    supported requested class. Catalog must be mapped to class index.
 3. `SourceClassificationRuntime` currently caps the number of tracked source
    buffers and only queues one job; fairness, worker shutdown deadlines, job
-   cancellation, invalidation on source ID reuse, sample discontinuities,
+   cancellation, sample discontinuities,
    stale-result TTL and immutable result snapshots require further tests.
 4. Model creation on the capture worker thread must become asynchronous
    with separately reported initialization state.
