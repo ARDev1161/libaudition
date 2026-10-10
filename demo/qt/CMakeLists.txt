@@ -6,6 +6,8 @@ add_executable(libaudition_qt_demo
     demo_window.cpp
     acoustic_scene_page.cpp
     acoustic_scene_page.hpp
+    alsa_live_capture.cpp
+    alsa_live_capture.hpp
     acoustic_sphere_widget.cpp
     acoustic_sphere_widget.hpp
     demo_window.hpp
@@ -46,6 +48,24 @@ target_compile_definitions(libaudition_qt_demo PRIVATE
     LIBAUDITION_DEMO_HAS_GTSAM=$<BOOL:${LIBAUDITION_WITH_GTSAM}>)
 
 libaudition_configure_target(libaudition_qt_demo)
+
+# ALSA is only a host-side capture adapter in this optional Qt executable.
+# No ALSA dependency is added to libaudition or its installed targets.
+find_package(Threads REQUIRED)
+target_link_libraries(libaudition_qt_demo PRIVATE Threads::Threads)
+
+if(LIBAUDITION_WITH_ODAS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(ALSA QUIET)
+endif()
+
+if(LIBAUDITION_WITH_ODAS AND ALSA_FOUND)
+    target_compile_definitions(libaudition_qt_demo PRIVATE
+        LIBAUDITION_DEMO_HAS_ALSA=1)
+    target_link_libraries(libaudition_qt_demo PRIVATE ALSA::ALSA)
+else()
+    target_compile_definitions(libaudition_qt_demo PRIVATE
+        LIBAUDITION_DEMO_HAS_ALSA=0)
+endif()
 
 
 if(LIBAUDITION_WITH_ODAS)
