@@ -195,6 +195,13 @@ void verifyWorkbench(QWidget* root) {
     }
     auto* scene = requireTab(appTabs, "Acoustic scene");
     requireAction(scene, "Show 3D example");
+#if LIBAUDITION_DEMO_HAS_ALSA
+    requireAction(scene, "Refresh ALSA devices");
+    requireAction(scene, "Start live capture");
+    if (scene->findChild<QWidget*>("acousticSceneDevice") == nullptr) {
+        throw std::runtime_error{"Qt self-test: missing ALSA device selector"};
+    }
+#endif
     for (auto* button : scene->findChildren<QPushButton*>()) {
         if (button->text() == "Show 3D example") {
             button->click();
