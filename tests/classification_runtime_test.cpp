@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <audition/classify/vocabulary.hpp>
+#include <audition/classify/efficientat_frontend_spec.hpp>
 #include <audition/classify/source_classification_runtime.hpp>
 
 #include <chrono>
@@ -144,4 +145,14 @@ TEST(SourceClassificationRuntime, BoundedQueueDoesNotDropOtherTrackWindow) {
     const auto pending = runtime.status(2U);
     EXPECT_EQ(pending.state, audition::SourceClassificationState::Queued);
     finish.store(true);
+}
+
+TEST(EfficientAtFrontendSpec, RejectsSilentRateOrChannelMismatch) {
+    const audition::EfficientAtFrontendSpec spec{};
+    EXPECT_TRUE(spec.valid());
+    EXPECT_EQ(spec.fft_size, 1024U);
+    EXPECT_EQ(spec.mel_bins, 128U);
+    EXPECT_NO_THROW(spec.requireMono32k(32000U, 1U));
+    EXPECT_THROW(spec.requireMono32k(16000U, 1U), std::invalid_argument);
+    EXPECT_THROW(spec.requireMono32k(32000U, 2U), std::invalid_argument);
 }
