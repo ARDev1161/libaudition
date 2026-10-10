@@ -33,6 +33,7 @@ struct LiveCaptureConfig {
     bool respeaker_angular_profile{false};
     bool classify_sources{false};
     bool tagging_ced_model{false};
+    bool tagging_yamnet_model{false};
     std::string tagging_model_path{};
     std::string tagging_labels_path{};
 };
