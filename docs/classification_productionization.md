@@ -37,7 +37,7 @@ A model is not considered supported merely because an ONNX file exists.
 
 | Model | Why it may improve on YAMNet | Requirements |
 | --- | --- | --- |
-| EfficientAT MobileNet / DyMN variants | Compact models, published strong accuracy-efficiency tradeoff | 32 kHz waveform classifier and spectrogram ONNX adapter implemented, synthetic-model CI tests pass; PyTorch parity, authentic weight exports, and hardware benchmarks **not yet verified** |
+| EfficientAT MobileNet / DyMN variants | Compact models, published strong accuracy-efficiency tradeoff | 32 kHz waveform classifier and spectrogram ONNX adapter implemented, synthetic-model CI tests pass; Qt family selector and explicit 16k->32k upsampling added; PyTorch parity, authentic weight exports, and hardware benchmarks **not yet verified** |
 | BEATs | Strong published audio representations / sound event accuracy | Checkpoint license, preprocessing and model-specific classification head |
 | PaSST | Efficient transformer audio tagging via Patchout | Spectrogram frontend fidelity, input shape, runtime benchmark |
 | HTS-AT | Hierarchical tagging transformer with competitive AudioSet scores | Frontend fidelity, model export tests |
