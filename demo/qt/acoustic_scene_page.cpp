@@ -1,5 +1,6 @@
 #include "acoustic_scene_page.hpp"
 #include "alsa_live_capture.hpp"
+#include "odas_respeaker_profile.hpp"
 #include "acoustic_sphere_widget.hpp"
 #include "wav_io.hpp"
 
@@ -7,6 +8,7 @@
 #include <audition/backends/odas.hpp>
 #endif
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -94,7 +96,8 @@ std::vector<audition::MicrophoneGeometry> parseMicrophones(
 std::shared_ptr<SceneReplay> analyzeWav(
     const std::filesystem::path& wavFile,
     QString channels, QString geometry,
-    std::uint32_t hopSize, std::uint32_t frameSize) {
+    std::uint32_t hopSize, std::uint32_t frameSize,
+    bool respeakerAngularProfile) {
     auto result = std::make_shared<SceneReplay>();
     try {
         const auto wav = demo::loadWav(wavFile);
@@ -107,6 +110,9 @@ std::shared_ptr<SceneReplay> analyzeWav(
         options.frame_size = frameSize;
         // Direction visualization needs tracked sources, not SSS audio.
         options.sss.enabled = false;
+        if (respeakerAngularProfile) {
+            demo::applyReSpeakerUsb4MicAngularProfile(options);
+        }
         audition::OdasSpatialEngine engine{options};
 
         const std::size_t hop = options.hop_size;
@@ -265,10 +271,19 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto* frame = new QSpinBox{page};
     frame->setRange(64, 8192);
     frame->setValue(256);
+    auto* angularPreset = new QCheckBox{
+        "Apply upstream ReSpeaker USB 4-Mic 80°/100° angular profile", page};
+    angularPreset->setObjectName("acousticSceneReSpeakerAngularPreset");
+    angularPreset->setChecked(true);
+    angularPreset->setToolTip(
+        "Configures microphone directivity and +Z spatial filter "
+        "to match upstream ODAS ReSpeaker USB 4-Mic preset. "
+        "Uncheck for generic/full-sphere scanning.");
     configForm->addRow("ReSpeaker v2 example map (0-based)", map);
     configForm->addRow("Microphone XYZ [m] (verify geometry)", geometry);
     configForm->addRow("ODAS hop", hop);
     configForm->addRow("ODAS frame", frame);
+    configForm->addRow("ODAS angular profile", angularPreset);
     configRow->addLayout(configForm);
     layout->addLayout(configRow);
 
@@ -392,6 +407,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         geometry->setEnabled(true);
         hop->setEnabled(true);
         frame->setEnabled(true);
+        angularPreset->setEnabled(true);
         example->setEnabled(true);
         analyze->setEnabled(
 #if LIBAUDITION_DEMO_HAS_ODAS
@@ -462,6 +478,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 static_cast<std::uint32_t>(captureRate->value());
             config.hop_size = static_cast<std::uint32_t>(hop->value());
             config.frame_size = static_cast<std::uint32_t>(frame->value());
+            config.respeaker_angular_profile = angularPreset->isChecked();
             config.input_channels = parseChannels(map->text());
             const auto microphoneGeometry = parseMicrophones(geometry->toPlainText());
             for (const auto& microphone : microphoneGeometry) {
@@ -497,6 +514,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             geometry->setEnabled(false);
             hop->setEnabled(false);
             frame->setEnabled(false);
+            angularPreset->setEnabled(false);
             example->setEnabled(false);
             analyze->setEnabled(false);
             status->setText("Opening ALSA capture stream and initializing ODAS…");
@@ -642,13 +660,15 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         const auto positions = geometry->toPlainText();
         const auto hopSize = static_cast<std::uint32_t>(hop->value());
         const auto frameSize = static_cast<std::uint32_t>(frame->value());
+        const auto respeakerAngularProfile = angularPreset->isChecked();
         timer->stop();
         play->setEnabled(false);
         analyze->setEnabled(false);
         status->setText("ODAS is analyzing WAV in a worker. Please wait…");
         diagnostics->setText("WAV replay mode; live ALSA levels not available.");
         watcher->setFuture(QtConcurrent::run([=]() {
-            return analyzeWav(wavFile, mapping, positions, hopSize, frameSize);
+            return analyzeWav(wavFile, mapping, positions, hopSize, frameSize,
+                              respeakerAngularProfile);
         }));
     });
     QObject::connect(watcher, &QFutureWatcherBase::finished, page, [=]() {
