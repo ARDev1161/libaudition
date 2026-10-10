@@ -620,7 +620,19 @@ QString testWhisperReal(QMainWindow& window, const QTemporaryDir& dir) {
 QString testPiperReal(QMainWindow& window, const QTemporaryDir& dir) {
 #if LIBAUDITION_DEMO_HAS_SHERPA_TTS
     const auto root = requireDirectoryEnv("LIBAUDITION_TEST_PIPER_DIR");
-    const auto model = root / "en_US-amy-low.onnx";
+    std::filesystem::path model;
+    for (const auto& entry : std::filesystem::directory_iterator(root)) {
+        if (entry.is_regular_file() &&
+            entry.path().extension() == ".onnx") {
+            if (!model.empty()) {
+                throw std::runtime_error{"Piper fixture has multiple ONNX models"};
+            }
+            model = entry.path();
+        }
+    }
+    if (model.empty()) {
+        throw std::runtime_error{"Piper fixture has no ONNX model"};
+    }
     const auto tokens = root / "tokens.txt";
     const auto data = root / "espeak-ng-data";
     if (!std::filesystem::is_directory(data)) {
