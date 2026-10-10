@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -51,6 +52,7 @@ private:
         std::vector<float> samples{};
         std::optional<ClassificationResult> result{};
         std::uint64_t generation{0};
+        std::chrono::steady_clock::time_point last_result_at{};
     };
     struct Job {
         std::uint64_t source_id{0};
@@ -72,6 +74,7 @@ private:
     std::string error_{};
     std::uint64_t dropped_windows_{0};
     std::uint64_t next_generation_{1};
+    static constexpr auto kResultTtl = std::chrono::seconds{3};
     bool stopping_{false};
     std::thread worker_{};
 };
