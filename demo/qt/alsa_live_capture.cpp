@@ -236,6 +236,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 LiveTaggingOptions{config.tagging_model_path,
                                    config.tagging_labels_path,
                                    config.tagging_ced_model,
+                                   config.tagging_yamnet_model,
                                    config.sample_rate_hz,
                                    config.hop_size});
         }
