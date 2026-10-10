@@ -313,13 +313,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     // Optional real sound-event recognition: CED/Zipformer ONNX tagging
     // consumes the ODAS-separated audio of the source ID, not its direction.
     auto* enableTagging = new QCheckBox{
-        "Classify source audio with Sherpa (requires ONNX + labels)", page};
+        "Classify source audio (requires ONNX + labels)", page};
     enableTagging->setObjectName("acousticSceneEnableTagging");
     auto* taggingSettings = new QWidget{page};
     auto* taggingForm = new QFormLayout{taggingSettings};
     taggingForm->setContentsMargins(4, 0, 4, 0);
     auto* taggingFamily = new QComboBox{taggingSettings};
-    taggingFamily->addItems({"Zipformer", "CED"});
+    taggingFamily->addItems({"Zipformer", "CED", "YAMNet"});
     auto* taggingModel = new QLineEdit{taggingSettings};
     taggingModel->setObjectName("acousticSceneTaggingModel");
     taggingModel->setPlaceholderText("Path to audio-tagging .onnx");
@@ -340,11 +340,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     layout->addWidget(enableTagging);
     layout->addWidget(taggingSettings);
     taggingSettings->setVisible(false);
-#if !LIBAUDITION_DEMO_HAS_SHERPA
+#if !LIBAUDITION_DEMO_HAS_SHERPA && !LIBAUDITION_DEMO_HAS_YAMNET
     enableTagging->setEnabled(false);
     enableTagging->setToolTip(
-        "Build with LIBAUDITION_WITH_SHERPA=ON for real sound classification");
+        "Build with LIBAUDITION_WITH_SHERPA=ON or LIBAUDITION_WITH_YAMNET=ON");
 #endif
+    QObject::connect(taggingFamily, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     page, [=](int index) {
+        enableTagging->setEnabled(index == 2 ? LIBAUDITION_DEMO_HAS_YAMNET : LIBAUDITION_DEMO_HAS_SHERPA);
+        if (!enableTagging->isEnabled()) enableTagging->setChecked(false);
+    });
     QObject::connect(enableTagging, &QCheckBox::toggled,
                      taggingSettings, &QWidget::setVisible);
     QObject::connect(browseModel, &QPushButton::clicked, page, [=]() {
@@ -480,8 +485,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         frame->setEnabled(true);
         angularPreset->setEnabled(true);
         enableTagging->setEnabled(
-#if LIBAUDITION_DEMO_HAS_SHERPA
-            true
+#if LIBAUDITION_DEMO_HAS_SHERPA || LIBAUDITION_DEMO_HAS_YAMNET
+            (taggingFamily->currentIndex() == 2 ? LIBAUDITION_DEMO_HAS_YAMNET : LIBAUDITION_DEMO_HAS_SHERPA)
 #else
             false
 #endif
@@ -569,13 +574,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 if (!std::filesystem::is_regular_file(modelFile) ||
                     !std::filesystem::is_regular_file(labelsFile)) {
                     throw std::runtime_error{
-                        "Choose an existing Sherpa ONNX model and matching labels"};
+                        "Choose an existing ONNX tagging model and matching labels"};
                 }
                 if (config.sample_rate_hz != 16000U) {
                     throw std::runtime_error{
-                        "Sherpa audio tagging requires 16000 Hz capture"};
+                        "Audio tagging requires 16000 Hz capture"};
                 }
                 config.tagging_ced_model = taggingFamily->currentIndex() == 1;
+                config.tagging_yamnet_model = taggingFamily->currentIndex() == 2;
                 config.tagging_model_path = modelFile.string();
                 config.tagging_labels_path = labelsFile.string();
             }
