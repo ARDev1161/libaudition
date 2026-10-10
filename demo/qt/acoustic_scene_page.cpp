@@ -657,7 +657,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             sphere->setPotentials(snapshot.potentials);
             if (!snapshot.classification_error.empty()) {
                 deviceStatus->setText(
-                    "Sherpa tagging error (capture still running): " +
+                    "Audio tagging error (capture still running): " +
                     QString::fromStdString(snapshot.classification_error));
             }
             QStringList levels;
@@ -673,12 +673,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 strongest = std::max(strongest, proposal.score);
             }
             diagnostics->setText(
-                QString("Raw ALSA input levels: %1\n"
+                QString("Classifier: %4\nRaw ALSA input levels: %1\n"
                         "ODAS SSL direction proposals: %2 (strongest raw score: %3) · "
                         "outlined diamonds are SSL proposals, filled circles are SST tracks")
                     .arg(levels.join("  |  "))
                     .arg(static_cast<qulonglong>(snapshot.potentials.size()))
-                    .arg(strongest, 0, 'f', 3));
+                    .arg(strongest, 0, 'f', 3)
+                    .arg(QString::fromStdString(snapshot.classifier_status)));
         }
         if (!snapshot.error.empty()) {
             stopCapture();
