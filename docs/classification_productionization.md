@@ -19,10 +19,8 @@ A model is not considered supported merely because an ONNX file exists.
 
 ### Known limitations to resolve before release
 
-1. UI currently renders only one class and has no selected-vocabulary editor.
-2. Fixed-class adapters must publish **full class scores**, not Top-K only,
-   when selected vocabulary is used. Filtering truncated Top-K can suppress a
-   supported requested class. Catalog must be mapped to class index.
+1. Qt now offers All classes (Top-5) or Selected vocabulary (exact, comma-separated labels). The selected mode currently uses a plain text field; a searchable class catalog / per-label status is still required.
+2. The Qt adapter requests up to 521 YAMNet or 527 Sherpa scores before filtering. Validate each actual model's complete class count and label mapping; a partial result must never be treated as a complete catalog.
 3. `SourceClassificationRuntime` currently caps the number of tracked source
    buffers and only queues one job; fairness, worker shutdown deadlines, job
    cancellation, sample discontinuities,
