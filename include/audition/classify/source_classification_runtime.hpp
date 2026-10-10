@@ -50,9 +50,11 @@ private:
     struct Buffer {
         std::vector<float> samples{};
         std::optional<ClassificationResult> result{};
+        std::uint64_t generation{0};
     };
     struct Job {
         std::uint64_t source_id{0};
+        std::uint64_t generation{0};
         std::vector<float> samples{};
     };
     void run() noexcept;
@@ -68,6 +70,7 @@ private:
     std::optional<std::uint64_t> active_source_{};
     std::string error_{};
     std::uint64_t dropped_windows_{0};
+    std::uint64_t next_generation_{1};
     bool stopping_{false};
     std::thread worker_{};
 };
