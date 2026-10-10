@@ -1,5 +1,6 @@
 #include <audition/backends/efficientat/audio_tagger.hpp>
 #include <audition/audio/audio_buffer.hpp>
+#include <audition/backends/efficientat/resampler.hpp>
 #include <audition/core/error.hpp>
 
 #include <gtest/gtest.h>
@@ -71,4 +72,27 @@ TEST(EfficientAtBackend, EndToEndMonoWaveform) {
             buffer.samples().data(), buffer.samples().size(),
             {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}}),
         audition::Error);
+}
+
+TEST(EfficientAtResampler, ConstantSignalAndSampleCount) {
+    std::vector<float> input(16000U, 0.25F);
+    const auto output = audition::efficientAtUpsample16To32(input.data(), input.size());
+    ASSERT_EQ(output.size(), 32000U);
+    for (float value : output) EXPECT_NEAR(value, 0.25F, 1.e-5);
+}
+
+TEST(EfficientAtBackend, Source16kBridgeEndToEnd) {
+    const auto root = fixtureDir();
+    if (root.empty()) GTEST_SKIP() << "Synthetic ONNX fixture not configured";
+    audition::EfficientAtOnnxOptions options{};
+    options.model = root / "efficientat_synthetic.onnx";
+    options.labels = root / "labels.txt";
+    audition::EfficientAt16kAudioTagger tagger{options};
+    std::vector<float> signal(16000U, 0.0F);
+    const audition::AudioBuffer audio{
+        std::move(signal), {16000U, 1U, audition::AudioLayout::Interleaved},
+        audition::Timestamp{}, 0U};
+    const auto result = tagger.classify(audio.view());
+    ASSERT_FALSE(result.classes.empty());
+    EXPECT_EQ(result.classes.front().label, "class_526");
 }
