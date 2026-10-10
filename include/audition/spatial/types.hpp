@@ -42,7 +42,7 @@ struct TrackedAudioFrame {
 // Short-lived SSL direction proposal, not a tracked/acoustically identified
 // source. 'score' is a raw backend detection statistic, not a probability.
 struct SpatialPotentialSource {
-    Direction3D direction{};
+    Direction3D direction{Direction3D::fromVector({1.0, 0.0, 0.0})};
     double score{0.0};
 };
 
