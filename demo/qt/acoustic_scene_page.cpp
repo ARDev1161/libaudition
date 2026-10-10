@@ -336,7 +336,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         if (family == 1) {
             taggingVariant->addItems({"Tiny", "Mini", "Small", "Base"});
         } else if (family == 0) {
-            taggingVariant->addItems({"Small (FP32)", "Small (INT8)"});
+            taggingVariant->addItems({"Small (INT8)", "Small (FP32)",
+                                      "Standard (INT8)", "Standard (FP32)"});
         }
         const bool visible = family != 2;
         taggingVariant->setVisible(visible);
