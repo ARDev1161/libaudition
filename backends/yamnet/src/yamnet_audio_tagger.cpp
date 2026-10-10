@@ -81,7 +81,8 @@ public:
             Ort::AllocatorWithDefaultOptions allocator;
             auto name = session_->GetInputNameAllocated(0U, allocator);
             input_name_ = name.get();
-            const auto info = session_->GetInputTypeInfo(0U).GetTensorTypeAndShapeInfo();
+            const auto input_type = session_->GetInputTypeInfo(0U);
+            const auto info = input_type.GetTensorTypeAndShapeInfo();
             const auto shape = info.GetShape();
             if (info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
                 (shape.size() != 1U && shape.size() != 2U) ||
@@ -99,7 +100,8 @@ public:
             input_rank_ = shape.size();
             fixed_samples_ = shape.back() > 0 ? static_cast<std::size_t>(shape.back()) : 0U;
             for (std::size_t i = 0; i < session_->GetOutputCount(); ++i) {
-                const auto output_info = session_->GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo();
+                const auto output_type = session_->GetOutputTypeInfo(i);
+                const auto output_info = output_type.GetTensorTypeAndShapeInfo();
                 const auto dims = output_info.GetShape();
                 if (output_info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
                     (dims.size() != 2U && dims.size() != 3U) ||
