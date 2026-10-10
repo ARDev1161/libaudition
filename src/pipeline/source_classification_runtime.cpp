@@ -36,7 +36,7 @@ SourceClassificationRuntime::~SourceClassificationRuntime() {
 
 void SourceClassificationRuntime::push(
     std::uint64_t source_id, const float* samples, std::size_t count) {
-    if (source_id == 0U || samples == nullptr || count == 0U) return;
+    if (samples == nullptr || count == 0U) return;
     std::lock_guard<std::mutex> lock{mutex_};
     if (stopping_ || !error_.empty()) return;
     auto it = buffers_.find(source_id);
@@ -83,10 +83,14 @@ SourceClassificationStatus SourceClassificationRuntime::status(
     const auto it = buffers_.find(source_id);
     if (it == buffers_.end()) return result;
     result.collected_samples = it->second.samples.size();
-    result.result = it->second.result;
+    if (it->second.result.has_value() &&
+        std::chrono::steady_clock::now() - it->second.last_result_at < kResultTtl) {
+        result.result = it->second.result;
+    }
     if (active_source_ == source_id && active_generation_ == it->second.generation) {
         result.state = SourceClassificationState::Inferencing;
-    } else if (pending_.has_value() && pending_->source_id == source_id) {
+    } else if (pending_.has_value() && pending_->source_id == source_id &&
+               pending_->generation == it->second.generation) {
         result.state = SourceClassificationState::Queued;
     } else if (result.result.has_value()) {
         result.state = SourceClassificationState::Classified;
@@ -125,6 +129,7 @@ void SourceClassificationRuntime::run() noexcept {
             if (const auto it = buffers_.find(job.source_id);
                 it != buffers_.end() && it->second.generation == job.generation) {
                 it->second.result = std::move(result);
+                it->second.last_result_at = std::chrono::steady_clock::now();
             }
             active_source_.reset();
         } catch (const std::exception& exception) {
