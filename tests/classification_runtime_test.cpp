@@ -4,6 +4,7 @@
 #include <audition/classify/source_classification_runtime.hpp>
 
 #include <chrono>
+#include <atomic>
 #include <memory>
 #include <thread>
 
@@ -67,4 +68,48 @@ TEST(SourceClassificationRuntime, ProcessesSeparatedAudioWithoutQt) {
     runtime.forget(7U);
     EXPECT_EQ(runtime.status(7U).state,
               audition::SourceClassificationState::WaitingForAudio);
+}
+
+namespace {
+class SlowClassifier final : public audition::IAudioClassifier {
+public:
+    explicit SlowClassifier(std::atomic<bool>& started, std::atomic<bool>& finish)
+        : started_(started), finish_(finish) {}
+    audition::BackendInfo backendInfo() const override { return {"slow", "1"}; }
+    audition::ClassifierCapabilities capabilities() const override { return {}; }
+    audition::ClassificationResult classify(audition::AudioView) const override {
+        started_.store(true);
+        while (!finish_.load()) std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        audition::ClassificationResult result;
+        result.classes.push_back({"OldSource", audition::Probability::one()});
+        return result;
+    }
+private:
+    std::atomic<bool>& started_;
+    std::atomic<bool>& finish_;
+};
+}
+
+TEST(SourceClassificationRuntime, ForgottenTrackCannotReceiveOldInference) {
+    std::atomic<bool> started{false};
+    std::atomic<bool> finish{false};
+    {
+        audition::SourceClassificationRuntime runtime{
+            std::make_unique<SlowClassifier>(started, finish), 16000U, 4U};
+        const float samples[4] = {0.1F, 0.2F, 0.3F, 0.4F};
+        runtime.push(7U, samples, 4U);
+        for (int i = 0; i < 1000 && !started.load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        ASSERT_TRUE(started.load());
+        runtime.forget(7U);
+        runtime.push(7U, samples, 2U);
+        finish.store(true);
+        for (int i = 0; i < 1000; ++i) {
+            const auto state = runtime.status(7U);
+            if (state.state != audition::SourceClassificationState::Inferencing) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        const auto state = runtime.status(7U);
+        EXPECT_FALSE(state.result.has_value());
+    }
 }
