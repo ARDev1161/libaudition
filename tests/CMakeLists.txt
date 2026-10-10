@@ -72,6 +72,11 @@ if(TARGET audition::backend_clap)
 endif()
 
 
+if(TARGET audition::backend_efficientat)
+    target_sources(libaudition_tests PRIVATE efficientat_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_efficientat)
+endif()
+
 if(TARGET audition::backend_aasist)
     target_sources(libaudition_tests PRIVATE aasist_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_aasist)
