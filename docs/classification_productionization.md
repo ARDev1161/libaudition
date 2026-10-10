@@ -37,7 +37,7 @@ A model is not considered supported merely because an ONNX file exists.
 
 | Model | Why it may improve on YAMNet | Requirements |
 | --- | --- | --- |
-| EfficientAT MobileNet/ DyMN variants | Compact models, published strong accuracy-efficiency tradeoff | Correct 32 kHz frontend, preprocessing parity, verified ONNX exports, CPU profiling |
+| EfficientAT MobileNet / DyMN variants | Compact models, published strong accuracy-efficiency tradeoff | Reference 32 kHz input specification and guard test added; STFT/mel frontend, preprocessing parity, verified ONNX exports, CPU profiling **not implemented** |
 | BEATs | Strong published audio representations / sound event accuracy | Checkpoint license, preprocessing and model-specific classification head |
 | PaSST | Efficient transformer audio tagging via Patchout | Spectrogram frontend fidelity, input shape, runtime benchmark |
 | HTS-AT | Hierarchical tagging transformer with competitive AudioSet scores | Frontend fidelity, model export tests |
