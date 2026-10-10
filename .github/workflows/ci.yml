@@ -39,6 +39,38 @@ jobs:
         run: cmake --build --preset minimal --parallel
 
 
+  efficientat-real-weights:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure real EfficientAT backend test
+        run: >-
+          cmake -S . -B build-efficientat-real -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_EFFICIENTAT=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build C++ real-model smoke tool
+        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke --parallel
+      - name: Install exporter dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/efficientat-real"
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install onnx onnxruntime numpy
+      - name: Fetch original EfficientAT source
+        run: |
+          git clone --depth 1 https://github.com/fschmid56/EfficientAT.git "$RUNNER_TEMP/EfficientAT"
+          git -C "$RUNNER_TEMP/EfficientAT" rev-parse HEAD | tee "$RUNNER_TEMP/efficientat-upstream-sha.txt"
+      - name: Export genuine mn10_as weights and compare ONNX logits
+        run: |
+          cd "$RUNNER_TEMP/EfficientAT"
+          "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model mn10_as --output "$RUNNER_TEMP/eat-real"
+      - name: C++ classifier smoke against genuine weights
+        run: |
+          ./build-efficientat-real/tests/efficientat_real_model_smoke "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt"
+
   efficientat-backend:
     runs-on: ubuntu-latest
     steps:
