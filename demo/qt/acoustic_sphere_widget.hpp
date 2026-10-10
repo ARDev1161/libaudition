@@ -11,6 +11,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <string>
 #include <vector>
 
 class QColor;
@@ -22,6 +23,8 @@ struct AcousticSceneTrack {
     std::uint64_t id{0};
     QVector3D direction{};
     double activity{0.0};
+    std::string classification_label{};
+    double classification_probability{-1.0};
 };
 
 struct AcousticScenePotential {
