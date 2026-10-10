@@ -561,6 +561,147 @@ QString testGtsam(QMainWindow& window) {
 #endif
 }
 
+
+[[maybe_unused]] std::filesystem::path requireDirectoryEnv(const char* name) {
+    const QByteArray value = qgetenv(name);
+    if (value.isEmpty()) {
+        throw std::runtime_error{
+            std::string{"Missing fixture environment variable: "} + name};
+    }
+    const std::filesystem::path path{value.toStdString()};
+    if (!std::filesystem::is_directory(path)) {
+        throw std::runtime_error{
+            "Missing fixture directory: " + path.string()};
+    }
+    return path;
+}
+
+[[maybe_unused]] void setModelPath(
+    QWidget* panel, const QString& field, const std::filesystem::path& path) {
+    if (!std::filesystem::is_regular_file(path)) {
+        throw std::runtime_error{
+            "Missing fixture file: " + path.string()};
+    }
+    requireFormEdit(panel, field)->setText(
+        QString::fromStdString(path.string()));
+}
+
+QString testWhisperReal(QMainWindow& window, const QTemporaryDir& dir) {
+#if LIBAUDITION_DEMO_HAS_SHERPA
+    const auto encoder = requireModelEnv("LIBAUDITION_TEST_WHISPER_ENCODER");
+    const auto decoder = requireModelEnv("LIBAUDITION_TEST_WHISPER_DECODER");
+    const auto tokens = requireModelEnv("LIBAUDITION_TEST_WHISPER_TOKENS");
+    const auto wav = createFixture(dir, 16000U, 32000U);
+
+    auto* sherpa = runnerPage(window, "Sherpa");
+    auto* panel = requireTab(
+        sherpa->findChild<QTabWidget*>(), "Offline ASR");
+    setModelPath(panel, "WAV", wav);
+    setModelPath(panel, "Whisper encoder", encoder);
+    setModelPath(panel, "Whisper decoder", decoder);
+    setModelPath(panel, "Tokens", tokens);
+    requireFormEdit(panel, "Language")->setText("en");
+
+    const QString result = clickAndRead(panel, "Run offline Whisper ASR");
+    // Synthetic tone may produce an empty transcript. Here the invariant is
+    // successful real ONNX execution and a structurally valid response, not WER.
+    requireContains(result, "text=");
+    requireContains(result, "language=");
+    requireContains(result, "tokens=");
+    requireContains(result, "confidence=");
+    return "qt-model-self-test=ok backend=whisper-real-onnx";
+#else
+    static_cast<void>(window);
+    static_cast<void>(dir);
+    throw std::runtime_error{"Qt demo was built without Sherpa"};
+#endif
+}
+
+QString testPiperReal(QMainWindow& window, const QTemporaryDir& dir) {
+#if LIBAUDITION_DEMO_HAS_SHERPA_TTS
+    const auto root = requireDirectoryEnv("LIBAUDITION_TEST_PIPER_DIR");
+    const auto model = root / "en_US-amy-low.onnx";
+    const auto tokens = root / "tokens.txt";
+    const auto data = root / "espeak-ng-data";
+    if (!std::filesystem::is_directory(data)) {
+        throw std::runtime_error{
+            "Missing Piper espeak-ng-data: " + data.string()};
+    }
+    const auto saved = std::filesystem::path{
+        dir.filePath("piper_generated.wav").toStdString()};
+    auto* sherpa = runnerPage(window, "Sherpa");
+    auto* panel = requireTab(
+        sherpa->findChild<QTabWidget*>(), "VITS / Piper TTS");
+    setModelPath(panel, "VITS/Piper model", model);
+    setModelPath(panel, "Tokens", tokens);
+    requireFormEdit(panel, "espeak-ng data")->setText(
+        QString::fromStdString(data.string()));
+    requireFormEdit(panel, "Text")->setText("Hello from libaudition.");
+    requireFormEdit(panel, "Language")->setText("en");
+    requireFormEdit(panel, "Output WAV")->setText(
+        QString::fromStdString(saved.string()));
+
+    const QString result = clickAndRead(
+        panel, "Synthesize with VITS/Piper");
+    requireContains(result, "sample_rate_hz=");
+    requireContains(result, "frames=");
+    requireContains(result, "saved=");
+    const auto wav = demo::loadWav(saved);
+    if (wav.audio.format().sample_rate_hz < 8000U ||
+        wav.audio.format().channel_count != 1U ||
+        wav.audio.frameCount() < 1000U) {
+        throw std::runtime_error{
+            "Piper generated no valid mono speech waveform"};
+    }
+    return "qt-model-self-test=ok backend=piper-real-onnx";
+#else
+    static_cast<void>(window);
+    static_cast<void>(dir);
+    throw std::runtime_error{"Qt demo was built without Sherpa TTS"};
+#endif
+}
+
+QString testSpeakerReal(QMainWindow& window, const QTemporaryDir& dir) {
+#if LIBAUDITION_DEMO_HAS_SHERPA
+    const auto model = requireModelEnv("LIBAUDITION_TEST_SPEAKER_MODEL");
+    const auto wav = createFixture(dir, 16000U, 80000U);
+    auto* sherpa = runnerPage(window, "Sherpa");
+    auto* tabs = sherpa->findChild<QTabWidget*>();
+    auto* embedding = requireTab(tabs, "Speaker embedding");
+    setModelPath(embedding, "Input WAV", wav);
+    setModelPath(embedding, "Speaker embedding model", model);
+    const QString extracted = clickAndRead(
+        embedding, "Extract speaker embedding");
+    requireContains(extracted, "dimension=");
+    requireContains(extracted, "l2_norm=");
+
+    auto* verification = requireTab(tabs, "Speaker verification");
+    setModelPath(verification, "Reference WAV", wav);
+    setModelPath(verification, "Candidate WAV", wav);
+    setModelPath(verification, "Speaker embedding model", model);
+    const QString verified = clickAndRead(
+        verification, "Verify speaker");
+    requireContains(verified, "similarity=");
+    requireContains(verified, "matched=yes");
+
+    auto* identification = requireTab(tabs, "Speaker identification");
+    setModelPath(identification, "Speaker embedding model", model);
+    setModelPath(identification, "Query WAV", wav);
+    requireFormMultiline(identification, "Enrollments")->setPlainText(
+        QStringLiteral("Fixture speaker|%1|0").arg(
+            QString::fromStdString(wav.string())));
+    const QString identified = clickAndRead(
+        identification, "Build index and identify");
+    requireContains(identified, "enrolled_speakers=1");
+    requireContains(identified, "name=Fixture speaker");
+    return "qt-model-self-test=ok backend=speaker-real-onnx";
+#else
+    static_cast<void>(window);
+    static_cast<void>(dir);
+    throw std::runtime_error{"Qt demo was built without Sherpa"};
+#endif
+}
+
 }  // namespace
 
 bool runQtModelFixtureSelfTest(
@@ -592,9 +733,15 @@ bool runQtModelFixtureSelfTest(
             result = testAec3(window, dir);
         } else if (which == "gtsam") {
             result = testGtsam(window);
+        } else if (which == "whisper-real") {
+            result = testWhisperReal(window, dir);
+        } else if (which == "piper-real") {
+            result = testPiperReal(window, dir);
+        } else if (which == "speaker-real") {
+            result = testSpeakerReal(window, dir);
         } else {
             throw std::runtime_error{
-                "Unknown model fixture (clap, aasist, silero, sherpa-errors, world, odas-errors)"};
+                "Unknown model fixture; see docs/qt_demo.md for valid scenario names"};
         }
         if (report != nullptr) {
             *report = result;
