@@ -1,4 +1,5 @@
 #include "acoustic_scene_page.hpp"
+#include "alsa_live_capture.hpp"
 #include "acoustic_sphere_widget.hpp"
 #include "wav_io.hpp"
 
@@ -6,6 +7,7 @@
 #include <audition/backends/odas.hpp>
 #endif
 
+#include <QComboBox>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QFutureWatcher>
@@ -203,6 +205,52 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             wavPath->setText(filename);
         }
     });
+
+    // Raw ALSA capture is an application-level concern, not an ODAS library
+    // dependency. The device list is hardware only (hw:card,device).
+    auto* liveRow = new QHBoxLayout;
+    auto* deviceSelector = new QComboBox{page};
+    deviceSelector->setObjectName("acousticSceneDevice");
+    deviceSelector->setEditable(true);
+    deviceSelector->setMinimumWidth(210);
+    deviceSelector->setToolTip(
+        "Detected capture PCM or manually enter hw:N,M; "
+        "the stream must support S16_LE, 16 kHz and 6 channels.");
+    auto* refreshDevices = new QPushButton{"Refresh ALSA devices", page};
+    auto* startLive = new QPushButton{"Start live capture", page};
+    auto* stopLive = new QPushButton{"Stop live capture", page};
+    stopLive->setEnabled(false);
+    auto* captureChannels = new QSpinBox{page};
+    captureChannels->setObjectName("acousticSceneCaptureChannels");
+    captureChannels->setRange(1, 32);
+    captureChannels->setValue(6);
+    captureChannels->setToolTip("Total hardware channels, including any reference channels");
+    auto* captureRate = new QSpinBox{page};
+    captureRate->setRange(8000, 192000);
+    captureRate->setValue(16000);
+    captureRate->setSuffix(" Hz");
+    liveRow->addWidget(new QLabel{"ALSA PCM:", page});
+    liveRow->addWidget(deviceSelector, 1);
+    liveRow->addWidget(refreshDevices);
+    liveRow->addWidget(new QLabel{"Channels:", page});
+    liveRow->addWidget(captureChannels);
+    liveRow->addWidget(new QLabel{"Rate:", page});
+    liveRow->addWidget(captureRate);
+    liveRow->addWidget(startLive);
+    liveRow->addWidget(stopLive);
+    layout->addLayout(liveRow);
+
+    auto* deviceStatus = new QLabel{
+        "Linux ALSA live capture. Refresh to detect USB audio devices.", page};
+    deviceStatus->setObjectName("acousticSceneDeviceStatus");
+    deviceStatus->setWordWrap(true);
+    layout->addWidget(deviceStatus);
+#if !LIBAUDITION_DEMO_HAS_ALSA
+    refreshDevices->setEnabled(false);
+    startLive->setEnabled(false);
+    deviceStatus->setText(
+        "Live capture disabled. Build on Linux with ODAS and libasound2-dev.");
+#endif
 
     auto* config = new QHBoxLayout;
     auto* configForm = new QFormLayout;
