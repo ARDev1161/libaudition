@@ -43,13 +43,11 @@ void SourceClassificationRuntime::push(
     if (it == buffers_.end()) {
         if (buffers_.size() >= max_sources_) {
             // Do not silently misattribute old source ID results.
-            if (active_source_.has_value() &&
-                buffers_.begin()->first == *active_source_) {
-                return;
-            }
             buffers_.erase(buffers_.begin());
         }
-        it = buffers_.emplace(source_id, Buffer{}).first;
+        Buffer fresh{};
+        fresh.generation = next_generation_++;
+        it = buffers_.emplace(source_id, std::move(fresh)).first;
     }
     auto& buffer = it->second.samples;
     for (std::size_t i = 0U; i < count; ++i) {
@@ -60,7 +58,7 @@ void SourceClassificationRuntime::push(
         buffer.push_back(samples[i]);
         if (buffer.size() == window_samples_) {
             if (!pending_.has_value()) {
-                pending_ = Job{source_id, std::move(buffer)};
+                pending_ = Job{source_id, it->second.generation, std::move(buffer)};
                 buffer.clear();
                 cv_.notify_one();
             } else {
@@ -124,7 +122,7 @@ void SourceClassificationRuntime::run() noexcept {
             auto result = classifier_->classify(audio.view());
             std::lock_guard<std::mutex> lock{mutex_};
             if (const auto it = buffers_.find(job.source_id);
-                it != buffers_.end()) {
+                it != buffers_.end() && it->second.generation == job.generation) {
                 it->second.result = std::move(result);
             }
             active_source_.reset();
