@@ -28,7 +28,7 @@ SourceClassificationRuntime::~SourceClassificationRuntime() {
     {
         std::lock_guard<std::mutex> lock{mutex_};
         stopping_ = true;
-        pending_.reset();
+        pending_.clear();
     }
     cv_.notify_one();
     if (worker_.joinable()) worker_.join();
@@ -57,8 +57,8 @@ void SourceClassificationRuntime::push(
         }
         buffer.push_back(samples[i]);
         if (buffer.size() == window_samples_) {
-            if (!pending_.has_value()) {
-                pending_ = Job{source_id, it->second.generation, std::move(buffer)};
+            if (pending_.size() < max_sources_ && std::none_of(pending_.begin(), pending_.end(), [source_id](const Job& j){ return j.source_id == source_id; })) {
+                pending_.push_back(Job{source_id, it->second.generation, std::move(buffer)});
                 buffer.clear();
                 cv_.notify_one();
             } else {
@@ -89,8 +89,7 @@ SourceClassificationStatus SourceClassificationRuntime::status(
     }
     if (active_source_ == source_id && active_generation_ == it->second.generation) {
         result.state = SourceClassificationState::Inferencing;
-    } else if (pending_.has_value() && pending_->source_id == source_id &&
-               pending_->generation == it->second.generation) {
+    } else if (std::any_of(pending_.begin(), pending_.end(), [source_id, gen=it->second.generation](const Job& j){ return j.source_id == source_id && j.generation == gen; })) {
         result.state = SourceClassificationState::Queued;
     } else if (result.result.has_value()) {
         result.state = SourceClassificationState::Classified;
@@ -103,9 +102,7 @@ SourceClassificationStatus SourceClassificationRuntime::status(
 void SourceClassificationRuntime::forget(std::uint64_t source_id) {
     std::lock_guard<std::mutex> lock{mutex_};
     buffers_.erase(source_id);
-    if (pending_.has_value() && pending_->source_id == source_id) {
-        pending_.reset();
-    }
+    pending_.erase(std::remove_if(pending_.begin(), pending_.end(), [source_id](const Job& j){return j.source_id == source_id;}), pending_.end());
 }
 
 void SourceClassificationRuntime::run() noexcept {
@@ -113,10 +110,10 @@ void SourceClassificationRuntime::run() noexcept {
         Job job;
         {
             std::unique_lock<std::mutex> lock{mutex_};
-            cv_.wait(lock, [this] { return stopping_ || pending_.has_value(); });
+            cv_.wait(lock, [this] { return stopping_ || !pending_.empty(); });
             if (stopping_) return;
-            job = std::move(*pending_);
-            pending_.reset();
+            job = std::move(pending_.front());
+            pending_.pop_front();
             active_source_ = job.source_id;
             active_generation_ = job.generation;
         }
