@@ -34,6 +34,13 @@ cmake --build build-qt -j
 The **Acoustic scene** tab also supports direct multichannel hardware capture,
 without saving a WAV. ALSA belongs only to the Qt demo, never the library core.
 
+CMake 4.x compatibility: the pinned ODAS upstream declares a legacy
+`cmake_minimum_required(VERSION 2.4.6..3.16)`. The libaudition
+`ExternalProject` automatically passes
+`-DCMAKE_POLICY_VERSION_MINIMUM=3.5` into ODAS's own configuration. This
+is required for modern Manjaro and does not change the pinned ODAS revision.
+The ODAS CI job explicitly validates a CMake 4.1.2 build.
+
 Install Linux ALSA development files (Ubuntu/Debian: `libasound2-dev`,
 `libfftw3-dev`, `libconfig-dev`, `libpulse-dev`; Arch/Manjaro: `alsa-lib`
 and ODAS build prerequisites). Configure with:
