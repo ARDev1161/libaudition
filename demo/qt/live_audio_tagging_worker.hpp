@@ -22,6 +22,7 @@ struct LiveTaggingOptions {
     std::uint32_t sample_rate_hz{16000U};
     std::uint32_t hop_size{128U};
     audition::VocabularySelection vocabulary{};
+    bool efficientat_model{false};
 };
 
 struct LiveTrackClassification {
