@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <audition/classify/source_classification_runtime.hpp>
+#include <audition/classify/progressive_source_classification_runtime.hpp>
 #include <audition/classify/vocabulary.hpp>
 
 // Qt demo is only an adapter: model inference, audio buffering and scheduling
@@ -23,6 +24,11 @@ struct LiveTaggingOptions {
     std::uint32_t hop_size{128U};
     audition::VocabularySelection vocabulary{};
     bool efficientat_model{false};
+    // Optional window overrides; zero selects model-specific defaults.
+    std::size_t fast_window_samples{0U};
+    std::size_t fast_hop_samples{0U};
+    std::size_t refined_window_samples{0U};
+    std::size_t refined_hop_samples{0U};
 };
 
 struct LiveTrackClassification {
@@ -30,6 +36,7 @@ struct LiveTrackClassification {
     double probability{-1.0};
     std::string top_classes{};
     std::vector<std::string> unsupported_labels{};
+    std::string stage{};
 };
 
 class LiveAudioTaggingWorker final {
@@ -49,6 +56,7 @@ public:
     [[nodiscard]] std::string status(std::uint64_t track_id) const;
 private:
     std::unique_ptr<audition::SourceClassificationRuntime> runtime_{};
+    std::unique_ptr<audition::ProgressiveSourceClassificationRuntime> progressive_{};
     std::string initialization_error_{};
     audition::VocabularySelection selection_{};
 };
