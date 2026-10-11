@@ -271,6 +271,11 @@ ClassifierCapabilities YamnetAudioTagger::capabilities() const {
     result.execution.providers = {"cpu"};
     return result;
 }
+bool YamnetAudioTagger::supportsWindowSamples(std::size_t samples) const noexcept {
+    return samples != 0U &&
+        (impl_->fixed_samples_ == 0U || impl_->fixed_samples_ == samples);
+}
+
 ClassificationResult YamnetAudioTagger::classify(AudioView audio) const {
     return impl_->classify(audio);
 }
