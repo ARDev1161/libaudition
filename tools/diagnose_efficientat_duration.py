@@ -9,7 +9,8 @@ import csv
 import json
 from pathlib import Path
 import torch
-import torchaudio
+import numpy as np
+import wave
 from models.mn.model import get_model as get_mobilenet
 from models.dymn.model import get_model as get_dymn
 from models.preprocess import AugmentMelSTFT
@@ -28,12 +29,13 @@ def main():
     model.eval()
     frontend=AugmentMelSTFT(n_mels=128,sr=32000,win_length=800,hopsize=320,
                             freqm=0,timem=0).eval()
-    waveform,rate=torchaudio.load(str(args.input))
-    waveform=waveform.mean(dim=0,keepdim=True)
-    if rate!=32000:
-        waveform=torchaudio.functional.resample(waveform,rate,32000)
-    if waveform.shape[1]<160000:
+    with wave.open(str(args.input), "rb") as f:
+        if (f.getnchannels(), f.getsampwidth(), f.getframerate()) != (1, 2, 32000):
+            raise ValueError("Expected 32 kHz mono PCM16 input")
+        pcm = np.frombuffer(f.readframes(f.getnframes()), dtype="<i2")
+    if len(pcm) < 160000:
         raise ValueError("Need at least 5 seconds of source audio")
+    waveform = torch.from_numpy(pcm.astype(np.float32) / 32768.0).reshape(1, -1)
     labels_path=Path("metadata/class_labels_indices.csv")
     with labels_path.open(newline="",encoding="utf-8") as f:
         labels=[row["display_name"] for row in csv.DictReader(f)]
