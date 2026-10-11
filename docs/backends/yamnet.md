@@ -176,3 +176,36 @@ This is an operational safety property, not a guarantee of successful
 recognition on poor-quality separated audio. The C++ regression suite
 covers malformed samples, a throwing backend, healthy parallel
 sources and numeric track-ID reuse after `forget()`.
+
+## Extended ESC-10 evaluation (80 clips, four classes)
+
+The real-weight CI job now prepares **80 five-second ESC-10 clips**: 20 each
+for Dog, Rain, Helicopter and Chainsaw, selecting four examples from
+each original ESC-50 fold. The upstream sources are pinned to
+`33c8ce9eb2cf0b1c2f8bcf322eb349b6be34dbb6`, and the generated
+`provenance.csv` retains the source filenames, folds and CC BY attribution.
+Only the reports, manifest and licensing information are archived; the
+downloaded WAVs are not committed.
+
+The `tools/evaluate_yamnet_esc10.py` runner uses one YAMNet ONNX session and
+the same audio content to compare:
+
+- **First second:** a low-latency approximately one-second classifier window,
+  which might not contain the event labelled at clip level.
+- **Whole-clip mean:** normal YAMNet aggregation over all five seconds.
+- **Whole-clip peak:** the highest per-class native patch score across five
+  seconds, an *uncalibrated* diagnostic sensitive to brief events and noise.
+
+The separate `yamnet-esc10-80-evaluation` artifact includes clip-level
+Top-5, each true class's rank, per-class Top-1/Top-5 recall, macro/micro
+averages, and inference-only timing. **There is no hard accuracy threshold
+in CI**: a failure of the pipeline means broken evaluation or integration,
+not that a model must meet an arbitrarily chosen accuracy level. Results
+cannot establish AudioSet mAP, event-level onset accuracy, or false-positive
+rates on ReSpeaker/ODAS hardware. On-device capture and streaming validation
+remain separate release checks.
+
+To use a different bounded corpus size, run
+`tools/prepare_esc10_evaluation.py --clips-per-category N` where
+`1 <= N <= 40`, then use its manifest with
+`tools/evaluate_yamnet_esc10.py`.
