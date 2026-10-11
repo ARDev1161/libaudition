@@ -39,6 +39,10 @@ struct LiveCaptureConfig {
     bool tagging_selected_vocabulary{false};
     std::vector<std::string> tagging_vocabulary_labels{};
     bool tagging_efficientat_model{false};
+    bool transcribe_sources{false};
+    std::string speech_vad_model_path{};
+    std::string speech_asr_model_path{};
+    std::string speech_asr_tokens_path{};
 };
 
 struct LiveCaptureSnapshot {
