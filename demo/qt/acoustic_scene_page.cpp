@@ -429,6 +429,36 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         }
     });
 
+    // Speech recognition is separate from YAMNet classification. Both
+    // receive exactly the same ODAS-separated source PCM, independently.
+    auto* enableSpeech = new QCheckBox{
+        "Transcribe ODAS speech (Silero VAD + SenseVoice offline ASR)", page};
+    enableSpeech->setObjectName("acousticSceneEnableSpeech");
+#if !LIBAUDITION_DEMO_HAS_SHERPA
+    enableSpeech->setEnabled(false);
+    enableSpeech->setToolTip("Requires LIBAUDITION_WITH_SHERPA=ON");
+#endif
+    auto* speechSettings = new QWidget{page};
+    auto* speechForm = new QFormLayout{speechSettings};
+    speechForm->setContentsMargins(4, 0, 4, 0);
+    auto* speechVadModel = new QLineEdit{speechSettings};
+    speechVadModel->setObjectName("acousticSceneSpeechVadModel");
+    speechVadModel->setPlaceholderText("Path to silero_vad.onnx");
+    auto* speechAsrModel = new QLineEdit{speechSettings};
+    speechAsrModel->setObjectName("acousticSceneSpeechAsrModel");
+    speechAsrModel->setPlaceholderText("Path to SenseVoice model.onnx");
+    auto* speechAsrTokens = new QLineEdit{speechSettings};
+    speechAsrTokens->setObjectName("acousticSceneSpeechAsrTokens");
+    speechAsrTokens->setPlaceholderText("Path to SenseVoice tokens.txt");
+    speechForm->addRow("Silero VAD ONNX", speechVadModel);
+    speechForm->addRow("SenseVoice ASR ONNX", speechAsrModel);
+    speechForm->addRow("SenseVoice tokens", speechAsrTokens);
+    layout->addWidget(enableSpeech);
+    layout->addWidget(speechSettings);
+    speechSettings->setVisible(false);
+    QObject::connect(enableSpeech, &QCheckBox::toggled,
+                     speechSettings, &QWidget::setVisible);
+
     auto* status = new QLabel{
 #if LIBAUDITION_DEMO_HAS_ODAS
         "Ready. Select WAV or show the explicitly synthetic 3D example.", page
@@ -452,10 +482,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     split->addWidget(sphere);
     auto* sidebar = new QWidget{split};
     auto* sideLayout = new QVBoxLayout{sidebar};
-    auto* tracks = new QTableWidget{0, 5, sidebar};
+    auto* tracks = new QTableWidget{0, 6, sidebar};
     tracks->setObjectName("acousticSceneTracks");
     tracks->setHorizontalHeaderLabels({
-        "ID", "Azimuth", "Elevation", "Activity", "Activity type"});
+        "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Speech / transcript"});
     tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -488,13 +518,21 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const auto v = track.direction;
             const double az = std::atan2(v.y(), v.x()) * 180.0 / kPi;
             const double el = std::atan2(v.z(), std::hypot(v.x(), v.y())) * 180.0 / kPi;
-            for (int column = 0; column < 5; ++column) {
+            for (int column = 0; column < 6; ++column) {
                 QString data;
                 switch (column) {
                 case 0: data = QString::number(static_cast<qulonglong>(track.id)); break;
                 case 1: data = QString::number(az, 'f', 1) + "°"; break;
                 case 2: data = QString::number(el, 'f', 1) + "°"; break;
                 case 3: data = QString::number(track.activity, 'f', 2); break;
+                case 5:
+                    data = QString::fromStdString(track.transcript);
+                    if (data.isEmpty()) {
+                        data = enableSpeech->isChecked()
+                            ? (track.speech_active ? "Speech active…" : "Waiting for speech")
+                            : "Not configured";
+                    }
+                    break;
                 default:
                     if (!track.classification_label.empty()) {
                         data = QString::fromStdString(track.classification_label) +
@@ -556,6 +594,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         vocabularyClasses->setEnabled(true);
         taggingModel->setEnabled(true);
         taggingLabels->setEnabled(true);
+        enableSpeech->setEnabled(LIBAUDITION_DEMO_HAS_SHERPA);
+        speechVadModel->setEnabled(true);
+        speechAsrModel->setEnabled(true);
+        speechAsrTokens->setEnabled(true);
         example->setEnabled(true);
         analyze->setEnabled(
 #if LIBAUDITION_DEMO_HAS_ODAS
@@ -658,6 +700,24 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 }
                 config.tagging_model_path = modelFile.string();
                 config.tagging_labels_path = labelsFile.string();
+            }
+            config.transcribe_sources = enableSpeech->isChecked();
+            if (config.transcribe_sources) {
+                if (config.sample_rate_hz != 16000U) {
+                    throw std::runtime_error{"Speech transcription requires 16 kHz capture"};
+                }
+                const auto vad = std::filesystem::path{speechVadModel->text().toStdString()};
+                const auto model = std::filesystem::path{speechAsrModel->text().toStdString()};
+                const auto tokens = std::filesystem::path{speechAsrTokens->text().toStdString()};
+                if (!std::filesystem::is_regular_file(vad) ||
+                    !std::filesystem::is_regular_file(model) ||
+                    !std::filesystem::is_regular_file(tokens)) {
+                    throw std::runtime_error{
+                        "Select existing Silero VAD, SenseVoice ASR and tokens files"};
+                }
+                config.speech_vad_model_path = vad.string();
+                config.speech_asr_model_path = model.string();
+                config.speech_asr_tokens_path = tokens.string();
             }
             config.input_channels = parseChannels(map->text());
             const auto microphoneGeometry = parseMicrophones(geometry->toPlainText());
