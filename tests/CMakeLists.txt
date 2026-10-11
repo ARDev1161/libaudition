@@ -73,6 +73,9 @@ endif()
 
 
 if(TARGET audition::backend_yamnet)
+    add_executable(yamnet_pcm16_probe yamnet_pcm16_probe.cpp)
+    target_link_libraries(yamnet_pcm16_probe PRIVATE audition::backend_yamnet audition::core)
+    libaudition_configure_target(yamnet_pcm16_probe)
     add_executable(yamnet_wav_benchmark yamnet_wav_benchmark.cpp)
     target_link_libraries(yamnet_wav_benchmark PRIVATE audition::backend_yamnet audition::core)
     libaudition_configure_target(yamnet_wav_benchmark)
