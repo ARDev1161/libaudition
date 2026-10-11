@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
         if (tagger.capabilities().audio.preferred_frame_count != expected) {
             throw std::runtime_error{"Unexpected ONNX window length for model"};
         }
-        std::vector<float> signal(tagger.capabilities().audio.preferred_frame_count);
+        std::vector<float> signal(tagger.capabilities().audio.preferred_frame_count.value_or(32000U));
         for (std::size_t i = 0; i < signal.size(); ++i) {
             signal[i] = 0.12F * static_cast<float>(
                 std::sin(2.0 * 3.141592653589793 * 440.0 *
