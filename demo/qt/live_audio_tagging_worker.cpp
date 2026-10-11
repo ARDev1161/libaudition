@@ -92,6 +92,10 @@ void LiveAudioTaggingWorker::push(
     }
 }
 
+void LiveAudioTaggingWorker::forget(std::uint64_t track_id) {
+    if (runtime_) runtime_->forget(track_id);
+}
+
 std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
     std::uint64_t track_id, std::uint64_t /*processed_hops*/) const {
     if (!runtime_) return std::nullopt;
