@@ -294,3 +294,30 @@ annotations of the extracted 1-second interval. This is an exploratory
 real-waveform smoke/relative-comparison test, not a validated accuracy
 benchmark or an official ESC-10 evaluation. Expand and manually verify
 clip/window annotations before selecting a production classifier.
+
+## ESC-10 first real-waveform results (CI #577)
+
+On **four** one-second ESC-10 excerpts selected from five-second labeled
+files, the exploratory top-5 exact-MID hit counts were MN10 **0/4**,
+DyMN10 **1/4**, YAMNet **1/4**. Mean of per-clip median inference times
+on the GitHub Actions x86 runner: **13.31 ms**, **36.62 ms** and **3.57 ms**,
+respectively. The raw per-clip scores and provenance are in the CI
+`efficientat-yamnet-esc10-real-event-report` artifact.
+
+Notable diagnostics: MN10 emitted multiple **1.0** speech-class scores
+on all four unrelated event clips, as well as the earlier generated sine
+wave. This is a serious frontend/model-parity issue to investigate, not
+evidence that speech was present. The one-second dog excerpt was tagged
+`Silence` at 1.0 by YAMNet, making its clip-level dog label unsuitable
+as unverified one-second ground truth. On rain, YAMNet output `Rain`
+within Top-5 (DyMN10 also did). On helicopter both primarily predicted
+engine-related labels, rather than the exact annotated class.
+
+`tools/review_audio_taggers_report.py` flags saturated Top-5, silence-
+dominant excerpts and very small evaluation sets in CI and stores
+`review-findings.json` beside the comparison report.
+
+**Do not rank these classifiers by detection accuracy yet.** The immediate
+next gating experiments are MN10 PyTorch-versus-C++ inference parity on
+**identical decoded WAV/mel inputs**, verifying labels inside each selected
+one-second excerpt, and increasing the licensed annotated corpus size.
