@@ -739,6 +739,12 @@ jobs:
           LIBAUDITION_TEST_WHISPER_DECODER: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-decoder.int8.onnx
           LIBAUDITION_TEST_WHISPER_TOKENS: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-tokens.txt
         run: ./build-sherpa/demo/qt/libaudition_qt_demo --model-self-test=whisper-real
+      - name: Verify genuine Whisper ONNX through per-source speech runtime
+        run: |
+          ./build-sherpa/tests/sherpa_per_source_speech_smoke \
+            build-sherpa/whisper/tiny.en-encoder.int8.onnx \
+            build-sherpa/whisper/tiny.en-decoder.int8.onnx \
+            build-sherpa/whisper/tiny.en-tokens.txt
       - name: Test actual speaker embedding verification and identification via Qt
         env:
           QT_QPA_PLATFORM: offscreen
