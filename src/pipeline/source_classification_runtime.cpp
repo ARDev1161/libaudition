@@ -81,17 +81,28 @@ void SourceClassificationRuntime::push(
         buffer.push_back(samples[i]);
         ++it->second.received_samples;
         if (buffer.size() == window_samples_) {
-            if (pending_.size() < max_sources_ && std::none_of(pending_.begin(), pending_.end(), [source_id](const Job& j){ return j.source_id == source_id; })) {
+            // Prefer the newest queued window for a track when inference
+            // cannot keep up. An older pending window is replaceable, but
+            // an in-progress window is immutable. At most one job per source
+            // remains queued and other sources retain their queue positions.
+            const auto waiting = std::find_if(pending_.begin(), pending_.end(),
+                [source_id, generation=it->second.generation](const Job& job) {
+                    return job.source_id == source_id &&
+                           job.generation == generation;
+                });
+            if (waiting != pending_.end()) {
+                waiting->samples = buffer;
+                waiting->end_sample = it->second.received_samples;
+                ++dropped_windows_;
+            } else if (pending_.size() < max_sources_) {
                 pending_.push_back(Job{source_id, it->second.generation,
                                        it->second.received_samples, buffer});
-                buffer.erase(buffer.begin(),
-                             buffer.begin() + static_cast<std::ptrdiff_t>(hop_samples_));
                 cv_.notify_one();
             } else {
-                buffer.erase(buffer.begin(),
-                             buffer.begin() + static_cast<std::ptrdiff_t>(hop_samples_));
                 ++dropped_windows_;
             }
+            buffer.erase(buffer.begin(),
+                         buffer.begin() + static_cast<std::ptrdiff_t>(hop_samples_));
         }
     }
 }
