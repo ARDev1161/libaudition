@@ -32,6 +32,8 @@ public:
     [[nodiscard]] BackendInfo backendInfo() const override;
     [[nodiscard]] ClassifierCapabilities capabilities() const override;
     [[nodiscard]] ClassificationResult classify(AudioView audio) const override;
+    // True for a dynamic waveform input or exactly its ONNX fixed input length.
+    [[nodiscard]] bool supportsWindowSamples(std::size_t samples) const noexcept;
 
 private:
     class Impl;
