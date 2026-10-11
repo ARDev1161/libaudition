@@ -63,7 +63,7 @@ def main():
     def top(values):
         scores=1/(1+np.exp(-np.clip(values.reshape(-1),-80,80)))
         return [{"label":labels[i],"probability":float(scores[i]),"logit":float(values.reshape(-1)[i])}
-                for i in np.argsort(-scores)[:5]]
+                for i in np.argsort(-values.reshape(-1),kind='stable')[:5]]
     import json
     report={
         "model":a.model,"wav":str(a.wav),
