@@ -190,3 +190,54 @@ TEST(SourceClassificationRuntime, RejectsHopLongerThanWindow) {
     EXPECT_THROW((audition::SourceClassificationRuntime{
         std::make_unique<ConstantClassifier>(), 16000U, 8U, 2U, 9U}), std::invalid_argument);
 }
+
+namespace {
+class WindowEdgeClassifier final : public audition::IAudioClassifier {
+public:
+    audition::BackendInfo backendInfo() const override { return {"window-edge-test", "1"}; }
+    audition::ClassifierCapabilities capabilities() const override { return {}; }
+    audition::ClassificationResult classify(audition::AudioView audio) const override {
+        audition::ClassificationResult result;
+        const bool first = audio.sampleCount() == 8U &&
+            audio.data()[0] == 0.0F && audio.data()[7] == 0.7F;
+        const bool overlapping = audio.sampleCount() == 8U &&
+            audio.data()[0] == 0.2F && audio.data()[7] == 0.9F;
+        result.classes.push_back({
+            first ? "first" : (overlapping ? "overlapping" : "unexpected"),
+            audition::Probability::from(0.7)});
+        return result;
+    }
+};
+}
+
+TEST(SourceClassificationRuntime, SlidingWindowRetainsActualSamples) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<WindowEdgeClassifier>(), 16000U, 8U, 2U, 2U};
+    const float first[8] = {0.0F, 0.1F, 0.2F, 0.3F, 0.4F, 0.5F, 0.6F, 0.7F};
+    runtime.push(8U, first, 8U);
+    bool saw_first = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto status = runtime.status(8U);
+        if (status.result.has_value()) {
+            ASSERT_FALSE(status.result->classes.empty());
+            EXPECT_EQ(status.result->classes[0].label, "first");
+            saw_first = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(saw_first);
+    const float second[2] = {0.8F, 0.9F};
+    runtime.push(8U, second, 2U);
+    bool saw_overlap = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto status = runtime.status(8U);
+        if (status.result.has_value() && !status.result->classes.empty() &&
+            status.result->classes[0].label == "overlapping") {
+            saw_overlap = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(saw_overlap);
+}
