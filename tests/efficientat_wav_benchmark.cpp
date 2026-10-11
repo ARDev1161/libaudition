@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
         const auto samples = loadWav(argv[3]);
         const std::size_t required = tagger.capabilities().audio.preferred_frame_count.value_or(32000U);
         if (samples.size() < required) throw std::runtime_error("WAV shorter than required model window");
-        std::vector<float> window(samples.begin(), samples.begin() + required);
+        std::vector<float> window(samples.begin(), samples.begin() + static_cast<std::vector<float>::difference_type>(required));
         audition::AudioBuffer audio{std::move(window),
             {32000U, 1U, audition::AudioLayout::Interleaved},
             audition::Timestamp{}, 0U};
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
                   << " p95_ms=" << percentile(0.95)
                   << " min_ms=" << measurements.front()
                   << " max_ms=" << measurements.back()
-                  << " rtf=" << percentile(0.5) / (required / 32.0) << "\n";
+                  << " rtf=" << percentile(0.5) / (static_cast<double>(required) / 32.0) << "\n";
         for (const auto& c : warmup.classes) {
             std::cout << c.label << " " << c.probability.value() << '\n';
         }
