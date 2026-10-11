@@ -96,7 +96,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         }
         track.trailing_silence_samples = 0U;
     }
-    if (!track.speech.empty()) {
+    if (active || !track.speech.empty()) {
         const auto available = options_.max_segment_samples - track.speech.size();
         const auto count = std::min(available, audio.sampleCount());
         track.speech.insert(track.speech.end(), audio.data(), audio.data() + count);
