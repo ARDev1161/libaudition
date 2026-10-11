@@ -36,6 +36,20 @@ target_link_libraries(libaudition_tests PRIVATE
 libaudition_configure_target(libaudition_tests)
 gtest_discover_tests(libaudition_tests)
 
+# Synthetic streaming stress: no ONNX weights, Qt, ALSA or ODAS required.
+# Uses explicit simulated inference costs to expose queue pressure and
+# produces machine-readable per-stage diagnostics on stdout.
+add_executable(progressive_multisource_stress progressive_multisource_stress.cpp)
+target_link_libraries(progressive_multisource_stress PRIVATE
+    audition::pipeline audition::core audition::interfaces)
+libaudition_configure_target(progressive_multisource_stress)
+add_test(NAME progressive_stress_5_sources
+    COMMAND progressive_multisource_stress 5 8 4 12)
+add_test(NAME progressive_stress_10_sources
+    COMMAND progressive_multisource_stress 10 8 8 24)
+set_tests_properties(progressive_stress_5_sources progressive_stress_10_sources
+    PROPERTIES TIMEOUT 40)
+
 if(TARGET audition::backend_odas)
     target_sources(libaudition_tests PRIVATE odas_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_odas)
