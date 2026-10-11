@@ -65,6 +65,7 @@ private:
         std::vector<float> speech{};
         std::deque<float> pre_roll{};
         std::size_t trailing_silence_samples{0U};
+        std::size_t voiced_samples{0U};
         Timestamp start_time{};
         std::uint64_t generation{0};
     };
