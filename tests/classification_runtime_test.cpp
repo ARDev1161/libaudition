@@ -170,3 +170,23 @@ TEST(SourceClassificationRuntime, EvictsLeastRecentlyUpdatedSource) {
     EXPECT_EQ(runtime.status(99U).collected_samples, 2U);
     EXPECT_EQ(runtime.status(25U).collected_samples, 1U);
 }
+
+TEST(SourceClassificationRuntime, SlidingWindowRetainsOverlap) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 8U, 2U, 2U};
+    const float values[8] = {0.1F,0.2F,0.3F,0.4F,0.5F,0.6F,0.7F,0.8F};
+    runtime.push(42U, values, 8U);
+    EXPECT_EQ(runtime.status(42U).collected_samples, 6U);
+    for (int i=0; i<200 && !runtime.status(42U).result.has_value(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    ASSERT_TRUE(runtime.status(42U).result.has_value());
+    const float followup[2] = {0.9F,1.0F};
+    runtime.push(42U, followup, 2U);
+    EXPECT_EQ(runtime.status(42U).collected_samples, 6U);
+    EXPECT_EQ(runtime.status(42U).required_samples, 8U);
+}
+
+TEST(SourceClassificationRuntime, RejectsHopLongerThanWindow) {
+    EXPECT_THROW((audition::SourceClassificationRuntime{
+        std::make_unique<ConstantClassifier>(), 16000U, 8U, 2U, 9U}), std::invalid_argument);
+}
