@@ -79,8 +79,7 @@ int main(int argc, char** argv) {
         cfg.top_k = 5;
         const audition::EfficientAtAudioTagger tagger{cfg};
         const auto samples = loadWav(argv[3]);
-        const bool mn10 = std::string(argv[1]).find("mn10_as.onnx") != std::string::npos;
-        const std::size_t required = mn10 ? 160000U : 32000U;
+        const std::size_t required = tagger.capabilities().audio.preferred_frame_count;
         if (samples.size() < required) throw std::runtime_error("WAV shorter than required model window");
         std::vector<float> window(samples.begin(), samples.begin() + required);
         audition::AudioBuffer audio{std::move(window),
