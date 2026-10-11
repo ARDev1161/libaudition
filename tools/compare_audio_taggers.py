@@ -3,7 +3,7 @@
 
 Ground truth CSV: wav,mid (multiple AudioSet MIDs separated by '|').
 All metrics are restricted to MIDs present in BOTH model vocabularies.
-Each benchmark consumes the first 1 second of its input; latency includes
+MN10 consumes the first 5s, while DyMN10/YAMNet consume the first 1s; latency includes
 classifier execution but excludes CLI startup, model loading and WAV decoding.
 """
 import argparse
@@ -88,6 +88,7 @@ def main():
     if not observations["yamnet"]:
         raise ValueError("No shared-ontology clips available for comparison")
     result = {
+        "window_seconds": {"mn10_as": 5, "dymn10_as": 1, "yamnet": 1},
         "common_mids": len(common), "excluded": excluded,
         "models": {
             name: {
