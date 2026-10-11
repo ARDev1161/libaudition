@@ -61,7 +61,7 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
 #endif
         }
         const std::size_t window_samples = options.efficientat_model
-            ? classifier->capabilities().audio.preferred_frame_count
+            ? classifier->capabilities().audio.preferred_frame_count.value_or(16000U)
             : static_cast<std::size_t>(options.sample_rate_hz) *
                 (options.yamnet_model ? 1U : 2U);
         runtime_ = std::make_unique<audition::SourceClassificationRuntime>(
