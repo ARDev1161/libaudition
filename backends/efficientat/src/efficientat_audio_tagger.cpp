@@ -219,7 +219,7 @@ BackendInfo EfficientAt16kAudioTagger::backendInfo() const {
 ClassifierCapabilities EfficientAt16kAudioTagger::capabilities() const {
     auto caps = classifier_.capabilities();
     caps.audio.supported_sample_rates_hz = {16000U};
-    caps.audio.preferred_frame_count = caps.audio.preferred_frame_count / 2U;
+    caps.audio.preferred_frame_count = caps.audio.preferred_frame_count.value_or(32000U) / 2U;
     return caps;
 }
 
