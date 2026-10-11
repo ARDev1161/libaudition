@@ -101,6 +101,8 @@ public:
         }
     }
 
+    [[nodiscard]] std::size_t fixedInputFrames() const noexcept { return fixed_frames_; }
+
     ClassificationResult classify(const float* mel, std::size_t bins, std::size_t frames) const {
         if (mel == nullptr || bins != kMelBins || frames == 0U ||
             (fixed_frames_ != 0U && fixed_frames_ != frames) ||
@@ -175,6 +177,9 @@ EfficientAtSpectrogramTagger::EfficientAtSpectrogramTagger(EfficientAtOnnxOption
 EfficientAtSpectrogramTagger::~EfficientAtSpectrogramTagger() = default;
 EfficientAtSpectrogramTagger::EfficientAtSpectrogramTagger(EfficientAtSpectrogramTagger&&) noexcept = default;
 EfficientAtSpectrogramTagger& EfficientAtSpectrogramTagger::operator=(EfficientAtSpectrogramTagger&&) noexcept = default;
+std::size_t EfficientAtSpectrogramTagger::fixedInputFrames() const noexcept {
+    return impl_->fixedInputFrames();
+}
 ClassificationResult EfficientAtSpectrogramTagger::classifyLogMel(
     const float* mel, std::size_t bins, std::size_t frames) const {
     return impl_->classify(mel, bins, frames);
@@ -192,7 +197,8 @@ ClassifierCapabilities EfficientAtAudioTagger::capabilities() const {
     out.audio.supported_sample_rates_hz = {32000U};
     out.audio.min_channels = 1U;
     out.audio.max_channels = 1U;
-    out.audio.preferred_frame_count = 32000U;
+    const auto frames = model_.fixedInputFrames();
+    out.audio.preferred_frame_count = frames ? frames * 320U : 32000U;
     out.execution.device_classes = {DeviceClass::Cpu};
     out.execution.providers = {"cpu"};
     return out;
@@ -213,7 +219,7 @@ BackendInfo EfficientAt16kAudioTagger::backendInfo() const {
 ClassifierCapabilities EfficientAt16kAudioTagger::capabilities() const {
     auto caps = classifier_.capabilities();
     caps.audio.supported_sample_rates_hz = {16000U};
-    caps.audio.preferred_frame_count = 16000U;
+    caps.audio.preferred_frame_count = caps.audio.preferred_frame_count / 2U;
     return caps;
 }
 
