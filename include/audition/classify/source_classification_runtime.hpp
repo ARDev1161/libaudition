@@ -53,6 +53,7 @@ private:
     struct Buffer {
         std::vector<float> samples{};
         std::optional<ClassificationResult> result{};
+        std::string error{}; // Source-local bad audio must not stop other ODAS tracks.
         std::uint64_t generation{0};
         std::uint64_t last_seen_order{0};
         std::chrono::steady_clock::time_point last_result_at{};
