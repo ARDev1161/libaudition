@@ -205,6 +205,7 @@ jobs:
           name: efficientat-yamnet-esc10-real-event-report
           path: |
             ${{ runner.temp }}/esc10-eval/three-model-real-events.json
+            ${{ runner.temp }}/yamnet-onnx-cpp-parity.json
             ${{ runner.temp }}/esc10-eval/review-findings.json
             ${{ runner.temp }}/esc10-eval/mn10-chainsaw-parity.json
             ${{ runner.temp }}/esc10-eval/mn10-duration.json
