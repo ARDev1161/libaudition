@@ -21,6 +21,9 @@ struct ProgressiveClassificationStage {
     std::unique_ptr<IAudioClassifier> classifier{};
     std::size_t window_samples{0U};
     std::size_t hop_samples{0U}; // 0 = non-overlapping windows.
+    // Maximum sample lag of a completed prediction before a fresher stage
+    // takes precedence. 0 = default (two effective hops).
+    std::size_t max_result_lag_samples{0U};
 };
 
 struct ProgressiveClassificationStageStatus {
@@ -30,7 +33,7 @@ struct ProgressiveClassificationStageStatus {
 
 struct ProgressiveClassificationStatus {
     std::vector<ProgressiveClassificationStageStatus> stages{};
-    // Highest-priority stage with a currently valid result.
+    // Highest-priority stage with a sufficiently recent completed result.
     // If one stage fails, healthy stages can continue producing predictions.
     std::optional<std::size_t> selected_stage{};
     std::optional<ClassificationResult> result{};
@@ -65,6 +68,7 @@ public:
 private:
     struct Stage {
         std::string name{};
+        std::uint64_t max_result_lag_samples{0U};
         // Explicitly destroy the worker before its classifier dependencies.
         std::unique_ptr<SourceClassificationRuntime> runtime{};
     };
