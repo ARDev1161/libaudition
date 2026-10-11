@@ -116,6 +116,28 @@ jobs:
           ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
           ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
           ./build-efficientat-real/tests/yamnet_wav_benchmark "$RUNNER_TEMP/yamnet/yamnet.onnx" "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" "$RUNNER_TEMP/efficientat-benchmark.wav"
+      - name: Compare all three model outputs on a common AudioSet MID
+        run: |
+          printf 'wav,mid\n%s,/m/09x0r\n' "$RUNNER_TEMP/efficientat-benchmark.wav" > "$RUNNER_TEMP/benchmark-manifest.csv"
+          python3 tools/compare_audio_taggers.py \
+            --manifest "$RUNNER_TEMP/benchmark-manifest.csv" \
+            --mn-model "$RUNNER_TEMP/eat-real/mn10_as.onnx" \
+            --mn-labels "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" \
+            --dymn-model "$RUNNER_TEMP/eat-real/dymn10_as.onnx" \
+            --dymn-labels "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" \
+            --yamnet-model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --yamnet-labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
+            --yamnet-csv "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --efficientat-benchmark ./build-efficientat-real/tests/efficientat_wav_benchmark \
+            --yamnet-benchmark ./build-efficientat-real/tests/yamnet_wav_benchmark \
+            --output "$RUNNER_TEMP/three-model-comparison.json"
+      - name: Upload three-model smoke comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: efficientat-yamnet-smoke-report
+          path: ${{ runner.temp }}/three-model-comparison.json
+          retention-days: 14
 
   efficientat-backend:
     runs-on: ubuntu-latest
