@@ -78,9 +78,12 @@ target_include_directories(libaudition_logging PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
+find_package(Threads REQUIRED)
 add_library(libaudition_pipeline
     pipeline/acoustic_event_assembler.cpp
-    pipeline/spatial_identity.cpp)
+    pipeline/spatial_identity.cpp
+    pipeline/vocabulary.cpp
+    pipeline/source_classification_runtime.cpp)
 add_library(audition::pipeline ALIAS libaudition_pipeline)
 set_target_properties(libaudition_pipeline PROPERTIES
     EXPORT_NAME pipeline
@@ -89,7 +92,7 @@ target_compile_definitions(libaudition_pipeline PRIVATE LIBAUDITION_BUILDING_LIB
 if(BUILD_SHARED_LIBS)
     target_compile_definitions(libaudition_pipeline PUBLIC LIBAUDITION_SHARED)
 endif()
-target_link_libraries(libaudition_pipeline PUBLIC audition::core audition::interfaces)
+target_link_libraries(libaudition_pipeline PUBLIC audition::core audition::interfaces PRIVATE Threads::Threads)
 libaudition_configure_target(libaudition_pipeline)
 target_include_directories(libaudition_pipeline PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

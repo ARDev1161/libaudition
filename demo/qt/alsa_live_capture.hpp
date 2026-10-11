@@ -36,6 +36,9 @@ struct LiveCaptureConfig {
     bool tagging_yamnet_model{false};
     std::string tagging_model_path{};
     std::string tagging_labels_path{};
+    bool tagging_selected_vocabulary{false};
+    std::vector<std::string> tagging_vocabulary_labels{};
+    bool tagging_efficientat_model{false};
 };
 
 struct LiveCaptureSnapshot {

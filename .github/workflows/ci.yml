@@ -39,6 +39,236 @@ jobs:
         run: cmake --build --preset minimal --parallel
 
 
+  efficientat-real-weights:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure real EfficientAT backend test
+        run: >-
+          cmake -S . -B build-efficientat-real -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_EFFICIENTAT=ON
+          -DLIBAUDITION_WITH_YAMNET=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build C++ real-model smoke tool
+        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe --parallel
+      - name: Install exporter dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/efficientat-real"
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install onnx onnxruntime numpy
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install torchaudio --index-url https://download.pytorch.org/whl/cpu
+      - name: Fetch original EfficientAT source
+        run: |
+          git clone --depth 1 https://github.com/fschmid56/EfficientAT.git "$RUNNER_TEMP/EfficientAT"
+          git -C "$RUNNER_TEMP/EfficientAT" rev-parse HEAD | tee "$RUNNER_TEMP/efficientat-upstream-sha.txt"
+      - name: Audit actual EfficientAT and YAMNet AudioSet vocabularies
+        run: |
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/yamnet_class_map.csv" \
+            --output "$RUNNER_TEMP/yamnet_class_map.csv"
+          python3 tools/audit_audioset_vocabularies.py \
+            --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
+            --yamnet-csv "$RUNNER_TEMP/yamnet_class_map.csv" \
+            --output "$RUNNER_TEMP/audioset_vocab_audit.json"
+      - name: Export genuine mn10_as and dymn10_as weights and compare ONNX logits
+        run: |
+          cd "$RUNNER_TEMP/EfficientAT"
+          export PYTHONPATH="$RUNNER_TEMP/EfficientAT"
+          "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model mn10_as --output "$RUNNER_TEMP/eat-real"
+          "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model dymn10_as --output "$RUNNER_TEMP/eat-real"
+      - name: C++ classifier smoke against genuine weights
+        run: |
+          ./build-efficientat-real/tests/efficientat_real_model_smoke "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt"
+          ./build-efficientat-real/tests/efficientat_real_model_smoke "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt"
+      - name: Validate WAV manifest evaluator
+        run: python3 tests/test_efficientat_wav_evaluator.py
+      - name: Validate two-model WAV comparison
+        run: python3 tests/test_compare_efficientat_wavs.py
+      - name: Validate MID-based AudioSet ontology mapping
+        run: python3 tests/test_audioset_vocabulary_audit.py
+      - name: Validate unified three-model AudioSet benchmark report
+        run: python3 tests/test_compare_audio_taggers.py
+      - name: Validate real-event score diagnostic guardrails
+        run: python3 tests/test_review_audio_taggers_report.py
+      - name: Fetch pinned YAMNet ONNX demo model and labels
+        run: |
+          mkdir -p "$RUNNER_TEMP/yamnet"
+          for file in yamnet.onnx yamnet_class_map.csv; do
+            curl --fail --location --retry 3 --silent --show-error \
+              "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/$file" \
+              --output "$RUNNER_TEMP/yamnet/$file"
+          done
+      - name: Verify real YAMNet ONNX output against independent Python inference
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
+          import math
+          import os
+          import struct
+          root = os.environ["RUNNER_TEMP"]
+          with open(os.path.join(root, "yamnet-parity.raw"), "wb") as out:
+              out.write(b"".join(struct.pack("<h", int(12000*math.sin(2*math.pi*(220+i/80)*i/16000))) for i in range(15600)))
+          PY
+          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_onnx_cpp.py \
+            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --pcm16 "$RUNNER_TEMP/yamnet-parity.raw" \
+            --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe" \
+            --output "$RUNNER_TEMP/yamnet-onnx-cpp-parity.json"
+      - name: Verify official YAMNet silence noise and sine wave behavior
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_behavior.py \
+            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --output "$RUNNER_TEMP/yamnet-behavior.json"
+      - name: Generate deterministic PCM16 WAV and benchmark both models
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
+          import math
+          import wave
+          import struct
+          import os
+          path = os.path.join(os.environ["RUNNER_TEMP"], "efficientat-benchmark.wav")
+          with wave.open(path, "wb") as f:
+              f.setnchannels(1)
+              f.setsampwidth(2)
+              f.setframerate(32000)
+              f.writeframes(b"".join(struct.pack("<h", int(0.2*32767*math.sin(2*math.pi*440*i/32000))) for i in range(160000)))
+          PY
+          ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
+          ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
+          ./build-efficientat-real/tests/yamnet_wav_benchmark "$RUNNER_TEMP/yamnet/yamnet.onnx" "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" "$RUNNER_TEMP/efficientat-benchmark.wav"
+      - name: Compare all three model outputs on a common AudioSet MID
+        run: |
+          printf 'wav,mid\n%s,/m/09x0r\n' "$RUNNER_TEMP/efficientat-benchmark.wav" > "$RUNNER_TEMP/benchmark-manifest.csv"
+          python3 tools/compare_audio_taggers.py \
+            --manifest "$RUNNER_TEMP/benchmark-manifest.csv" \
+            --mn-model "$RUNNER_TEMP/eat-real/mn10_as.onnx" \
+            --mn-labels "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" \
+            --dymn-model "$RUNNER_TEMP/eat-real/dymn10_as.onnx" \
+            --dymn-labels "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" \
+            --yamnet-model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --yamnet-labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
+            --yamnet-csv "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --efficientat-benchmark ./build-efficientat-real/tests/efficientat_wav_benchmark \
+            --yamnet-benchmark ./build-efficientat-real/tests/yamnet_wav_benchmark \
+            --output "$RUNNER_TEMP/three-model-comparison.json"
+      - name: Install audio conversion tool for ESC-10 evaluation
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Prepare attributed real ESC-10 event WAV excerpts
+        run: |
+          python3 tools/prepare_esc10_evaluation.py \
+            --output "$RUNNER_TEMP/esc10-eval" \
+            --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
+            --yamnet-csv "$RUNNER_TEMP/yamnet/yamnet_class_map.csv"
+      - name: Diagnose MN10 waveform preprocessing and real-weight parity
+        run: |
+          cd "$RUNNER_TEMP/EfficientAT"
+          export PYTHONPATH="$RUNNER_TEMP/EfficientAT"
+          "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/diagnose_efficientat_wav.py" \
+            --wav "$RUNNER_TEMP/esc10-eval/chainsaw.wav" \
+            --model mn10_as \
+            --onnx "$RUNNER_TEMP/eat-real/mn10_as.onnx" \
+            --cpp-mel-dump "$GITHUB_WORKSPACE/build-efficientat-real/tests/efficientat_frontend_dump" \
+            --cpp-benchmark "$GITHUB_WORKSPACE/build-efficientat-real/tests/efficientat_wav_benchmark" \
+            --cpp-labels "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" \
+            --output "$RUNNER_TEMP/esc10-eval/mn10-chainsaw-parity.json"
+      - name: Diagnose genuine EfficientAT context length on original ESC-10 audio
+        run: |
+          cd "$RUNNER_TEMP/EfficientAT"
+          export PYTHONPATH="$RUNNER_TEMP/EfficientAT"
+          "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/diagnose_efficientat_duration.py" \
+            --model mn10_as \
+            --input "$RUNNER_TEMP/esc10-eval/chainsaw-original.wav" \
+            --output "$RUNNER_TEMP/esc10-eval/mn10-duration.json"
+      - name: Compare three models on real ESC-10 event recordings
+        run: |
+          python3 tools/compare_audio_taggers.py \
+            --manifest "$RUNNER_TEMP/esc10-eval/manifest.csv" \
+            --mn-model "$RUNNER_TEMP/eat-real/mn10_as.onnx" \
+            --mn-labels "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" \
+            --dymn-model "$RUNNER_TEMP/eat-real/dymn10_as.onnx" \
+            --dymn-labels "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" \
+            --yamnet-model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --yamnet-labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
+            --yamnet-csv "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --efficientat-benchmark ./build-efficientat-real/tests/efficientat_wav_benchmark \
+            --yamnet-benchmark ./build-efficientat-real/tests/yamnet_wav_benchmark \
+            --output "$RUNNER_TEMP/esc10-eval/three-model-real-events.json"
+      - name: Review real-event scores for saturation and silent excerpts
+        run: |
+          python3 tools/review_audio_taggers_report.py \
+            "$RUNNER_TEMP/esc10-eval/three-model-real-events.json" \
+            --output "$RUNNER_TEMP/esc10-eval/review-findings.json"
+      - name: Upload real-event comparison and source attribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: efficientat-yamnet-esc10-real-event-report
+          path: |
+            ${{ runner.temp }}/esc10-eval/three-model-real-events.json
+            ${{ runner.temp }}/yamnet-onnx-cpp-parity.json
+            ${{ runner.temp }}/yamnet-behavior.json
+            ${{ runner.temp }}/esc10-eval/review-findings.json
+            ${{ runner.temp }}/esc10-eval/mn10-chainsaw-parity.json
+            ${{ runner.temp }}/esc10-eval/mn10-duration.json
+            ${{ runner.temp }}/esc10-eval/manifest.csv
+            ${{ runner.temp }}/esc10-eval/provenance.csv
+            ${{ runner.temp }}/esc10-eval/ESC-50-LICENSE.txt
+          retention-days: 14
+      - name: Upload three-model smoke comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: efficientat-yamnet-smoke-report
+          path: ${{ runner.temp }}/three-model-comparison.json
+          retention-days: 14
+
+  efficientat-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt Widgets
+        run: sudo apt-get update && sudo apt-get install -y qtbase5-dev
+      - name: Configure EfficientAT ONNX adapter
+        run: >-
+          cmake -S . -B build-efficientat -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_EFFICIENTAT=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WITH_YAMNET=OFF
+          -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-efficientat --parallel
+      - name: Qt smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-efficientat/demo/qt/libaudition_qt_demo --self-test
+      - name: PyTorch reference frontend parity
+        run: |
+          python3 -m venv "$RUNNER_TEMP/efficientat-parity"
+          "$RUNNER_TEMP/efficientat-parity/bin/pip" install numpy
+          "$RUNNER_TEMP/efficientat-parity/bin/pip" install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          ./build-efficientat/tests/efficientat_frontend_dump "$RUNNER_TEMP/efficientat_mel.f32"
+          "$RUNNER_TEMP/efficientat-parity/bin/python" tests/fixtures/compare_efficientat_frontend.py "$RUNNER_TEMP/efficientat_mel.f32"
+      - name: Generate deterministic ONNX fixture
+        run: |
+          python3 -m pip install --break-system-packages numpy onnx
+          python3 tests/fixtures/make_efficientat_onnx.py "$PWD/build-efficientat/fixture"
+      - name: Test
+        env:
+          LIBAUDITION_EFFICIENTAT_FIXTURE_DIR: ${{ github.workspace }}/build-efficientat/fixture
+        run: ctest --test-dir build-efficientat --output-on-failure
+      - name: Install
+        run: cmake --install build-efficientat --prefix "$PWD/install-efficientat"
+
   installed-package:
     runs-on: ubuntu-latest
     steps:

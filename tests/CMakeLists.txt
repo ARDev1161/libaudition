@@ -21,7 +21,8 @@ add_executable(libaudition_tests
     audio_frontend_test.cpp
     quality_test.cpp
     speech_contracts_test.cpp
-    speaker_contracts_test.cpp)
+    speaker_contracts_test.cpp
+    classification_runtime_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces
@@ -70,6 +71,30 @@ if(TARGET audition::backend_clap)
         ${PROJECT_SOURCE_DIR}/backends/clap/src)
 endif()
 
+
+if(TARGET audition::backend_yamnet)
+    add_executable(yamnet_pcm16_probe yamnet_pcm16_probe.cpp)
+    target_link_libraries(yamnet_pcm16_probe PRIVATE audition::backend_yamnet audition::core)
+    libaudition_configure_target(yamnet_pcm16_probe)
+    add_executable(yamnet_wav_benchmark yamnet_wav_benchmark.cpp)
+    target_link_libraries(yamnet_wav_benchmark PRIVATE audition::backend_yamnet audition::core)
+    libaudition_configure_target(yamnet_wav_benchmark)
+endif()
+
+if(TARGET audition::backend_efficientat)
+    add_executable(efficientat_wav_benchmark efficientat_wav_benchmark.cpp)
+    target_link_libraries(efficientat_wav_benchmark PRIVATE audition::backend_efficientat audition::core)
+    libaudition_configure_target(efficientat_wav_benchmark)
+    add_executable(efficientat_real_model_smoke efficientat_real_model_smoke.cpp)
+    target_link_libraries(efficientat_real_model_smoke PRIVATE audition::backend_efficientat audition::core)
+    libaudition_configure_target(efficientat_real_model_smoke)
+    add_executable(efficientat_frontend_dump efficientat_frontend_dump.cpp)
+    target_link_libraries(efficientat_frontend_dump PRIVATE
+        audition::backend_efficientat audition::core)
+    libaudition_configure_target(efficientat_frontend_dump)
+    target_sources(libaudition_tests PRIVATE efficientat_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_efficientat)
+endif()
 
 if(TARGET audition::backend_aasist)
     target_sources(libaudition_tests PRIVATE aasist_backend_test.cpp)
