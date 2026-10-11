@@ -86,3 +86,24 @@ The Sherpa CI job also runs a real ONNX `SherpaOfflineAsr` (Whisper tiny.en
 INT8) behind the same runtime for two source IDs; its predicted **text**
 is deliberately not asserted on synthetic input. This validates backend
 wiring and source associations rather than recognition accuracy.
+
+## Automatic Qt demo speech assets
+
+When `LIBAUDITION_BUILD_QT_DEMO=ON` and `LIBAUDITION_WITH_SHERPA=ON`,
+`LIBAUDITION_DEMO_FETCH_SPEECH_MODELS=ON` (default for demo builds) downloads
+Silero VAD ONNX and sherpa-compatible SenseVoiceSmall INT8 ONNX plus its
+matching token table at **CMake configure time**, caching them under
+`<build>/demo-models/speech/`. Pre-filled paths enable the Acoustic scene
+transcription checkbox by default; sound classification remains independently
+controlled. The other top-level Qt demo tabs also use scroll areas.
+
+This first-time setup requires internet access and roughly 240 MB of model
+data (excluding the rest of sherpa-onnx dependencies). Subsequent CMake
+configures reuse the cached models; SenseVoice and tokens are SHA256 verified.
+For offline configurations set `-DLIBAUDITION_DEMO_FETCH_SPEECH_MODELS=OFF`
+and provide paths manually in the Qt demo. Automatic downloads never happen
+in the libaudition library itself or in a dependency-only build.
+
+Models have separate third-party licenses: check the respective upstream
+model repositories before redistribution. Model download success and actual
+ReSpeaker recognition quality still require local verification.
