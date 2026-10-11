@@ -54,7 +54,7 @@ jobs:
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build C++ real-model smoke tool
-        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke --parallel
+        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke yamnet_progressive_multisource --parallel
       - name: Install exporter dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/efficientat-real"
@@ -144,6 +144,25 @@ jobs:
           ./build-efficientat-real/tests/yamnet_progressive_smoke \
             "$RUNNER_TEMP/yamnet/yamnet.onnx" \
             "$RUNNER_TEMP/yamnet/yamnet_class_map.csv"
+      - name: Stream 5 and 10 ODAS-like sources through real YAMNet
+        run: |
+          set -o pipefail
+          ./build-efficientat-real/tests/yamnet_progressive_multisource \
+            "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            5 8 real-time | tee "$RUNNER_TEMP/yamnet-stream-5.json"
+          ./build-efficientat-real/tests/yamnet_progressive_multisource \
+            "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            10 8 real-time | tee "$RUNNER_TEMP/yamnet-stream-10.json"
+      - name: Upload real YAMNet multi-source latency and drop reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: yamnet-progressive-multisource-stress
+          path: |
+            ${{ runner.temp }}/yamnet-stream-5.json
+            ${{ runner.temp }}/yamnet-stream-10.json
+          retention-days: 14
       - name: Verify official YAMNet silence noise and sine wave behavior
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_behavior.py \
