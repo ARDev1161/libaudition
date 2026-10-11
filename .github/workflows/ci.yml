@@ -161,6 +161,7 @@ jobs:
             ${{ runner.temp }}/esc10-eval/three-model-real-events.json
             ${{ runner.temp }}/esc10-eval/manifest.csv
             ${{ runner.temp }}/esc10-eval/provenance.csv
+            ${{ runner.temp }}/esc10-eval/ESC-50-LICENSE.txt
           retention-days: 14
       - name: Upload three-model smoke comparison
         uses: actions/upload-artifact@v4
