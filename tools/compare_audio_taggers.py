@@ -3,7 +3,7 @@
 
 Ground truth CSV: wav,mid (multiple AudioSet MIDs separated by '|').
 All metrics are restricted to MIDs present in BOTH model vocabularies.
-MN10 consumes the first 5s, while DyMN10/YAMNet consume the first 1s; latency includes
+MN10 consumes 5s, DyMN10 and fast YAMNet use 1s, and YAMNet-5s tests full clips; latency includes
 classifier execution but excludes CLI startup, model loading and WAV decoding.
 """
 import argparse
@@ -27,8 +27,8 @@ def vocabulary(path, count):
         by_name[name] = mid
     return by_mid, by_name
 
-def run(binary, model, labels, wav, name_to_mid):
-    text = subprocess.run([str(binary), str(model), str(labels), str(wav)],
+def run(binary, model, labels, wav, name_to_mid, args=()):
+    text = subprocess.run([str(binary), str(model), str(labels), str(wav), *args],
                           check=True, capture_output=True, text=True).stdout.splitlines()
     if len(text) != 6 or not text[0].startswith("median_ms="):
         raise ValueError(f"Unexpected benchmark output: {text}")
@@ -62,6 +62,7 @@ def main():
         "mn10_as": (a.efficientat_benchmark, a.mn_model, a.mn_labels, eff_names),
         "dymn10_as": (a.efficientat_benchmark, a.dymn_model, a.dymn_labels, eff_names),
         "yamnet": (a.yamnet_benchmark, a.yamnet_model, a.yamnet_labels, yam_names),
+        "yamnet_5s": (a.yamnet_benchmark, a.yamnet_model, a.yamnet_labels, yam_names),
     }
     observations = {key: [] for key in configs}
     excluded = []
@@ -76,7 +77,8 @@ def main():
         if not wav.is_absolute():
             wav = a.manifest.resolve().parent / wav
         for name, (binary, model, labels, mapping) in configs.items():
-            predictions, timing = run(binary.resolve(), model.resolve(), labels.resolve(), wav.resolve(), mapping)
+            predictions, timing = run(binary.resolve(), model.resolve(), labels.resolve(), wav.resolve(), mapping,
+                                      ("--seconds", "5") if name == "yamnet_5s" else ())
             # Predictions outside the shared ontology count as occupying one of
             # five slots, but cannot become false positive shared-label matches.
             predicted = {r["mid"] for r in predictions}
@@ -88,7 +90,8 @@ def main():
     if not observations["yamnet"]:
         raise ValueError("No shared-ontology clips available for comparison")
     result = {
-        "window_seconds": {"mn10_as": 5, "dymn10_as": 1, "yamnet": 1},
+        "window_seconds": {"mn10_as": 5, "dymn10_as": 1, "yamnet": 1,
+                            "yamnet_5s": 5},
         "common_mids": len(common), "excluded": excluded,
         "models": {
             name: {
