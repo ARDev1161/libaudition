@@ -11,6 +11,7 @@
 #include <audition/backends/efficientat/audio_tagger.hpp>
 #endif
 
+#include <algorithm>
 #include <stdexcept>
 #include <sstream>
 #include <utility>
@@ -60,14 +61,22 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
             throw std::runtime_error{"Sherpa backend is not built"};
 #endif
         }
-        const std::size_t window_samples = options.efficientat_model
-            ? classifier->capabilities().audio.preferred_frame_count.value_or(16000U)
-            : static_cast<std::size_t>(options.sample_rate_hz) *
-                (options.yamnet_model ? 1U : 2U);
+        // The ONNX graph determines its actual required waveform length.
+        // This matters for YAMNet exports with fixed 15,600-sample patches.
+        const std::size_t window_samples =
+            (options.efficientat_model || options.yamnet_model)
+                ? classifier->capabilities().audio.preferred_frame_count.value_or(
+                    static_cast<std::size_t>(options.sample_rate_hz))
+                : static_cast<std::size_t>(options.sample_rate_hz) * 2U;
+        // Keep YAMNet updates responsive to transient sounds (50% overlap).
+        // MN10 uses a longer 5s window with 1s step.
+        const std::size_t hop_samples = options.yamnet_model
+            ? std::max<std::size_t>(1U, window_samples / 2U)
+            : options.efficientat_model && window_samples > options.sample_rate_hz
+                ? static_cast<std::size_t>(options.sample_rate_hz) : window_samples;
         runtime_ = std::make_unique<audition::SourceClassificationRuntime>(
             std::move(classifier), options.sample_rate_hz, window_samples,
-            16U, options.efficientat_model && window_samples > options.sample_rate_hz
-                ? options.sample_rate_hz : window_samples);
+            16U, hop_samples);
     } catch (const std::exception& exception) {
         initialization_error_ = exception.what();
     }
