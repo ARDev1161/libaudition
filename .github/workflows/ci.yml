@@ -75,6 +75,8 @@ jobs:
           ./build-efficientat-real/tests/efficientat_real_model_smoke "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt"
       - name: Validate WAV manifest evaluator
         run: python3 tests/test_efficientat_wav_evaluator.py
+      - name: Validate two-model WAV comparison
+        run: python3 tests/test_compare_efficientat_wavs.py
       - name: Generate deterministic PCM16 WAV and benchmark both models
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
