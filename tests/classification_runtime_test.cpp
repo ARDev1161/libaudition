@@ -639,6 +639,15 @@ TEST(SourceClassificationRuntime, ReportsPerSourceDropCountsAndTiming) {
             EXPECT_GE(*first_state.last_inference_ms, 0.0);
             EXPECT_TRUE(second_state.last_queue_wait_ms.has_value());
             EXPECT_TRUE(second_state.last_inference_ms.has_value());
+            ASSERT_TRUE(first_state.max_inference_ms.has_value());
+            ASSERT_TRUE(first_state.mean_inference_ms.has_value());
+            ASSERT_TRUE(first_state.max_queue_wait_ms.has_value());
+            ASSERT_TRUE(first_state.mean_queue_wait_ms.has_value());
+            EXPECT_GE(*first_state.max_inference_ms, *first_state.mean_inference_ms);
+            EXPECT_GE(*first_state.max_queue_wait_ms, *first_state.mean_queue_wait_ms);
+            EXPECT_EQ(second_state.completed_windows, 1U);
+            ASSERT_TRUE(second_state.max_inference_ms.has_value());
+            EXPECT_EQ(*second_state.max_inference_ms, *second_state.last_inference_ms);
             both_completed = true;
             break;
         }
