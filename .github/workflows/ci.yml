@@ -53,7 +53,7 @@ jobs:
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build C++ real-model smoke tool
-        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke --parallel
+        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_wav_benchmark --parallel
       - name: Install exporter dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/efficientat-real"
@@ -73,6 +73,22 @@ jobs:
         run: |
           ./build-efficientat-real/tests/efficientat_real_model_smoke "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt"
           ./build-efficientat-real/tests/efficientat_real_model_smoke "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt"
+      - name: Generate deterministic PCM16 WAV and benchmark both models
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
+          import math
+          import wave
+          import struct
+          import os
+          path = os.path.join(os.environ["RUNNER_TEMP"], "efficientat-benchmark.wav")
+          with wave.open(path, "wb") as f:
+              f.setnchannels(1)
+              f.setsampwidth(2)
+              f.setframerate(32000)
+              f.writeframes(b"".join(struct.pack("<h", int(0.2*32767*math.sin(2*math.pi*440*i/32000))) for i in range(32000)))
+          PY
+          ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
+          ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
 
   efficientat-backend:
     runs-on: ubuntu-latest
