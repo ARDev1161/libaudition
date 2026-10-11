@@ -45,6 +45,7 @@ def main():
 
     metadata = output / "esc50.csv"
     urllib.request.urlretrieve(f"{UPSTREAM}/meta/esc50.csv", metadata)
+    urllib.request.urlretrieve(f"{UPSTREAM}/LICENSE", output / "ESC-50-LICENSE.txt")
     with metadata.open(newline="", encoding="utf-8") as f:
         entries = list(csv.DictReader(f))
     chosen = {}
@@ -62,7 +63,7 @@ def main():
         mw = csv.writer(manifest_stream)
         pw = csv.writer(provenance_stream)
         mw.writerow(["wav", "mid"])
-        pw.writerow(["wav", "category", "original_filename", "source_url", "license", "window_start_s"])
+        pw.writerow(["wav", "category", "original_filename", "source_url", "src_file", "license", "window_start_s"])
         for category, row in sorted(chosen.items()):
             name = row["filename"]
             url = f"{UPSTREAM}/audio/{name}"
@@ -76,7 +77,7 @@ def main():
             ], check=True)
             raw.unlink()
             mw.writerow([target.name, eff[CATEGORIES[category]]])
-            pw.writerow([target.name, category, name, url, "CC BY (ESC-10)", 1])
+            pw.writerow([target.name, category, name, url, row.get("src_file", ""), "CC BY (ESC-10)", 1])
     print(f"Prepared {len(chosen)} ESC-10 real-event excerpts in {output}")
     print(f"Manifest: {manifest}; attribution/provenance: {provenance}")
     print("Labels describe 5-second source files; excerpt event presence NOT verified.")
