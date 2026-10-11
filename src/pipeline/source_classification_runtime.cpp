@@ -75,12 +75,15 @@ void SourceClassificationRuntime::push(
                     return job.source_id == source_id && job.generation == generation;
                 }), pending_.end());
             it->second.result.reset();
+            it->second.result_end_sample.reset();
             return;
         }
         buffer.push_back(samples[i]);
+        ++it->second.received_samples;
         if (buffer.size() == window_samples_) {
             if (pending_.size() < max_sources_ && std::none_of(pending_.begin(), pending_.end(), [source_id](const Job& j){ return j.source_id == source_id; })) {
-                pending_.push_back(Job{source_id, it->second.generation, buffer});
+                pending_.push_back(Job{source_id, it->second.generation,
+                                       it->second.received_samples, buffer});
                 buffer.erase(buffer.begin(),
                              buffer.begin() + static_cast<std::ptrdiff_t>(hop_samples_));
                 cv_.notify_one();
@@ -107,9 +110,11 @@ SourceClassificationStatus SourceClassificationRuntime::status(
         return result;
     }
     result.collected_samples = it->second.samples.size();
+    result.received_samples = it->second.received_samples;
     if (it->second.result.has_value() &&
         std::chrono::steady_clock::now() - it->second.last_result_at < kResultTtl) {
         result.result = it->second.result;
+        result.result_end_sample = it->second.result_end_sample;
     }
     if (active_source_ == source_id && active_generation_ == it->second.generation) {
         result.state = SourceClassificationState::Inferencing;
@@ -151,6 +156,7 @@ void SourceClassificationRuntime::run() noexcept {
                 it != buffers_.end() && it->second.generation == job.generation &&
                 it->second.error.empty()) {
                 it->second.result = std::move(result);
+                it->second.result_end_sample = job.end_sample;
                 it->second.last_result_at = std::chrono::steady_clock::now();
             }
             active_source_.reset();
@@ -161,6 +167,7 @@ void SourceClassificationRuntime::run() noexcept {
                 it->second.error = exception.what();
                 it->second.samples.clear();
                 it->second.result.reset();
+                it->second.result_end_sample.reset();
                 pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
                     [source=job.source_id, generation=job.generation](const Job& queued) {
                         return queued.source_id == source && queued.generation == generation;
@@ -174,6 +181,7 @@ void SourceClassificationRuntime::run() noexcept {
                 it->second.error = "Unknown classification exception";
                 it->second.samples.clear();
                 it->second.result.reset();
+                it->second.result_end_sample.reset();
                 pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
                     [source=job.source_id, generation=job.generation](const Job& queued) {
                         return queued.source_id == source && queued.generation == generation;
