@@ -26,8 +26,11 @@ This is an **initial foundation**, not the complete low-latency ASR pipeline:
 VAD gates whole pushed chunks with configurable pre-roll and post-roll, but without
 partial transcripts or independent phoneme-precise VAD onset estimates. It is suitable
 for mocked/controlled tests, not a claim of on-device recognition quality.
-The next iteration must add optional VAD pre/post-roll and an ODAS/Qt adapter
-with actual Sherpa models, error propagation and per-source transcript UI.
+Configurable pre/post-roll, the ODAS/Qt adapter, track-local error reporting,
+and a per-source transcript column are now implemented. Remaining gaps are
+hardware-verified phrase onset/end, ASR latency instrumentation, and recognition
+quality under simultaneous speech. See
+[ReSpeaker live acceptance](respeaker_live_speech_acceptance.md).
 The client controls capture, retention and whether speech may be recorded.
 
 The new PR is stacked on classification-runtime PR #53; neither is merged
