@@ -23,8 +23,8 @@ Safety and lifecycle:
 - Per-runtime `statistics()` reports completions, losses, and last ASR error.
 
 This is an **initial foundation**, not the complete low-latency ASR pipeline:
-VAD currently gates whole pushed chunks with configurable pre-roll and post-roll, but without
-partial transcripts or time-corrected onset/end timestamps. It is suitable
+VAD gates whole pushed chunks with configurable pre-roll and post-roll, but without
+partial transcripts or independent phoneme-precise VAD onset estimates. It is suitable
 for mocked/controlled tests, not a claim of on-device recognition quality.
 The next iteration must add optional VAD pre/post-roll and an ODAS/Qt adapter
 with actual Sherpa models, error propagation and per-source transcript UI.
@@ -57,3 +57,29 @@ Caveats: the first integration has a single shared offline ASR worker,
 no incremental partial transcript UI, and does not automatically download
 any third-party ASR model. It does not yet validate speech accuracy on real
 ODAS-separated conversations or prove real-time performance on the RK3588.
+
+## Speech continuity, fault isolation and observability
+
+- Positive-VAD audio is split into consecutive bounded segments when the
+  configured `max_segment_samples` limit is reached. Even if the input
+  frame straddles a split, **all** its PCM samples are preserved. The
+  new segment's `SpeechSegment.audio.captureTime()` advances by the exact
+  sample offset relative to the caller's frame timestamp.
+- The speech minimum is measured in voiced samples, not padded silence.
+  Pre-roll starts at the proper earlier audio timestamp; post-roll includes
+  at most the configured number of silence samples.
+- VAD exceptions, null VAD sessions, and NaN/Inf from **one** separated
+  source quarantine that track without terminating ALSA capture or the
+  processing of other sources. The new `trackStatus(track_id)` exposes
+  active speech, buffered samples, and any track-local error. A caller
+  retires the ID with `forget()` before retrying.
+- The Qt Acoustic scene now shows VAD state, ASR completed/pending/drop
+  counters and per-source VAD/ASR failures in the live diagnostics.
+
+The C++ regression suite checks multi-source separation, pre/post roll,
+absence of sample loss at segment boundaries, audio-clock continuity,
+single-track VAD failure isolation, and explicit reuse after `forget()`.
+The Sherpa CI job also runs a real ONNX `SherpaOfflineAsr` (Whisper tiny.en
+INT8) behind the same runtime for two source IDs; its predicted **text**
+is deliberately not asserted on synthetic input. This validates backend
+wiring and source associations rather than recognition accuracy.
