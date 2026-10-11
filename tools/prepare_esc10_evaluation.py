@@ -72,7 +72,7 @@ def main():
             urllib.request.urlretrieve(url, raw)
             subprocess.run([
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                "-ss", "1", "-i", str(raw), "-t", "1", "-ac", "1",
+                "-ss", "0", "-i", str(raw), "-t", "5", "-ac", "1",
                 "-ar", "32000", "-c:a", "pcm_s16le", str(target)
             ], check=True)
             if category == "chainsaw":
@@ -83,10 +83,10 @@ def main():
                 ], check=True)
             raw.unlink()
             mw.writerow([target.name, eff[CATEGORIES[category]]])
-            pw.writerow([target.name, category, name, url, row.get("src_file", ""), "CC BY (ESC-10)", 1])
+            pw.writerow([target.name, category, name, url, row.get("src_file", ""), "CC BY (ESC-10)", 0])
     print(f"Prepared {len(chosen)} ESC-10 real-event excerpts in {output}")
     print(f"Manifest: {manifest}; attribution/provenance: {provenance}")
-    print("Labels describe 5-second source files; excerpt event presence NOT verified.")
+    print("Five-second source-level labels: YAMNet/DyMN evaluate first 1s; MN10 evaluates all 5s.")
 
 if __name__ == "__main__":
     main()
