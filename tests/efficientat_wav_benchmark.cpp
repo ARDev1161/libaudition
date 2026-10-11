@@ -79,8 +79,10 @@ int main(int argc, char** argv) {
         cfg.top_k = 5;
         const audition::EfficientAtAudioTagger tagger{cfg};
         const auto samples = loadWav(argv[3]);
-        if (samples.size() < 32000U) throw std::runtime_error("WAV shorter than 1 second");
-        std::vector<float> window(samples.begin(), samples.begin() + 32000);
+        const bool mn10 = std::string(argv[1]).find("mn10_as.onnx") != std::string::npos;
+        const std::size_t required = mn10 ? 160000U : 32000U;
+        if (samples.size() < required) throw std::runtime_error("WAV shorter than required model window");
+        std::vector<float> window(samples.begin(), samples.begin() + required);
         audition::AudioBuffer audio{std::move(window),
             {32000U, 1U, audition::AudioLayout::Interleaved},
             audition::Timestamp{}, 0U};
@@ -105,7 +107,7 @@ int main(int argc, char** argv) {
                   << " p95_ms=" << percentile(0.95)
                   << " min_ms=" << measurements.front()
                   << " max_ms=" << measurements.back()
-                  << " rtf=" << percentile(0.5) / 1000.0 << "\n";
+                  << " rtf=" << percentile(0.5) / (audio.sampleCount() / 32.0) << "\n";
         for (const auto& c : warmup.classes) {
             std::cout << c.label << " " << c.probability.value() << '\n';
         }
