@@ -262,15 +262,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             audition::SherpaSileroVadModel vad_model{};
             vad_model.model = config.speech_vad_model_path;
             vad_opts.model = vad_model;
-            audition::SherpaOfflineAsrOptions asr_opts{};
+            // GCC 13 can falsely diagnose the aggregate's nested std::map
+            // as uninitialized when this config is a large local at -O3.
+            // Keep the fully initialized configuration in owned storage.
+            auto asr_opts = std::make_unique<audition::SherpaOfflineAsrOptions>();
             audition::SherpaOfflineSenseVoiceModel sense_voice{};
             sense_voice.model = config.speech_asr_model_path;
-            asr_opts.model = sense_voice;
-            asr_opts.tokens = config.speech_asr_tokens_path;
+            asr_opts->model = std::move(sense_voice);
+            asr_opts->tokens = config.speech_asr_tokens_path;
             auto vad = std::make_shared<audition::SherpaVad>(std::move(vad_opts));
-            // Copy instead of moving the aggregate: GCC 13 -O3 otherwise emits
-            // a false-positive maybe-uninitialized warning in std::map.
-            auto asr = std::make_shared<audition::SherpaOfflineAsr>(asr_opts);
+            auto asr = std::make_shared<audition::SherpaOfflineAsr>(
+                std::move(*asr_opts));
             speech = std::make_unique<audition::SourceSpeechRuntime>(
                 std::move(vad), std::move(asr));
         }
