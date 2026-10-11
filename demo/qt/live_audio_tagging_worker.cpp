@@ -60,10 +60,12 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
             throw std::runtime_error{"Sherpa backend is not built"};
 #endif
         }
+        const std::size_t window_samples = options.efficientat_model
+            ? classifier->capabilities().audio.preferred_frame_count
+            : static_cast<std::size_t>(options.sample_rate_hz) *
+                (options.yamnet_model ? 1U : 2U);
         runtime_ = std::make_unique<audition::SourceClassificationRuntime>(
-            std::move(classifier), options.sample_rate_hz,
-            static_cast<std::size_t>(options.sample_rate_hz) *
-                ((options.yamnet_model || options.efficientat_model) ? 1U : 2U));
+            std::move(classifier), options.sample_rate_hz, window_samples);
     } catch (const std::exception& exception) {
         initialization_error_ = exception.what();
     }
