@@ -63,6 +63,15 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/fschmid56/EfficientAT.git "$RUNNER_TEMP/EfficientAT"
           git -C "$RUNNER_TEMP/EfficientAT" rev-parse HEAD | tee "$RUNNER_TEMP/efficientat-upstream-sha.txt"
+      - name: Audit actual EfficientAT and YAMNet AudioSet vocabularies
+        run: |
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/yamnet_class_map.csv" \
+            --output "$RUNNER_TEMP/yamnet_class_map.csv"
+          python3 tools/audit_audioset_vocabularies.py \
+            --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
+            --yamnet-csv "$RUNNER_TEMP/yamnet_class_map.csv" \
+            --output "$RUNNER_TEMP/audioset_vocab_audit.json"
       - name: Export genuine mn10_as and dymn10_as weights and compare ONNX logits
         run: |
           cd "$RUNNER_TEMP/EfficientAT"
