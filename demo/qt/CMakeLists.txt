@@ -10,6 +10,7 @@ add_executable(libaudition_qt_demo
     alsa_live_capture.hpp
     live_audio_tagging_worker.cpp
     live_audio_tagging_worker.hpp
+    source_track_lifecycle.hpp
     acoustic_sphere_widget.cpp
     acoustic_sphere_widget.hpp
     demo_window.hpp
