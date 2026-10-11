@@ -102,3 +102,15 @@ or values (absolute score tolerance 2e-5). The result is archived as
 This verifies **integration parity**, not that a particular real-world
 sound will be recognized accurately. AudioSet label accuracy still
 requires a larger event-aligned corpus and dedicated clip-level metrics.
+
+## Behavioral verification of model weights
+
+The CI job runs `tools/verify_yamnet_behavior.py` against the pinned ONNX
+model on three official YAMNet reference stimuli, each 3 seconds at 16 kHz:
+zero waveform (expected **Silence** in Top-10), reproducible uniform noise
+(**White noise** in Top-10), and a 440 Hz sinusoid (**Sine wave** in Top-10).
+These expectations come from the upstream
+[`yamnet_test.py`](https://github.com/tensorflow/models/blob/master/research/audioset/yamnet/yamnet_test.py).
+The CI archive includes `yamnet-behavior.json` with the complete outputs.
+This detects gross regressions in the downloaded third-party model, but
+does not replace event-aligned evaluation on microphone/ODAS recordings.
