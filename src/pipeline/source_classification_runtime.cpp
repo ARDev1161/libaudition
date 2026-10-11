@@ -93,13 +93,15 @@ void SourceClassificationRuntime::push(
             if (waiting != pending_.end()) {
                 waiting->samples = buffer;
                 waiting->end_sample = it->second.received_samples;
-                ++dropped_windows_;
+                waiting->enqueued_at = std::chrono::steady_clock::now();
+                ++it->second.dropped_windows;
             } else if (pending_.size() < max_sources_) {
                 pending_.push_back(Job{source_id, it->second.generation,
-                                       it->second.received_samples, buffer});
+                                       it->second.received_samples,
+                                       std::chrono::steady_clock::now(), buffer});
                 cv_.notify_one();
             } else {
-                ++dropped_windows_;
+                ++it->second.dropped_windows;
             }
             buffer.erase(buffer.begin(),
                          buffer.begin() + static_cast<std::ptrdiff_t>(hop_samples_));
@@ -112,9 +114,13 @@ SourceClassificationStatus SourceClassificationRuntime::status(
     std::lock_guard<std::mutex> lock{mutex_};
     SourceClassificationStatus result{};
     result.required_samples = window_samples_;
-    result.dropped_windows = dropped_windows_;
     const auto it = buffers_.find(source_id);
     if (it == buffers_.end()) return result;
+    result.dropped_windows = it->second.dropped_windows;
+    result.completed_windows = it->second.completed_windows;
+    result.last_inference_ms = it->second.last_inference_ms;
+    result.last_queue_wait_ms = it->second.last_queue_wait_ms;
+    result.received_samples = it->second.received_samples;
     if (!it->second.error.empty()) {
         result.state = SourceClassificationState::Error;
         result.error = it->second.error;
@@ -157,18 +163,26 @@ void SourceClassificationRuntime::run() noexcept {
             active_source_ = job.source_id;
             active_generation_ = job.generation;
         }
+        const auto inference_started = std::chrono::steady_clock::now();
+        const double queue_wait_ms = std::chrono::duration<double, std::milli>(
+            inference_started - job.enqueued_at).count();
         try {
             AudioBuffer audio{std::move(job.samples),
                               {sample_rate_hz_, 1U, AudioLayout::Interleaved},
                               Timestamp{}, 0U};
             auto result = classifier_->classify(audio.view());
+            const auto inference_finished = std::chrono::steady_clock::now();
             std::lock_guard<std::mutex> lock{mutex_};
             if (const auto it = buffers_.find(job.source_id);
                 it != buffers_.end() && it->second.generation == job.generation &&
                 it->second.error.empty()) {
                 it->second.result = std::move(result);
                 it->second.result_end_sample = job.end_sample;
-                it->second.last_result_at = std::chrono::steady_clock::now();
+                it->second.last_result_at = inference_finished;
+                ++it->second.completed_windows;
+                it->second.last_inference_ms = std::chrono::duration<double, std::milli>(
+                    inference_finished - inference_started).count();
+                it->second.last_queue_wait_ms = queue_wait_ms;
             }
             active_source_.reset();
         } catch (const std::exception& exception) {
