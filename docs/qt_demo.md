@@ -692,3 +692,18 @@ Set `QT_QPA_PLATFORM=offscreen` and the corresponding
 `LIBAUDITION_TEST_WHISPER_TOKENS`, `LIBAUDITION_TEST_PIPER_DIR` or
 `LIBAUDITION_TEST_SPEAKER_MODEL` environment variables. Missing assets
 fail the test explicitly; no silent skip is allowed.
+
+### ODAS source-ID lifecycle and classification
+
+The live capture adapter retires per-source classifier buffers **when a
+tracked ODAS source disappears** from both the tracker and SSS separated
+frames. A subsequently reused numeric track ID starts a fresh classification
+generation, avoiding labels from the previous source. When ALSA experiences
+an overrun and the ODAS engine resets, the adapter also retires every known
+source so classification never spans a discontinuity.
+
+The `source-track-lifecycle` model self-test exercises source appearance,
+disappearance, ID reuse and explicit reset without requiring microphone
+hardware. The corresponding CI job runs it under the combined ODAS/Sherpa
+Qt build. This validates lifecycle bookkeeping, not real-world separation
+quality or on-device ID assignment behavior.

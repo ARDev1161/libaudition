@@ -21,7 +21,8 @@ add_executable(libaudition_tests
     audio_frontend_test.cpp
     quality_test.cpp
     speech_contracts_test.cpp
-    speaker_contracts_test.cpp)
+    speaker_contracts_test.cpp
+    classification_runtime_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces
@@ -34,6 +35,20 @@ target_link_libraries(libaudition_tests PRIVATE
     GTest::gtest_main)
 libaudition_configure_target(libaudition_tests)
 gtest_discover_tests(libaudition_tests)
+
+# Synthetic streaming stress: no ONNX weights, Qt, ALSA or ODAS required.
+# Uses explicit simulated inference costs to expose queue pressure and
+# produces machine-readable per-stage diagnostics on stdout.
+add_executable(progressive_multisource_stress progressive_multisource_stress.cpp)
+target_link_libraries(progressive_multisource_stress PRIVATE
+    audition::pipeline audition::core audition::interfaces)
+libaudition_configure_target(progressive_multisource_stress)
+add_test(NAME progressive_stress_5_sources
+    COMMAND progressive_multisource_stress 5 8 4 12)
+add_test(NAME progressive_stress_10_sources
+    COMMAND progressive_multisource_stress 10 8 8 24)
+set_tests_properties(progressive_stress_5_sources progressive_stress_10_sources
+    PROPERTIES TIMEOUT 40)
 
 if(TARGET audition::backend_odas)
     target_sources(libaudition_tests PRIVATE odas_backend_test.cpp)
@@ -70,6 +85,38 @@ if(TARGET audition::backend_clap)
         ${PROJECT_SOURCE_DIR}/backends/clap/src)
 endif()
 
+
+if(TARGET audition::backend_yamnet)
+    add_executable(yamnet_pcm16_probe yamnet_pcm16_probe.cpp)
+    target_link_libraries(yamnet_pcm16_probe PRIVATE audition::backend_yamnet audition::core)
+    libaudition_configure_target(yamnet_pcm16_probe)
+    add_executable(yamnet_wav_benchmark yamnet_wav_benchmark.cpp)
+    target_link_libraries(yamnet_wav_benchmark PRIVATE audition::backend_yamnet audition::core)
+    libaudition_configure_target(yamnet_wav_benchmark)
+    add_executable(yamnet_progressive_smoke yamnet_progressive_smoke.cpp)
+    target_link_libraries(yamnet_progressive_smoke PRIVATE
+        audition::backend_yamnet audition::pipeline audition::core)
+    libaudition_configure_target(yamnet_progressive_smoke)
+    add_executable(yamnet_progressive_multisource yamnet_progressive_multisource.cpp)
+    target_link_libraries(yamnet_progressive_multisource PRIVATE
+        audition::backend_yamnet audition::pipeline audition::core)
+    libaudition_configure_target(yamnet_progressive_multisource)
+endif()
+
+if(TARGET audition::backend_efficientat)
+    add_executable(efficientat_wav_benchmark efficientat_wav_benchmark.cpp)
+    target_link_libraries(efficientat_wav_benchmark PRIVATE audition::backend_efficientat audition::core)
+    libaudition_configure_target(efficientat_wav_benchmark)
+    add_executable(efficientat_real_model_smoke efficientat_real_model_smoke.cpp)
+    target_link_libraries(efficientat_real_model_smoke PRIVATE audition::backend_efficientat audition::core)
+    libaudition_configure_target(efficientat_real_model_smoke)
+    add_executable(efficientat_frontend_dump efficientat_frontend_dump.cpp)
+    target_link_libraries(efficientat_frontend_dump PRIVATE
+        audition::backend_efficientat audition::core)
+    libaudition_configure_target(efficientat_frontend_dump)
+    target_sources(libaudition_tests PRIVATE efficientat_backend_test.cpp)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_efficientat)
+endif()
 
 if(TARGET audition::backend_aasist)
     target_sources(libaudition_tests PRIVATE aasist_backend_test.cpp)
