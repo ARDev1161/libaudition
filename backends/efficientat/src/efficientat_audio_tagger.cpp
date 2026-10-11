@@ -138,19 +138,23 @@ public:
             throw Error{ErrorCode::ProcessingError, "EfficientAT output must have 527 logits"};
         }
         const float* logits = outputs[0].GetTensorData<float>();
-        ClassificationResult result{};
-        result.classes.reserve(kClassCount);
+        // Rank by raw logits: sigmoid saturates to exactly 1.0 for large
+        // positive values, destroying the relative ordering of top classes.
+        std::vector<std::size_t> rank(kClassCount);
         for (std::size_t i = 0; i < kClassCount; ++i) {
             if (!std::isfinite(logits[i])) {
                 throw Error{ErrorCode::ProcessingError, "Nonfinite EfficientAT logit"};
             }
+            rank[i] = i;
+        }
+        std::stable_sort(rank.begin(), rank.end(),
+            [logits](std::size_t a, std::size_t b) { return logits[a] > logits[b]; });
+        ClassificationResult result{};
+        result.classes.reserve(options_.top_k);
+        for (std::size_t n = 0; n < options_.top_k; ++n) {
+            const auto i = rank[n];
             result.classes.push_back({labels_[i], Probability::from(sigmoid(logits[i]))});
         }
-        std::stable_sort(result.classes.begin(), result.classes.end(),
-            [](const ClassScore& a, const ClassScore& b) {
-                return a.probability.value() > b.probability.value();
-            });
-        result.classes.resize(options_.top_k);
         return result;
     }
 private:
