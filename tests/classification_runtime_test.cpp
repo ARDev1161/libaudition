@@ -3,6 +3,7 @@
 #include <audition/classify/vocabulary.hpp>
 #include <audition/classify/efficientat_frontend_spec.hpp>
 #include <audition/classify/source_classification_runtime.hpp>
+#include <audition/classify/progressive_source_classification_runtime.hpp>
 
 #include <chrono>
 #include <atomic>
@@ -333,4 +334,131 @@ TEST(SourceClassificationRuntime, ModelExceptionDoesNotStopOtherODASSources) {
         std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
     EXPECT_TRUE(reused);
+}
+
+namespace {
+class WindowNamedClassifier final : public audition::IAudioClassifier {
+public:
+    WindowNamedClassifier(std::string name, std::size_t frames, bool fail = false)
+        : name_(std::move(name)), frames_(frames), fail_(fail) {}
+    audition::BackendInfo backendInfo() const override { return {name_, "1"}; }
+    audition::ClassifierCapabilities capabilities() const override {
+        audition::ClassifierCapabilities caps{};
+        caps.audio.supported_sample_rates_hz = {16000U};
+        caps.audio.preferred_frame_count = frames_;
+        return caps;
+    }
+    audition::ClassificationResult classify(audition::AudioView audio) const override {
+        if (audio.sampleCount() != frames_) {
+            throw std::runtime_error{"Unexpected model window size"};
+        }
+        if (fail_) throw std::runtime_error{"Refiner unavailable"};
+        audition::ClassificationResult out{};
+        out.classes.push_back({name_, audition::Probability::from(0.9)});
+        return out;
+    }
+private:
+    std::string name_{};
+    std::size_t frames_{};
+    bool fail_{false};
+};
+}
+
+TEST(ProgressiveSourceClassificationRuntime, FastFirstThenFiveSecondRefinement) {
+    std::vector<audition::ProgressiveClassificationStage> stages;
+    stages.push_back({"fast-custom", std::make_unique<WindowNamedClassifier>("quick", 4U),
+                      4U, 2U});
+    stages.push_back({"long-custom", std::make_unique<WindowNamedClassifier>("precise", 12U),
+                      12U, 4U});
+    audition::ProgressiveSourceClassificationRuntime runtime{16000U, std::move(stages)};
+    const float short_audio[4] = {0.1F,0.2F,0.3F,0.4F};
+    runtime.push(15U, short_audio, 4U);
+    bool fast = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto snapshot = runtime.status(15U);
+        if (snapshot.selected_stage == 0U) {
+            ASSERT_TRUE(snapshot.result.has_value());
+            ASSERT_EQ(snapshot.stages.size(), 2U);
+            EXPECT_EQ(snapshot.result->classes.front().label, "quick");
+            EXPECT_FALSE(snapshot.stages[1].status.result.has_value());
+            fast = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(fast);
+    const float more[8] = {0.5F,0.6F,0.7F,0.8F,0.1F,0.2F,0.3F,0.4F};
+    runtime.push(15U, more, 8U);
+    bool refined = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto snapshot = runtime.status(15U);
+        if (snapshot.selected_stage == 1U) {
+            ASSERT_TRUE(snapshot.result.has_value());
+            EXPECT_EQ(snapshot.result->classes.front().label, "precise");
+            EXPECT_EQ(snapshot.stages[1].name, "long-custom");
+            EXPECT_TRUE(snapshot.stages[0].status.result.has_value());
+            refined = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(refined);
+    runtime.forget(15U);
+    const auto cleared = runtime.status(15U);
+    EXPECT_FALSE(cleared.selected_stage.has_value());
+    EXPECT_FALSE(cleared.result.has_value());
+    ASSERT_EQ(cleared.stages.size(), 2U);
+    EXPECT_EQ(cleared.stages[0].status.state,
+              audition::SourceClassificationState::WaitingForAudio);
+}
+
+TEST(ProgressiveSourceClassificationRuntime, RefinerFailureKeepsFastResults) {
+    std::vector<audition::ProgressiveClassificationStage> stages;
+    stages.push_back({"fast", std::make_unique<WindowNamedClassifier>("quick", 4U),
+                      4U, 2U});
+    stages.push_back({"refined", std::make_unique<WindowNamedClassifier>("bad", 12U, true),
+                      12U, 4U});
+    audition::ProgressiveSourceClassificationRuntime runtime{16000U, std::move(stages)};
+    const float audio[12] = {0.1F,0.1F,0.1F,0.1F,0.1F,0.1F,
+                             0.1F,0.1F,0.1F,0.1F,0.1F,0.1F};
+    runtime.push(21U, audio, 12U);
+    bool isolated = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto state = runtime.status(21U);
+        if (state.stages[1].status.state == audition::SourceClassificationState::Error &&
+            state.selected_stage == 0U) {
+            ASSERT_TRUE(state.result.has_value());
+            EXPECT_EQ(state.result->classes.front().label, "quick");
+            EXPECT_EQ(state.stages[1].status.error, "Refiner unavailable");
+            isolated = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(isolated);
+}
+
+TEST(ProgressiveSourceClassificationRuntime, SupportsCustomWindowSizesAndRejectsInvalidStages) {
+    auto make_stage = [](std::string name, std::size_t window, std::size_t hop) {
+        return audition::ProgressiveClassificationStage{
+            std::move(name), std::make_unique<WindowNamedClassifier>("custom", window),
+            window, hop};
+    };
+    std::vector<audition::ProgressiveClassificationStage> one;
+    one.push_back(make_stage("any-window", 7U, 3U));
+    EXPECT_NO_THROW((audition::ProgressiveSourceClassificationRuntime{
+        16000U, std::move(one), 2U}));
+    std::vector<audition::ProgressiveClassificationStage> duplicate;
+    duplicate.push_back(make_stage("duplicate", 4U, 2U));
+    duplicate.push_back(make_stage("duplicate", 10U, 5U));
+    EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
+        16000U, std::move(duplicate)}), std::invalid_argument);
+    std::vector<audition::ProgressiveClassificationStage> too_long_hop;
+    too_long_hop.push_back(make_stage("bad-hop", 8U, 9U));
+    EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
+        16000U, std::move(too_long_hop)}), std::invalid_argument);
+    std::vector<audition::ProgressiveClassificationStage> wrong_rate;
+    wrong_rate.push_back(make_stage("wrong-rate", 4U, 2U));
+    EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
+        32000U, std::move(wrong_rate)}), std::invalid_argument);
 }
