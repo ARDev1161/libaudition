@@ -18,6 +18,11 @@ int main(int argc, char** argv) {
         cfg.labels = argv[2];
         cfg.top_k = 5;
         audition::EfficientAtAudioTagger tagger{cfg};
+        const auto expected = std::string(argv[1]).find("mn10_as.onnx") != std::string::npos
+            ? 160000U : 32000U;
+        if (tagger.capabilities().audio.preferred_frame_count != expected) {
+            throw std::runtime_error{"Unexpected ONNX window length for model"};
+        }
         std::vector<float> signal(tagger.capabilities().audio.preferred_frame_count);
         for (std::size_t i = 0; i < signal.size(); ++i) {
             signal[i] = 0.12F * static_cast<float>(
