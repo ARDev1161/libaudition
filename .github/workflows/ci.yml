@@ -93,7 +93,8 @@ jobs:
       - name: Validate unified three-model AudioSet benchmark report
         run: python3 tests/test_compare_audio_taggers.py
       - name: Test YAMNet event-timeline analysis
-        run: "$RUNNER_TEMP/efficientat-real/bin/python" tests/test_analyze_yamnet_event_timeline.py
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" tests/test_analyze_yamnet_event_timeline.py
       - name: Validate real-event score diagnostic guardrails
         run: python3 tests/test_review_audio_taggers_report.py
       - name: Fetch pinned YAMNet ONNX demo model and labels
