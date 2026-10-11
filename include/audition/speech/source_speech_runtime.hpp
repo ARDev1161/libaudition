@@ -108,6 +108,7 @@ private:
     std::deque<SourceTranscriptEvent> events_{};
     std::unordered_map<std::uint64_t, std::uint64_t> generations_{};
     std::unordered_map<std::uint64_t, SourceSpeechStatus> statuses_{};
+    std::uint64_t next_generation_{1U};
     std::uint64_t next_segment_id_{1U};
 };
 
