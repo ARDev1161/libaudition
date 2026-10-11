@@ -321,3 +321,21 @@ dominant excerpts and very small evaluation sets in CI and stores
 next gating experiments are MN10 PyTorch-versus-C++ inference parity on
 **identical decoded WAV/mel inputs**, verifying labels inside each selected
 one-second excerpt, and increasing the licensed annotated corpus size.
+
+## MN10 saturation root-cause diagnostic
+
+The `efficientat-real-weights` CI now checks a genuine ESC-10 chainsaw
+excerpt using `tools/diagnose_efficientat_wav.py`. It computes upstream
+PyTorch-compatible mel features for the same 32 kHz PCM16 samples, runs
+both original PyTorch checkpoint and exported ONNX on this tensor, and
+compares the resulting class probabilities with the C++ WAV benchmark.
+
+The report `mn10-chainsaw-parity.json` records raw logit discrepancies,
+mel range, and PyTorch/ONNX/C++ Top-5 labels/scores. This isolates:
+- Torch vs ONNX divergence (export or inference mismatch)
+- C++ vs Python score divergence (waveform frontend or adapter mismatch)
+- All three agreeing but emitting 1.0 on speech (model/input mismatch,
+  or upstream model behavior; not automatically an ONNX/C++ defect)
+
+This diagnostic needs passing CI and human review before calling the
+saturation root cause resolved.
