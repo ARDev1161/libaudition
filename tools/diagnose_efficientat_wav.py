@@ -9,6 +9,7 @@ import argparse
 import csv
 from pathlib import Path
 import wave
+import subprocess
 
 import numpy as np
 import onnxruntime as ort
@@ -25,6 +26,8 @@ def main():
     p.add_argument("--model",choices=["mn10_as","dymn10_as"],required=True)
     p.add_argument("--onnx",type=Path,required=True)
     p.add_argument("--output",type=Path,required=True)
+    p.add_argument("--cpp-benchmark",type=Path)
+    p.add_argument("--cpp-labels",type=Path)
     a=p.parse_args()
     torch.set_num_threads(1)
     with wave.open(str(a.wav),"rb") as f:
@@ -69,6 +72,20 @@ def main():
         "mel_min":float(mel.min()),"mel_max":float(mel.max()),
         "torch_top5":top(reference),"onnx_top5":top(logits),
     }
+    if a.cpp_benchmark:
+        if not a.cpp_labels:
+            p.error("--cpp-labels is required with --cpp-benchmark")
+        result=subprocess.run([str(a.cpp_benchmark.resolve()),str(a.onnx.resolve()),
+                               str(a.cpp_labels.resolve()),str(a.wav.resolve())],
+                              capture_output=True,text=True,check=True)
+        lines=result.stdout.splitlines()
+        if len(lines)!=6:
+            raise ValueError(f"Invalid C++ benchmark output: {result.stdout}")
+        cpp=[line.rsplit(" ",1) for line in lines[1:]]
+        report["cpp_top5"]=[{"label":label,"probability":float(score)} for label,score in cpp]
+        for actual,expected in zip(report["cpp_top5"],report["onnx_top5"]):
+            if actual["label"]!=expected["label"] or abs(actual["probability"]-expected["probability"])>0.002:
+                raise SystemExit(f"FAIL: C++/Python WAV top5 parity: {actual} vs {expected}")
     a.output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(report,indent=2))
     if not np.isfinite(delta).all() or delta.max()>0.002:
