@@ -70,6 +70,8 @@ struct Stats {
     std::uint64_t completions{0};
     std::uint64_t min_end_sample{std::numeric_limits<std::uint64_t>::max()};
     double max_queue_wait_ms{0.0};
+    double total_inference_ms{0.0};
+    double total_queue_wait_ms{0.0};
     double max_inference_ms{0.0};
 };
 
@@ -78,7 +80,11 @@ void printStage(const Stats& info) {
               << ",\"completed\":" << info.completions
               << ",\"min_result_end_sample\":" << info.min_end_sample
               << ",\"max_queue_wait_ms\":" << info.max_queue_wait_ms
-              << ",\"max_inference_ms\":" << info.max_inference_ms << "}";
+              << ",\"max_inference_ms\":" << info.max_inference_ms
+              << ",\"mean_inference_ms\":" << (info.completions == 0U ? 0.0
+                  : info.total_inference_ms / static_cast<double>(info.completions))
+              << ",\"mean_queue_wait_ms\":" << (info.completions == 0U ? 0.0
+                  : info.total_queue_wait_ms / static_cast<double>(info.completions)) << "}";
 }
 
 void benchmark(unsigned sources, unsigned seconds,
@@ -160,18 +166,23 @@ void benchmark(unsigned sources, unsigned seconds,
         for (std::size_t stage = 0; stage < snapshot.stages.size(); ++stage) {
             const auto& status = snapshot.stages[stage].status;
             auto& stats = stage == 0U ? quick : refined;
-            if (!status.last_inference_ms || !status.last_queue_wait_ms ||
-                !std::isfinite(*status.last_inference_ms) ||
-                !std::isfinite(*status.last_queue_wait_ms)) {
+            if (!status.max_inference_ms || !status.max_queue_wait_ms ||
+                !status.mean_inference_ms || !status.mean_queue_wait_ms ||
+                !std::isfinite(*status.max_inference_ms) ||
+                !std::isfinite(*status.max_queue_wait_ms)) {
                 throw std::runtime_error{"Missing timing diagnostics"};
             }
             stats.drops += status.dropped_windows;
             stats.completions += status.completed_windows;
             stats.min_end_sample = std::min(stats.min_end_sample, *status.result_end_sample);
             stats.max_inference_ms = std::max(stats.max_inference_ms,
-                                               *status.last_inference_ms);
+                                               *status.max_inference_ms);
             stats.max_queue_wait_ms = std::max(stats.max_queue_wait_ms,
-                                                *status.last_queue_wait_ms);
+                                                *status.max_queue_wait_ms);
+            stats.total_inference_ms += *status.mean_inference_ms *
+                                        static_cast<double>(status.completed_windows);
+            stats.total_queue_wait_ms += *status.mean_queue_wait_ms *
+                                         static_cast<double>(status.completed_windows);
         }
     }
     // Model costs are intentionally injected and cause scheduler pressure when
