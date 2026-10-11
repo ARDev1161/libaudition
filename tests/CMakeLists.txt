@@ -79,6 +79,10 @@ if(TARGET audition::backend_yamnet)
     add_executable(yamnet_wav_benchmark yamnet_wav_benchmark.cpp)
     target_link_libraries(yamnet_wav_benchmark PRIVATE audition::backend_yamnet audition::core)
     libaudition_configure_target(yamnet_wav_benchmark)
+    add_executable(yamnet_progressive_smoke yamnet_progressive_smoke.cpp)
+    target_link_libraries(yamnet_progressive_smoke PRIVATE
+        audition::backend_yamnet audition::pipeline audition::core)
+    libaudition_configure_target(yamnet_progressive_smoke)
 endif()
 
 if(TARGET audition::backend_efficientat)
