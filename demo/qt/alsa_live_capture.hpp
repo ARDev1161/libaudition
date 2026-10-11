@@ -56,6 +56,7 @@ struct LiveCaptureSnapshot {
     std::vector<double> channel_peak_dbfs{};
     std::string classification_error{};
     std::string classifier_status{};
+    std::string speech_status{};
     std::string error{};
 };
 
