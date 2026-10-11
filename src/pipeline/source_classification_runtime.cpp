@@ -148,7 +148,8 @@ void SourceClassificationRuntime::run() noexcept {
             auto result = classifier_->classify(audio.view());
             std::lock_guard<std::mutex> lock{mutex_};
             if (const auto it = buffers_.find(job.source_id);
-                it != buffers_.end() && it->second.generation == job.generation) {
+                it != buffers_.end() && it->second.generation == job.generation &&
+                it->second.error.empty()) {
                 it->second.result = std::move(result);
                 it->second.last_result_at = std::chrono::steady_clock::now();
             }
@@ -160,6 +161,10 @@ void SourceClassificationRuntime::run() noexcept {
                 it->second.error = exception.what();
                 it->second.samples.clear();
                 it->second.result.reset();
+                pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
+                    [source=job.source_id, generation=job.generation](const Job& queued) {
+                        return queued.source_id == source && queued.generation == generation;
+                    }), pending_.end());
             }
             active_source_.reset();
         } catch (...) {
@@ -169,6 +174,10 @@ void SourceClassificationRuntime::run() noexcept {
                 it->second.error = "Unknown classification exception";
                 it->second.samples.clear();
                 it->second.result.reset();
+                pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
+                    [source=job.source_id, generation=job.generation](const Job& queued) {
+                        return queued.source_id == source && queued.generation == generation;
+                    }), pending_.end());
             }
             active_source_.reset();
         }
