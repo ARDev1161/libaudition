@@ -26,7 +26,12 @@ struct SourceClassificationStatus {
     SourceClassificationState state{SourceClassificationState::WaitingForAudio};
     std::size_t collected_samples{0};
     std::size_t required_samples{0};
+    // Replaced/rejected windows of this source only (not other tracks).
     std::uint64_t dropped_windows{0};
+    std::uint64_t completed_windows{0};
+    // Timings for the latest successful inference; absent until first result.
+    std::optional<double> last_inference_ms{};
+    std::optional<double> last_queue_wait_ms{};
     // Per-source PCM position: reflects audio ingested, not wall-clock inference time.
     std::uint64_t received_samples{0};
     // End-exclusive PCM position of result; null when result is absent/expired.
@@ -62,12 +67,17 @@ private:
         std::uint64_t last_seen_order{0};
         std::uint64_t received_samples{0};
         std::optional<std::uint64_t> result_end_sample{};
+        std::uint64_t dropped_windows{0};
+        std::uint64_t completed_windows{0};
+        std::optional<double> last_inference_ms{};
+        std::optional<double> last_queue_wait_ms{};
         std::chrono::steady_clock::time_point last_result_at{};
     };
     struct Job {
         std::uint64_t source_id{0};
         std::uint64_t generation{0};
         std::uint64_t end_sample{0};
+        std::chrono::steady_clock::time_point enqueued_at{};
         std::vector<float> samples{};
     };
     void run() noexcept;
@@ -83,7 +93,6 @@ private:
     std::deque<Job> pending_{};
     std::optional<std::uint64_t> active_source_{};
     std::uint64_t active_generation_{0};
-    std::uint64_t dropped_windows_{0};
     std::uint64_t next_generation_{1};
     std::uint64_t next_seen_order_{1};
     static constexpr auto kResultTtl = std::chrono::seconds{3};
