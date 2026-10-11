@@ -77,6 +77,8 @@ jobs:
         run: python3 tests/test_efficientat_wav_evaluator.py
       - name: Validate two-model WAV comparison
         run: python3 tests/test_compare_efficientat_wavs.py
+      - name: Validate MID-based AudioSet ontology mapping
+        run: python3 tests/test_audioset_vocabulary_audit.py
       - name: Generate deterministic PCM16 WAV and benchmark both models
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
