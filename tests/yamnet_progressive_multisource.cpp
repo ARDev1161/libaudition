@@ -37,13 +37,19 @@ struct Totals {
     std::uint64_t completed{0};
     double max_inference_ms{0.0};
     double max_queue_wait_ms{0.0};
+    double total_inference_ms{0.0};
+    double total_queue_wait_ms{0.0};
 };
 
 void print(const Totals& t) {
     std::cout << "{\"dropped_windows\":" << t.drops
               << ",\"completed_windows\":" << t.completed
               << ",\"max_inference_ms\":" << t.max_inference_ms
-              << ",\"max_queue_wait_ms\":" << t.max_queue_wait_ms << "}";
+              << ",\"max_queue_wait_ms\":" << t.max_queue_wait_ms
+              << ",\"mean_inference_ms\":" << (t.completed == 0U ? 0.0
+                  : t.total_inference_ms / static_cast<double>(t.completed))
+              << ",\"mean_queue_wait_ms\":" << (t.completed == 0U ? 0.0
+                  : t.total_queue_wait_ms / static_cast<double>(t.completed)) << "}";
 }
 
 void run(const std::string& model, const std::string& labels,
@@ -125,18 +131,23 @@ void run(const std::string& model, const std::string& labels,
         const auto st = classifier.status(source);
         for (std::size_t index = 0; index < 2U; ++index) {
             const auto& state = st.stages[index].status;
-            if (!state.last_inference_ms || !state.last_queue_wait_ms ||
-                !std::isfinite(*state.last_inference_ms) ||
-                !std::isfinite(*state.last_queue_wait_ms)) {
+            if (!state.max_inference_ms || !state.max_queue_wait_ms ||
+                !state.mean_inference_ms || !state.mean_queue_wait_ms ||
+                !std::isfinite(*state.max_inference_ms) ||
+                !std::isfinite(*state.max_queue_wait_ms)) {
                 throw std::runtime_error{"Invalid YAMNet runtime timing metrics"};
             }
             auto& totals = index == 0U ? q : r;
             totals.drops += state.dropped_windows;
             totals.completed += state.completed_windows;
             totals.max_inference_ms = std::max(totals.max_inference_ms,
-                                               *state.last_inference_ms);
+                                               *state.max_inference_ms);
             totals.max_queue_wait_ms = std::max(totals.max_queue_wait_ms,
-                                                *state.last_queue_wait_ms);
+                                                *state.max_queue_wait_ms);
+            totals.total_inference_ms += *state.mean_inference_ms *
+                                         static_cast<double>(state.completed_windows);
+            totals.total_queue_wait_ms += *state.mean_queue_wait_ms *
+                                          static_cast<double>(state.completed_windows);
         }
     }
     const auto full_wall_ms = std::chrono::duration<double, std::milli>(
