@@ -63,7 +63,7 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
         runtime_ = std::make_unique<audition::SourceClassificationRuntime>(
             std::move(classifier), options.sample_rate_hz,
             static_cast<std::size_t>(options.sample_rate_hz) *
-                (options.yamnet_model ? 1U : 2U));
+                ((options.yamnet_model || options.efficientat_model) ? 1U : 2U));
     } catch (const std::exception& exception) {
         initialization_error_ = exception.what();
     }
