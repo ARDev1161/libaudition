@@ -632,6 +632,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-acoustic-live/demo/qt/libaudition_qt_demo --self-test
+      - name: ODAS source retirement and ALSA reset fixture
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-acoustic-live/demo/qt/libaudition_qt_demo --model-self-test=source-track-lifecycle
       - name: Source-tagging invalid-model error handling
         env:
           QT_QPA_PLATFORM: offscreen
