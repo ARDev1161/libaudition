@@ -115,3 +115,19 @@ TEST(PerSourceSpeechRuntime, PreservesPreRollAndWaitsForPostRoll) {
     }
     EXPECT_TRUE(received);
 }
+
+TEST(PerSourceSpeechRuntime, SilencePaddingDoesNotSatisfySpeechMinimum) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions cfg{};
+    cfg.min_speech_samples = 4;
+    cfg.pre_roll_samples = 20;
+    cfg.post_roll_samples = 20;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),cfg};
+    const std::vector<float> silence(20,0.0F), tiny_voice(1,0.5F);
+    runtime.push(41U,chunk(silence));
+    runtime.push(41U,chunk(tiny_voice));
+    runtime.push(41U,chunk(silence));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    EXPECT_TRUE(runtime.takeResults().empty());
+    EXPECT_EQ(runtime.statistics().completed_segments,0U);
+}
