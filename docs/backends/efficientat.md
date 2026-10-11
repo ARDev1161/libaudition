@@ -101,3 +101,22 @@ input dimension**; supply a one-second waveform at 32 kHz (or use
 should not be assumed to work with these exports.
 
 Reference CI: https://github.com/ARDev1161/libaudition/actions/runs/38097431465
+
+## Repeatable WAV latency benchmark
+
+Build the optional backend with tests enabled. The WAV benchmark accepts mono,
+32 kHz, 16-bit PCM RIFF/WAVE of up to 20 seconds and classifies its first
+one-second window. It performs one warmup and 20 timed inferences, printing
+median/p95 inference time, min/max, real-time factor (RTF), and Top-5 scores.
+
+```bash
+cmake --build build-efficientat --target efficientat_wav_benchmark
+./build-efficientat/tests/efficientat_wav_benchmark \
+    /path/to/mn10_as.onnx /path/to/mn10_as_labels.txt /path/to/32k_mono.wav
+```
+
+The CI benchmark uses **a generated 440 Hz WAV** for deterministic regression
+and compares MN10 versus DyMN10 on the same runner. This is a performance
+smoke test, not a real-world accuracy benchmark; never extrapolate its CPU
+times to RK3588. A representative, licensed real-event WAV corpus, YAMNet
+comparison and ARM/RK3588 measurements remain to be done.
