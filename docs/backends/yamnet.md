@@ -209,3 +209,60 @@ To use a different bounded corpus size, run
 `tools/prepare_esc10_evaluation.py --clips-per-category N` where
 `1 <= N <= 40`, then use its manifest with
 `tools/evaluate_yamnet_esc10.py`.
+
+## Progressive per-source classification (~1 s, then 5 s)
+
+`ProgressiveSourceClassificationRuntime` (in
+`<audition/classify/progressive_source_classification_runtime.hpp>`) composes
+two or more independent classifiers. Each stage accepts **any**
+`IAudioClassifier`, with its own `window_samples` and `hop_samples`.
+The order in the configuration defines result priority. As soon as the
+short-window result is available, `status(source_id).result` returns it;
+after the higher-priority 5-second stage completes, its prediction is
+preferred. `status(source_id).stages` still exposes **every** model result
+and its error separately; no scores from different windows are fabricated
+or fused.
+
+The Qt live demo enables this automatically for **dynamic-input YAMNet**:
+
+| Stage | Audio window | Hop | When available |
+| --- | --- | --- | --- |
+| `quick` | Model-preferred 15,600 samples (~0.975 s) | Half window (~0.488 s) | First ~1 s |
+| `refined` | 80,000 samples (5 s) | 16,000 samples (1 s) | First 5 s |
+
+Both use separate waveform ONNX sessions. The refinement stage adds CPU
+and model memory cost. With a **fixed-length** YAMNet ONNX graph that cannot
+accept 80,000 samples, Qt keeps the original short-only behavior. Optional
+`LiveTaggingOptions` window and hop overrides adjust its scheduling;
+an incompatible explicit fixed ONNX window is rejected instead of silently
+passing the wrong tensor shape.
+
+Example using an entirely different pair of classifiers (no dependency
+on ONNX or YAMNet in the progressive runtime):
+
+```cpp
+#include <audition/classify/progressive_source_classification_runtime.hpp>
+
+std::vector<audition::ProgressiveClassificationStage> stages;
+stages.push_back({"quick", std::move(fast_classifier), 16000U, 8000U});
+stages.push_back({"context", std::move(long_classifier), 80000U, 16000U});
+audition::ProgressiveSourceClassificationRuntime progressive{
+    16000U, std::move(stages), 16U};
+progressive.push(source_id, pcm16k.data(), pcm16k.size());
+const auto state = progressive.status(source_id);
+if (state.result && state.selected_stage) {
+    const auto& stage = state.stages[*state.selected_stage];
+    // Stage name and scores are available separately.
+}
+progressive.forget(source_id); // ODAS retires or reuses its track ID.
+```
+
+For arbitrary window lengths or a single model, continue using
+`SourceClassificationRuntime` directly. The progressive runtime does not
+change its API. Stages have independent bounded queues and worker threads;
+a failing refinement cannot disable the short-window classifier. A
+five-second window is a **context refinement, not guaranteed higher
+accuracy**, particularly immediately after an acoustic event changes.
+The highest-priority valid result is selected while its existing runtime
+TTL remains active. Applications can instead choose a particular stage
+explicitly using `state.stages`.
