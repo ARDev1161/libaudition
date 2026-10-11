@@ -97,6 +97,20 @@ adapters. Disabled adapters remain visible with their required CMake option.
 
 See [`docs/qt_demo.md`](docs/qt_demo.md).
 
+## Per-source speech recognition (optional)
+
+The streaming `SourceSpeechRuntime` processes independent ODAS audio tracks
+with per-source VAD sessions, bounded pre/post-roll utterance segmentation,
+and background offline ASR. The `Speech / transcript` column in the Qt
+**Acoustic scene** can optionally enable Silero VAD + SenseVoice when
+`LIBAUDITION_WITH_ODAS=ON` and `LIBAUDITION_WITH_SHERPA=ON`.
+Model ONNX files and tokens must be provided separately. The library
+continues to support custom `IVoiceActivityDetector` and `IAsrEngine`
+implementations with no Qt, ROS 2, or Sherpa dependencies.
+
+See [per-source VAD/ASR](docs/per_source_speech.md) for contracts, model
+configuration, cancellation semantics and limitations.
+
 ## Consume from CMake
 
 ```cmake
