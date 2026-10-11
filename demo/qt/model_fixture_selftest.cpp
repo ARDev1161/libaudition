@@ -1,5 +1,6 @@
 #include "model_fixture_selftest.hpp"
 #include "live_audio_tagging_worker.hpp"
+#include "source_track_lifecycle.hpp"
 #include "wav_io.hpp"
 
 #include <audition/audio/audio_buffer.hpp>
@@ -764,6 +765,32 @@ QString testSpeakerReal(QMainWindow& window, const QTemporaryDir& dir) {
 #endif
 }
 
+QString testSourceTrackLifecycle() {
+    demo::SourceTrackLifecycle lifecycle;
+    std::vector<std::uint64_t> retired;
+    const auto forget = [&](std::uint64_t id) { retired.push_back(id); };
+    lifecycle.update({7U, 9U}, forget);
+    if (!retired.empty()) {
+        throw std::runtime_error{"Fresh ODAS tracks were retired"};
+    }
+    lifecycle.update({9U, 12U}, forget);
+    if (retired != std::vector<std::uint64_t>{7U}) {
+        throw std::runtime_error{"Missing ODAS source not retired"};
+    }
+    // An ALSA xrun must invalidate every remaining classifier generation.
+    lifecycle.clear(forget);
+    if (retired != (std::vector<std::uint64_t>{7U, 9U, 12U})) {
+        throw std::runtime_error{"ALSA reset left stale source generations"};
+    }
+    retired.clear();
+    lifecycle.update({7U}, forget);
+    lifecycle.update({}, forget);
+    if (retired != std::vector<std::uint64_t>{7U}) {
+        throw std::runtime_error{"Reused ODAS source ID retained stale classification"};
+    }
+    return "qt-model-self-test=ok backend=source-track-lifecycle";
+}
+
 QString testLiveSourceTaggingError() {
 #if LIBAUDITION_DEMO_HAS_SHERPA
     demo::LiveTaggingOptions options{};
@@ -817,6 +844,8 @@ bool runQtModelFixtureSelfTest(
             result = testOdasErrors(window);
         } else if (which == "alsa-errors") {
             result = testAlsaCaptureErrors(window);
+        } else if (which == "source-track-lifecycle") {
+            result = testSourceTrackLifecycle();
         } else if (which == "live-source-tagging-errors") {
             result = testLiveSourceTaggingError();
         } else if (which == "samplerate") {
