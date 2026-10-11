@@ -339,3 +339,7 @@ mel range, and PyTorch/ONNX/C++ Top-5 labels/scores. This isolates:
 
 This diagnostic needs passing CI and human review before calling the
 saturation root cause resolved.
+
+## Window-duration diagnostic
+
+The genuine upstream PyTorch MN10 model is now evaluated on the **same original five-second ESC-10 chainsaw recording** with prefixes of 1, 2, 3, and 5 seconds via `tools/diagnose_efficientat_duration.py`. For each window the CI artifact `mn10-duration.json` records mel dimensions, logit range and the Top-10 labels/logits. This is explicitly distinct from the fixed-100-frame ONNX export and tests whether longer acoustic context changes model saturation. It does not constitute a verified real-world accuracy metric.
