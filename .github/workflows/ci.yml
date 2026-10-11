@@ -128,6 +128,13 @@ jobs:
             --pcm16 "$RUNNER_TEMP/yamnet-parity-5s.raw" \
             --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe" \
             --output "$RUNNER_TEMP/yamnet-onnx-cpp-5s-parity.json"
+      - name: Reject malformed YAMNet AudioSet label maps
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_label_rejection.py \
+            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --pcm16 "$RUNNER_TEMP/yamnet-parity.raw" \
+            --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe"
       - name: Verify official YAMNet silence noise and sine wave behavior
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_behavior.py \
