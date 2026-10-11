@@ -2,6 +2,7 @@
 #include <audition/audio/audio_buffer.hpp>
 
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -18,7 +19,7 @@ int main(int argc, char** argv) {
         cfg.labels = argv[2];
         cfg.top_k = 5;
         audition::EfficientAtAudioTagger tagger{cfg};
-        const auto expected = std::string(argv[1]).find("mn10_as.onnx") != std::string::npos
+        const auto expected = std::filesystem::path{argv[1]}.filename() == "mn10_as.onnx"
             ? 160000U : 32000U;
         if (tagger.capabilities().audio.preferred_frame_count != expected) {
             throw std::runtime_error{"Unexpected ONNX window length for model"};
