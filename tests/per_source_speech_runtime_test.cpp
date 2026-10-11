@@ -1,6 +1,7 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <gtest/gtest.h>
 #include <chrono>
+#include <atomic>
 #include <memory>
 #include <iterator>
 #include <limits>
@@ -279,4 +280,92 @@ TEST(PerSourceSpeechRuntime, ContinuousSegmentTimestampAdvancesWithAudioClock) {
     EXPECT_EQ(received[0].transcript.text, "1000000000:5");
     EXPECT_EQ(received[1].transcript.text, "1000312500:5");
     EXPECT_EQ(received[2].transcript.text, "1000625000:2");
+}
+
+namespace {
+class SlowAsr final : public IAsrEngine {
+public:
+    std::atomic<bool> entered{false};
+    std::atomic<bool> release{false};
+    std::atomic<int> calls{0};
+    BackendInfo backendInfo() const override {return {"gated-asr", "1"};}
+    AsrCapabilities capabilities() const override {return {};}
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        const int call = ++calls;
+        if (call == 1) {
+            entered.store(true);
+            while (!release.load())
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        Transcript result{};
+        result.segment_id = segment.segment_id;
+        result.text = std::to_string(call);
+        return result;
+    }
+};
+class FailFirstSourceAsr final : public IAsrEngine {
+public:
+    BackendInfo backendInfo() const override {return {"failing-asr", "1"};}
+    AsrCapabilities capabilities() const override {return {};}
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        if (segment.track_id->value() == 100U)
+            throw std::runtime_error{"Source 100 ASR failed"};
+        Transcript result{};
+        result.segment_id = segment.segment_id;
+        result.text = "source-" + std::to_string(segment.track_id->value());
+        return result;
+    }
+};
+}
+
+TEST(PerSourceSpeechRuntime, RetiredInFlightAsrCannotPublishUnderReusedTrackId) {
+    ThresholdVad vad;
+    auto gated = std::make_shared<SlowAsr>();
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, gated, options};
+    const std::vector<float> speech(4U, 0.5F), silence(4U, 0.0F);
+    runtime.push(60U, chunk(speech));
+    runtime.push(60U, chunk(silence));
+    for (int i = 0; i < 1000 && !gated->entered.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!gated->entered.load()) {
+        gated->release.store(true);
+        FAIL() << "Initial ASR did not start";
+        return;
+    }
+    runtime.forget(60U);
+    runtime.push(60U, chunk(speech));
+    runtime.push(60U, chunk(silence));
+    gated->release.store(true);
+    const auto result = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(result.size(), 1U);
+    EXPECT_EQ(result[0].track_id, 60U);
+    EXPECT_EQ(result[0].transcript.text, "2");
+    EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+    EXPECT_TRUE(runtime.takeResults().empty());
+}
+
+TEST(PerSourceSpeechRuntime, AsrExceptionDoesNotStopOtherSources) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<FailFirstSourceAsr>(), options};
+    const std::vector<float> voice(4U, 0.5F), silence(4U, 0.0F);
+    for (const std::uint64_t id : {100U, 101U}) {
+        runtime.push(id, chunk(voice));
+        runtime.push(id, chunk(silence));
+    }
+    const auto result = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(result.size(), 1U);
+    EXPECT_EQ(result[0].track_id, 101U);
+    EXPECT_EQ(result[0].transcript.text, "source-101");
+    EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+    EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
+    ASSERT_TRUE(runtime.statistics().last_error.has_value());
+    EXPECT_EQ(*runtime.statistics().last_error, "Source 100 ASR failed");
 }
