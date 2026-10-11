@@ -10,6 +10,7 @@ import csv
 from pathlib import Path
 import wave
 import subprocess
+import tempfile
 
 import numpy as np
 import onnxruntime as ort
@@ -28,6 +29,7 @@ def main():
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--cpp-benchmark",type=Path)
     p.add_argument("--cpp-labels",type=Path)
+    p.add_argument("--cpp-mel-dump",type=Path)
     a=p.parse_args()
     torch.set_num_threads(1)
     with wave.open(str(a.wav),"rb") as f:
@@ -54,6 +56,22 @@ def main():
                get_mobilenet(width_mult=NAME_TO_WIDTH(a.model),pretrained_name=a.model))
         model.eval()
         reference=model(mel)[0].detach().numpy()
+    if a.cpp_mel_dump:
+        with tempfile.TemporaryDirectory() as folder:
+            output=Path(folder)/"cpp-mel.f32"
+            canonical=Path(folder)/"input.wav"
+            with wave.open(str(canonical),"wb") as dst:
+                dst.setnchannels(1)
+                dst.setsampwidth(2)
+                dst.setframerate(32000)
+                dst.writeframes(pcm.tobytes())
+            subprocess.run([str(a.cpp_mel_dump.resolve()),str(output),str(canonical)],
+                           capture_output=True,text=True,check=True)
+            cpp_mel=np.fromfile(output,dtype="<f4").reshape(1,1,128,100)
+            mel_diff=np.abs(cpp_mel-mel.numpy())
+            print("C++/Torch mel max_abs:",float(mel_diff.max()))
+            if not np.isfinite(mel_diff).all() or mel_diff.max()>0.003:
+                raise SystemExit(f"FAIL: C++ vs Torch real-WAV mel {mel_diff.max():.6f}")
     session=ort.InferenceSession(str(a.onnx),providers=["CPUExecutionProvider"])
     logits=session.run(None,{session.get_inputs()[0].name:mel.numpy()})[0]
     delta=np.abs(logits-reference)
