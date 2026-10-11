@@ -114,7 +114,7 @@ jobs:
               f.setnchannels(1)
               f.setsampwidth(2)
               f.setframerate(32000)
-              f.writeframes(b"".join(struct.pack("<h", int(0.2*32767*math.sin(2*math.pi*440*i/32000))) for i in range(32000)))
+              f.writeframes(b"".join(struct.pack("<h", int(0.2*32767*math.sin(2*math.pi*440*i/32000))) for i in range(160000)))
           PY
           ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
           ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
