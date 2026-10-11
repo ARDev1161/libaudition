@@ -486,6 +486,33 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.classifier_status = classifier && !resultFrame.tracks.empty()
                 ? classifier->status(resultFrame.tracks.front().track_id.value())
                 : (classifier ? "Waiting for ODAS tracks" : "Disabled");
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            latest_.speech_status = "Disabled";
+            if (speech_runtime) {
+                const auto stats = speech_runtime->statistics();
+                latest_.speech_status = "ASR completed=" +
+                    std::to_string(stats.completed_segments) +
+                    " queued=" + std::to_string(stats.pending_segments) +
+                    " dropped=" + std::to_string(stats.dropped_segments);
+                if (!resultFrame.tracks.empty()) {
+                    const auto id = resultFrame.tracks.front().track_id.value();
+                    const auto source = speech_runtime->trackStatus(id);
+                    if (source.error) {
+                        latest_.speech_status += " | Track " + std::to_string(id) +
+                            " VAD error: " + *source.error;
+                    } else if (source.exists) {
+                        latest_.speech_status += source.speech_active
+                            ? " | VAD: speech" : " | VAD: silence";
+                        latest_.speech_status += " buffered=" +
+                            std::to_string(source.buffered_samples);
+                    }
+                }
+                if (stats.last_error)
+                    latest_.speech_status += " | Error: " + *stats.last_error;
+            }
+#else
+            latest_.speech_status = "Requires Sherpa";
+#endif
             ++latest_.generation;
         }
     } catch (const std::exception& error) {
