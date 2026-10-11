@@ -21,6 +21,8 @@ struct PerSourceSpeechOptions {
     std::size_t max_sources{16};
     std::size_t max_pending_segments{16};
     std::size_t min_speech_samples{1600};
+    std::size_t pre_roll_samples{3200}; // 200ms @ 16kHz
+    std::size_t post_roll_samples{4800}; // 300ms @ 16kHz
     std::size_t max_segment_samples{160000};
 };
 
@@ -61,6 +63,8 @@ private:
     struct Track {
         std::unique_ptr<IVadSession> vad{};
         std::vector<float> speech{};
+        std::deque<float> pre_roll{};
+        std::size_t trailing_silence_samples{0U};
         Timestamp start_time{};
         std::uint64_t generation{0};
     };
