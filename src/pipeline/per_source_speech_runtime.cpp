@@ -70,8 +70,18 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
             return;
         }
         Track track{};
-        track.vad = vad_.createSession();
-        if (!track.vad) throw std::runtime_error{"VAD returned null session"};
+        try {
+            track.vad = vad_.createSession();
+            if (!track.vad) track.error = "VAD returned null session";
+        } catch (const std::exception& e) {
+            track.error = e.what();
+        } catch (...) {
+            track.error = "Unknown VAD session initialization failure";
+        }
+        if (track.error) {
+            error_ = "Track " + std::to_string(id) + ": " + *track.error;
+            ++dropped_;
+        }
         track.generation = next_generation_++;
         it = tracks_.emplace(id, std::move(track)).first;
     }
