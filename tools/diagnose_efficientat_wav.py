@@ -83,9 +83,14 @@ def main():
             raise ValueError(f"Invalid C++ benchmark output: {result.stdout}")
         cpp=[line.rsplit(" ",1) for line in lines[1:]]
         report["cpp_top5"]=[{"label":label,"probability":float(score)} for label,score in cpp]
-        for actual,expected in zip(report["cpp_top5"],report["onnx_top5"]):
-            if actual["label"]!=expected["label"] or abs(actual["probability"]-expected["probability"])>0.002:
-                raise SystemExit(f"FAIL: C++/Python WAV top5 parity: {actual} vs {expected}")
+        # Saturated sigmoid scores create ties, so compare probabilities by
+        # class name rather than requiring identical top-five ordering.
+        score_map={label:float(1/(1+np.exp(-np.clip(logit,-80,80))))
+                   for label,logit in zip(labels,logits.reshape(-1))}
+        for actual in report["cpp_top5"]:
+            expected=score_map[actual["label"]]
+            if abs(actual["probability"]-expected)>0.002:
+                raise SystemExit(f"FAIL: C++/Python WAV probability parity: {actual} vs {expected}")
     a.output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(report,indent=2))
     if not np.isfinite(delta).all() or delta.max()>0.002:
