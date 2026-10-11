@@ -179,3 +179,23 @@ The comparison rejects ground-truth labels missing from either model's
 indices: its 521-class vocabulary and 16 kHz waveform contract require an
 explicit label-name/MID mapping and input-rate adapter before comparable
 multi-model metrics are meaningful.
+
+## YAMNet ontology compatibility audit
+
+YAMNet's 521-class vocabulary differs from EfficientAT's 527-class AudioSet
+vocabulary. Use stable **AudioSet MID identifiers** (not numerical positions,
+nor display names) to reconcile them:
+
+```bash
+python3 tools/audit_audioset_vocabularies.py \
+  --efficientat-csv /path/to/EfficientAT/metadata/class_labels_indices.csv \
+  --yamnet-csv /path/to/yamnet_class_map.csv \
+  --output /tmp/audioset_vocab_audit.json
+```
+
+The audit records shared MIDs, model-specific labels and shared MIDs with
+different display names. The original complete CSV maps are necessary;
+an exported EfficientAT `*_labels.txt` loses MIDs and is insufficient for
+this check. Auditing the ontologies does **not** constitute a three-model
+quality comparison: the same precisely annotated clips, preprocessing,
+score thresholds and unmapped-label treatment must still be established.
