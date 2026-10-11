@@ -136,3 +136,26 @@ The real-weights CI also verifies **C++ vs independently executed ONNX**
 on 80,000 samples (five seconds) in addition to the original 15,600-sample
 single-patch fixture. This checks temporal patch aggregation as well as
 the reported class ordering.
+
+## Full-event timeline validation
+
+The YAMNet adapter averages all native patch scores for a given waveform.
+This is correct for **clip-level aggregation**, but a short transient
+embedded in silence can have a low five-second mean even when a particular
+patch classifies it correctly. Do not apply a threshold to the five-second
+mean and infer that the event never occurred.
+
+The `tools/analyze_yamnet_event_timeline.py` CI diagnostic runs the full
+five-second ESC-10 examples through the waveform ONNX model, preserving
+scores for each native YAMNet patch (approximately 0.96 seconds of context,
+0.48-second stride). Its artifact `yamnet-event-timeline.json` includes
+per-frame Top-3 predictions, ground-truth class mean and maximum, time of
+peak, and the Top-5 hit under **mean versus temporal maximum**. The latter
+is an exploratory event-presence diagnostic and is not calibrated; it can
+increase false positives if used as a detector without threshold validation.
+
+For live ODAS separated audio, the Qt adapter uses a short patch-length
+window with 50% overlap. After each hop, an inference result can be
+published without waiting for an entire 5-second recording. This is
+preferable for *when did an event happen?*; longer clip-level aggregates
+are appropriate for *what happened during the recording?*.
