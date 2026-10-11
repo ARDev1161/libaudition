@@ -72,7 +72,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         Track track{};
         track.vad = vad_.createSession();
         if (!track.vad) throw std::runtime_error{"VAD returned null session"};
-        track.generation = ++generations_[id];
+        track.generation = next_generation_++;
         it = tracks_.emplace(id, std::move(track)).first;
     }
     auto& track = it->second;
@@ -127,7 +127,6 @@ void PerSourceSpeechRuntime::forget(std::uint64_t id) {
         tracks_.erase(it);
     }
     // Retiring a track cancels all pending and in-flight ASR from its generation.
-    ++generations_[id];
     const auto before = jobs_.size();
     jobs_.erase(std::remove_if(jobs_.begin(), jobs_.end(),
                               [id](const Job& job){return job.track_id == id;}),
@@ -140,8 +139,6 @@ void PerSourceSpeechRuntime::forget(std::uint64_t id) {
 
 void PerSourceSpeechRuntime::reset() {
     std::lock_guard<std::mutex> guard{mutex_};
-    for (const auto& track : tracks_) ++generations_[track.first];
-    for (const auto& job : jobs_) ++generations_[job.track_id];
     dropped_ += jobs_.size();
     jobs_.clear();
     results_.clear();
@@ -173,7 +170,9 @@ void PerSourceSpeechRuntime::workerLoop() {
         try {
             auto transcript = asr_->transcribe(job.segment);
             std::lock_guard<std::mutex> guard{mutex_};
-            if (generations_[job.track_id] == job.generation) {
+            const auto current = tracks_.find(job.track_id);
+            if (current != tracks_.end() &&
+                current->second.generation == job.generation) {
                 results_.push_back({job.track_id, job.generation, std::move(transcript)});
                 // Prevent unbounded accumulation when application does not poll.
                 if (results_.size() > options_.max_pending_segments) {
