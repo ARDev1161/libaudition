@@ -73,6 +73,9 @@ endif()
 
 
 if(TARGET audition::backend_efficientat)
+    add_executable(efficientat_wav_benchmark efficientat_wav_benchmark.cpp)
+    target_link_libraries(efficientat_wav_benchmark PRIVATE audition::backend_efficientat audition::core)
+    libaudition_configure_target(efficientat_wav_benchmark)
     add_executable(efficientat_real_model_smoke efficientat_real_model_smoke.cpp)
     target_link_libraries(efficientat_real_model_smoke PRIVATE audition::backend_efficientat audition::core)
     libaudition_configure_target(efficientat_real_model_smoke)
