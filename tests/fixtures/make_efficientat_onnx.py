@@ -14,9 +14,9 @@ from onnx import TensorProto, helper, numpy_helper
 out = Path(sys.argv[1])
 out.mkdir(parents=True, exist_ok=True)
 logits = np.zeros((1, 527), dtype=np.float32)
-logits[0, 0] = 2.0
-logits[0, 1] = -2.0
-logits[0, 526] = 4.0
+logits[0, 0] = 40.0
+logits[0, 1] = 60.0
+logits[0, 526] = 80.0
 const = numpy_helper.from_array(logits, name="constant_logits")
 node = helper.make_node("Constant", [], ["logits"], value=const)
 graph = helper.make_graph(
