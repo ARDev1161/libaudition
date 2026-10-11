@@ -25,6 +25,8 @@ struct AcousticSceneTrack {
     double activity{0.0};
     std::string classification_label{};
     double classification_probability{-1.0};
+    bool speech_active{false};
+    std::string transcript{};
 };
 
 struct AcousticScenePotential {
