@@ -778,13 +778,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 strongest = std::max(strongest, proposal.score);
             }
             diagnostics->setText(
-                QString("Classifier: %4\nRaw ALSA input levels: %1\n"
+                QString("Classifier: %4\nSpeech: %5\nRaw ALSA input levels: %1\n"
                         "ODAS SSL direction proposals: %2 (strongest raw score: %3) · "
                         "outlined diamonds are SSL proposals, filled circles are SST tracks")
                     .arg(levels.join("  |  "))
                     .arg(static_cast<qulonglong>(snapshot.potentials.size()))
                     .arg(strongest, 0, 'f', 3)
-                    .arg(QString::fromStdString(snapshot.classifier_status)));
+                    .arg(QString::fromStdString(snapshot.classifier_status))
+                    .arg(QString::fromStdString(snapshot.speech_status)));
         }
         if (!snapshot.error.empty()) {
             stopCapture();
