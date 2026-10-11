@@ -41,9 +41,11 @@ with tempfile.TemporaryDirectory() as folder:
           "--output",str(root/"result.json")]
     subprocess.run(args,check=True,capture_output=True,text=True)
     report=json.loads((root/"result.json").read_text())
+    assert report["window_seconds"]["yamnet"]==1
+    assert report["window_seconds"]["yamnet_5s"]==5
     assert report["common_mids"]==521
     assert len(report["excluded"])==1
-    for name in ("mn10_as","dymn10_as","yamnet"):
+    for name in ("mn10_as","dymn10_as","yamnet","yamnet_5s"):
         model=report["models"][name]
         assert model["clips"]==1
         assert model["hit5"]==1
