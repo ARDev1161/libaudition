@@ -36,7 +36,7 @@ PerSourceSpeechRuntime::~PerSourceSpeechRuntime() {
 }
 
 void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
-    if (track.speech.size() >= options_.min_speech_samples) {
+    if (track.voiced_samples >= options_.min_speech_samples) {
         if (jobs_.size() >= options_.max_pending_segments) {
             ++dropped_;
         } else {
@@ -51,6 +51,7 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
         }
     }
     track.speech.clear();
+    track.voiced_samples = 0U;
 }
 
 void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
@@ -100,6 +101,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         const auto available = options_.max_segment_samples - track.speech.size();
         const auto count = std::min(available, audio.sampleCount());
         track.speech.insert(track.speech.end(), audio.data(), audio.data() + count);
+        if (active) track.voiced_samples += count;
         if (!active) track.trailing_silence_samples += count;
         if (count < audio.sampleCount()) ++dropped_;
         if (track.speech.size() == options_.max_segment_samples ||
