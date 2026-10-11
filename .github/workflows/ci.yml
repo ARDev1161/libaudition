@@ -63,14 +63,16 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/fschmid56/EfficientAT.git "$RUNNER_TEMP/EfficientAT"
           git -C "$RUNNER_TEMP/EfficientAT" rev-parse HEAD | tee "$RUNNER_TEMP/efficientat-upstream-sha.txt"
-      - name: Export genuine mn10_as weights and compare ONNX logits
+      - name: Export genuine mn10_as and dymn10_as weights and compare ONNX logits
         run: |
           cd "$RUNNER_TEMP/EfficientAT"
           export PYTHONPATH="$RUNNER_TEMP/EfficientAT"
           "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model mn10_as --output "$RUNNER_TEMP/eat-real"
+          "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model dymn10_as --output "$RUNNER_TEMP/eat-real"
       - name: C++ classifier smoke against genuine weights
         run: |
           ./build-efficientat-real/tests/efficientat_real_model_smoke "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt"
+          ./build-efficientat-real/tests/efficientat_real_model_smoke "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt"
 
   efficientat-backend:
     runs-on: ubuntu-latest
