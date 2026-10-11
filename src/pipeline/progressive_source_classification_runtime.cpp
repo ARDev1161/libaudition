@@ -1,5 +1,7 @@
 #include <audition/classify/progressive_source_classification_runtime.hpp>
 
+#include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
@@ -36,6 +38,13 @@ ProgressiveSourceClassificationRuntime::ProgressiveSourceClassificationRuntime(
     for (auto& stage : stages) {
         Stage owned{};
         owned.name = std::move(stage.name);
+        const std::size_t hop = stage.hop_samples == 0U
+            ? stage.window_samples : stage.hop_samples;
+        owned.max_result_lag_samples = stage.max_result_lag_samples != 0U
+            ? static_cast<std::uint64_t>(stage.max_result_lag_samples)
+            : static_cast<std::uint64_t>(
+                  hop > std::numeric_limits<std::size_t>::max() / 2U
+                      ? hop : 2U * hop);
         owned.runtime = std::make_unique<SourceClassificationRuntime>(
             std::move(stage.classifier), sample_rate_hz, stage.window_samples,
             max_sources, stage.hop_samples);
@@ -56,13 +65,27 @@ ProgressiveClassificationStatus ProgressiveSourceClassificationRuntime::status(
     std::uint64_t source_id) const {
     ProgressiveClassificationStatus result{};
     result.stages.reserve(stages_.size());
-    for (std::size_t i = 0U; i < stages_.size(); ++i) {
-        auto current = stages_[i].runtime->status(source_id);
-        if (current.result.has_value()) {
+    std::uint64_t newest_audio_end = 0U;
+    for (const auto& stage : stages_) {
+        auto current = stage.runtime->status(source_id);
+        newest_audio_end = std::max(newest_audio_end, current.received_samples);
+        result.stages.push_back({stage.name, std::move(current)});
+    }
+    // A stalled five-second refiner must not conceal fresher ~1s events.
+    // Evaluate in ascending priority; only completed predictions from
+    // sufficiently recent audio can replace a lower-priority stage.
+    for (std::size_t i = 0U; i < result.stages.size(); ++i) {
+        const auto& current = result.stages[i].status;
+        if (!current.result.has_value() || !current.result_end_sample.has_value()) {
+            continue;
+        }
+        const auto prediction_end = *current.result_end_sample;
+        const auto lag = newest_audio_end >= prediction_end
+            ? newest_audio_end - prediction_end : 0U;
+        if (lag <= stages_[i].max_result_lag_samples) {
             result.selected_stage = i;
             result.result = current.result;
         }
-        result.stages.push_back({stages_[i].name, std::move(current)});
     }
     return result;
 }
