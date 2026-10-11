@@ -156,3 +156,26 @@ GitHub Actions #547 (CPU runner, generated 440 Hz WAV, 1 s clip) measured:
 
 These numbers are for one CI runner, **not RK3588** and not a real
 acoustic-event detection quality assessment.
+
+## Paired MN10 / DyMN10 quality comparison
+
+`tools/compare_efficientat_wavs.py` executes the same annotated manifest
+for both exported models. It writes a JSON artifact containing per-clip
+Top-5 scores, hit@5, macro recall@5 and mean median inference latency.
+
+```bash
+python3 tools/compare_efficientat_wavs.py \
+  --manifest /path/to/manifest.csv \
+  --benchmark ./build-efficientat/tests/efficientat_wav_benchmark \
+  --mn-model /path/to/mn10_as.onnx \
+  --mn-labels /path/to/mn10_as_labels.txt \
+  --dymn-model /path/to/dymn10_as.onnx \
+  --dymn-labels /path/to/dymn10_as_labels.txt \
+  --output comparison.json
+```
+
+The comparison rejects ground-truth labels missing from either model's
+527-label vocabulary. YAMNet is **not** treated as sharing these class
+indices: its 521-class vocabulary and 16 kHz waveform contract require an
+explicit label-name/MID mapping and input-rate adapter before comparable
+multi-model metrics are meaningful.
