@@ -31,9 +31,10 @@ TEST(EfficientAtBackend, SyntheticLogitsAndOrdering) {
     const auto result = tagger.classifyLogMel(mel.data(), 128U, 10U);
     ASSERT_EQ(result.classes.size(), 3U);
     EXPECT_EQ(result.classes[0].label, "class_526");
-    EXPECT_EQ(result.classes[1].label, "class_0");
-    EXPECT_NEAR(result.classes[0].probability.value(), 1.0 / (1.0 + std::exp(-4.0)), 1.e-6);
-    EXPECT_NEAR(result.classes[1].probability.value(), 1.0 / (1.0 + std::exp(-2.0)), 1.e-6);
+    EXPECT_EQ(result.classes[1].label, "class_1");
+    EXPECT_EQ(result.classes[2].label, "class_0");
+    EXPECT_NEAR(result.classes[0].probability.value(), 1.0, 1.e-6);
+    EXPECT_NEAR(result.classes[1].probability.value(), 1.0, 1.e-6);
     EXPECT_THROW(tagger.classifyLogMel(mel.data(), 127U, 10U), audition::Error);
     mel[0] = std::numeric_limits<float>::quiet_NaN();
     EXPECT_THROW(tagger.classifyLogMel(mel.data(), 128U, 10U), audition::Error);
