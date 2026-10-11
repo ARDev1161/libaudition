@@ -27,6 +27,10 @@ struct SourceClassificationStatus {
     std::size_t collected_samples{0};
     std::size_t required_samples{0};
     std::uint64_t dropped_windows{0};
+    // Per-source PCM position: reflects audio ingested, not wall-clock inference time.
+    std::uint64_t received_samples{0};
+    // End-exclusive PCM position of result; null when result is absent/expired.
+    std::optional<std::uint64_t> result_end_sample{};
     std::string error{};
     std::optional<ClassificationResult> result{};
 };
@@ -56,11 +60,14 @@ private:
         std::string error{}; // Source-local bad audio must not stop other ODAS tracks.
         std::uint64_t generation{0};
         std::uint64_t last_seen_order{0};
+        std::uint64_t received_samples{0};
+        std::optional<std::uint64_t> result_end_sample{};
         std::chrono::steady_clock::time_point last_result_at{};
     };
     struct Job {
         std::uint64_t source_id{0};
         std::uint64_t generation{0};
+        std::uint64_t end_sample{0};
         std::vector<float> samples{};
     };
     void run() noexcept;
