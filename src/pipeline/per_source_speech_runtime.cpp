@@ -76,50 +76,104 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         it = tracks_.emplace(id, std::move(track)).first;
     }
     auto& track = it->second;
-    const auto active = track.vad->process(audio).speech_active;
+    // A failed source must be explicitly forgotten before its ID is reused.
+    // Do not let one malformed ODAS frame poison all other capture tracks.
+    if (track.error) return;
     for (std::size_t i = 0; i < audio.sampleCount(); ++i) {
         if (!std::isfinite(audio.data()[i])) {
-            throw std::invalid_argument{"Nonfinite separated audio"};
+            track.error = "Nonfinite separated source PCM";
+            error_ = "Track " + std::to_string(id) + ": " + *track.error;
+            track.speech.clear();
+            track.pre_roll.clear();
+            track.speech_active = false;
+            track.voiced_samples = 0U;
+            ++dropped_;
+            return;
         }
     }
+
+    bool active = false;
+    try {
+        active = track.vad->process(audio).speech_active;
+    } catch (const std::exception& e) {
+        track.error = e.what();
+    } catch (...) {
+        track.error = "Unknown per-source VAD exception";
+    }
+    if (track.error) {
+        error_ = "Track " + std::to_string(id) + ": " + *track.error;
+        track.speech.clear();
+        track.pre_roll.clear();
+        track.speech_active = false;
+        track.voiced_samples = 0U;
+        ++dropped_;
+        return;
+    }
+    track.speech_active = active;
+    const auto advanceTime = [&](std::size_t sample_offset) {
+        const auto ns = static_cast<std::int64_t>(
+            static_cast<double>(sample_offset) * 1000000000.0 /
+            static_cast<double>(options_.sample_rate_hz));
+        return audio.captureTime().advancedBy(Duration{ns});
+    };
+    const auto rememberSilence = [&](std::size_t first_sample) {
+        for (std::size_t i = first_sample; i < audio.sampleCount(); ++i) {
+            track.pre_roll.push_back(audio.data()[i]);
+            if (track.pre_roll.size() > options_.pre_roll_samples)
+                track.pre_roll.pop_front();
+        }
+    };
+
     if (active) {
+        // Model VAD is chunk-based. It declares the entire chunk speech-active;
+        // retain pre-roll so a late detector does not chop the first syllable.
         if (track.speech.empty()) {
-            // Preserve immediate speech onset, including recent VAD-negative
-            // samples. Audio clock offset reflects the pre-roll duration.
-            const auto before = static_cast<std::int64_t>(track.pre_roll.size());
-            const auto delta = Duration::fromChrono(
-                std::chrono::nanoseconds{before * 1000000000LL /
-                                         static_cast<std::int64_t>(options_.sample_rate_hz)});
-            track.start_time = audio.captureTime().advancedBy(Duration{-delta.nanoseconds()});
+            const auto pre_ns = static_cast<std::int64_t>(
+                static_cast<double>(track.pre_roll.size()) * 1000000000.0 /
+                static_cast<double>(options_.sample_rate_hz));
+            track.start_time = audio.captureTime().advancedBy(Duration{-pre_ns});
             track.speech.insert(track.speech.end(),
                 track.pre_roll.begin(), track.pre_roll.end());
             track.pre_roll.clear();
         }
         track.trailing_silence_samples = 0U;
-    }
-    if (!active && !track.speech.empty() && options_.post_roll_samples == 0U) {
-        // Zero post-roll means close exactly at the VAD-negative boundary.
-        queueSegment(id, track);
-        track.trailing_silence_samples = 0U;
-    }
-    if (active || !track.speech.empty()) {
-        const auto available = options_.max_segment_samples - track.speech.size();
-        const auto count = std::min(available, audio.sampleCount());
-        track.speech.insert(track.speech.end(), audio.data(), audio.data() + count);
-        if (active) track.voiced_samples += count;
-        if (!active) track.trailing_silence_samples += count;
-        if (count < audio.sampleCount()) ++dropped_;
-        if (track.speech.size() == options_.max_segment_samples ||
-            (!active && track.trailing_silence_samples >= options_.post_roll_samples)) {
+        std::size_t offset = 0U;
+        while (offset < audio.sampleCount()) {
+            const auto available = options_.max_segment_samples - track.speech.size();
+            const auto take = std::min(available, audio.sampleCount() - offset);
+            track.speech.insert(track.speech.end(), audio.data() + offset,
+                                audio.data() + offset + take);
+            track.voiced_samples += take;
+            offset += take;
+            if (track.speech.size() == options_.max_segment_samples) {
+                queueSegment(id, track);
+                // Continue in the same capture chunk; no samples may be
+                // dropped at a max-duration boundary.
+                track.start_time = advanceTime(offset);
+                track.trailing_silence_samples = 0U;
+            }
+        }
+    } else if (!track.speech.empty()) {
+        if (options_.post_roll_samples == 0U) {
             queueSegment(id, track);
             track.trailing_silence_samples = 0U;
+            rememberSilence(0U);
+        } else {
+            const auto missing = options_.post_roll_samples -
+                std::min(options_.post_roll_samples, track.trailing_silence_samples);
+            const auto available = options_.max_segment_samples - track.speech.size();
+            const auto take = std::min({audio.sampleCount(), missing, available});
+            track.speech.insert(track.speech.end(), audio.data(), audio.data() + take);
+            track.trailing_silence_samples += take;
+            if (track.speech.size() == options_.max_segment_samples ||
+                track.trailing_silence_samples >= options_.post_roll_samples) {
+                queueSegment(id, track);
+                track.trailing_silence_samples = 0U;
+                rememberSilence(take);
+            }
         }
-    } else if (!active && options_.pre_roll_samples != 0U) {
-        for (std::size_t i = 0; i < audio.sampleCount(); ++i) {
-            track.pre_roll.push_back(audio.data()[i]);
-            if (track.pre_roll.size() > options_.pre_roll_samples)
-                track.pre_roll.pop_front();
-        }
+    } else {
+        rememberSilence(0U);
     }
 }
 
@@ -160,6 +214,15 @@ std::vector<SourceSpeechResult> PerSourceSpeechRuntime::takeResults() {
 SourceSpeechStatistics PerSourceSpeechRuntime::statistics() const {
     std::lock_guard<std::mutex> guard{mutex_};
     return {completed_, dropped_, jobs_.size(), error_};
+}
+
+SourceSpeechTrackStatus PerSourceSpeechRuntime::trackStatus(
+    std::uint64_t track_id) const {
+    std::lock_guard<std::mutex> guard{mutex_};
+    const auto it = tracks_.find(track_id);
+    if (it == tracks_.end()) return {};
+    return {true, it->second.speech_active, it->second.speech.size(),
+            it->second.voiced_samples, it->second.error};
 }
 
 void PerSourceSpeechRuntime::workerLoop() {
