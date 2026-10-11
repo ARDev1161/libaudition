@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
                   << " p95_ms=" << percentile(0.95)
                   << " min_ms=" << measurements.front()
                   << " max_ms=" << measurements.back()
-                  << " rtf=" << percentile(0.5) / (audio.sampleCount() / 32.0) << "\n";
+                  << " rtf=" << percentile(0.5) / (required / 32.0) << "\n";
         for (const auto& c : warmup.classes) {
             std::cout << c.label << " " << c.probability.value() << '\n';
         }
