@@ -132,6 +132,36 @@ jobs:
             --efficientat-benchmark ./build-efficientat-real/tests/efficientat_wav_benchmark \
             --yamnet-benchmark ./build-efficientat-real/tests/yamnet_wav_benchmark \
             --output "$RUNNER_TEMP/three-model-comparison.json"
+      - name: Prepare attributed real ESC-10 event WAV excerpts
+        run: |
+          python3 tools/prepare_esc10_evaluation.py \
+            --output "$RUNNER_TEMP/esc10-eval" \
+            --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
+            --yamnet-csv "$RUNNER_TEMP/yamnet/yamnet_class_map.csv"
+      - name: Compare three models on real ESC-10 event recordings
+        run: |
+          python3 tools/compare_audio_taggers.py \
+            --manifest "$RUNNER_TEMP/esc10-eval/manifest.csv" \
+            --mn-model "$RUNNER_TEMP/eat-real/mn10_as.onnx" \
+            --mn-labels "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" \
+            --dymn-model "$RUNNER_TEMP/eat-real/dymn10_as.onnx" \
+            --dymn-labels "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" \
+            --yamnet-model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --yamnet-labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
+            --yamnet-csv "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --efficientat-benchmark ./build-efficientat-real/tests/efficientat_wav_benchmark \
+            --yamnet-benchmark ./build-efficientat-real/tests/yamnet_wav_benchmark \
+            --output "$RUNNER_TEMP/esc10-eval/three-model-real-events.json"
+      - name: Upload real-event comparison and source attribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: efficientat-yamnet-esc10-real-event-report
+          path: |
+            ${{ runner.temp }}/esc10-eval/three-model-real-events.json
+            ${{ runner.temp }}/esc10-eval/manifest.csv
+            ${{ runner.temp }}/esc10-eval/provenance.csv
+          retention-days: 14
       - name: Upload three-model smoke comparison
         uses: actions/upload-artifact@v4
         with:
