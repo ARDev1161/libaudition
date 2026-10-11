@@ -97,11 +97,11 @@ bool SourceSpeechRuntime::currentLocked(
 
 void SourceSpeechRuntime::invalidateLocked(
     std::uint64_t source_id, bool drop_status) {
-    // The new generation is globally unique, even after an ID is reused.
-    static_assert(sizeof(std::uint64_t) >= sizeof(std::size_t));
-    auto it = generations_.find(source_id);
-    if (it != generations_.end()) {
-        ++it->second;
+    // Unique generations prevent a late ASR result from matching a reused
+    // numeric ID. Remove retired identities to bound long-running memory.
+    if (drop_status) generations_.erase(source_id);
+    else if (auto it = generations_.find(source_id); it != generations_.end()) {
+        it->second = next_generation_++;
     }
     pending_chunks_.erase(std::remove_if(pending_chunks_.begin(), pending_chunks_.end(),
         [source_id](const Chunk& x) { return x.source_id == source_id; }),
@@ -140,7 +140,9 @@ bool SourceSpeechRuntime::push(std::uint64_t source_id, AudioView audio) {
     if (!statuses_.count(source_id)) {
         if (statuses_.size() >= options_.max_sources) return false;
         statuses_.emplace(source_id, SourceSpeechStatus{});
-        if (!generations_.count(source_id)) generations_[source_id] = 1U;
+        if (!generations_.count(source_id)) {
+            generations_[source_id] = next_generation_++;
+        }
     }
     auto& status = statuses_.at(source_id);
     if (!status.error.empty()) return false;
@@ -293,6 +295,18 @@ void SourceSpeechRuntime::vadLoop() noexcept {
         }
         try {
             handleChunk(chunk, states);
+        // Retired sessions are worker-owned and lazily reclaimed. This
+        // avoids retaining every ODAS ID ever observed in a long capture.
+        if (states.size() > 2U * options_.max_sources) {
+            std::lock_guard<std::mutex> lock{mutex_};
+            for (auto it = states.begin(); it != states.end();) {
+                if (!currentLocked(it->first, it->second->generation)) {
+                    it = states.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
         } catch (const std::exception& error) {
             std::lock_guard<std::mutex> lock{mutex_};
             if (currentLocked(chunk.source_id, chunk.generation)) {
