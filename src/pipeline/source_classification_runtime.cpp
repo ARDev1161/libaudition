@@ -120,6 +120,13 @@ SourceClassificationStatus SourceClassificationRuntime::status(
     result.completed_windows = it->second.completed_windows;
     result.last_inference_ms = it->second.last_inference_ms;
     result.last_queue_wait_ms = it->second.last_queue_wait_ms;
+    if (it->second.completed_windows != 0U) {
+        const double completed = static_cast<double>(it->second.completed_windows);
+        result.mean_inference_ms = it->second.total_inference_ms / completed;
+        result.mean_queue_wait_ms = it->second.total_queue_wait_ms / completed;
+        result.max_inference_ms = it->second.max_inference_ms;
+        result.max_queue_wait_ms = it->second.max_queue_wait_ms;
+    }
     result.received_samples = it->second.received_samples;
     if (!it->second.error.empty()) {
         result.state = SourceClassificationState::Error;
@@ -183,6 +190,12 @@ void SourceClassificationRuntime::run() noexcept {
                 it->second.last_inference_ms = std::chrono::duration<double, std::milli>(
                     inference_finished - inference_started).count();
                 it->second.last_queue_wait_ms = queue_wait_ms;
+                it->second.total_inference_ms += *it->second.last_inference_ms;
+                it->second.total_queue_wait_ms += queue_wait_ms;
+                it->second.max_inference_ms = std::max(
+                    it->second.max_inference_ms, *it->second.last_inference_ms);
+                it->second.max_queue_wait_ms = std::max(
+                    it->second.max_queue_wait_ms, queue_wait_ms);
             }
             active_source_.reset();
         } catch (const std::exception& exception) {
