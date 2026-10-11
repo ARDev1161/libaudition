@@ -79,3 +79,25 @@ cmake --build build-efficientat --target efficientat_frontend_dump
 ./build-efficientat/tests/efficientat_frontend_dump /tmp/efficientat_mel.f32
 python3 tests/fixtures/compare_efficientat_frontend.py /tmp/efficientat_mel.f32
 ```
+
+## Genuine checkpoint smoke testing
+
+The `efficientat-real-weights` GitHub Actions job exports both upstream
+`mn10_as` and `dymn10_as` with `tools/export_efficientat.py`. It verifies
+PyTorch-vs-ONNX **raw logits** at fixed `[1,1,128,100]` input shape, and
+then calls the C++ `EfficientAtAudioTagger` on a synthetic 440 Hz signal.
+The exporter writes a per-model manifest with the ONNX artifact digest.
+
+Verified in workflow run #540 (2026-10-11):
+- `mn10_as`: max absolute logit difference `3.814697265625e-05`
+- `dymn10_as`: max absolute logit difference `5.0067901611328125e-06`
+- Both C++ model smoke tests: PASS
+
+These results establish loading/shape/runtime compatibility and inference
+parity on a **single random mel tensor**, not robustness, real-world accuracy,
+or embedded-device performance. The exported graphs have a **fixed 100-frame
+input dimension**; supply a one-second waveform at 32 kHz (or use
+`EfficientAt16kAudioTagger` with one second at 16 kHz). Arbitrary frame lengths
+should not be assumed to work with these exports.
+
+Reference CI: https://github.com/ARDev1161/libaudition/actions/runs/38097431465
