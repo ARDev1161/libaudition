@@ -266,3 +266,32 @@ accuracy**, particularly immediately after an acoustic event changes.
 The highest-priority valid result is selected while its existing runtime
 TTL remains active. Applications can instead choose a particular stage
 explicitly using `state.stages`.
+
+### Freshness and overload policy for progressive stages
+
+Every `SourceClassificationStatus` exposes `received_samples` and
+`result_end_sample` (end-exclusive position of the **audio that produced
+the result**, not when the model happened to finish). This lets callers
+distinguish a recently returned result about old audio from a result
+about recent audio. `result_end_sample` is empty when the result is
+missing, expired, or the track failed.
+
+`ProgressiveClassificationStage::max_result_lag_samples` optionally
+limits the difference between the latest received position and that
+stage's last completed prediction. A value of `0` chooses the default
+of two effective hops. Results remain visible in `status().stages`
+even after they become too old to be selected. The default selection
+still prefers later stages, **but only while their audio is recent**.
+For a five-second refiner with a one-second hop, a result more than
+two seconds behind the stream yields priority back to the quick model.
+The limit can be overridden independently for any classifier or window.
+
+Each underlying single-stage runtime still bounds its pending queue
+and accepts arbitrary windows. If several completed windows accumulate
+before a source's queued job can be processed, newer audio replaces the
+older **pending** job for that same source, without interrupting a
+currently running inference or evicting a different source. The
+`dropped_windows` counter includes replaced intermediate windows.
+This is deliberate best-effort real-time behavior, not lossless
+recording: under severe overload the intermediate acoustic events may
+still go undetected.
