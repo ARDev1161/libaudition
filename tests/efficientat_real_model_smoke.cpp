@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
         cfg.labels = argv[2];
         cfg.top_k = 5;
         audition::EfficientAtAudioTagger tagger{cfg};
-        std::vector<float> signal(32000U);
+        std::vector<float> signal(std::string(argv[1]).find("mn10_as.onnx") != std::string::npos ? 160000U : 32000U);
         for (std::size_t i = 0; i < signal.size(); ++i) {
             signal[i] = 0.12F * static_cast<float>(
                 std::sin(2.0 * 3.141592653589793 * 440.0 *
