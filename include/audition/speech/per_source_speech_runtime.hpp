@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -56,10 +57,12 @@ public:
     PerSourceSpeechRuntime(const PerSourceSpeechRuntime&) = delete;
     PerSourceSpeechRuntime& operator=(const PerSourceSpeechRuntime&) = delete;
 
-    // One capture producer thread. Samples are copied only while speech is active.
+    // One capture producer thread. Samples are copied only for speech or
+    // configured pre/post-roll; ASR inference runs in the worker.
     // A track with an active VAD session is never shared with another track.
     void push(std::uint64_t track_id, AudioView audio);
-    // Finish current segment, if any, and retire source state.
+    // Retire a track and cancel unfinished segments/results; no old text may
+    // be delivered under a reused numeric ODAS ID.
     void forget(std::uint64_t track_id);
     // Invalidate all source generations and queued work, e.g. ALSA xrun.
     void reset();
