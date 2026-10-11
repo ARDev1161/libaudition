@@ -111,6 +111,8 @@ jobs:
           root = os.environ["RUNNER_TEMP"]
           with open(os.path.join(root, "yamnet-parity.raw"), "wb") as out:
               out.write(b"".join(struct.pack("<h", int(12000*math.sin(2*math.pi*(220+i/80)*i/16000))) for i in range(15600)))
+          with open(os.path.join(root, "yamnet-parity-5s.raw"), "wb") as out:
+              out.write(b"".join(struct.pack("<h", int(12000*math.sin(2*math.pi*(220+i/80)*i/16000))) for i in range(80000)))
           PY
           "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_onnx_cpp.py \
             --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
@@ -118,6 +120,12 @@ jobs:
             --pcm16 "$RUNNER_TEMP/yamnet-parity.raw" \
             --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe" \
             --output "$RUNNER_TEMP/yamnet-onnx-cpp-parity.json"
+          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_onnx_cpp.py \
+            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --pcm16 "$RUNNER_TEMP/yamnet-parity-5s.raw" \
+            --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe" \
+            --output "$RUNNER_TEMP/yamnet-onnx-cpp-5s-parity.json"
       - name: Verify official YAMNet silence noise and sine wave behavior
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_behavior.py \
@@ -212,6 +220,7 @@ jobs:
           path: |
             ${{ runner.temp }}/esc10-eval/three-model-real-events.json
             ${{ runner.temp }}/yamnet-onnx-cpp-parity.json
+            ${{ runner.temp }}/yamnet-onnx-cpp-5s-parity.json
             ${{ runner.temp }}/yamnet-behavior.json
             ${{ runner.temp }}/esc10-eval/review-findings.json
             ${{ runner.temp }}/esc10-eval/mn10-chainsaw-parity.json
