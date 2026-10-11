@@ -12,13 +12,15 @@ namespace audition {
 SourceClassificationRuntime::SourceClassificationRuntime(
     std::unique_ptr<IAudioClassifier> classifier,
     std::uint32_t sample_rate_hz, std::size_t window_samples,
-    std::size_t max_sources)
+    std::size_t max_sources, std::size_t hop_samples)
     : sample_rate_hz_(sample_rate_hz),
       window_samples_(window_samples),
       max_sources_(max_sources),
+      hop_samples_(hop_samples == 0U ? window_samples : hop_samples),
       classifier_(std::move(classifier)) {
     if (!classifier_ || sample_rate_hz_ == 0U ||
-        window_samples_ == 0U || max_sources_ == 0U) {
+        window_samples_ == 0U || max_sources_ == 0U ||
+        hop_samples_ == 0U || hop_samples_ > window_samples_) {
         throw std::invalid_argument{"Invalid source classification runtime configuration"};
     }
     worker_ = std::thread{[this] { run(); }};
@@ -71,11 +73,13 @@ void SourceClassificationRuntime::push(
         buffer.push_back(samples[i]);
         if (buffer.size() == window_samples_) {
             if (pending_.size() < max_sources_ && std::none_of(pending_.begin(), pending_.end(), [source_id](const Job& j){ return j.source_id == source_id; })) {
-                pending_.push_back(Job{source_id, it->second.generation, std::move(buffer)});
-                buffer.clear();
+                pending_.push_back(Job{source_id, it->second.generation, buffer});
+                buffer.erase(buffer.begin(),
+                             buffer.begin() + static_cast<std::ptrdiff_t>(hop_samples_));
                 cv_.notify_one();
             } else {
-                buffer.clear();
+                buffer.erase(buffer.begin(),
+                             buffer.begin() + static_cast<std::ptrdiff_t>(hop_samples_));
                 ++dropped_windows_;
             }
         }
