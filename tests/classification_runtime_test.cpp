@@ -604,3 +604,45 @@ TEST(SourceClassificationRuntime, OverloadedSourceCoalescesToNewestQueuedWindow)
     }
     EXPECT_TRUE(newest);
 }
+
+TEST(SourceClassificationRuntime, ReportsPerSourceDropCountsAndTiming) {
+    std::atomic<bool> started{false};
+    std::atomic<bool> release{false};
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<GatedWindowClassifier>(started, release),
+        16000U, 4U, 2U, 2U};
+    const float first[4] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(10U, first, 4U);
+    for (int i = 0; i < 1000 && !started.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(started.load());
+    const float backlog[8] = {0.1F, 0.2F, 0.3F, 0.4F,
+                              0.5F, 0.6F, 0.7F, 0.8F};
+    runtime.push(10U, backlog, 8U);
+    runtime.push(11U, first, 4U);
+    const auto overloaded = runtime.status(10U);
+    const auto healthy = runtime.status(11U);
+    EXPECT_GT(overloaded.dropped_windows, 0U);
+    EXPECT_EQ(healthy.dropped_windows, 0U);
+    EXPECT_EQ(overloaded.completed_windows, 0U);
+    release.store(true);
+    bool both_completed = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto first_state = runtime.status(10U);
+        const auto second_state = runtime.status(11U);
+        if (first_state.completed_windows >= 2U &&
+            second_state.completed_windows >= 1U) {
+            EXPECT_TRUE(first_state.last_queue_wait_ms.has_value());
+            EXPECT_TRUE(first_state.last_inference_ms.has_value());
+            EXPECT_GE(*first_state.last_queue_wait_ms, 0.0);
+            EXPECT_GE(*first_state.last_inference_ms, 0.0);
+            EXPECT_TRUE(second_state.last_queue_wait_ms.has_value());
+            EXPECT_TRUE(second_state.last_inference_ms.has_value());
+            both_completed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(both_completed);
+}
