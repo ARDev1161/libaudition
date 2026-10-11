@@ -97,6 +97,10 @@ if(TARGET audition::backend_yamnet)
     target_link_libraries(yamnet_progressive_smoke PRIVATE
         audition::backend_yamnet audition::pipeline audition::core)
     libaudition_configure_target(yamnet_progressive_smoke)
+    add_executable(yamnet_progressive_multisource yamnet_progressive_multisource.cpp)
+    target_link_libraries(yamnet_progressive_multisource PRIVATE
+        audition::backend_yamnet audition::pipeline audition::core)
+    libaudition_configure_target(yamnet_progressive_multisource)
 endif()
 
 if(TARGET audition::backend_efficientat)
