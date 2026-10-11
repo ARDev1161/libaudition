@@ -285,9 +285,9 @@ TEST(PerSourceSpeechRuntime, ContinuousSegmentTimestampAdvancesWithAudioClock) {
 namespace {
 class SlowAsr final : public IAsrEngine {
 public:
-    std::atomic<bool> entered{false};
+    mutable std::atomic<bool> entered{false};
     std::atomic<bool> release{false};
-    std::atomic<int> calls{0};
+    mutable std::atomic<int> calls{0};
     BackendInfo backendInfo() const override {return {"gated-asr", "1"};}
     AsrCapabilities capabilities() const override {return {};}
     Transcript transcribe(const SpeechSegment& segment) const override {
