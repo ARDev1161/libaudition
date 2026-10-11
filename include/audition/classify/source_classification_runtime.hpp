@@ -39,7 +39,8 @@ public:
     SourceClassificationRuntime(std::unique_ptr<IAudioClassifier> classifier,
                                 std::uint32_t sample_rate_hz,
                                 std::size_t window_samples,
-                                std::size_t max_sources = 16U);
+                                std::size_t max_sources = 16U,
+                                std::size_t hop_samples = 0U);
     ~SourceClassificationRuntime();
     SourceClassificationRuntime(const SourceClassificationRuntime&) = delete;
     SourceClassificationRuntime& operator=(const SourceClassificationRuntime&) = delete;
@@ -66,6 +67,7 @@ private:
     const std::uint32_t sample_rate_hz_;
     const std::size_t window_samples_;
     const std::size_t max_sources_;
+    const std::size_t hop_samples_;
     std::unique_ptr<IAudioClassifier> classifier_;
     mutable std::mutex mutex_{};
     std::condition_variable cv_{};
