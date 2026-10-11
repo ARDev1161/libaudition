@@ -267,3 +267,30 @@ Its CSV target only exercises the metric calculation pipeline. The
 `hit@5` values in that artifact must not be reported as real-world
 accuracy. Replace the manifest with a licensed, independently annotated
 corpus before drawing conclusions about classifier quality.
+
+## Real recordings: ESC-10 exploratory CI comparison
+
+The real-weight CI job now additionally downloads **four ESC-10** recordings
+(dog, rain, helicopter, chainsaw) from the upstream
+[ESC-50](https://github.com/karolpiczak/ESC-50) repository. Only recordings
+marked `esc10` in official metadata are selected (CC BY rather than the
+larger ESC-50 CC BY-NC set). Source files are 5 seconds at 44.1 kHz;
+ffmpeg converts a **1.0–2.0 s excerpt** to mono PCM16 at 32 kHz for all
+three models. WAVs are never committed to the repository.
+
+```bash
+python3 tools/prepare_esc10_evaluation.py \
+ --output /tmp/esc10-eval \
+ --efficientat-csv /path/to/EfficientAT/metadata/class_labels_indices.csv \
+ --yamnet-csv /path/to/yamnet_class_map.csv
+```
+
+Artifact `efficientat-yamnet-esc10-real-event-report` includes MID
+annotations, per-model JSON results, original Freesound identifiers and
+upstream attribution/license. It intentionally omits redistributing audio.
+
+**Limitations:** source labels apply to 5-second clips, not verified
+annotations of the extracted 1-second interval. This is an exploratory
+real-waveform smoke/relative-comparison test, not a validated accuracy
+benchmark or an official ESC-10 evaluation. Expand and manually verify
+clip/window annotations before selecting a production classifier.
