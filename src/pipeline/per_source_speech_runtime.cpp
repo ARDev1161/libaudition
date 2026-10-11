@@ -54,7 +54,7 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
 void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
     if (audio.sampleCount() == 0U) return;
     if (!audio.data() || audio.format().sample_rate_hz != options_.sample_rate_hz ||
-        audio.format().channels != 1U ||
+        audio.format().channel_count != 1U ||
         audio.format().layout != AudioLayout::Interleaved) {
         throw std::invalid_argument{"Per-source speech requires mono interleaved PCM"};
     }
