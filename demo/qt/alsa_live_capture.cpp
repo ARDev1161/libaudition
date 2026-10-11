@@ -268,7 +268,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             asr_opts.model = sense_voice;
             asr_opts.tokens = config.speech_asr_tokens_path;
             auto vad = std::make_shared<audition::SherpaVad>(std::move(vad_opts));
-            auto asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(asr_opts));
+            // Copy instead of moving the aggregate: GCC 13 -O3 otherwise emits
+            // a false-positive maybe-uninitialized warning in std::map.
+            auto asr = std::make_shared<audition::SherpaOfflineAsr>(asr_opts);
             speech = std::make_unique<audition::SourceSpeechRuntime>(
                 std::move(vad), std::move(asr));
         }
