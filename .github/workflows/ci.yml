@@ -54,7 +54,7 @@ jobs:
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build C++ real-model smoke tool
-        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe --parallel
+        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke --parallel
       - name: Install exporter dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/efficientat-real"
@@ -139,6 +139,11 @@ jobs:
             --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
             --pcm16 "$RUNNER_TEMP/yamnet-parity.raw" \
             --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe"
+      - name: Real-weight YAMNet fast-to-refined runtime integration
+        run: |
+          ./build-efficientat-real/tests/yamnet_progressive_smoke \
+            "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            "$RUNNER_TEMP/yamnet/yamnet_class_map.csv"
       - name: Verify official YAMNet silence noise and sine wave behavior
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_behavior.py \
