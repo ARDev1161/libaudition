@@ -75,6 +75,12 @@ def main():
                 "-ss", "1", "-i", str(raw), "-t", "1", "-ac", "1",
                 "-ar", "32000", "-c:a", "pcm_s16le", str(target)
             ], check=True)
+            if category == "chainsaw":
+                subprocess.run([
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-i", str(raw), "-t", "5", "-ac", "1", "-ar", "32000",
+                    "-c:a", "pcm_s16le", str(output / "chainsaw-original.wav")
+                ], check=True)
             raw.unlink()
             mw.writerow([target.name, eff[CATEGORIES[category]]])
             pw.writerow([target.name, category, name, url, row.get("src_file", ""), "CC BY (ESC-10)", 1])
