@@ -26,6 +26,7 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
             throw std::invalid_argument{"Audio tagging requires mono 16 kHz and model/labels"};
         }
         std::unique_ptr<audition::IAudioClassifier> classifier;
+        bool yamnet_refinement_supported = false;
         if (options.efficientat_model) {
 #if LIBAUDITION_DEMO_HAS_EFFICIENTAT
             audition::EfficientAtOnnxOptions cfg{};
@@ -42,7 +43,23 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
             cfg.model = options.model_path;
             cfg.labels = options.labels_path;
             cfg.top_k = 521U;
-            classifier = std::make_unique<audition::YamnetAudioTagger>(std::move(cfg));
+            auto yamnet = std::make_unique<audition::YamnetAudioTagger>(std::move(cfg));
+            const std::size_t refinement_size = options.refined_window_samples != 0U
+                ? options.refined_window_samples
+                : static_cast<std::size_t>(options.sample_rate_hz) * 5U;
+            const std::size_t quick_size = options.fast_window_samples != 0U
+                ? options.fast_window_samples
+                : yamnet->capabilities().audio.preferred_frame_count.value_or(15600U);
+            if (!yamnet->supportsWindowSamples(quick_size)) {
+                throw std::invalid_argument{"YAMNet fast window is incompatible with ONNX input shape"};
+            }
+            if (options.refined_window_samples != 0U &&
+                !yamnet->supportsWindowSamples(refinement_size)) {
+                throw std::invalid_argument{"YAMNet refined window is incompatible with ONNX input shape"};
+            }
+            yamnet_refinement_supported =
+                refinement_size > quick_size && yamnet->supportsWindowSamples(refinement_size);
+            classifier = std::move(yamnet);
 #else
             throw std::runtime_error{"YAMNet backend is not built"};
 #endif
@@ -68,14 +85,45 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
                 ? classifier->capabilities().audio.preferred_frame_count.value_or(
                     static_cast<std::size_t>(options.sample_rate_hz))
                 : static_cast<std::size_t>(options.sample_rate_hz) * 2U;
-        // Keep YAMNet updates responsive to transient sounds (50% overlap).
-        // MN10 uses a longer 5s window with 1s step.
-        const std::size_t hop_samples = options.yamnet_model
-            ? std::max<std::size_t>(1U, window_samples / 2U)
-            : options.efficientat_model && window_samples > options.sample_rate_hz
-                ? static_cast<std::size_t>(options.sample_rate_hz) : window_samples;
+        const std::size_t fast_samples = options.fast_window_samples != 0U
+            ? options.fast_window_samples : window_samples;
+        // YAMNet: rapid ~0.975s patches at 50% overlap, then a 5-second
+        // higher-context model independently updated every second.
+        // Custom IAudioClassifier implementations and windows can instead
+        // be injected into ProgressiveSourceClassificationRuntime directly.
+        if (options.yamnet_model && yamnet_refinement_supported) {
+#if LIBAUDITION_DEMO_HAS_YAMNET
+            audition::YamnetOnnxOptions refined_options{};
+            refined_options.model = options.model_path;
+            refined_options.labels = options.labels_path;
+            refined_options.top_k = 521U;
+            const auto refined_samples = options.refined_window_samples != 0U
+                ? options.refined_window_samples
+                : static_cast<std::size_t>(options.sample_rate_hz) * 5U;
+            const auto quick_hop = options.fast_hop_samples != 0U
+                ? options.fast_hop_samples : std::max<std::size_t>(1U, fast_samples / 2U);
+            const auto refined_hop = options.refined_hop_samples != 0U
+                ? options.refined_hop_samples : static_cast<std::size_t>(options.sample_rate_hz);
+            std::vector<audition::ProgressiveClassificationStage> stages;
+            stages.push_back({"quick", std::move(classifier), fast_samples, quick_hop});
+            stages.push_back({"refined",
+                std::make_unique<audition::YamnetAudioTagger>(std::move(refined_options)),
+                refined_samples, refined_hop});
+            progressive_ = std::make_unique<audition::ProgressiveSourceClassificationRuntime>(
+                options.sample_rate_hz, std::move(stages), 16U);
+            return;
+#endif
+        }
+        // Other models and fixed-window YAMNet remain available in single-
+        // window mode. No changes to their classifier behavior or ABI.
+        const std::size_t hop_samples = options.fast_hop_samples != 0U
+            ? options.fast_hop_samples
+            : options.yamnet_model
+                ? std::max<std::size_t>(1U, fast_samples / 2U)
+                : options.efficientat_model && fast_samples > options.sample_rate_hz
+                    ? static_cast<std::size_t>(options.sample_rate_hz) : fast_samples;
         runtime_ = std::make_unique<audition::SourceClassificationRuntime>(
-            std::move(classifier), options.sample_rate_hz, window_samples,
+            std::move(classifier), options.sample_rate_hz, fast_samples,
             16U, hop_samples);
     } catch (const std::exception& exception) {
         initialization_error_ = exception.what();
@@ -87,30 +135,41 @@ LiveAudioTaggingWorker::~LiveAudioTaggingWorker() = default;
 void LiveAudioTaggingWorker::push(
     std::uint64_t track_id, const std::vector<float>& mono,
     std::uint64_t /*processed_hops*/) {
-    if (runtime_ && !mono.empty()) {
-        runtime_->push(track_id, mono.data(), mono.size());
-    }
+    if (mono.empty()) return;
+    if (progressive_) progressive_->push(track_id, mono.data(), mono.size());
+    else if (runtime_) runtime_->push(track_id, mono.data(), mono.size());
 }
 
 void LiveAudioTaggingWorker::forget(std::uint64_t track_id) {
-    if (runtime_) runtime_->forget(track_id);
+    if (progressive_) progressive_->forget(track_id);
+    else if (runtime_) runtime_->forget(track_id);
 }
 
 std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
     std::uint64_t track_id, std::uint64_t /*processed_hops*/) const {
-    if (!runtime_) return std::nullopt;
-    const auto current = runtime_->status(track_id);
-    if (!current.result.has_value() || current.result->classes.empty()) {
+    std::optional<audition::ClassificationResult> prediction;
+    std::string stage;
+    if (progressive_) {
+        const auto state = progressive_->status(track_id);
+        prediction = state.result;
+        if (state.selected_stage.has_value()) {
+            stage = state.stages[*state.selected_stage].name;
+        }
+    } else if (runtime_) {
+        prediction = runtime_->status(track_id).result;
+    }
+    if (!prediction.has_value() || prediction->classes.empty()) {
         return std::nullopt;
     }
     std::vector<std::string> supported;
-    supported.reserve(current.result->classes.size());
-    for (const auto& cls : current.result->classes) {
+    supported.reserve(prediction->classes.size());
+    for (const auto& cls : prediction->classes) {
         supported.push_back(cls.label);
     }
     // Both backends are configured to return the full closed vocabulary.
-    auto filtered = audition::selectVocabulary(*current.result, selection_, supported);
+    auto filtered = audition::selectVocabulary(*prediction, selection_, supported);
     LiveTrackClassification response{};
+    response.stage = stage;
     response.unsupported_labels = std::move(filtered.unsupported_labels);
     std::ostringstream summary;
     for (std::size_t i = 0; i < filtered.classes.size(); ++i) {
@@ -128,11 +187,26 @@ std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
 
 std::string LiveAudioTaggingWorker::error() const {
     if (!initialization_error_.empty()) return initialization_error_;
+    if (progressive_) return "";
     if (!runtime_) return "Classification runtime unavailable";
     return runtime_->status(0U).error;
 }
 
 std::string LiveAudioTaggingWorker::status(std::uint64_t track_id) const {
+    if (progressive_) {
+        const auto state = progressive_->status(track_id);
+        if (state.selected_stage.has_value()) {
+            return state.stages[*state.selected_stage].name + " classification";
+        }
+        for (const auto& stage : state.stages) {
+            if (stage.status.state == audition::SourceClassificationState::Error) {
+                return stage.name + " error: " + stage.status.error;
+            }
+        }
+        const auto& quick = state.stages.front().status;
+        return "Quick collecting " + std::to_string(quick.collected_samples) +
+               "/" + std::to_string(quick.required_samples);
+    }
     if (!runtime_) return "Error: " + initialization_error_;
     const auto current = runtime_->status(track_id);
     using State = audition::SourceClassificationState;
