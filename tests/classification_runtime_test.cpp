@@ -7,6 +7,8 @@
 #include <chrono>
 #include <atomic>
 #include <memory>
+#include <limits>
+#include <stdexcept>
 #include <thread>
 
 namespace {
@@ -240,4 +242,95 @@ TEST(SourceClassificationRuntime, SlidingWindowRetainsActualSamples) {
         std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
     EXPECT_TRUE(saw_overlap);
+}
+
+namespace {
+class FailOnNegativeClassifier final : public audition::IAudioClassifier {
+public:
+    audition::BackendInfo backendInfo() const override { return {"per-track-errors", "1"}; }
+    audition::ClassifierCapabilities capabilities() const override { return {}; }
+    audition::ClassificationResult classify(audition::AudioView audio) const override {
+        if (audio.data()[0] < 0.0F) throw std::runtime_error{"Invalid separated source"};
+        audition::ClassificationResult result;
+        result.classes.push_back({"Speech", audition::Probability::from(0.8)});
+        return result;
+    }
+};
+}
+
+TEST(SourceClassificationRuntime, MalformedTrackDoesNotPoisonOtherTracks) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U};
+    const float invalid[2] = {0.2F, std::numeric_limits<float>::quiet_NaN()};
+    runtime.push(11U, invalid, 2U);
+    const auto broken = runtime.status(11U);
+    EXPECT_EQ(broken.state, audition::SourceClassificationState::Error);
+    EXPECT_FALSE(broken.error.empty());
+    // Source 11 must be quarantined, but source 12 must remain functional.
+    const float good[4] = {0.2F, 0.2F, 0.2F, 0.2F};
+    runtime.push(12U, good, 4U);
+    bool healthy = false;
+    for (int i = 0; i < 500; ++i) {
+        const auto state = runtime.status(12U);
+        if (state.result.has_value()) {
+            healthy = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(healthy);
+    runtime.forget(11U);
+    runtime.push(11U, good, 4U);
+    bool recovered = false;
+    for (int i = 0; i < 500; ++i) {
+        if (runtime.status(11U).result.has_value()) {
+            recovered = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(recovered);
+}
+
+TEST(SourceClassificationRuntime, ModelExceptionDoesNotStopOtherODASSources) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<FailOnNegativeClassifier>(), 16000U, 4U};
+    const float bad[4] = {-0.1F, 0.2F, 0.3F, 0.4F};
+    const float good[4] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(22U, bad, 4U);
+    bool failed = false;
+    for (int i = 0; i < 500; ++i) {
+        const auto state = runtime.status(22U);
+        if (state.state == audition::SourceClassificationState::Error) {
+            EXPECT_EQ(state.error, "Invalid separated source");
+            failed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(failed);
+    runtime.push(23U, good, 4U);
+    bool classified = false;
+    for (int i = 0; i < 500; ++i) {
+        const auto state = runtime.status(23U);
+        if (state.result.has_value()) {
+            ASSERT_EQ(state.state, audition::SourceClassificationState::Classified);
+            classified = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(classified);
+    // A forgotten source identity may be reused after the failed generation.
+    runtime.forget(22U);
+    runtime.push(22U, good, 4U);
+    bool reused = false;
+    for (int i = 0; i < 500; ++i) {
+        if (runtime.status(22U).result.has_value()) {
+            reused = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(reused);
 }
