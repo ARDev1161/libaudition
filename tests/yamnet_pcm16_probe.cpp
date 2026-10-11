@@ -20,15 +20,15 @@ int main(int argc, char** argv) {
         options.labels = argv[2];
         options.top_k = 10U;
         const audition::YamnetAudioTagger model{options};
-        const auto expected = model.capabilities().audio.preferred_frame_count.value_or(15600U);
         std::ifstream input{argv[3], std::ios::binary};
         if (!input) throw std::runtime_error{"Cannot read PCM16 input"};
         const std::vector<unsigned char> pcm{
             std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
-        if (pcm.size() != expected * 2U) {
-            throw std::runtime_error{"PCM16 length differs from model preferred frame count"};
+        if (pcm.size() < 15600U * 2U || pcm.size() > 16000U * 20U * 2U ||
+            pcm.size() % 2U != 0U) {
+            throw std::runtime_error{"Expected 0.975..20 seconds of mono PCM16 audio"};
         }
-        std::vector<float> samples(expected);
+        std::vector<float> samples(pcm.size() / 2U);
         for (std::size_t i = 0; i < samples.size(); ++i) {
             const auto lo = static_cast<std::uint16_t>(pcm[2U*i]);
             const auto hi = static_cast<std::uint16_t>(pcm[2U*i+1U]);
