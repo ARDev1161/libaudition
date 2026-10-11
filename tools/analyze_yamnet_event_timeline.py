@@ -111,10 +111,10 @@ def run():
         wav_path = Path(item["wav"])
         if not wav_path.is_absolute():
             wav_path = args.manifest.resolve().parent / wav_path
-        truth = [by_mid[mid.strip()] for mid in item["mid"].split("|")
-                 if mid.strip() in by_mid]
-        if not truth:
-            raise ValueError(f"No AudioSet MID in YAMNet vocabulary: {item}")
+        truth_mids = [mid.strip() for mid in item["mid"].split("|") if mid.strip()]
+        if not truth_mids or any(mid not in by_mid for mid in truth_mids):
+            raise ValueError(f"Missing or unsupported AudioSet MID in manifest: {item}")
+        truth = [by_mid[mid] for mid in truth_mids]
         raw = subprocess.check_output([
             "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
             "-i", str(wav_path), "-ac", "1", "-ar", str(SAMPLE_RATE),
