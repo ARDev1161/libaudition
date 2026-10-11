@@ -343,3 +343,27 @@ saturation root cause resolved.
 ## Window-duration diagnostic
 
 The genuine upstream PyTorch MN10 model is now evaluated on the **same original five-second ESC-10 chainsaw recording** with prefixes of 1, 2, 3, and 5 seconds via `tools/diagnose_efficientat_duration.py`. For each window the CI artifact `mn10-duration.json` records mel dimensions, logit range and the Top-10 labels/logits. This is explicitly distinct from the fixed-100-frame ONNX export and tests whether longer acoustic context changes model saturation. It does not constitute a verified real-world accuracy metric.
+
+## MN10 production window update (five seconds)
+
+**New export default:** `tools/export_efficientat.py --model mn10_as` creates
+an ONNX model with `[1,1,128,500]` mel input. DyMN10 keeps 100 frames.
+The exporter verifies PyTorch/ONNX logit parity at the actual requested
+shape. For explicit backward compatibility use `--frames 100` for MN10,
+but that old 1-second configuration is **not recommended**: genuine MN10
+weights produced saturated scores on short audio in our ESC-10 experiments.
+
+`EfficientAtAudioTagger::capabilities().audio.preferred_frame_count`
+reports the required PCM length from the ONNX graph (160000 for 5s
+at 32 kHz). The 16-kHz wrapper reports 80000 frames. The Qt live
+classification adapter uses this model-derived length, and requests
+overlapping inference with a one-second hop after the first five seconds.
+The generic `SourceClassificationRuntime` remains non-overlapping by
+default; sliding windows are opt-in through the optional `hop_samples`
+constructor argument.
+
+**Fairness warning:** the three-model ESC-10 report now uses five seconds
+for MN10 and one second for DyMN10/YAMNet. Its hit-rate comparison is
+exploratory rather than a controlled accuracy benchmark. Future work
+must evaluate identical time spans, event-aligned 1s labels and 5s
+clip-level labels separately before making relative model claims.
