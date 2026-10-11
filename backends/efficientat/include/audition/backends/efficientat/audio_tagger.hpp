@@ -33,6 +33,7 @@ public:
     EfficientAtSpectrogramTagger(const EfficientAtSpectrogramTagger&) = delete;
     EfficientAtSpectrogramTagger& operator=(const EfficientAtSpectrogramTagger&) = delete;
 
+    [[nodiscard]] std::size_t fixedInputFrames() const noexcept;
     [[nodiscard]] ClassificationResult classifyLogMel(
         const float* normalized_mel, std::size_t mel_bins,
         std::size_t frames) const;
