@@ -252,3 +252,18 @@ These scores are **not AudioSet mAP**. CPU benchmark timings omit model
 loading, WAV decoding, and the YAMNet 32->16 kHz preprocessing step.
 Use identical clips and hardware; do not interpret runner timings as
 RK3588 results.
+
+## CI three-model smoke report artifact
+
+The `efficientat-real-weights` CI job also calls
+`tools/compare_audio_taggers.py` with one generated 440 Hz PCM clip and
+the shared AudioSet speech MID. The resulting
+`efficientat-yamnet-smoke-report` JSON artifact contains per-model timing,
+Top-5 predictions, ontology-intersection information and an explicit
+record of excluded clips.
+
+**The synthetic tone is NOT evidence of speech classification quality.**
+Its CSV target only exercises the metric calculation pipeline. The
+`hit@5` values in that artifact must not be reported as real-world
+accuracy. Replace the manifest with a licensed, independently annotated
+corpus before drawing conclusions about classifier quality.
