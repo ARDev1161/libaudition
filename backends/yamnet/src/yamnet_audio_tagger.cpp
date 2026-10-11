@@ -26,26 +26,72 @@ std::vector<std::string> readLabels(const std::filesystem::path& path) {
         throw Error{ErrorCode::ConfigurationError, "Cannot open YAMNet labels file"};
     }
     std::vector<std::string> labels;
+    std::vector<std::string> mids;
     std::string line;
+    bool first_line = true;
+    bool csv_mode = false;
     while (std::getline(file, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (first_line && line.compare(0U, 3U, "\xEF\xBB\xBF") == 0) {
+            line.erase(0U, 3U);
         }
-        // Official YAMNet CSV: index,mid,display_name. The name may include commas.
-        const auto first = line.find(',');
-        const auto second = first == std::string::npos ? first : line.find(',', first + 1U);
-        if (first != std::string::npos && second != std::string::npos) {
-            line = line.substr(second + 1U);
-            if (line.size() > 1U && line.front() == '"' && line.back() == '"') {
-                line = line.substr(1U, line.size() - 2U);
+        if (first_line) {
+            csv_mode = line == "index,mid,display_name";
+            first_line = false;
+            if (csv_mode) continue;
+        }
+        if (line.empty()) {
+            if (csv_mode) {
+                throw Error{ErrorCode::ConfigurationError,
+                            "Empty row in YAMNet AudioSet CSV"};
             }
-        }
-        if (line == "display_name" || line == "index,mid,display_name") {
             continue;
         }
-        if (!line.empty()) {
-            labels.push_back(std::move(line));
+        if (csv_mode) {
+            const auto first = line.find(',');
+            const auto second = first == std::string::npos
+                ? std::string::npos : line.find(',', first + 1U);
+            if (first == std::string::npos || second == std::string::npos ||
+                line.substr(0U, first) != std::to_string(labels.size())) {
+                throw Error{ErrorCode::ConfigurationError,
+                            "YAMNet AudioSet CSV indices must be sequential from zero"};
+            }
+            const auto mid = line.substr(first + 1U, second - first - 1U);
+            if (mid.empty() || std::find(mids.begin(), mids.end(), mid) != mids.end()) {
+                throw Error{ErrorCode::ConfigurationError,
+                            "Missing or duplicate AudioSet MID in YAMNet CSV"};
+            }
+            mids.push_back(mid);
+            const auto field = line.substr(second + 1U);
+            if (!field.empty() && field.front() == '"') {
+                if (field.size() < 2U || field.back() != '"') {
+                    throw Error{ErrorCode::ConfigurationError,
+                                "Unclosed quoted name in YAMNet CSV"};
+                }
+                line.clear();
+                for (std::size_t i = 1U; i + 1U < field.size(); ++i) {
+                    if (field[i] == '"') {
+                        if (i + 2U >= field.size() || field[i + 1U] != '"') {
+                            throw Error{ErrorCode::ConfigurationError,
+                                        "Invalid CSV-escaped YAMNet class name"};
+                        }
+                        ++i;
+                    }
+                    line.push_back(field[i]);
+                }
+            } else {
+                if (field.find('"') != std::string::npos) {
+                    throw Error{ErrorCode::ConfigurationError,
+                                "Invalid quote in YAMNet AudioSet CSV"};
+                }
+                line = field;
+            }
         }
+        if (line.empty() || labels.size() >= kClassCount) {
+            throw Error{ErrorCode::ConfigurationError,
+                        "Invalid or excessive YAMNet class labels"};
+        }
+        labels.push_back(std::move(line));
     }
     if (labels.size() != kClassCount) {
         throw Error{ErrorCode::ConfigurationError,
