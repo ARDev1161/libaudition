@@ -279,6 +279,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #endif
         std::unordered_map<std::uint64_t, std::string> latest_transcripts;
         SourceTrackLifecycle source_lifecycle;
+        SourceTrackLifecycle speech_pcm_lifecycle;
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -322,6 +323,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 engine.reset(); // discontinuous samples must not share ODAS state
                 source_lifecycle.clear([&](std::uint64_t id) {
                     if (classifier) classifier->forget(id);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                    if (speech) speech->forget(id);
+#endif
+                    latest_transcripts.erase(id);
+                });
+                speech_pcm_lifecycle.clear([&](std::uint64_t id) {
 #if LIBAUDITION_DEMO_HAS_SHERPA
                     if (speech) speech->forget(id);
 #endif
@@ -388,12 +395,31 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     }
 #if LIBAUDITION_DEMO_HAS_SHERPA
                     if (speech) {
-                        speech->push(separated.track_id.value(), separated.audio.view());
+                        try {
+                            if (!speech->push(separated.track_id.value(),
+                                              separated.audio.view())) {
+                                latest_transcripts[separated.track_id.value()] =
+                                    "Speech input dropped (backpressure)";
+                            }
+                        } catch (const std::exception& error) {
+                            speech->forget(separated.track_id.value());
+                            latest_transcripts[separated.track_id.value()] =
+                                std::string{"Speech input error: "} + error.what();
+                        }
                     }
 #endif
                 }
 #if LIBAUDITION_DEMO_HAS_SHERPA
                 if (speech) {
+                    std::set<std::uint64_t> pcm_present;
+                    for (const auto& separated : resultFrame.separated_frames) {
+                        pcm_present.insert(separated.track_id.value());
+                    }
+                    speech_pcm_lifecycle.update(std::move(pcm_present),
+                        [&](std::uint64_t id) {
+                            speech->forget(id);
+                            latest_transcripts.erase(id);
+                        });
                     for (auto& event : speech->drainTranscripts()) {
                         latest_transcripts[event.source_id] =
                             std::move(event.transcript.text);
