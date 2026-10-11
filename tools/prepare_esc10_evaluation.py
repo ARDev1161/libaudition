@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 
-UPSTREAM = "https://raw.githubusercontent.com/karolpiczak/ESC-50/master"
+UPSTREAM = "https://raw.githubusercontent.com/karolpiczak/ESC-50/33c8ce9eb2cf0b1c2f8bcf322eb349b6be34dbb6"
 CATEGORIES = {
     "dog": "Dog",
     "rain": "Rain",
