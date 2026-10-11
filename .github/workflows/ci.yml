@@ -118,6 +118,12 @@ jobs:
             --pcm16 "$RUNNER_TEMP/yamnet-parity.raw" \
             --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe" \
             --output "$RUNNER_TEMP/yamnet-onnx-cpp-parity.json"
+      - name: Verify official YAMNet silence noise and sine wave behavior
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_behavior.py \
+            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --output "$RUNNER_TEMP/yamnet-behavior.json"
       - name: Generate deterministic PCM16 WAV and benchmark both models
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
@@ -206,6 +212,7 @@ jobs:
           path: |
             ${{ runner.temp }}/esc10-eval/three-model-real-events.json
             ${{ runner.temp }}/yamnet-onnx-cpp-parity.json
+            ${{ runner.temp }}/yamnet-behavior.json
             ${{ runner.temp }}/esc10-eval/review-findings.json
             ${{ runner.temp }}/esc10-eval/mn10-chainsaw-parity.json
             ${{ runner.temp }}/esc10-eval/mn10-duration.json
