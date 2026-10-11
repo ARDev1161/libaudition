@@ -72,6 +72,12 @@ if(TARGET audition::backend_clap)
 endif()
 
 
+if(TARGET audition::backend_yamnet)
+    add_executable(yamnet_wav_benchmark yamnet_wav_benchmark.cpp)
+    target_link_libraries(yamnet_wav_benchmark PRIVATE audition::backend_yamnet audition::core)
+    libaudition_configure_target(yamnet_wav_benchmark)
+endif()
+
 if(TARGET audition::backend_efficientat)
     add_executable(efficientat_wav_benchmark efficientat_wav_benchmark.cpp)
     target_link_libraries(efficientat_wav_benchmark PRIVATE audition::backend_efficientat audition::core)
