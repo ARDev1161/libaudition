@@ -54,7 +54,7 @@ jobs:
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build C++ real-model smoke tool
-        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_wav_benchmark yamnet_wav_benchmark --parallel
+        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark --parallel
       - name: Install exporter dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/efficientat-real"
@@ -151,6 +151,7 @@ jobs:
             --wav "$RUNNER_TEMP/esc10-eval/chainsaw.wav" \
             --model mn10_as \
             --onnx "$RUNNER_TEMP/eat-real/mn10_as.onnx" \
+            --cpp-mel-dump "$GITHUB_WORKSPACE/build-efficientat-real/tests/efficientat_frontend_dump" \
             --cpp-benchmark "$GITHUB_WORKSPACE/build-efficientat-real/tests/efficientat_wav_benchmark" \
             --cpp-labels "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" \
             --output "$RUNNER_TEMP/esc10-eval/mn10-chainsaw-parity.json"
