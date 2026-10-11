@@ -97,7 +97,8 @@ void PerSourceSpeechRuntime::forget(std::uint64_t id) {
     std::lock_guard<std::mutex> guard{mutex_};
     const auto it = tracks_.find(id);
     if (it != tracks_.end()) {
-        queueSegment(id, it->second);
+        // Retiring an ODAS track invalidates unfinished audio. Do not enqueue
+        // it and then immediately cancel it as this distorts loss metrics.
         tracks_.erase(it);
     }
     // Retiring a track cancels all pending and in-flight ASR from its generation.
