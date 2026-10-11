@@ -155,12 +155,18 @@ jobs:
             --efficientat-benchmark ./build-efficientat-real/tests/efficientat_wav_benchmark \
             --yamnet-benchmark ./build-efficientat-real/tests/yamnet_wav_benchmark \
             --output "$RUNNER_TEMP/esc10-eval/three-model-real-events.json"
+      - name: Review real-event scores for saturation and silent excerpts
+        run: |
+          python3 tools/review_audio_taggers_report.py \
+            "$RUNNER_TEMP/esc10-eval/three-model-real-events.json" \
+            --output "$RUNNER_TEMP/esc10-eval/review-findings.json"
       - name: Upload real-event comparison and source attribution
         uses: actions/upload-artifact@v4
         with:
           name: efficientat-yamnet-esc10-real-event-report
           path: |
             ${{ runner.temp }}/esc10-eval/three-model-real-events.json
+            ${{ runner.temp }}/esc10-eval/review-findings.json
             ${{ runner.temp }}/esc10-eval/manifest.csv
             ${{ runner.temp }}/esc10-eval/provenance.csv
             ${{ runner.temp }}/esc10-eval/ESC-50-LICENSE.txt
