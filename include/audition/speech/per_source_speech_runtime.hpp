@@ -80,7 +80,8 @@ private:
     std::shared_ptr<const IAsrEngine> asr_;
     PerSourceSpeechOptions options_{};
     std::map<std::uint64_t, Track> tracks_{};
-    std::map<std::uint64_t, std::uint64_t> generations_{};
+    // Globally unique generation; avoids retaining unbounded historical IDs.
+    std::uint64_t next_generation_{1};
     std::deque<Job> jobs_{};
     std::vector<SourceSpeechResult> results_{};
     mutable std::mutex mutex_{};
