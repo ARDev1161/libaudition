@@ -214,3 +214,41 @@ reconciled using `tools/audit_audioset_vocabularies.py` before computing
 three-model metrics. End-to-end real-event accuracy still needs a licensed
 annotated dataset; scores from the generated sine wave are not accuracy
 evidence.
+
+## Unified three-model AudioSet benchmark
+
+`tools/compare_audio_taggers.py` compares YAMNet, MN10 and DyMN10 on
+**the same annotated 32 kHz mono PCM16 WAVs**. The manifest uses AudioSet
+MID identifiers, not display names, and may annotate multiple labels:
+
+```csv
+wav,mid
+audio/voice.wav,/m/09x0r
+audio/mixed.wav,/m/09x0r|/m/05zppz
+```
+
+The command requires model/labels paths and BOTH upstream ontology CSV maps:
+
+```bash
+python3 tools/compare_audio_taggers.py \
+ --manifest /path/to/manifest.csv \
+ --mn-model /models/mn10_as.onnx --mn-labels /models/mn10_as_labels.txt \
+ --dymn-model /models/dymn10_as.onnx --dymn-labels /models/dymn10_as_labels.txt \
+ --yamnet-model /models/yamnet.onnx --yamnet-labels /models/yamnet_class_map.csv \
+ --efficientat-csv /path/to/EfficientAT/metadata/class_labels_indices.csv \
+ --yamnet-csv /models/yamnet_class_map.csv \
+ --efficientat-benchmark ./build-efficientat/tests/efficientat_wav_benchmark \
+ --yamnet-benchmark ./build-efficientat/tests/yamnet_wav_benchmark \
+ --output /tmp/audio_taggers_comparison.json
+```
+
+Each model reports hit@5, macro_recall@5, mean median/p95 latency and
+mean RTF, with per-clip Top-5 and scores. Clips annotated with IDs outside
+the **shared intersection** of MID vocabularies are reported as excluded;
+out-of-intersection predictions still occupy Top-5 slots. This avoids
+claiming one model is wrong for a label it cannot represent.
+
+These scores are **not AudioSet mAP**. CPU benchmark timings omit model
+loading, WAV decoding, and the YAMNet 32->16 kHz preprocessing step.
+Use identical clips and hardware; do not interpret runner timings as
+RK3588 results.
