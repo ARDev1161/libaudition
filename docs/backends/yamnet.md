@@ -63,8 +63,11 @@ artifacts are downloaded or redistributed automatically.
 - Uses CPUExecutionProvider only. This integration does **not** provide RKNN
   NPU acceleration; that needs a separate backend and model conversion.
 - Mono 16 kHz is enforced (no implicit resampling).
-- The Qt demo uses 1 second non-overlapping windows for YAMNet and 2 seconds
-  for Sherpa. Inference runs in a bounded background queue.
+- The Qt demo derives the YAMNet input length from the model input tensor:
+  15,600 samples for dynamic waveform exports (one 0.975-second patch),
+  or the exact fixed length for fixed-shape exports. It uses **50% overlap**
+  between consecutive classifications. Sherpa retains 2-second windows.
+  Inference runs in a bounded background queue.
 - The demo currently displays the highest-scoring class only, although the
   backend itself returns top-K.
 - ODAS tracks are only sound directions. YAMNet classifies source-separated
@@ -85,3 +88,17 @@ options.top_k = 3;
 audition::YamnetAudioTagger classifier{options};
 auto classes = classifier.classify(audio);
 ```
+
+## Real-model adapter parity test
+
+The `efficientat-real-weights` CI job additionally runs `yamnet_pcm16_probe`
+and `tools/verify_yamnet_onnx_cpp.py` on identical **raw 16 kHz PCM16**
+samples using the pinned waveform-input ONNX checkpoint. The independent
+Python ONNX Runtime run computes per-patch 521-class scores and averages
+them; the test fails if the C++ adapter returns different Top-10 labels
+or values (absolute score tolerance 2e-5). The result is archived as
+`yamnet-onnx-cpp-parity.json` in the CI real-event artifact.
+
+This verifies **integration parity**, not that a particular real-world
+sound will be recognized accurately. AudioSet label accuracy still
+requires a larger event-aligned corpus and dedicated clip-level metrics.
