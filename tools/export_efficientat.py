@@ -5,7 +5,7 @@ Run from the upstream EfficientAT repository root after installing its dependenc
   python3 /path/to/libaudition/tools/export_efficientat.py --model mn10_as --output /tmp/eat
 
 Only the official model factory is used; it fetches the checkpoint from the
-upstream release. The exported model accepts [1,1,128,100] float32 log-mel.
+upstream release. MN10 defaults to [1,1,128,500] and DyMN10 to [1,1,128,100] float32 log-mel.
 This script verifies output parity using CPU ONNX Runtime.
 """
 import argparse
@@ -27,7 +27,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", choices=["mn10_as", "dymn10_as"], required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
+    parser.add_argument("--frames", type=int, default=None, help="mel frames, default 500 for MN10 and 100 for DyMN10")
     args = parser.parse_args()
+    frames = args.frames if args.frames is not None else (500 if args.model == "mn10_as" else 100)
+    if frames < 10 or frames > 2000:
+        parser.error("--frames must be 10..2000")
     torch.set_num_threads(1)
     args.output.mkdir(parents=True, exist_ok=True)
     torch.manual_seed(19)
@@ -46,7 +50,7 @@ def main():
             return prediction
 
     wrapped = RawLogits(model).eval()
-    x = torch.randn(1, 1, 128, 100)
+    x = torch.randn(1, 1, 128, frames)
     with torch.no_grad():
         reference = wrapped(x).detach().numpy()
     assert reference.shape == (1, 527), reference.shape
@@ -72,7 +76,7 @@ def main():
         "onnx_file": path.name,
         "onnx_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "labels_sha256": hashlib.sha256(labels_path.read_bytes()).hexdigest(),
-        "input_shape": [1, 1, 128, 100],
+        "input_shape": [1, 1, 128, frames],
         "output_shape": [1, 527],
         "max_abs_logit_error": max_err,
         "mean_abs_logit_error": mean_err,
