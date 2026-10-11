@@ -377,6 +377,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                 track.classification_label += tag->unsupported_labels[j];
                             }
                         }
+                        if (!tag->stage.empty()) {
+                            const auto phase = tag->stage == "quick"
+                                ? "Fast (~1s)" : "Refined (5s)";
+                            track.classification_label = phase + std::string{": "} +
+                                                         track.classification_label;
+                        }
                         track.classification_probability = tag->probability;
                     }
                 }
