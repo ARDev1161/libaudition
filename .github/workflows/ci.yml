@@ -48,12 +48,13 @@ jobs:
           cmake -S . -B build-efficientat-real -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DLIBAUDITION_WITH_EFFICIENTAT=ON
+          -DLIBAUDITION_WITH_YAMNET=ON
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build C++ real-model smoke tool
-        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_wav_benchmark --parallel
+        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_wav_benchmark yamnet_wav_benchmark --parallel
       - name: Install exporter dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/efficientat-real"
@@ -88,6 +89,14 @@ jobs:
         run: python3 tests/test_compare_efficientat_wavs.py
       - name: Validate MID-based AudioSet ontology mapping
         run: python3 tests/test_audioset_vocabulary_audit.py
+      - name: Fetch pinned YAMNet ONNX demo model and labels
+        run: |
+          mkdir -p "$RUNNER_TEMP/yamnet"
+          for file in yamnet.onnx yamnet_class_map.csv; do
+            curl --fail --location --retry 3 --silent --show-error \
+              "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/$file" \
+              --output "$RUNNER_TEMP/yamnet/$file"
+          done
       - name: Generate deterministic PCM16 WAV and benchmark both models
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
@@ -104,6 +113,7 @@ jobs:
           PY
           ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
           ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
+          ./build-efficientat-real/tests/yamnet_wav_benchmark "$RUNNER_TEMP/yamnet/yamnet.onnx" "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" "$RUNNER_TEMP/efficientat-benchmark.wav"
 
   efficientat-backend:
     runs-on: ubuntu-latest
