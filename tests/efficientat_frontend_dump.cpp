@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
             {32000U, 1U, audition::AudioLayout::Interleaved},
             audition::Timestamp{}, 0U};
         const auto mel = audition::EfficientAtWaveformFrontend{}.compute(audio.view());
-        if (mel.mel_bins != 128U || mel.frames != (samples.size() / 320U)) {
+        if (mel.mel_bins != 128U || mel.frames != (audio.frameCount() / 320U)) {
             throw std::runtime_error{"Unexpected mel tensor shape"};
         }
         std::ofstream out{argv[1], std::ios::binary};
