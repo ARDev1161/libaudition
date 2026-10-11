@@ -384,6 +384,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     taggingSettings->setVisible(enableTagging->isChecked());
     auto* enableSpeech = new QCheckBox{"Transcribe separated sources (Silero + SenseVoice)", page};
     enableSpeech->setObjectName("acousticSceneEnableSpeech");
+#if LIBAUDITION_DEMO_HAS_SHERPA && defined(LIBAUDITION_DEMO_SILERO_VAD_MODEL) && defined(LIBAUDITION_DEMO_SENSEVOICE_MODEL) && defined(LIBAUDITION_DEMO_SENSEVOICE_TOKENS)
+    enableSpeech->setChecked(true);
+#endif
 #if !LIBAUDITION_DEMO_HAS_SHERPA
     enableSpeech->setEnabled(false);
     enableSpeech->setToolTip("Build with LIBAUDITION_WITH_SHERPA=ON");
@@ -393,6 +396,15 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto* speechVad = new QLineEdit{speechSettings};
     auto* speechAsr = new QLineEdit{speechSettings};
     auto* speechTokens = new QLineEdit{speechSettings};
+#ifdef LIBAUDITION_DEMO_SILERO_VAD_MODEL
+    speechVad->setText(QString::fromUtf8(LIBAUDITION_DEMO_SILERO_VAD_MODEL));
+#endif
+#ifdef LIBAUDITION_DEMO_SENSEVOICE_MODEL
+    speechAsr->setText(QString::fromUtf8(LIBAUDITION_DEMO_SENSEVOICE_MODEL));
+#endif
+#ifdef LIBAUDITION_DEMO_SENSEVOICE_TOKENS
+    speechTokens->setText(QString::fromUtf8(LIBAUDITION_DEMO_SENSEVOICE_TOKENS));
+#endif
     speechVad->setPlaceholderText("Silero VAD model .onnx");
     speechAsr->setPlaceholderText("SenseVoice model .onnx");
     speechTokens->setPlaceholderText("SenseVoice tokens.txt");
@@ -401,7 +413,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechForm->addRow("SenseVoice tokens", speechTokens);
     layout->addWidget(enableSpeech);
     layout->addWidget(speechSettings);
-    speechSettings->setVisible(false);
+    speechSettings->setVisible(enableSpeech->isChecked());
     QObject::connect(enableSpeech, &QCheckBox::toggled,
                      speechSettings, &QWidget::setVisible);
 #if !LIBAUDITION_DEMO_HAS_SHERPA && !LIBAUDITION_DEMO_HAS_YAMNET
