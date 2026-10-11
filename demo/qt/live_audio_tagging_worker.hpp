@@ -41,6 +41,8 @@ public:
 
     void push(std::uint64_t track_id, const std::vector<float>& mono,
               std::uint64_t processed_hops);
+    // Called when ODAS retires a tracked source or resets after an audio gap.
+    void forget(std::uint64_t track_id);
     [[nodiscard]] std::optional<LiveTrackClassification> result(
         std::uint64_t track_id, std::uint64_t processed_hops) const;
     [[nodiscard]] std::string error() const;
