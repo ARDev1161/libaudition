@@ -1,5 +1,6 @@
 #include "alsa_live_capture.hpp"
 #include "live_audio_tagging_worker.hpp"
+#include "source_track_lifecycle.hpp"
 #include "odas_respeaker_profile.hpp"
 
 #if LIBAUDITION_DEMO_HAS_ALSA
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -247,6 +249,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                        5U},
                                    config.tagging_efficientat_model});
         }
+        SourceTrackLifecycle source_lifecycle;
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -288,6 +291,11 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 measuredFrames = 0;
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
+                if (classifier) {
+                    source_lifecycle.clear([&](std::uint64_t id) {
+                        classifier->forget(id);
+                    });
+                }
                 continue;
             }
             if (result < 0) {
@@ -328,6 +336,16 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             const auto resultFrame = engine.process(block.view());
             ++hops;
             if (classifier) {
+                std::set<std::uint64_t> present;
+                for (const auto& track : resultFrame.tracks) {
+                    present.insert(track.track_id.value());
+                }
+                for (const auto& separated : resultFrame.separated_frames) {
+                    present.insert(separated.track_id.value());
+                }
+                source_lifecycle.update(std::move(present), [&](std::uint64_t id) {
+                    classifier->forget(id);
+                });
                 for (const auto& separated : resultFrame.separated_frames) {
                     classifier->push(separated.track_id.value(),
                                      separated.audio.samples(), hops);
