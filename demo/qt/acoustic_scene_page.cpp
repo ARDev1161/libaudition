@@ -382,6 +382,28 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     layout->addWidget(enableTagging);
     layout->addWidget(taggingSettings);
     taggingSettings->setVisible(enableTagging->isChecked());
+    auto* enableSpeech = new QCheckBox{"Transcribe separated sources (Silero + SenseVoice)", page};
+    enableSpeech->setObjectName("acousticSceneEnableSpeech");
+#if !LIBAUDITION_DEMO_HAS_SHERPA
+    enableSpeech->setEnabled(false);
+    enableSpeech->setToolTip("Build with LIBAUDITION_WITH_SHERPA=ON");
+#endif
+    auto* speechSettings = new QWidget{page};
+    auto* speechForm = new QFormLayout{speechSettings};
+    auto* speechVad = new QLineEdit{speechSettings};
+    auto* speechAsr = new QLineEdit{speechSettings};
+    auto* speechTokens = new QLineEdit{speechSettings};
+    speechVad->setPlaceholderText("Silero VAD model .onnx");
+    speechAsr->setPlaceholderText("SenseVoice model .onnx");
+    speechTokens->setPlaceholderText("SenseVoice tokens.txt");
+    speechForm->addRow("Silero VAD", speechVad);
+    speechForm->addRow("SenseVoice ONNX", speechAsr);
+    speechForm->addRow("SenseVoice tokens", speechTokens);
+    layout->addWidget(enableSpeech);
+    layout->addWidget(speechSettings);
+    speechSettings->setVisible(false);
+    QObject::connect(enableSpeech, &QCheckBox::toggled,
+                     speechSettings, &QWidget::setVisible);
 #if !LIBAUDITION_DEMO_HAS_SHERPA && !LIBAUDITION_DEMO_HAS_YAMNET
     enableTagging->setEnabled(false);
     enableTagging->setToolTip(
@@ -452,10 +474,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     split->addWidget(sphere);
     auto* sidebar = new QWidget{split};
     auto* sideLayout = new QVBoxLayout{sidebar};
-    auto* tracks = new QTableWidget{0, 5, sidebar};
+    auto* tracks = new QTableWidget{0, 6, sidebar};
     tracks->setObjectName("acousticSceneTracks");
     tracks->setHorizontalHeaderLabels({
-        "ID", "Azimuth", "Elevation", "Activity", "Activity type"});
+        "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript"});
     tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -470,7 +492,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         "Orange grid: below equator\nBlue grid: above equator\n"
         "XYZ axes: +X forward / +Y left / +Z up\n"
         "Hover: direction, activity, sound class (if model loaded)\n"
-        "ASR is not connected in this viewer yet.", sidebar});
+        "ASR transcripts are shown per tracked source when enabled.", sidebar});
     split->addWidget(sidebar);
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 2);
@@ -488,13 +510,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const auto v = track.direction;
             const double az = std::atan2(v.y(), v.x()) * 180.0 / kPi;
             const double el = std::atan2(v.z(), std::hypot(v.x(), v.y())) * 180.0 / kPi;
-            for (int column = 0; column < 5; ++column) {
+            for (int column = 0; column < 6; ++column) {
                 QString data;
                 switch (column) {
                 case 0: data = QString::number(static_cast<qulonglong>(track.id)); break;
                 case 1: data = QString::number(az, 'f', 1) + "°"; break;
                 case 2: data = QString::number(el, 'f', 1) + "°"; break;
                 case 3: data = QString::number(track.activity, 'f', 2); break;
+                case 5:
+                    data = QString::fromStdString(track.transcript);
+                    break;
                 default:
                     if (!track.classification_label.empty()) {
                         data = QString::fromStdString(track.classification_label) +
@@ -544,6 +569,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         hop->setEnabled(true);
         frame->setEnabled(true);
         angularPreset->setEnabled(true);
+        enableSpeech->setEnabled(LIBAUDITION_DEMO_HAS_SHERPA);
         enableTagging->setEnabled(
 #if LIBAUDITION_DEMO_HAS_SHERPA || LIBAUDITION_DEMO_HAS_YAMNET
             (taggingFamily->currentIndex() == 2 ? LIBAUDITION_DEMO_HAS_YAMNET : LIBAUDITION_DEMO_HAS_SHERPA)
@@ -628,6 +654,22 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.frame_size = static_cast<std::uint32_t>(frame->value());
             config.respeaker_angular_profile = angularPreset->isChecked();
             config.classify_sources = enableTagging->isChecked();
+            config.transcribe_sources = enableSpeech->isChecked();
+            if (config.transcribe_sources) {
+                const auto vad = std::filesystem::path{speechVad->text().toStdString()};
+                const auto model = std::filesystem::path{speechAsr->text().toStdString()};
+                const auto tokens = std::filesystem::path{speechTokens->text().toStdString()};
+                if (config.sample_rate_hz != 16000U ||
+                    !std::filesystem::is_regular_file(vad) ||
+                    !std::filesystem::is_regular_file(model) ||
+                    !std::filesystem::is_regular_file(tokens)) {
+                    throw std::runtime_error{
+                        "ASR requires 16 kHz and existing Silero/SenseVoice ONNX + tokens"};
+                }
+                config.speech_vad_model_path = vad.string();
+                config.speech_asr_model_path = model.string();
+                config.speech_asr_tokens_path = tokens.string();
+            }
             if (config.classify_sources) {
                 const auto modelFile =
                     std::filesystem::path{taggingModel->text().toStdString()};
@@ -696,6 +738,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             frame->setEnabled(false);
             angularPreset->setEnabled(false);
             enableTagging->setEnabled(false);
+            enableSpeech->setEnabled(false);
             taggingFamily->setEnabled(false);
             taggingModel->setEnabled(false);
             taggingLabels->setEnabled(false);
