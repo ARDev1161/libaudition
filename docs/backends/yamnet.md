@@ -159,3 +159,20 @@ window with 50% overlap. After each hop, an inference result can be
 published without waiting for an entire 5-second recording. This is
 preferable for *when did an event happen?*; longer clip-level aggregates
 are appropriate for *what happened during the recording?*.
+
+## Separated-source fault isolation
+
+`SourceClassificationRuntime` isolates malformed audio and classifier
+exceptions by ODAS `source_id`. A NaN sample or an inference failure
+marks that source as `Error` and discards its buffered/queued windows,
+without terminating the inference worker or blocking other tracks.
+The affected track remains quarantined until the caller explicitly
+`forget(source_id)` (for example, after ODAS retires the track).
+The next generation of the same numeric source ID can then be
+classified normally. A completed inference must not overwrite a
+source error if it was reported while that inference was running.
+
+This is an operational safety property, not a guarantee of successful
+recognition on poor-quality separated audio. The C++ regression suite
+covers malformed samples, a throwing backend, healthy parallel
+sources and numeric track-ID reuse after `forget()`.
