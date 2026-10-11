@@ -32,6 +32,11 @@ struct SourceClassificationStatus {
     // Timings for the latest successful inference; absent until first result.
     std::optional<double> last_inference_ms{};
     std::optional<double> last_queue_wait_ms{};
+    // Aggregated across all successfully completed windows of this source.
+    std::optional<double> mean_inference_ms{};
+    std::optional<double> mean_queue_wait_ms{};
+    std::optional<double> max_inference_ms{};
+    std::optional<double> max_queue_wait_ms{};
     // Per-source PCM position: reflects audio ingested, not wall-clock inference time.
     std::uint64_t received_samples{0};
     // End-exclusive PCM position of result; null when result is absent/expired.
@@ -71,6 +76,10 @@ private:
         std::uint64_t completed_windows{0};
         std::optional<double> last_inference_ms{};
         std::optional<double> last_queue_wait_ms{};
+        double total_inference_ms{0.0};
+        double total_queue_wait_ms{0.0};
+        double max_inference_ms{0.0};
+        double max_queue_wait_ms{0.0};
         std::chrono::steady_clock::time_point last_result_at{};
     };
     struct Job {
