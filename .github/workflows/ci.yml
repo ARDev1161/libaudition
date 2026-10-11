@@ -95,6 +95,9 @@ jobs:
       - name: Test YAMNet event-timeline analysis
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" tests/test_analyze_yamnet_event_timeline.py
+      - name: Validate fold-balanced ESC-10 and YAMNet extended metrics
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" tests/test_yamnet_esc10_extended.py
       - name: Validate real-event score diagnostic guardrails
         run: python3 tests/test_review_audio_taggers_report.py
       - name: Fetch pinned YAMNet ONNX demo model and labels
@@ -230,6 +233,31 @@ jobs:
           python3 tools/review_audio_taggers_report.py \
             "$RUNNER_TEMP/esc10-eval/three-model-real-events.json" \
             --output "$RUNNER_TEMP/esc10-eval/review-findings.json"
+      - name: Prepare 80 source-labelled ESC-10 clips across 5 folds
+        run: |
+          python3 tools/prepare_esc10_evaluation.py \
+            --output "$RUNNER_TEMP/esc10-yamnet-extended" \
+            --clips-per-category 20 \
+            --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
+            --yamnet-csv "$RUNNER_TEMP/yamnet/yamnet_class_map.csv"
+      - name: Evaluate YAMNet on 80 ESC-10 clips with class-level 1s versus 5s metrics
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" tools/evaluate_yamnet_esc10.py \
+            --manifest "$RUNNER_TEMP/esc10-yamnet-extended/manifest.csv" \
+            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --expected-clips 80 \
+            --output "$RUNNER_TEMP/esc10-yamnet-extended/yamnet-esc10-80.json"
+      - name: Upload expanded ESC-10 YAMNet evaluation and licensing
+        uses: actions/upload-artifact@v4
+        with:
+          name: yamnet-esc10-80-evaluation
+          path: |
+            ${{ runner.temp }}/esc10-yamnet-extended/yamnet-esc10-80.json
+            ${{ runner.temp }}/esc10-yamnet-extended/manifest.csv
+            ${{ runner.temp }}/esc10-yamnet-extended/provenance.csv
+            ${{ runner.temp }}/esc10-yamnet-extended/ESC-50-LICENSE.txt
+          retention-days: 14
       - name: Upload real-event comparison and source attribution
         uses: actions/upload-artifact@v4
         with:
