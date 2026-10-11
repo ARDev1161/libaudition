@@ -60,6 +60,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/efficientat-real"
           "$RUNNER_TEMP/efficientat-real/bin/pip" install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           "$RUNNER_TEMP/efficientat-real/bin/pip" install onnx onnxruntime numpy
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install torchaudio --index-url https://download.pytorch.org/whl/cpu
       - name: Fetch original EfficientAT source
         run: |
           git clone --depth 1 https://github.com/fschmid56/EfficientAT.git "$RUNNER_TEMP/EfficientAT"
@@ -142,6 +143,17 @@ jobs:
             --output "$RUNNER_TEMP/esc10-eval" \
             --efficientat-csv "$RUNNER_TEMP/EfficientAT/metadata/class_labels_indices.csv" \
             --yamnet-csv "$RUNNER_TEMP/yamnet/yamnet_class_map.csv"
+      - name: Diagnose MN10 waveform preprocessing and real-weight parity
+        run: |
+          cd "$RUNNER_TEMP/EfficientAT"
+          export PYTHONPATH="$RUNNER_TEMP/EfficientAT"
+          "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/diagnose_efficientat_wav.py" \
+            --wav "$RUNNER_TEMP/esc10-eval/chainsaw.wav" \
+            --model mn10_as \
+            --onnx "$RUNNER_TEMP/eat-real/mn10_as.onnx" \
+            --cpp-benchmark "$GITHUB_WORKSPACE/build-efficientat-real/tests/efficientat_wav_benchmark" \
+            --cpp-labels "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" \
+            --output "$RUNNER_TEMP/esc10-eval/mn10-chainsaw-parity.json"
       - name: Compare three models on real ESC-10 event recordings
         run: |
           python3 tools/compare_audio_taggers.py \
@@ -169,6 +181,7 @@ jobs:
           path: |
             ${{ runner.temp }}/esc10-eval/three-model-real-events.json
             ${{ runner.temp }}/esc10-eval/review-findings.json
+            ${{ runner.temp }}/esc10-eval/mn10-chainsaw-parity.json
             ${{ runner.temp }}/esc10-eval/manifest.csv
             ${{ runner.temp }}/esc10-eval/provenance.csv
             ${{ runner.temp }}/esc10-eval/ESC-50-LICENSE.txt
