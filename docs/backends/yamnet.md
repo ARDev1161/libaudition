@@ -114,3 +114,25 @@ These expectations come from the upstream
 The CI archive includes `yamnet-behavior.json` with the complete outputs.
 This detects gross regressions in the downloaded third-party model, but
 does not replace event-aligned evaluation on microphone/ODAS recordings.
+
+## Full-clip verification versus low-latency operation
+
+The real-event comparison now reports two independent YAMNet modes on the
+same ESC-10 source recordings: `yamnet` uses the first 1 second; `yamnet_5s`
+processes the complete **five-second** recording with the same model and
+mean-per-class pooling across its temporal patches. These are distinct
+measurement regimes, not competing model weights or alternative label maps.
+An ESC-10 clip-level label does not imply that the first second contains
+its event. A first-second `Silence` prediction can therefore be correct
+for the input while still missing a sound that occurs later.
+
+`yamnet_wav_benchmark` accepts an optional `--seconds 5` argument, with
+the default remaining 1 second. Its RTF is normalized by the requested audio
+duration. For real-time ODAS classification the Qt adapter retains an
+approximately 0.975-second model patch and 50% hop; do **not** force a
+five-second startup delay based on offline clip metrics.
+
+The real-weights CI also verifies **C++ vs independently executed ONNX**
+on 80,000 samples (five seconds) in addition to the original 15,600-sample
+single-patch fixture. This checks temporal patch aggregation as well as
+the reported class ordering.
