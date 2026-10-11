@@ -40,7 +40,7 @@ void SourceClassificationRuntime::push(
     std::uint64_t source_id, const float* samples, std::size_t count) {
     if (samples == nullptr || count == 0U) return;
     std::lock_guard<std::mutex> lock{mutex_};
-    if (stopping_ || !error_.empty()) return;
+    if (stopping_) return;
     auto it = buffers_.find(source_id);
     if (it == buffers_.end()) {
         if (buffers_.size() >= max_sources_) {
@@ -64,10 +64,17 @@ void SourceClassificationRuntime::push(
         it = buffers_.emplace(source_id, std::move(fresh)).first;
     }
     it->second.last_seen_order = next_seen_order_++;
+    if (!it->second.error.empty()) return;
     auto& buffer = it->second.samples;
     for (std::size_t i = 0U; i < count; ++i) {
         if (!std::isfinite(samples[i])) {
-            error_ = "Nonfinite source audio sample";
+            it->second.error = "Nonfinite source audio sample";
+            it->second.samples.clear();
+            pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
+                [source_id, generation=it->second.generation](const Job& job) {
+                    return job.source_id == source_id && job.generation == generation;
+                }), pending_.end());
+            it->second.result.reset();
             return;
         }
         buffer.push_back(samples[i]);
@@ -92,13 +99,13 @@ SourceClassificationStatus SourceClassificationRuntime::status(
     SourceClassificationStatus result{};
     result.required_samples = window_samples_;
     result.dropped_windows = dropped_windows_;
-    if (!error_.empty()) {
-        result.state = SourceClassificationState::Error;
-        result.error = error_;
-        return result;
-    }
     const auto it = buffers_.find(source_id);
     if (it == buffers_.end()) return result;
+    if (!it->second.error.empty()) {
+        result.state = SourceClassificationState::Error;
+        result.error = it->second.error;
+        return result;
+    }
     result.collected_samples = it->second.samples.size();
     if (it->second.result.has_value() &&
         std::chrono::steady_clock::now() - it->second.last_result_at < kResultTtl) {
@@ -148,14 +155,22 @@ void SourceClassificationRuntime::run() noexcept {
             active_source_.reset();
         } catch (const std::exception& exception) {
             std::lock_guard<std::mutex> lock{mutex_};
-            error_ = exception.what();
+            if (const auto it = buffers_.find(job.source_id);
+                it != buffers_.end() && it->second.generation == job.generation) {
+                it->second.error = exception.what();
+                it->second.samples.clear();
+                it->second.result.reset();
+            }
             active_source_.reset();
-            return;
         } catch (...) {
             std::lock_guard<std::mutex> lock{mutex_};
-            error_ = "Unknown classification exception";
+            if (const auto it = buffers_.find(job.source_id);
+                it != buffers_.end() && it->second.generation == job.generation) {
+                it->second.error = "Unknown classification exception";
+                it->second.samples.clear();
+                it->second.result.reset();
+            }
             active_source_.reset();
-            return;
         }
     }
 }
