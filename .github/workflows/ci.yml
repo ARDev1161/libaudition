@@ -132,6 +132,8 @@ jobs:
             --efficientat-benchmark ./build-efficientat-real/tests/efficientat_wav_benchmark \
             --yamnet-benchmark ./build-efficientat-real/tests/yamnet_wav_benchmark \
             --output "$RUNNER_TEMP/three-model-comparison.json"
+      - name: Install audio conversion tool for ESC-10 evaluation
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Prepare attributed real ESC-10 event WAV excerpts
         run: |
           python3 tools/prepare_esc10_evaluation.py \
