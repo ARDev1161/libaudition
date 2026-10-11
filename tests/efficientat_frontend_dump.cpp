@@ -30,15 +30,19 @@ int main(int argc, char** argv) {
             std::ifstream wav{argv[2], std::ios::binary};
             const std::vector<unsigned char> bytes{
                 std::istreambuf_iterator<char>{wav}, std::istreambuf_iterator<char>{}};
-            if (bytes.size() != 64044U ||
+            if (bytes.size() != 64044U && bytes.size() != 320044U) {
+                throw std::runtime_error{"Expected exact 1s or 5s WAV"};
+            }
+            if (
                 std::string(reinterpret_cast<const char*>(bytes.data()),4) != "RIFF" ||
                 std::string(reinterpret_cast<const char*>(bytes.data()+8),4) != "WAVE" ||
                 std::string(reinterpret_cast<const char*>(bytes.data()+12),4) != "fmt " ||
                 std::string(reinterpret_cast<const char*>(bytes.data()+36),4) != "data" ||
                 bytes[22] != 1 || bytes[23] != 0 || bytes[34] != 16 ||
                 bytes[24] != 0 || bytes[25] != 125) {
-                throw std::runtime_error{"Expected exact 1s canonical PCM16 32k mono WAV"};
+                throw std::runtime_error{"Expected canonical PCM16 32k mono WAV"};
             }
+            samples.resize((bytes.size() - 44U) / 2U);
             for (std::size_t i=0; i<samples.size(); ++i) {
                 const auto lo = static_cast<std::uint16_t>(bytes[44+i*2]);
                 const auto hi = static_cast<std::uint16_t>(bytes[45+i*2]);
@@ -50,7 +54,7 @@ int main(int argc, char** argv) {
             {32000U, 1U, audition::AudioLayout::Interleaved},
             audition::Timestamp{}, 0U};
         const auto mel = audition::EfficientAtWaveformFrontend{}.compute(audio.view());
-        if (mel.mel_bins != 128U || mel.frames != 100U) {
+        if (mel.mel_bins != 128U || mel.frames != (samples.size() / 320U)) {
             throw std::runtime_error{"Unexpected mel tensor shape"};
         }
         std::ofstream out{argv[1], std::ios::binary};
