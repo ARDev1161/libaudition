@@ -4,3 +4,4 @@
 #include <audition/pipeline/bounded_queue.hpp>
 #include <audition/pipeline/cancellation.hpp>
 #include <audition/pipeline/spatial_identity.hpp>
+#include <audition/speech/source_speech_runtime.hpp>

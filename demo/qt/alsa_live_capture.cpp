@@ -2,6 +2,11 @@
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
 #include "odas_respeaker_profile.hpp"
+#if LIBAUDITION_DEMO_HAS_SHERPA
+#include <audition/speech/source_speech_runtime.hpp>
+#include <audition/backends/sherpa/vad.hpp>
+#include <audition/backends/sherpa/offline_asr.hpp>
+#endif
 
 #if LIBAUDITION_DEMO_HAS_ALSA
 #include <audition/backends/odas.hpp>
@@ -18,6 +23,7 @@
 #include <set>
 #include <stdexcept>
 #include <utility>
+#include <unordered_map>
 #include <vector>
 
 namespace demo {
@@ -230,7 +236,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         }
         // Source-specific classification needs actual SSS mono audio. Avoid
         // the extra DSP cost when no classifier model is configured.
-        options.sss.enabled = config.classify_sources;
+        options.sss.enabled = config.classify_sources || config.transcribe_sources;
         audition::OdasSpatialEngine engine{options};
         std::unique_ptr<LiveAudioTaggingWorker> classifier;
         if (config.classify_sources) {
@@ -249,7 +255,35 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                        5U},
                                    config.tagging_efficientat_model});
         }
+#if LIBAUDITION_DEMO_HAS_SHERPA
+        std::unique_ptr<audition::SourceSpeechRuntime> speech;
+        if (config.transcribe_sources) {
+            audition::SherpaVadOptions vad_opts{};
+            audition::SherpaSileroVadModel vad_model{};
+            vad_model.model = config.speech_vad_model_path;
+            vad_opts.model = vad_model;
+            // GCC 13 can falsely diagnose the aggregate's nested std::map
+            // as uninitialized when this config is a large local at -O3.
+            // Keep the fully initialized configuration in owned storage.
+            auto asr_opts = std::make_unique<audition::SherpaOfflineAsrOptions>();
+            audition::SherpaOfflineSenseVoiceModel sense_voice{};
+            sense_voice.model = config.speech_asr_model_path;
+            asr_opts->model = std::move(sense_voice);
+            asr_opts->tokens = config.speech_asr_tokens_path;
+            auto vad = std::make_shared<audition::SherpaVad>(std::move(vad_opts));
+            auto asr = std::make_shared<audition::SherpaOfflineAsr>(
+                std::move(*asr_opts));
+            speech = std::make_unique<audition::SourceSpeechRuntime>(
+                std::move(vad), std::move(asr));
+        }
+#else
+        if (config.transcribe_sources) {
+            throw std::runtime_error{"Speech transcription requires Sherpa backend"};
+        }
+#endif
+        std::unordered_map<std::uint64_t, std::string> latest_transcripts;
         SourceTrackLifecycle source_lifecycle;
+        SourceTrackLifecycle speech_pcm_lifecycle;
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -291,11 +325,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 measuredFrames = 0;
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
-                if (classifier) {
-                    source_lifecycle.clear([&](std::uint64_t id) {
-                        classifier->forget(id);
-                    });
-                }
+                source_lifecycle.clear([&](std::uint64_t id) {
+                    if (classifier) classifier->forget(id);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                    if (speech) speech->forget(id);
+#endif
+                    latest_transcripts.erase(id);
+                });
+                speech_pcm_lifecycle.clear([&](std::uint64_t id) {
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                    if (speech) speech->forget(id);
+#endif
+                    latest_transcripts.erase(id);
+                });
                 continue;
             }
             if (result < 0) {
@@ -335,7 +377,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 timestamp, hops};
             const auto resultFrame = engine.process(block.view());
             ++hops;
-            if (classifier) {
+            if (classifier || config.transcribe_sources) {
                 std::set<std::uint64_t> present;
                 for (const auto& track : resultFrame.tracks) {
                     present.insert(track.track_id.value());
@@ -344,12 +386,50 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     present.insert(separated.track_id.value());
                 }
                 source_lifecycle.update(std::move(present), [&](std::uint64_t id) {
-                    classifier->forget(id);
+                    if (classifier) classifier->forget(id);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                    if (speech) speech->forget(id);
+#endif
+                    latest_transcripts.erase(id);
                 });
                 for (const auto& separated : resultFrame.separated_frames) {
-                    classifier->push(separated.track_id.value(),
-                                     separated.audio.samples(), hops);
+                    if (classifier) {
+                        classifier->push(separated.track_id.value(),
+                                         separated.audio.samples(), hops);
+                    }
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                    if (speech) {
+                        try {
+                            if (!speech->push(separated.track_id.value(),
+                                              separated.audio.view())) {
+                                latest_transcripts[separated.track_id.value()] =
+                                    "Speech input dropped (backpressure)";
+                            }
+                        } catch (const std::exception& error) {
+                            speech->forget(separated.track_id.value());
+                            latest_transcripts[separated.track_id.value()] =
+                                std::string{"Speech input error: "} + error.what();
+                        }
+                    }
+#endif
                 }
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                if (speech) {
+                    std::set<std::uint64_t> pcm_present;
+                    for (const auto& separated : resultFrame.separated_frames) {
+                        pcm_present.insert(separated.track_id.value());
+                    }
+                    speech_pcm_lifecycle.update(std::move(pcm_present),
+                        [&](std::uint64_t id) {
+                            speech->forget(id);
+                            latest_transcripts.erase(id);
+                        });
+                    for (auto& event : speech->drainTranscripts()) {
+                        latest_transcripts[event.source_id] =
+                            std::move(event.transcript.text);
+                    }
+                }
+#endif
             }
             if (hops % visualStride != 0U) {
                 continue;
@@ -364,6 +444,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                               static_cast<float>(xyz.y),
                               static_cast<float>(xyz.z)},
                     t.activity.value()};
+                if (const auto it = latest_transcripts.find(t.track_id.value());
+                    it != latest_transcripts.end()) {
+                    track.transcript = it->second;
+                }
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                if (speech) {
+                    const auto speech_state = speech->status(t.track_id.value());
+                    track.speech_active = speech_state.speech_active;
+                    if (!speech_state.error.empty()) {
+                        track.transcript = "Speech error: " + speech_state.error;
+                    }
+                }
+#endif
                 if (classifier) {
                     const auto tag = classifier->result(t.track_id.value(), hops);
                     if (tag.has_value()) {
