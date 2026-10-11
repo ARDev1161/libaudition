@@ -462,3 +462,86 @@ TEST(ProgressiveSourceClassificationRuntime, SupportsCustomWindowSizesAndRejects
     EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
         32000U, std::move(wrong_rate)}), std::invalid_argument);
 }
+
+TEST(SourceClassificationRuntime, ReportsCompletedWindowAudioEndNotResultWallClock) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<WindowNamedClassifier>("window", 8U), 16000U, 8U, 2U, 2U};
+    const float first[8] = {0.1F,0.1F,0.1F,0.1F,0.1F,0.1F,0.1F,0.1F};
+    runtime.push(80U, first, 8U);
+    bool first_ready = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto state = runtime.status(80U);
+        if (state.result_end_sample == 8U) {
+            EXPECT_EQ(state.received_samples, 8U);
+            first_ready = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(first_ready);
+    const float next[2] = {0.2F, 0.3F};
+    runtime.push(80U, next, 2U);
+    bool updated = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto state = runtime.status(80U);
+        if (state.result_end_sample == 10U) {
+            EXPECT_EQ(state.received_samples, 10U);
+            EXPECT_EQ(state.collected_samples, 6U);
+            updated = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(updated);
+    runtime.forget(80U);
+    const auto retired = runtime.status(80U);
+    EXPECT_EQ(retired.received_samples, 0U);
+    EXPECT_FALSE(retired.result_end_sample.has_value());
+}
+
+TEST(ProgressiveSourceClassificationRuntime, StaleLongWindowFallsBackToFreshQuickPrediction) {
+    std::vector<audition::ProgressiveClassificationStage> stages;
+    stages.push_back({"quick", std::make_unique<WindowNamedClassifier>("recent", 4U),
+                      4U, 2U});
+    // A long prediction may lag up to four PCM samples before losing priority.
+    stages.push_back({"refined", std::make_unique<WindowNamedClassifier>("past", 8U),
+                      8U, 8U, 4U});
+    audition::ProgressiveSourceClassificationRuntime runtime{
+        16000U, std::move(stages)};
+    const float initial[8] = {0.1F,0.1F,0.1F,0.1F,0.1F,0.1F,0.1F,0.1F};
+    runtime.push(22U, initial, 8U);
+    bool refined = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto state = runtime.status(22U);
+        if (state.selected_stage == 1U) {
+            ASSERT_TRUE(state.result.has_value());
+            EXPECT_EQ(state.result->classes.front().label, "past");
+            EXPECT_EQ(state.stages[1].status.result_end_sample, 8U);
+            refined = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(refined);
+    // Five more samples are insufficient to fill the next long window.
+    // The completed long result now belongs to an older acoustic event.
+    const float after[5] = {0.2F,0.2F,0.2F,0.2F,0.2F};
+    runtime.push(22U, after, 5U);
+    bool quick_selected = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto state = runtime.status(22U);
+        if (state.selected_stage == 0U &&
+            state.stages[0].status.result_end_sample.has_value() &&
+            *state.stages[0].status.result_end_sample >= 12U) {
+            ASSERT_TRUE(state.result.has_value());
+            EXPECT_EQ(state.result->classes.front().label, "recent");
+            EXPECT_EQ(state.stages[1].status.received_samples, 13U);
+            EXPECT_EQ(state.stages[1].status.result_end_sample, 8U);
+            EXPECT_TRUE(state.stages[1].status.result.has_value());
+            quick_selected = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(quick_selected);
+}
