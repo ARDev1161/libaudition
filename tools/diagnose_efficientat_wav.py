@@ -35,8 +35,9 @@ def main():
     with wave.open(str(a.wav),"rb") as f:
         if (f.getnchannels(),f.getsampwidth(),f.getframerate())!=(1,2,32000):
             raise ValueError("Expected 32k mono PCM16")
-        pcm=np.frombuffer(f.readframes(32000),dtype="<i2")
-    if len(pcm)!=32000:
+        needed = 160000 if a.model == "mn10_as" else 32000
+        pcm=np.frombuffer(f.readframes(needed),dtype="<i2")
+    if len(pcm)!=needed:
         raise ValueError("Expected at least one second")
     x=torch.from_numpy(pcm.astype(np.float32)/32768.0).reshape(1,1,-1)
     with torch.no_grad():
@@ -50,7 +51,7 @@ def main():
             vtln_high=-500.0,vtln_warp_factor=1.0)
         banks=torch.nn.functional.pad(banks,(0,1))
         mel=((torch.log(torch.matmul(banks,spec)+1e-5)+4.5)/5).unsqueeze(1)
-        assert tuple(mel.shape)==(1,1,128,100),tuple(mel.shape)
+        assert tuple(mel.shape)==(1,1,128,needed//320),tuple(mel.shape)
         model=(get_dymn(width_mult=NAME_TO_WIDTH(a.model),pretrained_name=a.model)
                if a.model.startswith("dymn") else
                get_mobilenet(width_mult=NAME_TO_WIDTH(a.model),pretrained_name=a.model))
@@ -67,7 +68,7 @@ def main():
                 dst.writeframes(pcm.tobytes())
             subprocess.run([str(a.cpp_mel_dump.resolve()),str(output),str(canonical)],
                            capture_output=True,text=True,check=True)
-            cpp_mel=np.fromfile(output,dtype="<f4").reshape(1,1,128,100)
+            cpp_mel=np.fromfile(output,dtype="<f4").reshape(1,1,128,needed//320)
             mel_diff=np.abs(cpp_mel-mel.numpy())
             print("C++/Torch mel max_abs:",float(mel_diff.max()))
             if not np.isfinite(mel_diff).all() or mel_diff.max()>0.003:
