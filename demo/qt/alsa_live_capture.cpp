@@ -265,12 +265,15 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             vad_options.model = audition::SherpaSileroVadModel{
                 config.speech_vad_model_path};
             speech_vad = std::make_unique<audition::SherpaVad>(std::move(vad_options));
-            audition::SherpaOfflineAsrOptions asr_options{};
-            asr_options.features.sample_rate_hz = config.sample_rate_hz;
-            asr_options.tokens = config.speech_asr_tokens_path;
-            asr_options.model = audition::SherpaOfflineSenseVoiceModel{
+            // Keep the options on the heap: older GCC -O3 builds can
+            // spuriously report an uninitialized moved-from std::map when a
+            // large default-constructed options aggregate lives on the stack.
+            auto asr_options = std::make_unique<audition::SherpaOfflineAsrOptions>();
+            asr_options->features.sample_rate_hz = config.sample_rate_hz;
+            asr_options->tokens = config.speech_asr_tokens_path;
+            asr_options->model = audition::SherpaOfflineSenseVoiceModel{
                 config.speech_asr_model_path};
-            auto asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(asr_options));
+            auto asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(*asr_options));
             audition::PerSourceSpeechOptions pipeline_options{};
             pipeline_options.sample_rate_hz = config.sample_rate_hz;
             speech_runtime = std::make_unique<audition::PerSourceSpeechRuntime>(
@@ -400,8 +403,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 }
 #if LIBAUDITION_DEMO_HAS_SHERPA
                 if (speech_runtime) {
-                    for (auto& result : speech_runtime->takeResults()) {
-                        transcripts[result.track_id] = std::move(result.transcript.text);
+                    for (auto& transcript_result : speech_runtime->takeResults()) {
+                        transcripts[transcript_result.track_id] =
+                            std::move(transcript_result.transcript.text);
                     }
                 }
 #endif
