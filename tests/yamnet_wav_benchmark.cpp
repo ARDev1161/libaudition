@@ -69,21 +69,27 @@ std::vector<float> loadWav(const std::string& path) {
 
 int main(int argc, char** argv) {
     try {
-        if (argc != 4) {
-            std::cerr << "usage: yamnet_wav_benchmark MODEL.onnx LABELS.txt 32k_mono_pcm16.wav\n";
+        if (argc != 4 && argc != 6) {
+            std::cerr << "usage: yamnet_wav_benchmark MODEL.onnx LABELS.txt 32k_mono_pcm16.wav [--seconds 5]\n";
             return 2;
         }
+        const std::size_t seconds = argc == 4 ? 1U :
+            (std::string{argv[4]} == "--seconds" && std::string{argv[5]} == "5"
+                ? 5U : 0U);
+        if (seconds == 0U) throw std::runtime_error("Supported durations: 1 or 5 seconds");
+        const std::size_t sample_limit = seconds * 32000U;
         audition::YamnetOnnxOptions cfg;
         cfg.model = argv[1];
         cfg.labels = argv[2];
         cfg.top_k = 5;
         const audition::YamnetAudioTagger tagger{cfg};
         const auto samples = loadWav(argv[3]);
-        if (samples.size() < 32000U) throw std::runtime_error("WAV shorter than 1 second");
+        if (samples.size() < sample_limit)
+            throw std::runtime_error("WAV shorter than requested window");
         // Explicit anti-alias lowpass before 32 kHz -> 16 kHz.
         constexpr int radius = 32;
         constexpr double pi = 3.14159265358979323846;
-        std::vector<float> window(16000U);
+        std::vector<float> window(sample_limit / 2U);
         for (std::size_t n = 0; n < window.size(); ++n) {
             const auto center = static_cast<std::ptrdiff_t>(2U * n);
             double acc = 0.0, weight_sum = 0.0;
@@ -93,7 +99,7 @@ int main(int argc, char** argv) {
                 const double lanczos = k == 0 ? 1.0 : std::sin(pi * x / radius) / (pi * x / radius);
                 const double weight = sinc * lanczos;
                 const auto idx = static_cast<std::size_t>(std::max<std::ptrdiff_t>(
-                    0, std::min<std::ptrdiff_t>(31999, center + k)));
+                    0, std::min<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(sample_limit - 1U), center + k)));
                 acc += weight * samples[idx];
                 weight_sum += weight;
             }
@@ -123,7 +129,7 @@ int main(int argc, char** argv) {
                   << " p95_ms=" << percentile(0.95)
                   << " min_ms=" << measurements.front()
                   << " max_ms=" << measurements.back()
-                  << " rtf=" << percentile(0.5) / 1000.0 << "\n";
+                  << " rtf=" << percentile(0.5) / (static_cast<double>(seconds) * 1000.0) << "\n";
         for (const auto& c : warmup.classes) {
             std::cout << c.label << " " << c.probability.value() << '\n';
         }
