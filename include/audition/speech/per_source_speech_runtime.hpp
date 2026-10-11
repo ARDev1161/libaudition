@@ -32,6 +32,14 @@ struct SourceSpeechResult {
     Transcript transcript{};
 };
 
+struct SourceSpeechTrackStatus {
+    bool exists{false};
+    bool speech_active{false};
+    std::size_t buffered_samples{0};
+    std::size_t voiced_samples{0};
+    std::optional<std::string> error{};
+};
+
 struct SourceSpeechStatistics {
     std::uint64_t completed_segments{0};
     std::uint64_t dropped_segments{0};
@@ -58,6 +66,7 @@ public:
     // Consume completed ASR results (not polling stale snapshots).
     [[nodiscard]] std::vector<SourceSpeechResult> takeResults();
     [[nodiscard]] SourceSpeechStatistics statistics() const;
+    [[nodiscard]] SourceSpeechTrackStatus trackStatus(std::uint64_t track_id) const;
 
 private:
     struct Track {
@@ -66,6 +75,8 @@ private:
         std::deque<float> pre_roll{};
         std::size_t trailing_silence_samples{0U};
         std::size_t voiced_samples{0U};
+        bool speech_active{false};
+        std::optional<std::string> error{};
         Timestamp start_time{};
         std::uint64_t generation{0};
     };
