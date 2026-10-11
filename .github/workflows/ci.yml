@@ -54,7 +54,7 @@ jobs:
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build C++ real-model smoke tool
-        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark --parallel
+        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe --parallel
       - name: Install exporter dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/efficientat-real"
@@ -102,6 +102,22 @@ jobs:
               "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/$file" \
               --output "$RUNNER_TEMP/yamnet/$file"
           done
+      - name: Verify real YAMNet ONNX output against independent Python inference
+        run: |
+          "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
+          import math
+          import os
+          import struct
+          root = os.environ["RUNNER_TEMP"]
+          with open(os.path.join(root, "yamnet-parity.raw"), "wb") as out:
+              out.write(b"".join(struct.pack("<h", int(12000*math.sin(2*math.pi*(220+i/80)*i/16000))) for i in range(15600)))
+          PY
+          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_onnx_cpp.py \
+            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            --pcm16 "$RUNNER_TEMP/yamnet-parity.raw" \
+            --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe" \
+            --output "$RUNNER_TEMP/yamnet-onnx-cpp-parity.json"
       - name: Generate deterministic PCM16 WAV and benchmark both models
         run: |
           "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
