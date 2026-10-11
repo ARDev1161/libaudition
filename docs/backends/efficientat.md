@@ -199,3 +199,18 @@ an exported EfficientAT `*_labels.txt` loses MIDs and is insufficient for
 this check. Auditing the ontologies does **not** constitute a three-model
 quality comparison: the same precisely annotated clips, preprocessing,
 score thresholds and unmapped-label treatment must still be established.
+
+## Three-backend PCM comparison (integration smoke test)
+
+`yamnet_wav_benchmark` uses the same mono PCM16 32 kHz WAV as the
+EfficientAT benchmarks, applying a 32 -> 16 kHz windowed-sinc low-pass
+decimator for the YAMNet waveform input. The `efficientat-real-weights`
+CI job now builds all three benchmark binaries and runs YAMNet, MN10 and
+DyMN10 against the **same** generated waveform.
+
+This tests the rate conversion and inference path only. Since the YAMNet
+ONNX artifact has a separate 521-class ontology, output labels must be
+reconciled using `tools/audit_audioset_vocabularies.py` before computing
+three-model metrics. End-to-end real-event accuracy still needs a licensed
+annotated dataset; scores from the generated sine wave are not accuracy
+evidence.
