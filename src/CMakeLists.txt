@@ -84,7 +84,8 @@ add_library(libaudition_pipeline
     pipeline/spatial_identity.cpp
     pipeline/vocabulary.cpp
     pipeline/source_classification_runtime.cpp
-    pipeline/progressive_source_classification_runtime.cpp)
+    pipeline/progressive_source_classification_runtime.cpp
+    pipeline/per_source_speech_runtime.cpp)
 add_library(audition::pipeline ALIAS libaudition_pipeline)
 set_target_properties(libaudition_pipeline PROPERTIES
     EXPORT_NAME pipeline
