@@ -120,3 +120,39 @@ and compares MN10 versus DyMN10 on the same runner. This is a performance
 smoke test, not a real-world accuracy benchmark; never extrapolate its CPU
 times to RK3588. A representative, licensed real-event WAV corpus, YAMNet
 comparison and ARM/RK3588 measurements remain to be done.
+
+## Evaluation with user-provided real acoustic events
+
+No real WAV dataset is bundled or downloaded automatically. Prepare legally
+usable mono PCM16 32000 Hz files with the target event present in the **first
+second**; annotate a UTF-8 CSV manifest:
+
+```csv
+wav,label
+audio/voice.wav,Speech
+audio/bell.wav,Bell
+audio/dog.wav,Bark|Dog
+```
+
+Run separately with each exported model:
+
+```bash
+python3 tools/evaluate_efficientat_wavs.py \
+  --manifest /path/to/manifest.csv \
+  --model /path/to/mn10_as.onnx \
+  --labels /path/to/mn10_as_labels.txt \
+  --benchmark ./build-efficientat/tests/efficientat_wav_benchmark
+```
+
+This reports **hit@5** and **macro_recall@5** for explicitly annotated
+clips, without mislabeling these exploratory statistics as AudioSet mAP.
+Use **the same exact WAV/manifest** for both models. The benchmark executes
+20 iterations per clip, so the evaluation script is intentionally oriented
+towards a small supervised regression corpus, not a full benchmarking suite.
+
+GitHub Actions #547 (CPU runner, generated 440 Hz WAV, 1 s clip) measured:
+- MN10: median 11.4436 ms, p95 11.5743 ms, RTF 0.0114.
+- DyMN10: median 29.4378 ms, p95 30.0336 ms, RTF 0.0294.
+
+These numbers are for one CI runner, **not RK3588** and not a real
+acoustic-event detection quality assessment.
