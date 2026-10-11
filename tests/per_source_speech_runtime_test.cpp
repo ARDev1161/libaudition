@@ -46,6 +46,8 @@ TEST(PerSourceSpeechRuntime, IndependentlySegmentsTwoTracksAndRunsAsyncAsr) {
     auto asr=std::make_shared<MockAsr>();
     PerSourceSpeechOptions opts{};
     opts.min_speech_samples=4;
+    opts.pre_roll_samples=0;
+    opts.post_roll_samples=0;
     PerSourceSpeechRuntime runtime{vad,asr,opts};
     const std::vector<float> speech(4,0.5F), silence(4,0.0F);
     runtime.push(17U,chunk(speech));
@@ -84,4 +86,32 @@ TEST(PerSourceSpeechRuntime, RejectsIncorrectAudioRate) {
     AudioView view{values.data(),values.size(),
         {8000U,1U,AudioLayout::Interleaved},Timestamp{}};
     EXPECT_THROW(runtime.push(0,view),std::invalid_argument);
+}
+
+TEST(PerSourceSpeechRuntime, PreservesPreRollAndWaitsForPostRoll) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions cfg{};
+    cfg.min_speech_samples = 4;
+    cfg.pre_roll_samples = 4;
+    cfg.post_roll_samples = 4;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),cfg};
+    const std::vector<float> silence(2,0.0F), voice(4,0.5F);
+    runtime.push(9,chunk(silence));
+    runtime.push(9,chunk(silence));
+    runtime.push(9,chunk(voice));
+    runtime.push(9,chunk(silence));
+    EXPECT_TRUE(runtime.takeResults().empty());
+    runtime.push(9,chunk(silence));
+    bool received = false;
+    for(int i=0;i<1000;++i){
+        auto found=runtime.takeResults();
+        if(!found.empty()){
+            ASSERT_EQ(found.size(),1U);
+            EXPECT_EQ(found[0].transcript.text,"9:12");
+            received=true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_TRUE(received);
 }
