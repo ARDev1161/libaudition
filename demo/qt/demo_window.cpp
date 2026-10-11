@@ -342,16 +342,27 @@ DemoWindow::DemoWindow(QWidget* parent)
     resize(1180, 780);
 
     auto* tabs = new QTabWidget;
-    tabs->addTab(createAcousticScenePage(tabs), "Acoustic scene");
-    tabs->addTab(createOverviewTab(), "Overview");
-    tabs->addTab(createAudioDspTab(), "Audio / DSP");
-    tabs->addTab(createSpatialTab(), "SPL / Range");
-    tabs->addTab(createSmoothingTab(), "Smoothing");
-    tabs->addTab(createIdentityTab(), "Source identity");
-    tabs->addTab(createEventsTab(), "AcousticEvent");
-    tabs->addTab(createPipelineTab(), "Pipeline");
-    tabs->addTab(createBackendWorkbench(tabs), "Backend workbench");
-    tabs->addTab(createCapabilitiesTab(), "Backends");
+    // Keep every top-level page usable on small displays and high-DPI setups.
+    // Scroll areas own their pages; widgets retain their existing object names.
+    const auto scrollPage = [](QWidget* page) -> QScrollArea* {
+        auto* scroll = new QScrollArea;
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        scroll->setWidget(page);
+        return scroll;
+    };
+    tabs->addTab(scrollPage(createAcousticScenePage(tabs)), "Acoustic scene");
+    tabs->addTab(scrollPage(createOverviewTab()), "Overview");
+    tabs->addTab(scrollPage(createAudioDspTab()), "Audio / DSP");
+    tabs->addTab(scrollPage(createSpatialTab()), "SPL / Range");
+    tabs->addTab(scrollPage(createSmoothingTab()), "Smoothing");
+    tabs->addTab(scrollPage(createIdentityTab()), "Source identity");
+    tabs->addTab(scrollPage(createEventsTab()), "AcousticEvent");
+    tabs->addTab(scrollPage(createPipelineTab()), "Pipeline");
+    tabs->addTab(scrollPage(createBackendWorkbench(tabs)), "Backend workbench");
+    tabs->addTab(scrollPage(createCapabilitiesTab()), "Backends");
     setCentralWidget(tabs);
 }
 
