@@ -295,3 +295,50 @@ currently running inference or evicting a different source. The
 This is deliberate best-effort real-time behavior, not lossless
 recording: under severe overload the intermediate acoustic events may
 still go undetected.
+
+### Continuous 5–10 source stress and runtime diagnostics
+
+The generic `progressive_multisource_stress` CTest executable simulates
+five or ten independently tracked 16-kHz sources in 10-ms PCM chunks.
+It uses two *synthetic* classifiers with configurable inference delays
+and validates that every stage eventually processes the most recent
+eligible window despite overload. Run manually:
+
+```bash
+./build/tests/progressive_multisource_stress 5 8 4 12
+./build/tests/progressive_multisource_stress 10 8 8 24
+```
+
+Each JSON line reports the number of sources, simulated audio duration
+per source, audio-feed wall time, worst synchronous `push()` duration
+and per-stage drops, completed inference windows, maximum observed
+inference time and queue wait time. These are **diagnostic measurements
+on the host executing the tool**, not real-world accuracy or latency
+guarantees for the RK3588.
+
+For real model throughput, `yamnet_progressive_multisource` runs the
+original ONNX waveform classifier with 5 or 10 independent sources,
+16-kHz PCM, and 10-ms batches delivered at their nominal capture rate.
+It tests both the ~0.975-second and 5-second windows with real model
+weights and reports the same timing/drop statistics:
+
+```bash
+./build/tests/yamnet_progressive_multisource yamnet.onnx \
+  yamnet_class_map.csv 10 8 real-time
+```
+
+`burst` can replace `real-time` to test queue coalescing at faster-than-
+capture input speed. CI archives the real-weight 5- and 10-source JSON
+results in `yamnet-progressive-multisource-stress`. The actual sampling
+hardware and ODAS separation quality cannot be certified from this
+synthetic audio: test on ReSpeaker and the target SBC separately.
+
+`SourceClassificationStatus::dropped_windows` now counts only **that
+source's** superseded or rejected windows (not all ODAS tracks).
+`completed_windows`, `last_queue_wait_ms` and `last_inference_ms`
+provide per-source/per-stage performance observability. Timing fields
+describe the latest successful window and are absent until the first
+successful inference. Status `result_end_sample` is an **audio clock**
+rather than a time of inference completion. Loss counters reset when the
+source is explicitly retired with `forget()`. Under sustained overload,
+old queued windows are intentionally replaced to prioritize freshness.
