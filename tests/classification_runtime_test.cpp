@@ -545,3 +545,62 @@ TEST(ProgressiveSourceClassificationRuntime, StaleLongWindowFallsBackToFreshQuic
     }
     EXPECT_TRUE(quick_selected);
 }
+
+namespace {
+class GatedWindowClassifier final : public audition::IAudioClassifier {
+public:
+    GatedWindowClassifier(std::atomic<bool>& started, std::atomic<bool>& release)
+        : started_(started), release_(release) {}
+    audition::BackendInfo backendInfo() const override { return {"gated", "1"}; }
+    audition::ClassifierCapabilities capabilities() const override { return {}; }
+    audition::ClassificationResult classify(audition::AudioView audio) const override {
+        if (!started_.exchange(true)) {
+            while (!release_.load()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            }
+        }
+        audition::ClassificationResult result{};
+        result.classes.push_back({
+            std::to_string(audio.data()[audio.sampleCount()-1U]),
+            audition::Probability::one()});
+        return result;
+    }
+private:
+    std::atomic<bool>& started_;
+    std::atomic<bool>& release_;
+};
+}
+
+TEST(SourceClassificationRuntime, OverloadedSourceCoalescesToNewestQueuedWindow) {
+    std::atomic<bool> started{false};
+    std::atomic<bool> release{false};
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<GatedWindowClassifier>(started, release),
+        16000U, 4U, 2U, 2U};
+    const float first[4] = {0.1F,0.2F,0.3F,0.4F};
+    runtime.push(6U, first, 4U);
+    for (int i = 0; i < 1000 && !started.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    const bool started_inference = started.load();
+    const float later[10] = {0.5F,0.6F,0.7F,0.8F,0.9F,
+                             1.0F,0.1F,0.2F,0.3F,0.4F};
+    runtime.push(6U, later, 10U);
+    const auto during = runtime.status(6U);
+    EXPECT_EQ(during.received_samples, 14U);
+    EXPECT_EQ(during.dropped_windows, 4U);
+    release.store(true);
+    ASSERT_TRUE(started_inference);
+    bool newest = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto status = runtime.status(6U);
+        if (status.result_end_sample == 14U) {
+            ASSERT_TRUE(status.result.has_value());
+            EXPECT_EQ(status.result->classes.front().label, std::to_string(0.4F));
+            newest = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(newest);
+}
