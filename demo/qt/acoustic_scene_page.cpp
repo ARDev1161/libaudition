@@ -700,7 +700,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const auto id = item->data(Qt::UserRole).toULongLong();
             const auto found = history->find(id);
             if (found == history->end() || found->second.wav.isEmpty()) continue;
-            if (tracks->cellWidget(r, 6)) continue;
+            if (tracks->cellWidget(r, 6)) {
+                if (auto* existing = qobject_cast<QPushButton*>(tracks->cellWidget(r, 6)))
+                    existing->setStyleSheet(found->second.active ? QString{} : QStringLiteral("color: gray;"));
+                continue;
+            }
             auto* playTrack = new QPushButton{"Play", tracks};
             if (!found->second.active)
                 playTrack->setStyleSheet("color: gray;");
