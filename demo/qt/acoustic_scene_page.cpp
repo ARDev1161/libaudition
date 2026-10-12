@@ -535,6 +535,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     };
     auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
     auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
+    auto lastTableUpdate = std::make_shared<qint64>(0);
     auto* playerButton = new QPushButton{"Play", sidebar};
     playerButton->setVisible(false);
     sideLayout->addWidget(playerButton);
@@ -624,6 +625,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
 
     auto display = [=](const std::vector<AcousticSceneTrack>& values) {
         sphere->setTracks(values);
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (*lastTableUpdate != 0 && nowMs - *lastTableUpdate < 500)
+            return; // At most 2 full table rebuilds/sec, not 20.
+        *lastTableUpdate = nowMs;
         for (auto& item : *history) item.second.active = false;
         for (const auto& track : values) {
             auto& entry = (*history)[track.id];
@@ -865,6 +870,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             sphere->clearTracks();
             history->clear();
             recordingInfo->clear();
+            *lastTableUpdate = 0;
             tracks->setRowCount(0);
             selected->setText("Click a live track to inspect its direction.");
             capture->start(std::move(config));
@@ -1021,6 +1027,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         replay->frames.clear();
         sphere->clearTracks();
         tracks->setRowCount(0);
+        history->clear();
+        recordingInfo->clear();
+        *lastTableUpdate = 0;
         selected->setText("Click a source on the sphere to inspect it.");
         play->setEnabled(false);
         status->setText("View data reset.");
