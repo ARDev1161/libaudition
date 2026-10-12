@@ -1,5 +1,6 @@
 #include <audition/audio/peak_normalizer.hpp>
 #include <audition/audio/recording_timeline.hpp>
+#include <audition/audio/recording_timeline_json.hpp>
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -27,6 +28,14 @@ int main() {
     timeline.add(audition::TimelineSoundEvent{12, 8000, 24000, "Speech", "YAMNet", 0.94, "refined"});
     assert(timeline.speech().size() == 1);
     assert(timeline.sounds().size() == 1);
+    const auto json = audition::recordingTimelineToJson(timeline);
+    assert(json.find("libaudition.recording-timeline.v1") != std::string::npos);
+    assert(json.find("\\"start_sample\\":16000") != std::string::npos);
+    assert(json.find("\\"confidence\\":0.939") != std::string::npos);
+    timeline.add(audition::TimelineSpeechEvent{12, 32000, 48000,
+                                              "quote \\" slash \\\\ newline \\n", "ru"});
+    const auto escaped = audition::recordingTimelineToJson(timeline);
+    assert(escaped.find("quote \\\\" slash \\\\\\\\ newline \\\\n") != std::string::npos);
     bool rejected = false;
     try { timeline.add(audition::TimelineSpeechEvent{11, 0, 20, "wrong", ""}); }
     catch (const std::invalid_argument&) { rejected = true; }
