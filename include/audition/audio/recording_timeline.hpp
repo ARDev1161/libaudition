@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
@@ -44,7 +45,7 @@ public:
     }
     void add(TimelineSoundEvent event) {
         check(event.recording_id, event.start_sample, event.end_sample);
-        if (event.confidence < 0 || event.confidence > 1)
+        if (!std::isfinite(event.confidence) || event.confidence < 0 || event.confidence > 1)
             throw std::invalid_argument("Invalid classification confidence");
         sound_.push_back(std::move(event));
     }
