@@ -251,7 +251,9 @@ void PerSourceSpeechRuntime::workerLoop() {
             const auto current = tracks_.find(job.track_id);
             if (current != tracks_.end() &&
                 current->second.generation == job.generation) {
-                results_.push_back({job.track_id, job.generation, std::move(transcript)});
+                results_.push_back({job.track_id, job.generation, std::move(transcript),
+                    job.segment.audio.captureTime(),
+                    job.segment.audio.captureTime().advancedBy(job.segment.audio.duration())});
                 // Prevent unbounded accumulation when application does not poll.
                 if (results_.size() > options_.max_pending_segments) {
                     results_.erase(results_.begin());
