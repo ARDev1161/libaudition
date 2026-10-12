@@ -1,6 +1,9 @@
 #pragma once
 #include <audition/audio/recording_timeline.hpp>
 #include <iomanip>
+#include <filesystem>
+#include <fstream>
+#include <stdexcept>
 #include <locale>
 #include <sstream>
 #include <string>
@@ -61,5 +64,19 @@ inline std::string recordingTimelineToJson(const RecordingTimeline& timeline) {
     }
     out << "\n  ]\n}\n";
     return out.str();
+}
+
+// Persist a sidecar without exposing half-written JSON to readers.
+inline void writeRecordingTimelineJson(const std::filesystem::path& file,
+                                       const RecordingTimeline& timeline) {
+    const auto pending = std::filesystem::path{file.string() + ".tmp"};
+    {
+        std::ofstream stream(pending, std::ios::binary | std::ios::trunc);
+        if (!stream) throw std::runtime_error("Cannot open timeline sidecar");
+        stream << recordingTimelineToJson(timeline);
+        stream.close();
+        if (!stream) throw std::runtime_error("Cannot write timeline sidecar");
+    }
+    std::filesystem::rename(pending, file);
 }
 } // namespace audition
