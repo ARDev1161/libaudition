@@ -3,7 +3,6 @@
 #include "source_track_lifecycle.hpp"
 #include "source_wav_recorder.hpp"
 #include <audition/audio/recording_timeline_json.hpp>
-#include <fstream>
 #include <filesystem>
 #include <chrono>
 #include "odas_respeaker_profile.hpp"
@@ -313,15 +312,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             const auto item = timelines.find(id);
             const auto path = annotationPaths.find(id);
             if (item == timelines.end() || path == annotationPaths.end()) return;
-            const auto temporary = path->second + ".tmp";
-            {
-                std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-                if (!out) return;
-                out << audition::recordingTimelineToJson(item->second);
-                if (!out) return;
+            try {
+                audition::writeRecordingTimelineJson(path->second, item->second);
+            } catch (const std::exception&) {
+                // Disk errors must not abort live capture. WAV recording is
+                // independent and can continue without annotations.
             }
-            std::error_code ec;
-            std::filesystem::rename(temporary, path->second, ec);
         };
         auto pcm = openPcm(config);
 
