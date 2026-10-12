@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <atomic>
 #include <audition/audio/peak_normalizer.hpp>
 #include <cmath>
 #include <cstdint>
@@ -43,9 +44,11 @@ inline NormalizedWav normalizePlaybackWav(const std::filesystem::path& source) {
     const auto normalized = audition::peakNormalizePcm16(input);
     const double db = normalized.applied_gain_db;
     // Source basename may collide across capture sessions. Include parent session.
+    static std::atomic<std::uint64_t> nonce{0};
+    const auto version = nonce.fetch_add(1, std::memory_order_relaxed);
     auto dest = std::filesystem::temp_directory_path() /
         ("libaudition-playback-" + source.parent_path().filename().string() +
-         "-" + source.filename().string());
+         "-" + source.filename().string() + "-" + std::to_string(version) + ".wav");
     std::ofstream out(dest, std::ios::binary | std::ios::trunc);
     if (!out) throw std::runtime_error("Cannot create normalized recording");
     in.clear(); in.seekg(0);
