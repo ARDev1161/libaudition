@@ -1,4 +1,7 @@
 #include "../demo/qt/source_wav_recorder.hpp"
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <chrono>
 #include <cstdint>
