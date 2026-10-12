@@ -725,9 +725,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         capture->stop(); // joins safely before the widget can be destroyed
         // The recorder is closed when capture exits. Keep its history visible
         // and mark all retained generations as inactive for the stopped session.
-        for (auto& item : *recordingInfo) item.second.active = false;
-        *lastTableUpdate = 0;
-        display({});
+        if (!recordingInfo->empty()) {
+            for (auto& item : *recordingInfo) item.second.active = false;
+            *lastTableUpdate = 0;
+            display({});
+        }
         stopLive->setEnabled(false);
         startLive->setEnabled(
 #if LIBAUDITION_DEMO_HAS_ALSA
