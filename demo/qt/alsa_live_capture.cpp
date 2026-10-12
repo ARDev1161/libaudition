@@ -306,6 +306,13 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::vector<double> sumSquares(channelCount, 0.0);
         std::vector<double> maxAbs(channelCount, 0.0);
         std::size_t measuredFrames = 0;
+        struct SssMeter {
+            double sum_squares{0.0};
+            double peak{0.0};
+            std::uint64_t samples{0};
+        };
+        std::map<std::uint64_t, SssMeter> sssMeters;
+
         const std::uint64_t visualStride = std::max<std::uint64_t>(
             1U, static_cast<std::uint64_t>(
                 std::round(static_cast<double>(config.sample_rate_hz) /
@@ -331,6 +338,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 std::fill(sumSquares.begin(), sumSquares.end(), 0.0);
                 std::fill(maxAbs.begin(), maxAbs.end(), 0.0);
                 measuredFrames = 0;
+                sssMeters.clear();
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
                 source_lifecycle.clear([&](std::uint64_t id) {
@@ -399,6 +407,14 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #endif
                 });
                 for (const auto& separated : resultFrame.separated_frames) {
+                    auto& meter = sssMeters[separated.track_id.value()];
+                    for (const float sample : separated.audio.samples()) {
+                        const auto amplitude = static_cast<double>(sample);
+                        if (!std::isfinite(amplitude)) continue;
+                        meter.sum_squares += amplitude * amplitude;
+                        meter.peak = std::max(meter.peak, std::abs(amplitude));
+                        ++meter.samples;
+                    }
                     recorder.append(separated.track_id.value(), separated.audio.samples());
                     if (classifier) {
                         classifier->push(separated.track_id.value(),
@@ -485,6 +501,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             std::fill(sumSquares.begin(), sumSquares.end(), 0.0);
             std::fill(maxAbs.begin(), maxAbs.end(), 0.0);
             measuredFrames = 0;
+            std::vector<LiveCaptureSnapshot::SourceLevel> sssLevels;
+            sssLevels.reserve(sssMeters.size());
+            for (const auto& [trackId, meter] : sssMeters) {
+                if (meter.samples == 0) continue;
+                const auto rms = std::sqrt(meter.sum_squares / static_cast<double>(meter.samples));
+                sssLevels.push_back({trackId,
+                    20.0 * std::log10(std::max(rms, 1.0e-9)),
+                    20.0 * std::log10(std::max(meter.peak, 1.0e-9)),
+                    meter.samples});
+            }
+            sssMeters.clear();
             std::lock_guard<std::mutex> lock{mutex_};
             latest_.tracks = std::move(tracks);
             latest_.recordings.clear();
@@ -495,6 +522,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.potentials = std::move(proposals);
             latest_.channel_rms_dbfs = std::move(rmsDbfs);
             latest_.channel_peak_dbfs = std::move(peakDbfs);
+            latest_.sss_levels = std::move(sssLevels);
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             latest_.classification_error = classifier ? classifier->error() : "";
