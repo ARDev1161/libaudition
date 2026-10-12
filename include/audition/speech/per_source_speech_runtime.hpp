@@ -31,6 +31,8 @@ struct SourceSpeechResult {
     std::uint64_t track_id{0};
     std::uint64_t generation{0};
     Transcript transcript{};
+    Timestamp start_time{};
+    Timestamp end_time{};
 };
 
 struct SourceSpeechTrackStatus {
