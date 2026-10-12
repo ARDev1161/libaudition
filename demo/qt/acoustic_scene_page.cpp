@@ -545,7 +545,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         if (selectedRows.empty()) return;
         const auto item = tracks->item(selectedRows.first().row(), 0);
         if (!item) return;
-        const auto id = item->text().toULongLong();
+        const auto id = item->data(Qt::UserRole).toULongLong();
         auto iter = history->find(id);
         if (iter == history->end() || iter->second.wav.isEmpty()) return;
         auto* dialog = new QDialog(page);
@@ -630,15 +630,27 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             return; // At most 2 full table rebuilds/sec, not 20.
         *lastTableUpdate = nowMs;
         for (auto& item : *history) item.second.active = false;
-        for (const auto& track : values) {
-            auto& entry = (*history)[track.id];
-            entry.track = track;
-            entry.active = true;
-        }
-        for (const auto& recording : *recordingInfo) {
-            auto& entry = (*history)[recording.first];
-            entry.wav = QString::fromStdString(recording.second.path);
-            entry.samples = recording.second.samples;
+        // Synthetic/replay tracks have no recording ID: use a reserved high key.
+        if (recordingInfo->empty()) {
+            for (const auto& track : values) {
+                auto& entry = (*history)[track.id | (1ULL << 63)];
+                entry.track = track;
+                entry.active = true;
+            }
+        } else {
+            for (const auto& recording : *recordingInfo) {
+                const auto& r = recording.second;
+                auto& entry = (*history)[r.id];
+                entry.track.id = r.track_id;
+                entry.wav = QString::fromStdString(r.path);
+                entry.samples = r.samples;
+                entry.active = r.active;
+                if (r.active) {
+                    const auto it = std::find_if(values.begin(), values.end(),
+                        [&](const AcousticSceneTrack& track) {return track.id == r.track_id;});
+                    if (it != values.end()) entry.track = *it;
+                }
+            }
         }
         tracks->setRowCount(static_cast<int>(history->size()));
         int row = 0;
@@ -649,7 +661,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const double az = std::atan2(v.y(), v.x()) * 180.0 / kPi;
             const double el = std::atan2(v.z(), std::hypot(v.x(), v.y())) * 180.0 / kPi;
             const QStringList columns{
-                QString::number(static_cast<qulonglong>(pair.first)),
+                QString::number(static_cast<qulonglong>(track.id)) +
+                    (pair.first & (1ULL << 63) ? "" : QString(" / #%1").arg(pair.first)),
                 QString::number(az, 'f', 1) + "°",
                 QString::number(el, 'f', 1) + "°",
                 QString::number(track.activity, 'f', 2),
@@ -661,6 +674,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             for (int col = 0; col < columns.size(); ++col) {
                 auto* item = new QTableWidgetItem(columns.at(col));
                 if (!entry.active) item->setForeground(QColor(135, 135, 135));
+                item->setData(Qt::UserRole, QVariant::fromValue(static_cast<qulonglong>(pair.first)));
                 tracks->setItem(row, col, item);
             }
             if (track.id == sphere->selectedTrack() && entry.active)
@@ -671,7 +685,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         for (int r = 0; r < tracks->rowCount(); ++r) {
             const auto item = tracks->item(r, 0);
             if (!item) continue;
-            const auto id = item->text().toULongLong();
+            const auto id = item->data(Qt::UserRole).toULongLong();
             const auto found = history->find(id);
             if (found == history->end() || found->second.wav.isEmpty()) continue;
             auto* playTrack = new QPushButton{"Play", tracks};
