@@ -11,6 +11,7 @@
 
 #include <QCheckBox>
 #include <QDialog>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QUrl>
 #include <QDateTime>
@@ -653,7 +654,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             } catch (const std::exception& error) {
                 gainLabel->setText(QString("Normalization failed: ") +
                                    QString::fromUtf8(error.what()));
+                const QSignalBlocker blocker(normalize);
                 normalize->setChecked(false);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                media->setSource(QUrl::fromLocalFile(sourcePath));
+#else
+                media->setMedia(QUrl::fromLocalFile(sourcePath));
+#endif
             }
         };
         QObject::connect(normalize, &QCheckBox::toggled, dialog,
@@ -744,12 +751,17 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const auto id = item->data(Qt::UserRole).toULongLong();
             const auto found = history->find(id);
             if (found == history->end() || found->second.wav.isEmpty()) continue;
-            if (tracks->cellWidget(r, 6)) {
-                if (auto* existing = qobject_cast<QPushButton*>(tracks->cellWidget(r, 6)))
+            if (auto* existing = qobject_cast<QPushButton*>(tracks->cellWidget(r, 6))) {
+                const auto boundId = existing->property("recordingId").toULongLong();
+                if (boundId == id) {
                     existing->setStyleSheet(found->second.active ? QString{} : QStringLiteral("color: gray;"));
-                continue;
+                    continue;
+                }
+                tracks->removeCellWidget(r, 6);
+                existing->deleteLater();
             }
             auto* playTrack = new QPushButton{"Play", tracks};
+            playTrack->setProperty("recordingId", QVariant::fromValue(static_cast<qulonglong>(id)));
             if (!found->second.active)
                 playTrack->setStyleSheet("color: gray;");
             QObject::connect(playTrack, &QPushButton::clicked, page, [tracks, playerButton, id]() {
