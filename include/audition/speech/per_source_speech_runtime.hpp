@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -68,7 +69,7 @@ public:
     void forget(std::uint64_t track_id);
     // Retire and flush final speech without blocking ASR. Results remain
     // keyed by source generation even if numeric track ID is reused.
-    void retire(std::uint64_t track_id);
+    [[nodiscard]] std::optional<std::uint64_t> retire(std::uint64_t track_id);
     [[nodiscard]] std::size_t pendingResults(std::uint64_t generation) const;
     // Invalidate all source generations and queued work, e.g. ALSA xrun.
     void reset();
@@ -103,8 +104,8 @@ private:
     // Globally unique generation; avoids retaining unbounded historical IDs.
     std::uint64_t next_generation_{1};
     std::deque<Job> jobs_{};
-    std::map<std::uint64_t, std::size_t> retired_pending_{};
-    std::map<std::uint64_t, std::uint64_t> retired_generation_by_track_{};
+    std::map<std::uint64_t, std::size_t> pending_by_generation_{};
+    std::set<std::uint64_t> retired_generations_{};
     std::vector<SourceSpeechResult> results_{};
     mutable std::mutex mutex_{};
     std::condition_variable cv_{};
