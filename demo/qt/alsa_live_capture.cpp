@@ -2,6 +2,8 @@
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
 #include "source_wav_recorder.hpp"
+#include <audition/audio/recording_timeline_json.hpp>
+#include <fstream>
 #include <filesystem>
 #include <chrono>
 #include "odas_respeaker_profile.hpp"
@@ -292,6 +294,33 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         SourceWavRecorder recorder{
             std::filesystem::temp_directory_path() / "libaudition-recordings" /
                 ("session-" + std::to_string(session_stamp)), config.sample_rate_hz};
+        // Annotation timelines are indexed by recorder generation, never raw ODAS ID.
+        std::map<std::uint64_t, audition::RecordingTimeline> timelines;
+        std::map<std::uint64_t, audition::Timestamp> recordingOrigins;
+        std::map<std::uint64_t, std::uint64_t> trackRecordingIds;
+        std::map<std::uint64_t, std::string> annotationPaths;
+        const auto sampleOffset = [&](audition::Timestamp time,
+                                      audition::Timestamp origin) -> std::uint64_t {
+            if (!time.comparableWith(origin) || time.nanoseconds() <= origin.nanoseconds())
+                return 0;
+            const auto delta = static_cast<long double>(time.nanoseconds() - origin.nanoseconds());
+            return static_cast<std::uint64_t>(
+                delta * static_cast<long double>(config.sample_rate_hz) / 1000000000.0L);
+        };
+        const auto persistTimeline = [&](std::uint64_t id) {
+            const auto item = timelines.find(id);
+            const auto path = annotationPaths.find(id);
+            if (item == timelines.end() || path == annotationPaths.end()) return;
+            const auto temporary = path->second + ".tmp";
+            {
+                std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+                if (!out) return;
+                out << audition::recordingTimelineToJson(item->second);
+                if (!out) return;
+            }
+            std::error_code ec;
+            std::filesystem::rename(temporary, path->second, ec);
+        };
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -343,6 +372,11 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 engine.reset(); // discontinuous samples must not share ODAS state
                 source_lifecycle.clear([&](std::uint64_t id) {
                     if (classifier) classifier->forget(id);
+                    const auto previous = trackRecordingIds.find(id);
+                    if (previous != trackRecordingIds.end()) {
+                        persistTimeline(previous->second);
+                        trackRecordingIds.erase(previous);
+                    }
                     recorder.retire(id); // do not concatenate across ALSA discontinuity
                 });
 #if LIBAUDITION_DEMO_HAS_SHERPA
@@ -416,6 +450,15 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         ++meter.samples;
                     }
                     recorder.append(separated.track_id.value(), separated.audio.samples());
+                    if (auto entry = recorder.activeEntry(separated.track_id.value())) {
+                        const auto id = entry->recording_id;
+                        trackRecordingIds[separated.track_id.value()] = id;
+                        if (timelines.find(id) == timelines.end()) {
+                            timelines.emplace(id, audition::RecordingTimeline{id, config.sample_rate_hz});
+                            recordingOrigins.emplace(id, separated.audio.captureTime());
+                            annotationPaths[id] = entry->path + ".json";
+                        }
+                    }
                     if (classifier) {
                         classifier->push(separated.track_id.value(),
                                          separated.audio.samples(), hops);
@@ -430,6 +473,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_SHERPA
                 if (speech_runtime) {
                     for (auto& transcript_result : speech_runtime->takeResults()) {
+                        const auto currentId = trackRecordingIds.find(transcript_result.track_id);
+                        if (currentId != trackRecordingIds.end()) {
+                            const auto id = currentId->second;
+                            const auto origin = recordingOrigins.at(id);
+                            const auto start = sampleOffset(transcript_result.start_time, origin);
+                            const auto end = sampleOffset(transcript_result.end_time, origin);
+                            if (!transcript_result.transcript.text.empty()) {
+                                timelines.at(id).add(audition::TimelineSpeechEvent{
+                                    id, start, std::max(start, end),
+                                    transcript_result.transcript.text,
+                                    transcript_result.transcript.language});
+                            }
+                        }
                         transcripts[transcript_result.track_id] =
                             std::move(transcript_result.transcript.text);
                     }
@@ -475,6 +531,11 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                                          track.classification_label;
                         }
                         track.classification_probability = tag->probability;
+                        // Record only validated scores and labels. Tagging runtimes
+                        // currently expose the most recent classification window,
+                        // not its exact start timestamp; an approximate 50ms
+                        // window would be misleading, so defer sound events until
+                        // the inference API provides window boundaries.
                     }
                 }
                 tracks.push_back(std::move(track));
@@ -559,6 +620,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped());
             ++latest_.generation;
         }
+        for (const auto& item : timelines) persistTimeline(item.first);
     } catch (const std::exception& error) {
         std::lock_guard<std::mutex> lock{mutex_};
         if (!stop_requested_.load()) {
