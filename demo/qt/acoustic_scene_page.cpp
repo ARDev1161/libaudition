@@ -9,6 +9,18 @@
 #endif
 
 #include <QCheckBox>
+#include <QDialog>
+#include <QSlider>
+#include <QUrl>
+#include <QDateTime>
+#include <QColor>
+#if LIBAUDITION_DEMO_HAS_MULTIMEDIA
+#include <QMediaPlayer>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QAudioOutput>
+#endif
+#endif
+#include <map>
 #include <QComboBox>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -486,10 +498,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     split->addWidget(sphere);
     auto* sidebar = new QWidget{split};
     auto* sideLayout = new QVBoxLayout{sidebar};
-    auto* tracks = new QTableWidget{0, 6, sidebar};
+    auto* tracks = new QTableWidget{0, 7, sidebar};
     tracks->setObjectName("acousticSceneTracks");
     tracks->setHorizontalHeaderLabels({
-        "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript"});
+        "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript", "Recording"});
     tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -514,41 +526,143 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto cursor = std::make_shared<std::size_t>(0);
     auto* timer = new QTimer{page};
     timer->setInterval(50);
+    // The table is a session history; only the sphere renders currently active tracks.
+    struct HistoryEntry {
+        AcousticSceneTrack track;
+        bool active{false};
+        QString wav;
+        std::uint64_t samples{0};
+    };
+    auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
+    auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
+    auto* playerButton = new QPushButton{"Play", sidebar};
+    playerButton->setVisible(false);
+    sideLayout->addWidget(playerButton);
+
+    QObject::connect(playerButton, &QPushButton::clicked, page, [=]() {
+        const auto selectedRows = tracks->selectionModel()->selectedRows();
+        if (selectedRows.empty()) return;
+        const auto item = tracks->item(selectedRows.first().row(), 0);
+        if (!item) return;
+        const auto id = item->text().toULongLong();
+        auto iter = history->find(id);
+        if (iter == history->end() || iter->second.wav.isEmpty()) return;
+        auto* dialog = new QDialog(page);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setWindowTitle(QString("Source #%1 recording").arg(id));
+        dialog->resize(420, 130);
+        auto* column = new QVBoxLayout(dialog);
+        auto* playback = new QPushButton{"Play", dialog};
+        auto* progress = new QSlider(Qt::Horizontal, dialog);
+        progress->setRange(0, 0);
+        auto* times = new QLabel{"00:00 / 00:00", dialog};
+        auto* volume = new QSlider(Qt::Horizontal, dialog);
+        volume->setRange(0, 100);
+        volume->setValue(75);
+        column->addWidget(playback);
+        column->addWidget(progress);
+        column->addWidget(times);
+        auto* volumeRow = new QHBoxLayout;
+        volumeRow->addWidget(new QLabel{"Volume", dialog});
+        volumeRow->addWidget(volume);
+        column->addLayout(volumeRow);
+#if LIBAUDITION_DEMO_HAS_MULTIMEDIA
+        auto* media = new QMediaPlayer(dialog);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        auto* output = new QAudioOutput(dialog);
+        media->setAudioOutput(output);
+        output->setVolume(0.75f);
+        QObject::connect(volume, &QSlider::valueChanged, dialog,
+                         [output](int v) { output->setVolume(v / 100.0f); });
+        media->setSource(QUrl::fromLocalFile(iter->second.wav));
+        QObject::connect(media, &QMediaPlayer::playbackStateChanged, dialog,
+                         [playback](QMediaPlayer::PlaybackState state) {
+                             playback->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+                         });
+#else
+        media->setVolume(75);
+        QObject::connect(volume, &QSlider::valueChanged, media, &QMediaPlayer::setVolume);
+        media->setMedia(QUrl::fromLocalFile(iter->second.wav));
+        QObject::connect(media, &QMediaPlayer::stateChanged, dialog,
+                         [playback](QMediaPlayer::State state) {
+                             playback->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+                         });
+#endif
+        QObject::connect(playback, &QPushButton::clicked, dialog, [media]() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            if (media->playbackState() == QMediaPlayer::PlayingState) media->pause();
+#else
+            if (media->state() == QMediaPlayer::PlayingState) media->pause();
+#endif
+            else media->play();
+        });
+        QObject::connect(media, &QMediaPlayer::durationChanged, dialog,
+                         [progress, times](qint64 duration) {
+                             progress->setMaximum(static_cast<int>(duration));
+                             times->setText(QString("00:00 / %1:%2")
+                                 .arg(duration / 60000, 2, 10, QChar('0'))
+                                 .arg((duration / 1000) % 60, 2, 10, QChar('0')));
+                         });
+        QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
+                         [progress, times, media](qint64 pos) {
+                             if (!progress->isSliderDown()) progress->setValue(static_cast<int>(pos));
+                             const auto duration = media->duration();
+                             times->setText(QString("%1:%2 / %3:%4")
+                                 .arg(pos / 60000, 2, 10, QChar('0'))
+                                 .arg((pos / 1000) % 60, 2, 10, QChar('0'))
+                                 .arg(duration / 60000, 2, 10, QChar('0'))
+                                 .arg((duration / 1000) % 60, 2, 10, QChar('0')));
+                         });
+        QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
+        media->play();
+#else
+        playback->setEnabled(false);
+        times->setText("Playback requires Qt Multimedia development libraries");
+#endif
+        dialog->show();
+    });
+
     auto display = [=](const std::vector<AcousticSceneTrack>& values) {
         sphere->setTracks(values);
-        tracks->setRowCount(static_cast<int>(values.size()));
-        for (int i = 0; i < static_cast<int>(values.size()); ++i) {
-            const auto& track = values[static_cast<std::size_t>(i)];
+        for (auto& item : *history) item.second.active = false;
+        for (const auto& track : values) {
+            auto& entry = (*history)[track.id];
+            entry.track = track;
+            entry.active = true;
+        }
+        for (const auto& recording : *recordingInfo) {
+            auto& entry = (*history)[recording.first];
+            entry.wav = QString::fromStdString(recording.second.path);
+            entry.samples = recording.second.samples;
+        }
+        tracks->setRowCount(static_cast<int>(history->size()));
+        int row = 0;
+        for (const auto& pair : *history) {
+            const auto& entry = pair.second;
+            const auto& track = entry.track;
             const auto v = track.direction;
             const double az = std::atan2(v.y(), v.x()) * 180.0 / kPi;
             const double el = std::atan2(v.z(), std::hypot(v.x(), v.y())) * 180.0 / kPi;
-            for (int column = 0; column < 6; ++column) {
-                QString data;
-                switch (column) {
-                case 0: data = QString::number(static_cast<qulonglong>(track.id)); break;
-                case 1: data = QString::number(az, 'f', 1) + "°"; break;
-                case 2: data = QString::number(el, 'f', 1) + "°"; break;
-                case 3: data = QString::number(track.activity, 'f', 2); break;
-                case 5:
-                    data = QString::fromStdString(track.transcript);
-                    break;
-                default:
-                    if (!track.classification_label.empty()) {
-                        data = QString::fromStdString(track.classification_label) +
-                            QString(" (%1)").arg(
-                                track.classification_probability, 0, 'f', 2);
-                    } else {
-                        data = enableTagging->isChecked() ? "Analyzing…" :
-                               "Not configured";
-                    }
-                    break;
-                }
-                tracks->setItem(i, column, new QTableWidgetItem{data});
+            const QStringList columns{
+                QString::number(static_cast<qulonglong>(pair.first)),
+                QString::number(az, 'f', 1) + "°",
+                QString::number(el, 'f', 1) + "°",
+                QString::number(track.activity, 'f', 2),
+                QString::fromStdString(track.classification_label),
+                QString::fromStdString(track.transcript),
+                entry.wav.isEmpty() ? "No audio" :
+                    QString("Play (%1 s)").arg(entry.samples / 16000)
+            };
+            for (int col = 0; col < columns.size(); ++col) {
+                auto* item = new QTableWidgetItem(columns.at(col));
+                if (!entry.active) item->setForeground(QColor(135, 135, 135));
+                tracks->setItem(row, col, item);
             }
-            if (track.id == sphere->selectedTrack()) {
+            if (track.id == sphere->selectedTrack() && entry.active)
                 selected->setText(directionSummary(track));
-            }
+            ++row;
         }
+        playerButton->setVisible(!history->empty());
     };
     auto capture = std::make_shared<demo::AlsaLiveCapture>();
     auto* liveTimer = new QTimer{page};
@@ -734,6 +848,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             *cursor = 0;
             replay->frames.clear();
             sphere->clearTracks();
+            history->clear();
+            recordingInfo->clear();
             tracks->setRowCount(0);
             selected->setText("Click a live track to inspect its direction.");
             capture->start(std::move(config));
@@ -770,6 +886,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         const auto snapshot = capture->snapshot();
         if (snapshot.generation != *seenGeneration) {
             *seenGeneration = snapshot.generation;
+            recordingInfo->clear();
+            for (const auto& r : snapshot.recordings) (*recordingInfo)[r.id] = r;
             display(snapshot.tracks);
             sphere->setPotentials(snapshot.potentials);
             if (!snapshot.classification_error.empty()) {
