@@ -27,6 +27,7 @@
 #include <memory>
 #include <map>
 #include <set>
+#include <tuple>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -299,6 +300,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::map<std::uint64_t, audition::Timestamp> recordingOrigins;
         std::map<std::uint64_t, std::uint64_t> trackRecordingIds;
         std::map<std::uint64_t, std::string> annotationPaths;
+        std::set<std::tuple<std::uint64_t, std::string, std::uint64_t>> seenSoundWindows;
         const auto sampleOffset = [&](audition::Timestamp time,
                                       audition::Timestamp origin) -> std::uint64_t {
             if (!time.comparableWith(origin) || time.nanoseconds() <= origin.nanoseconds())
@@ -531,11 +533,23 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                                          track.classification_label;
                         }
                         track.classification_probability = tag->probability;
-                        // Record only validated scores and labels. Tagging runtimes
-                        // currently expose the most recent classification window,
-                        // not its exact start timestamp; an approximate 50ms
-                        // window would be misleading, so defer sound events until
-                        // the inference API provides window boundaries.
+                        const auto recording = trackRecordingIds.find(t.track_id.value());
+                        if (recording != trackRecordingIds.end() &&
+                            tag->has_window && tag->probability >= 0.0 &&
+                            tag->probability <= 1.0 && !tag->label.empty()) {
+                            const auto id = recording->second;
+                            const auto key = std::make_tuple(id, tag->stage,
+                                                             tag->window_end_sample);
+                            if (seenSoundWindows.insert(key).second) {
+                                timelines.at(id).add(audition::TimelineSoundEvent{
+                                    id, tag->window_start_sample,
+                                    tag->window_end_sample,
+                                    tag->label,
+                                    config.tagging_yamnet_model ? "YAMNet" :
+                                    config.tagging_efficientat_model ? "EfficientAT" : "Sherpa",
+                                    tag->probability, tag->stage});
+                            }
+                        }
                     }
                 }
                 tracks.push_back(std::move(track));
