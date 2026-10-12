@@ -114,7 +114,8 @@ private:
         u32(s.file, rate_); u32(s.file, rate_ * 2);
         u16(s.file, 2); u16(s.file, 16);
         s.file.write("data", 4); u32(s.file, bytes);
-        s.file.seekp(pos);
+        if (pos < std::streampos(44)) s.file.seekp(44);
+        else s.file.seekp(pos);
         s.file.flush();
     }
     std::filesystem::path directory_;
