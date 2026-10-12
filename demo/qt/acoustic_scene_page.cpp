@@ -681,11 +681,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             }
             for (int col = 0; col < columns.size(); ++col) {
                 auto* item = tracks->item(row, col);
-                if (!item) item = new QTableWidgetItem;
-                item->setText(columns.at(col));
-                if (!entry.active) item->setForeground(QColor(135, 135, 135));
+                if (!item) {
+                    item = new QTableWidgetItem;
+                    tracks->setItem(row, col, item);
+                }
+                if (item->text() != columns.at(col)) item->setText(columns.at(col));
+                item->setForeground(entry.active ? tracks->palette().text().color()
+                                                 : QColor(135, 135, 135));
                 item->setData(Qt::UserRole, QVariant::fromValue(static_cast<qulonglong>(pair.first)));
-                tracks->setItem(row, col, item);
             }
             if (track.id == sphere->selectedTrack() && entry.active)
                 selected->setText(directionSummary(track));
