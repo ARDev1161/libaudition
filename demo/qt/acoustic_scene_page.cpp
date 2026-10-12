@@ -4,6 +4,7 @@
 #include "acoustic_sphere_widget.hpp"
 #include "wav_io.hpp"
 #include "playback_normalizer.hpp"
+#include "recording_timeline_view.hpp"
 
 #if LIBAUDITION_DEMO_HAS_ODAS
 #include <audition/backends/odas.hpp>
@@ -26,6 +27,9 @@
 #include <QComboBox>
 #include <QFileDialog>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include <QFormLayout>
 #include <QFutureWatcher>
 #include <QHBoxLayout>
@@ -555,7 +559,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         auto* dialog = new QDialog(page);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
         dialog->setWindowTitle(QString("Source #%1 recording").arg(id));
-        dialog->resize(420, 130);
+        dialog->resize(680, 365);
         auto* column = new QVBoxLayout(dialog);
         auto* playback = new QPushButton{"Play", dialog};
         auto* progress = new QSlider(Qt::Horizontal, dialog);
@@ -567,6 +571,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         auto* normalize = new QCheckBox{"Auto normalize (-3 dBFS peak)", dialog};
         normalize->setChecked(true);
         auto* gainLabel = new QLabel{"", dialog};
+        auto* soundTitle = new QLabel{"Sound events / classifier", dialog};
+        auto* soundLane = new demo::RecordingTimelineView(dialog);
+        auto* speechTitle = new QLabel{"Transcript / ASR", dialog};
+        auto* speechLane = new demo::RecordingTimelineView(dialog);
+        column->addWidget(soundTitle);
+        column->addWidget(soundLane);
+        column->addWidget(speechTitle);
+        column->addWidget(speechLane);
         column->addWidget(normalize);
         column->addWidget(gainLabel);
         column->addWidget(playback);
@@ -625,6 +637,31 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                          });
         QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
         const auto sourcePath = iter->second.wav;
+        {
+            const auto annotationPath = sourcePath + ".json";
+            QFile file(annotationPath);
+            if (file.open(QIODevice::ReadOnly)) {
+                const auto json = QJsonDocument::fromJson(file.readAll());
+                if (json.isObject()) {
+                    const auto root = json.object();
+                    const auto rate = static_cast<std::uint32_t>(
+                        root.value("sample_rate_hz").toInt(0));
+                    const qint64 fallbackDuration = static_cast<qint64>(
+                        (iter->second.samples * 1000ULL) / 16000ULL);
+                    soundLane->load(root.value("sounds").toArray(), rate, true,
+                                    fallbackDuration);
+                    speechLane->load(root.value("speech").toArray(), rate, false,
+                                     fallbackDuration);
+                }
+            }
+        }
+        soundLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
+        speechLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
+        QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
+                         [soundLane, speechLane](qint64 pos) {
+            soundLane->setPosition(pos);
+            speechLane->setPosition(pos);
+        });
         auto temporaryPlaybackFiles = std::make_shared<QStringList>();
         QObject::connect(dialog, &QDialog::finished, dialog,
                          [media, temporaryPlaybackFiles](int) {
