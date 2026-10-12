@@ -30,12 +30,12 @@ int main() {
     assert(timeline.sounds().size() == 1);
     const auto json = audition::recordingTimelineToJson(timeline);
     assert(json.find("libaudition.recording-timeline.v1") != std::string::npos);
-    assert(json.find("\\"start_sample\\":16000") != std::string::npos);
-    assert(json.find("\\"confidence\\":0.939") != std::string::npos);
+    assert(json.find(R"("start_sample":16000)") != std::string::npos);
+    assert(json.find(R"("confidence":0.939)") != std::string::npos);
     timeline.add(audition::TimelineSpeechEvent{12, 32000, 48000,
-                                              "quote \\" slash \\\\ newline \\n", "ru"});
+                                              "quote \" slash \\ newline \n", "ru"});
     const auto escaped = audition::recordingTimelineToJson(timeline);
-    assert(escaped.find("quote \\\\" slash \\\\\\\\ newline \\\\n") != std::string::npos);
+    assert(escaped.find(R"(quote \" slash \\ newline \n)") != std::string::npos);
     bool rejected = false;
     try { timeline.add(audition::TimelineSpeechEvent{11, 0, 20, "wrong", ""}); }
     catch (const std::invalid_argument&) { rejected = true; }
