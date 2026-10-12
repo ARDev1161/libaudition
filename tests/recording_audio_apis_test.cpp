@@ -1,5 +1,8 @@
 #include <audition/audio/peak_normalizer.hpp>
 #include <audition/audio/recording_timeline.hpp>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cmath>
 #include <cstdint>
