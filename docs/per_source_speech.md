@@ -203,3 +203,20 @@ sample offsets may diverge from the physically written WAV. The JSON is
 written on retirement or at shutdown, not continuously streamed for active
 tracks. Standalone model-neutral JSON *reading* is not yet implemented in
 the library; the Qt demo reads the sidecar using Qt JSON facilities.
+
+## Draining ASR when an ODAS track retires
+
+`PerSourceSpeechRuntime::retire(track_id)` now flushes any buffered
+minimum-length speech and queues ASR without blocking the capture producer.
+Completed jobs retain their generation identity even if ODAS immediately reuses
+the same numeric track ID. `pendingResults(generation)` tells the consumer
+when the generation has no remaining queued/in-flight inference. After
+`takeResults()` and final sidecar persistence the consumer must call
+`releaseRetired(generation)` to free retirement state.
+
+The Qt capture adapter delays the retired recording's final JSON write until
+that generation has drained; ALSA xrun retirement uses the same mechanism.
+On capture shutdown it allows up to 10 seconds for outstanding ASR results
+before writing final sidecars; long-running inference may still be lost at
+this deadline. The existing `forget()` and `reset()` remain cancellation
+APIs for callers that intentionally discard unfinished work.
