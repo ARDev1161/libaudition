@@ -1,5 +1,6 @@
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Concurrent REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Concurrent REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Multimedia QUIET)
 
 add_executable(libaudition_qt_demo
     main.cpp
@@ -11,6 +12,7 @@ add_executable(libaudition_qt_demo
     live_audio_tagging_worker.cpp
     live_audio_tagging_worker.hpp
     source_track_lifecycle.hpp
+    source_wav_recorder.hpp
     acoustic_sphere_widget.cpp
     acoustic_sphere_widget.hpp
     demo_window.hpp
@@ -63,6 +65,13 @@ if(LIBAUDITION_WITH_SHERPA AND LIBAUDITION_DEMO_FETCH_SPEECH_MODELS)
         LIBAUDITION_DEMO_SILERO_VAD_MODEL="${LIBAUDITION_DEMO_SILERO_VAD_MODEL}"
         LIBAUDITION_DEMO_SENSEVOICE_MODEL="${LIBAUDITION_DEMO_SENSEVOICE_MODEL}"
         LIBAUDITION_DEMO_SENSEVOICE_TOKENS="${LIBAUDITION_DEMO_SENSEVOICE_TOKENS}")
+endif()
+
+if(TARGET Qt${QT_VERSION_MAJOR}::Multimedia)
+    target_link_libraries(libaudition_qt_demo PRIVATE Qt${QT_VERSION_MAJOR}::Multimedia)
+    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_DEMO_HAS_MULTIMEDIA=1)
+else()
+    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_DEMO_HAS_MULTIMEDIA=0)
 endif()
 
 libaudition_configure_target(libaudition_qt_demo)
