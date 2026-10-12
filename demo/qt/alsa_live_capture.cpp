@@ -1,6 +1,9 @@
 #include "alsa_live_capture.hpp"
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
+#include "source_wav_recorder.hpp"
+#include <filesystem>
+#include <chrono>
 #include "odas_respeaker_profile.hpp"
 #if LIBAUDITION_DEMO_HAS_SHERPA
 #include <audition/backends/sherpa/vad.hpp>
@@ -285,6 +288,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         }
 #endif
         SourceTrackLifecycle source_lifecycle;
+        const auto session_stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        SourceWavRecorder recorder{
+            std::filesystem::temp_directory_path() / "libaudition-recordings" /
+                ("session-" + std::to_string(session_stamp)), config.sample_rate_hz};
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -384,12 +391,14 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 }
                 source_lifecycle.update(std::move(present), [&](std::uint64_t id) {
                     if (classifier) classifier->forget(id);
+                    recorder.retire(id);
 #if LIBAUDITION_DEMO_HAS_SHERPA
                     if (speech_runtime) speech_runtime->forget(id);
                     transcripts.erase(id);
 #endif
                 });
                 for (const auto& separated : resultFrame.separated_frames) {
+                    recorder.append(separated.track_id.value(), separated.audio.samples());
                     if (classifier) {
                         classifier->push(separated.track_id.value(),
                                          separated.audio.samples(), hops);
@@ -477,6 +486,11 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             measuredFrames = 0;
             std::lock_guard<std::mutex> lock{mutex_};
             latest_.tracks = std::move(tracks);
+            latest_.recordings.clear();
+            for (const auto& item : recorder.entries()) {
+                latest_.recordings.push_back({item.first, item.second.path,
+                                               item.second.samples, item.second.active});
+            }
             latest_.potentials = std::move(proposals);
             latest_.channel_rms_dbfs = std::move(rmsDbfs);
             latest_.channel_peak_dbfs = std::move(peakDbfs);
