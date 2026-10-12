@@ -489,8 +489,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.tracks = std::move(tracks);
             latest_.recordings.clear();
             for (const auto& item : recorder.entries()) {
-                latest_.recordings.push_back({item.first, item.second.path,
-                                               item.second.samples, item.second.active});
+                latest_.recordings.push_back({item.recording_id, item.track_id, item.path,
+                                               item.samples, item.active});
             }
             latest_.potentials = std::move(proposals);
             latest_.channel_rms_dbfs = std::move(rmsDbfs);
