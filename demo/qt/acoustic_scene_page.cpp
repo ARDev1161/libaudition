@@ -536,6 +536,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
     auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
     auto lastTableUpdate = std::make_shared<qint64>(0);
+    auto rowIndex = std::make_shared<std::map<std::uint64_t, int>>();
     auto* playerButton = new QPushButton{"Play", sidebar};
     playerButton->setVisible(false);
     sideLayout->addWidget(playerButton);
@@ -652,7 +653,6 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 }
             }
         }
-        tracks->setRowCount(static_cast<int>(history->size()));
         int row = 0;
         for (const auto& pair : *history) {
             const auto& entry = pair.second;
@@ -671,15 +671,24 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 entry.wav.isEmpty() ? "No audio" :
                     QString("Play (%1 s)").arg(entry.samples / 16000)
             };
+            auto foundRow = rowIndex->find(pair.first);
+            if (foundRow == rowIndex->end()) {
+                row = tracks->rowCount();
+                tracks->insertRow(row);
+                rowIndex->emplace(pair.first, row);
+            } else {
+                row = foundRow->second;
+            }
             for (int col = 0; col < columns.size(); ++col) {
-                auto* item = new QTableWidgetItem(columns.at(col));
+                auto* item = tracks->item(row, col);
+                if (!item) item = new QTableWidgetItem;
+                item->setText(columns.at(col));
                 if (!entry.active) item->setForeground(QColor(135, 135, 135));
                 item->setData(Qt::UserRole, QVariant::fromValue(static_cast<qulonglong>(pair.first)));
                 tracks->setItem(row, col, item);
             }
             if (track.id == sphere->selectedTrack() && entry.active)
                 selected->setText(directionSummary(track));
-            ++row;
         }
         playerButton->setVisible(false);
         for (int r = 0; r < tracks->rowCount(); ++r) {
@@ -688,6 +697,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const auto id = item->data(Qt::UserRole).toULongLong();
             const auto found = history->find(id);
             if (found == history->end() || found->second.wav.isEmpty()) continue;
+            if (tracks->cellWidget(r, 6)) continue;
             auto* playTrack = new QPushButton{"Play", tracks};
             if (!found->second.active)
                 playTrack->setStyleSheet("color: gray;");
@@ -884,6 +894,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             sphere->clearTracks();
             history->clear();
             recordingInfo->clear();
+            rowIndex->clear();
             *lastTableUpdate = 0;
             tracks->setRowCount(0);
             selected->setText("Click a live track to inspect its direction.");
@@ -1043,6 +1054,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         tracks->setRowCount(0);
         history->clear();
         recordingInfo->clear();
+        rowIndex->clear();
         *lastTableUpdate = 0;
         selected->setText("Click a source on the sphere to inspect it.");
         play->setEnabled(false);
