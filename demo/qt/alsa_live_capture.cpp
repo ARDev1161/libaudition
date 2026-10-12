@@ -388,6 +388,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                  it != retiredAsrRecordingIds.end();) {
                 if (speech_runtime->pendingResults(it->first) == 0) {
                     releaseTimeline(it->second);
+                    speech_runtime->releaseRetired(it->first);
                     it = retiredAsrRecordingIds.erase(it);
                 } else ++it;
             }
