@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <audition/audio/peak_normalizer.hpp>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -33,19 +34,14 @@ inline NormalizedWav normalizePlaybackWav(const std::filesystem::path& source) {
     };
     const auto bytes = std::filesystem::file_size(source);
     if (bytes < 44) throw std::runtime_error("Invalid WAV size");
-    // Scan the complete payload, including recent samples not yet reflected in
-    // an actively recorded file's RIFF header.
-    std::uint32_t maxPeak = 0;
+    // Normalize using the reusable library DSP API, never mutate the source.
+    std::vector<std::int16_t> input;
+    input.reserve((bytes - 44) / 2);
     char pair[2];
-    while (in.read(pair, 2)) {
-        const auto raw = static_cast<std::int16_t>(get16(pair));
-        const auto amplitude = static_cast<std::uint32_t>(std::abs(static_cast<int>(raw)));
-        maxPeak = std::max(maxPeak, amplitude);
-    }
-    const double gain = maxPeak == 0 ? 1.0 :
-        std::max(1.0, std::min(100.0, (32767.0 * std::pow(10.0, -3.0 / 20.0)) /
-                                 static_cast<double>(maxPeak)));
-    const double db = 20.0 * std::log10(gain);
+    while (in.read(pair, 2))
+        input.push_back(static_cast<std::int16_t>(get16(pair)));
+    const auto normalized = audition::peakNormalizePcm16(input);
+    const double db = normalized.applied_gain_db;
     // Source basename may collide across capture sessions. Include parent session.
     auto dest = std::filesystem::temp_directory_path() /
         ("libaudition-playback-" + source.parent_path().filename().string() +
@@ -55,11 +51,8 @@ inline NormalizedWav normalizePlaybackWav(const std::filesystem::path& source) {
     in.clear(); in.seekg(0);
     out.write(header, 44);
     in.seekg(44);
-    while (in.read(pair, 2)) {
-        const auto raw = static_cast<std::int16_t>(get16(pair));
-        const auto scaled = static_cast<int>(std::lrint(static_cast<double>(raw) * gain));
-        const auto sample = static_cast<std::uint16_t>(
-            static_cast<std::int16_t>(std::clamp(scaled, -32768, 32767)));
+    for (const auto sampleSigned : normalized.pcm) {
+        const auto sample = static_cast<std::uint16_t>(sampleSigned);
         const char data[2]{static_cast<char>(sample & 255),
                            static_cast<char>((sample >> 8) & 255)};
         out.write(data, 2);
