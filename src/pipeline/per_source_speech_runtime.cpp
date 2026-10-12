@@ -47,6 +47,7 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
                 {options_.sample_rate_hz, 1U, AudioLayout::Interleaved},
                 track.start_time};
             jobs_.push_back({id, track.generation, std::move(segment)});
+            ++pending_by_generation_[track.generation];
             cv_.notify_one();
         }
     }
@@ -187,6 +188,23 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
     }
 }
 
+std::optional<std::uint64_t> PerSourceSpeechRuntime::retire(std::uint64_t id) {
+    std::lock_guard<std::mutex> guard{mutex_};
+    auto it = tracks_.find(id);
+    if (it == tracks_.end()) return std::nullopt;
+    const auto generation = it->second.generation;
+    if (!it->second.speech.empty()) queueSegment(id, it->second);
+    retired_generations_.insert(generation);
+    tracks_.erase(it);
+    return generation;
+}
+
+std::size_t PerSourceSpeechRuntime::pendingResults(std::uint64_t generation) const {
+    std::lock_guard<std::mutex> guard{mutex_};
+    const auto it = pending_by_generation_.find(generation);
+    return it == pending_by_generation_.end() ? 0U : it->second;
+}
+
 void PerSourceSpeechRuntime::forget(std::uint64_t id) {
     std::lock_guard<std::mutex> guard{mutex_};
     const auto it = tracks_.find(id);
@@ -201,6 +219,10 @@ void PerSourceSpeechRuntime::forget(std::uint64_t id) {
                               [id](const Job& job){return job.track_id == id;}),
                 jobs_.end());
     dropped_ += before - jobs_.size();
+    for (auto it = pending_by_generation_.begin(); it != pending_by_generation_.end();) {
+        if (it->second == 0) it = pending_by_generation_.erase(it);
+        else ++it;
+    }
     results_.erase(std::remove_if(results_.begin(), results_.end(),
                                   [id](const SourceSpeechResult& r){return r.track_id == id;}),
                    results_.end());
@@ -212,6 +234,8 @@ void PerSourceSpeechRuntime::reset() {
     jobs_.clear();
     results_.clear();
     tracks_.clear();
+    retired_generations_.clear();
+    pending_by_generation_.clear();
 }
 
 std::vector<SourceSpeechResult> PerSourceSpeechRuntime::takeResults() {
@@ -249,8 +273,9 @@ void PerSourceSpeechRuntime::workerLoop() {
             auto transcript = asr_->transcribe(job.segment);
             std::lock_guard<std::mutex> guard{mutex_};
             const auto current = tracks_.find(job.track_id);
-            if (current != tracks_.end() &&
-                current->second.generation == job.generation) {
+            if ((current != tracks_.end() &&
+                 current->second.generation == job.generation) ||
+                retired_generations_.count(job.generation) != 0) {
                 results_.push_back({job.track_id, job.generation, std::move(transcript),
                     job.segment.audio.captureTime(),
                     job.segment.audio.captureTime().advancedBy(job.segment.audio.duration())});
@@ -261,13 +286,19 @@ void PerSourceSpeechRuntime::workerLoop() {
                 }
                 ++completed_;
             }
+            if (auto it = pending_by_generation_.find(job.generation);
+                it != pending_by_generation_.end() && it->second > 0) --it->second;
         } catch (const std::exception& e) {
             std::lock_guard<std::mutex> guard{mutex_};
             error_ = e.what();
+            if (auto it = pending_by_generation_.find(job.generation);
+                it != pending_by_generation_.end() && it->second > 0) --it->second;
             ++dropped_;
         } catch (...) {
             std::lock_guard<std::mutex> guard{mutex_};
             error_ = "Unknown ASR exception";
+            if (auto it = pending_by_generation_.find(job.generation);
+                it != pending_by_generation_.end() && it->second > 0) --it->second;
             ++dropped_;
         }
     }
