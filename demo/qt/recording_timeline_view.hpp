@@ -69,7 +69,7 @@ public:
     }
 
     void setPosition(qint64 ms) {
-        const double x = std::max<qint64>(0, ms) * pixelsPerMs_;
+        const double x = static_cast<double>(std::max<qint64>(0, ms)) * pixelsPerMs_;
         if (cursor_) cursor_->setLine(x, 0, x, 65);
         // Keep playback cursor in the same viewport location for both lanes.
         horizontalScrollBar()->setValue(
