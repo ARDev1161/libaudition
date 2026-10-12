@@ -239,7 +239,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         }
         // Source-specific classification needs actual SSS mono audio. Avoid
         // the extra DSP cost when no classifier model is configured.
-        options.sss.enabled = config.classify_sources || config.transcribe_sources;
+        options.sss.enabled = true; // source WAV recording is available independently
         audition::OdasSpatialEngine engine{options};
         std::unique_ptr<LiveAudioTaggingWorker> classifier;
         if (config.classify_sources) {
