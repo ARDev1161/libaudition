@@ -381,7 +381,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 timestamp, hops};
             const auto resultFrame = engine.process(block.view());
             ++hops;
-            if (classifier || config.transcribe_sources) {
+            { // Recording is independent of classifier and ASR toggles.
                 std::set<std::uint64_t> present;
                 for (const auto& track : resultFrame.tracks) {
                     present.insert(track.track_id.value());
