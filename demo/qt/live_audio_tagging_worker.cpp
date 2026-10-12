@@ -149,14 +149,22 @@ std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
     std::uint64_t track_id, std::uint64_t /*processed_hops*/) const {
     std::optional<audition::ClassificationResult> prediction;
     std::string stage;
+    std::optional<std::uint64_t> windowEnd;
+    std::uint64_t windowSize = 0;
     if (progressive_) {
         const auto state = progressive_->status(track_id);
         prediction = state.result;
         if (state.selected_stage.has_value()) {
             stage = state.stages[*state.selected_stage].name;
+            const auto& chosen = state.stages[*state.selected_stage].status;
+            windowEnd = chosen.result_end_sample;
+            windowSize = static_cast<std::uint64_t>(chosen.required_samples);
         }
     } else if (runtime_) {
-        prediction = runtime_->status(track_id).result;
+        const auto status = runtime_->status(track_id);
+        prediction = status.result;
+        windowEnd = status.result_end_sample;
+        windowSize = static_cast<std::uint64_t>(status.required_samples);
     }
     if (!prediction.has_value() || prediction->classes.empty()) {
         return std::nullopt;
@@ -170,6 +178,11 @@ std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
     auto filtered = audition::selectVocabulary(*prediction, selection_, supported);
     LiveTrackClassification response{};
     response.stage = stage;
+    if (windowEnd && *windowEnd >= windowSize) {
+        response.window_start_sample = *windowEnd - windowSize;
+        response.window_end_sample = *windowEnd;
+        response.has_window = true;
+    }
     response.unsupported_labels = std::move(filtered.unsupported_labels);
     std::ostringstream summary;
     for (std::size_t i = 0; i < filtered.classes.size(); ++i) {
