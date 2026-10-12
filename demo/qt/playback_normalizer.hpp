@@ -46,10 +46,8 @@ inline NormalizedWav normalizePlaybackWav(const std::filesystem::path& source) {
         std::max(1.0, std::min(100.0, (32767.0 * std::pow(10.0, -3.0 / 20.0)) /
                                  static_cast<double>(maxPeak)));
     const double db = 20.0 * std::log10(gain);
-    auto dest = std::filesystem::temp_directory_path() /
-        ("libaudition-playback-" + source.filename().string());
     // Source basename may collide across capture sessions. Include parent session.
-    dest = std::filesystem::temp_directory_path() /
+    auto dest = std::filesystem::temp_directory_path() /
         ("libaudition-playback-" + source.parent_path().filename().string() +
          "-" + source.filename().string());
     std::ofstream out(dest, std::ios::binary | std::ios::trunc);
@@ -67,7 +65,7 @@ inline NormalizedWav normalizePlaybackWav(const std::filesystem::path& source) {
         out.write(data, 2);
     }
     if (!out) throw std::runtime_error("Cannot write normalized recording");
-    const auto dataBytes = static_cast<std::uint32_t>(std::filesystem::file_size(dest) - 44);
+    const auto dataBytes = static_cast<std::uint32_t>(bytes - 44);
     auto put32 = [](std::ostream& f, std::uint32_t x) {
         for (int i = 0; i < 4; ++i) f.put(static_cast<char>((x >> (i * 8)) & 255));
     };
