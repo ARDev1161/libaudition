@@ -335,6 +335,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 engine.reset(); // discontinuous samples must not share ODAS state
                 source_lifecycle.clear([&](std::uint64_t id) {
                     if (classifier) classifier->forget(id);
+                    recorder.retire(id); // do not concatenate across ALSA discontinuity
                 });
 #if LIBAUDITION_DEMO_HAS_SHERPA
                 if (speech_runtime) {
