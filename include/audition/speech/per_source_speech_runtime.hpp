@@ -71,6 +71,8 @@ public:
     // keyed by source generation even if numeric track ID is reused.
     [[nodiscard]] std::optional<std::uint64_t> retire(std::uint64_t track_id);
     [[nodiscard]] std::size_t pendingResults(std::uint64_t generation) const;
+    // Release finished retirement metadata once results have been consumed.
+    void releaseRetired(std::uint64_t generation);
     // Invalidate all source generations and queued work, e.g. ALSA xrun.
     void reset();
     // Consume completed ASR results (not polling stale snapshots).
