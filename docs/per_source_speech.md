@@ -175,3 +175,31 @@ distinct generations of reused ODAS track IDs. This commit establishes
 the in-memory data model and validation; **persistent JSON export and
 attaching live ASR/tagger results to the timeline are follow-up integration
 work**, not yet supplied by the new API.
+
+## Per-source recorded annotations
+
+The Qt live recorder now writes a versioned `*.wav.json` sidecar for each
+source WAV, through the public
+`audition::recordingTimelineToJson` / `writeRecordingTimelineJson` APIs.
+The JSON carries sample rate, recording generation ID, speech segments and
+classifier windows as two independent tracks. Speech offsets come from
+ASR segment capture timestamps, not the time inference completed. Tagging
+windows use the library classifier's actual end-sample and window length,
+rather than approximating them from UI refresh time; re-reading a completed
+window does not duplicate it. Sources retired and reused by ODAS are written
+to separate sidecars.
+
+The Qt popup shows independently labeled sound-event and transcript timeline
+lanes sharing the media player's position. Both move as audio plays; click a
+location on either lane to seek. Peak normalization remains playback-only;
+timestamps remain relative to the **original WAV**.
+
+Important limits: SenseVoice generally supplies utterance-level text, not
+word-aligned timing, so speech labels cover genuine VAD/ASR segments without
+inventing per-word offsets. Retiring a source cancels outstanding ASR jobs in
+the current `PerSourceSpeechRuntime` design; cancelled/incomplete utterances
+cannot be saved. Audio dropped by the bounded recorder also means inference
+sample offsets may diverge from the physically written WAV. The JSON is
+written on retirement or at shutdown, not continuously streamed for active
+tracks. Standalone model-neutral JSON *reading* is not yet implemented in
+the library; the Qt demo reads the sidecar using Qt JSON facilities.
