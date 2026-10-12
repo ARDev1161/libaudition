@@ -9,6 +9,7 @@
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -98,6 +99,12 @@ public:
         }
         cv_.notify_one();
         if (worker_.joinable()) worker_.join();
+    }
+    [[nodiscard]] std::optional<Entry> activeEntry(std::uint64_t track_id) const {
+        std::lock_guard<std::mutex> lock(mu_);
+        const auto it = live_.find(track_id);
+        if (it == live_.end()) return std::nullopt;
+        return entries_.at(it->second);
     }
     [[nodiscard]] std::vector<Entry> entries() const {
         std::lock_guard<std::mutex> lock(mu_);
