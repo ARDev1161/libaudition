@@ -369,3 +369,32 @@ TEST(PerSourceSpeechRuntime, AsrExceptionDoesNotStopOtherSources) {
     ASSERT_TRUE(runtime.statistics().last_error.has_value());
     EXPECT_EQ(*runtime.statistics().last_error, "Source 100 ASR failed");
 }
+
+
+TEST(PerSourceSpeechRuntime, RetireFlushesLastSpeechAndPreservesReusedIdGeneration) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples = 4;
+    opts.pre_roll_samples = 0;
+    opts.post_roll_samples = 16;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<MockAsr>(), opts};
+    const std::vector<float> voice(12U, 0.5F);
+    runtime.push(3U, chunk(voice));
+    const auto first = runtime.retire(3U);
+    ASSERT_TRUE(first.has_value());
+    EXPECT_FALSE(runtime.trackStatus(3U).exists);
+    runtime.push(3U, chunk(voice));
+    const auto second = runtime.retire(3U);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_NE(*first, *second);
+    const auto result = awaitSpeech(runtime, 2U);
+    ASSERT_EQ(result.size(), 2U);
+    EXPECT_EQ(result[0].generation, *first);
+    EXPECT_EQ(result[1].generation, *second);
+    EXPECT_EQ(result[0].transcript.text, "3:12");
+    EXPECT_EQ(result[1].transcript.text, "3:12");
+    EXPECT_EQ(runtime.pendingResults(*first), 0U);
+    EXPECT_EQ(runtime.pendingResults(*second), 0U);
+    EXPECT_NO_THROW(runtime.releaseRetired(*first));
+    EXPECT_NO_THROW(runtime.releaseRetired(*second));
+}
