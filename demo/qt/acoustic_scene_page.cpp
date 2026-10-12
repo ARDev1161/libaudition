@@ -780,10 +780,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             if (!found->second.active)
                 playTrack->setStyleSheet("color: gray;");
             QObject::connect(playTrack, &QPushButton::clicked, page, [tracks, playerButton, id]() {
-                for (int row = 0; row < tracks->rowCount(); ++row) {
-                    const auto* cell = tracks->item(row, 0);
+                for (int candidateRow = 0; candidateRow < tracks->rowCount(); ++candidateRow) {
+                    const auto* cell = tracks->item(candidateRow, 0);
                     if (cell && cell->data(Qt::UserRole).toULongLong() == id) {
-                        tracks->selectRow(row);
+                        tracks->selectRow(candidateRow);
                         playerButton->click();
                         break;
                     }
