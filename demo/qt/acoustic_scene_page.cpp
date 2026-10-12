@@ -967,6 +967,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             for (const auto& proposal : snapshot.potentials) {
                 strongest = std::max(strongest, proposal.score);
             }
+            QStringList sssLevelLines;
+            for (const auto& level : snapshot.sss_levels) {
+                sssLevelLines << QString("Track #%1: %2 dBFS RMS / %3 dBFS peak (%4 samples)")
+                    .arg(static_cast<qulonglong>(level.track_id))
+                    .arg(level.rms_dbfs, 0, 'f', 1)
+                    .arg(level.peak_dbfs, 0, 'f', 1)
+                    .arg(static_cast<qulonglong>(level.samples));
+            }
             diagnostics->setText(
                 QString("Classifier: %4\nSpeech: %5\nRaw ALSA input levels: %1\n"
                         "ODAS SSL direction proposals: %2 (strongest raw score: %3) · "
@@ -975,7 +983,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(static_cast<qulonglong>(snapshot.potentials.size()))
                     .arg(strongest, 0, 'f', 3)
                     .arg(QString::fromStdString(snapshot.classifier_status))
-                    .arg(QString::fromStdString(snapshot.speech_status)));
+                    .arg(QString::fromStdString(snapshot.speech_status)) +
+                "\\nODAS SSS output (same measurement window): " +
+                (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")));
         }
         if (!snapshot.error.empty()) {
             stopCapture();
