@@ -205,6 +205,15 @@ std::size_t PerSourceSpeechRuntime::pendingResults(std::uint64_t generation) con
     return it == pending_by_generation_.end() ? 0U : it->second;
 }
 
+void PerSourceSpeechRuntime::releaseRetired(std::uint64_t generation) {
+    std::lock_guard<std::mutex> guard{mutex_};
+    const auto pending = pending_by_generation_.find(generation);
+    if (pending != pending_by_generation_.end() && pending->second != 0)
+        throw std::logic_error("Cannot release in-flight ASR generation");
+    pending_by_generation_.erase(generation);
+    retired_generations_.erase(generation);
+}
+
 void PerSourceSpeechRuntime::forget(std::uint64_t id) {
     std::lock_guard<std::mutex> guard{mutex_};
     const auto it = tracks_.find(id);
