@@ -107,3 +107,29 @@ in the libaudition library itself or in a dependency-only build.
 Models have separate third-party licenses: check the respective upstream
 model repositories before redistribution. Model download success and actual
 ReSpeaker recognition quality still require local verification.
+
+## Qt live source history and playback (experimental)
+
+The live Acoustic scene keeps retired ODAS source rows in the **Tracked sources**
+table, displayed in gray rather than removed. Each source with separated SSS
+PCM exposes a **Play** button that opens a small player with Play/Pause, seek,
+volume and elapsed/total time. The sphere continues to show only live tracks.
+
+Source PCM is stored as mono 16-bit WAV at the negotiated sample rate under
+`<system temp>/libaudition-recordings/session-*/track_*.wav`, separate from ASR
+segment recording. The recorder caps PCM at **256 MiB per capture session**;
+after the cap, later audio is not recorded. Captures are retained on disk
+until the user deletes the temp directory (the demo does not upload speech).
+Files are not automatically erased when a track disappears. Active WAV headers
+are refreshed approximately every second, but finished files are more reliable
+for playback. Playback is available when **Qt Multimedia** development support
+was found at configure time; otherwise the demo builds without it and displays
+an explanation in the popup. This is a diagnostic recorder; disk I/O in the
+capture thread should be stress-tested before claiming hard real-time behavior.
+
+Current limitations: track IDs are the history keys (ID reuse within a capture
+session can replace a previous table entry), and starting a new capture resets
+the visible table history while leaving previous WAV files on disk. A future
+iteration should use a generation-qualified identity for the recordings,
+publish recorder drop counts, and move disk writes onto a bounded background
+worker. No audio or transcript is sent to an external service by the recorder.
