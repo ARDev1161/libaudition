@@ -7,6 +7,9 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <string>
 #include <stdexcept>
 #include <vector>
 
@@ -36,6 +39,17 @@ int main() {
                                               "quote \" slash \\ newline \n", "ru"});
     const auto escaped = audition::recordingTimelineToJson(timeline);
     assert(escaped.find(R"(quote \" slash \\ newline \n)") != std::string::npos);
+    const auto sidecar = std::filesystem::temp_directory_path() /
+                         "libaudition-recording-api-test.json";
+    audition::writeRecordingTimelineJson(sidecar, timeline);
+    {
+        std::ifstream saved(sidecar);
+        assert(saved.good());
+        const std::string content((std::istreambuf_iterator<char>(saved)),
+                                  std::istreambuf_iterator<char>());
+        assert(content == escaped);
+    }
+    std::filesystem::remove(sidecar);
     bool rejected = false;
     try { timeline.add(audition::TimelineSpeechEvent{11, 0, 20, "wrong", ""}); }
     catch (const std::invalid_argument&) { rejected = true; }
