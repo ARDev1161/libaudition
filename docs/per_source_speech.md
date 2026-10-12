@@ -156,3 +156,22 @@ The current ODAS backend default is
 the *Separated* signal, not the *Postfiltered* signal. Do not interpret
 postfilter settings as evidence of gain reduction on the currently selected
 output without checking the backend processing path.
+
+## Library peak normalization and annotation timeline
+
+The public `<audition/audio/peak_normalizer.hpp>` API offers
+`audition::peakNormalizePcm16` with target peak -3 dBFS, maximum boost 40 dB,
+and no attenuation by default. It operates on an entire PCM16 sample vector
+and returns a separate sample vector plus measured gain and peaks. This is
+**offline peak normalization**, not adaptive AGC or acoustic noise reduction;
+it does not modify the input or improve signal-to-noise ratio. The Qt
+recording player uses this library API to create its playback-only WAV copy.
+
+The public `<audition/audio/recording_timeline.hpp>` introduces
+`RecordingTimeline`, `TimelineSpeechEvent` and `TimelineSoundEvent`.
+Events use recording-relative sample offsets and independent lanes for speech
+text and sound class predictions. Distinct `RecordingId` values must identify
+distinct generations of reused ODAS track IDs. This commit establishes
+the in-memory data model and validation; **persistent JSON export and
+attaching live ASR/tagger results to the timeline are follow-up integration
+work**, not yet supplied by the new API.
