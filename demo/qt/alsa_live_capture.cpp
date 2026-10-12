@@ -528,6 +528,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #else
             latest_.speech_status = "Requires Sherpa";
 #endif
+            latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped());
             ++latest_.generation;
         }
     } catch (const std::exception& error) {
