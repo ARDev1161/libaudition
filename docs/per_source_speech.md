@@ -133,3 +133,26 @@ the visible table history while leaving previous WAV files on disk. A future
 iteration should use a generation-qualified identity for the recordings,
 publish recorder drop counts, and move disk writes onto a bounded background
 worker. No audio or transcript is sent to an external service by the recorder.
+
+## Time-aligned signal level diagnostics
+
+The live Qt Acoustic scene reports raw ALSA input channel RMS/peak levels
+and each ODAS separated source's RMS/peak in the **same UI reporting window**
+(roughly 50 ms). The raw channels include non-microphone channels; compare
+only channels selected in the mic mapping. SSS values are keyed by track ID
+and include the separated sample count. Because sources may start/end inside
+a reporting window, the windows are contemporaneous but are not guaranteed
+to contain precisely the same number of samples. RMS is measured across the
+available PCM of each source, including silence.
+
+For each source the GUI also displays a *projected* gain:
+`clamp(-3 dBFS - source_peak, 0, 40 dB)` and resulting peak. This is a
+diagnostic calculation **only**: raw capture, separated WAV files, VAD,
+tagging and ASR remain unchanged. A zero sample source is omitted.
+
+The current ODAS backend default is
+`sss.separation_mode=DelayAndSum`, `sss.output=Separated`,
+`sss.post_filter_mode=MultiSource`. Consequently the recorder receives
+the *Separated* signal, not the *Postfiltered* signal. Do not interpret
+postfilter settings as evidence of gain reduction on the currently selected
+output without checking the backend processing path.
