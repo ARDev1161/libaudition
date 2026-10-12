@@ -716,8 +716,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             };
             auto foundRow = rowIndex->find(pair.first);
             if (foundRow == rowIndex->end()) {
-                row = tracks->rowCount();
+                row = 0;
                 tracks->insertRow(row);
+                for (auto& indexed : *rowIndex) ++indexed.second;
                 rowIndex->emplace(pair.first, row);
             } else {
                 row = foundRow->second;
@@ -751,9 +752,15 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             auto* playTrack = new QPushButton{"Play", tracks};
             if (!found->second.active)
                 playTrack->setStyleSheet("color: gray;");
-            QObject::connect(playTrack, &QPushButton::clicked, page, [tracks, playerButton, r]() {
-                tracks->selectRow(r);
-                playerButton->click();
+            QObject::connect(playTrack, &QPushButton::clicked, page, [tracks, playerButton, id]() {
+                for (int row = 0; row < tracks->rowCount(); ++row) {
+                    const auto* cell = tracks->item(row, 0);
+                    if (cell && cell->data(Qt::UserRole).toULongLong() == id) {
+                        tracks->selectRow(row);
+                        playerButton->click();
+                        break;
+                    }
+                }
             });
             tracks->setCellWidget(r, 6, playTrack);
         }
