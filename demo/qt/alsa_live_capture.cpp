@@ -300,6 +300,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::map<std::uint64_t, std::uint64_t> trackRecordingIds;
         std::map<std::uint64_t, std::string> annotationPaths;
         std::set<std::tuple<std::uint64_t, std::string, std::uint64_t>> seenSoundWindows;
+#if LIBAUDITION_DEMO_HAS_SHERPA
         const auto sampleOffset = [&](audition::Timestamp time,
                                       audition::Timestamp origin) -> std::uint64_t {
             if (!time.comparableWith(origin) || time.nanoseconds() <= origin.nanoseconds())
@@ -308,6 +309,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             return static_cast<std::uint64_t>(
                 delta * static_cast<long double>(config.sample_rate_hz) / 1000000000.0L);
         };
+#endif
         const auto persistTimeline = [&](std::uint64_t id) {
             const auto item = timelines.find(id);
             const auto path = annotationPaths.find(id);
