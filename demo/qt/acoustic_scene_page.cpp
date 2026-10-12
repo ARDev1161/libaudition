@@ -662,7 +662,22 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 selected->setText(directionSummary(track));
             ++row;
         }
-        playerButton->setVisible(!history->empty());
+        playerButton->setVisible(false);
+        for (int r = 0; r < tracks->rowCount(); ++r) {
+            const auto item = tracks->item(r, 0);
+            if (!item) continue;
+            const auto id = item->text().toULongLong();
+            const auto found = history->find(id);
+            if (found == history->end() || found->second.wav.isEmpty()) continue;
+            auto* playTrack = new QPushButton{"Play", tracks};
+            if (!found->second.active)
+                playTrack->setStyleSheet("color: gray;");
+            QObject::connect(playTrack, &QPushButton::clicked, page, [tracks, playerButton, r]() {
+                tracks->selectRow(r);
+                playerButton->click();
+            });
+            tracks->setCellWidget(r, 6, playTrack);
+        }
     };
     auto capture = std::make_shared<demo::AlsaLiveCapture>();
     auto* liveTimer = new QTimer{page};
