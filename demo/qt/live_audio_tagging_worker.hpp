@@ -37,6 +37,9 @@ struct LiveTrackClassification {
     std::string top_classes{};
     std::vector<std::string> unsupported_labels{};
     std::string stage{};
+    std::uint64_t window_start_sample{0};
+    std::uint64_t window_end_sample{0};
+    bool has_window{false};
 };
 
 class LiveAudioTaggingWorker final {
