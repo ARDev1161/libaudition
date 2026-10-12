@@ -42,7 +42,7 @@ public:
         try {
             if (samples.empty()) return;
             std::lock_guard<std::mutex> lock(mu_);
-            if (!enabled_ || stopping_ || queue_.size() >= queue_limit_ ||
+            if (!enabled_ || stopping_ || pending_audio_ >= queue_limit_ ||
                 reserved_bytes_ >= budget_) { ++dropped_; return; }
             const auto count = static_cast<std::size_t>(
                 std::min<std::uint64_t>(samples.size(), (budget_ - reserved_bytes_) / 2));
@@ -69,6 +69,7 @@ public:
             }
             reserved_bytes_ += 2 * count;
             queue_.push_back(std::move(cmd));
+            ++pending_audio_;
             cv_.notify_one();
         } catch (...) { ++dropped_; }
     }
@@ -144,6 +145,7 @@ private:
                 if (queue_.empty()) break;
                 cmd = std::move(queue_.front());
                 queue_.pop_front();
+                if (cmd.kind == Command::Audio) --pending_audio_;
                 meta = entries_[cmd.id];
             }
             try {
@@ -175,6 +177,7 @@ private:
     std::uint32_t rate_;
     std::uint64_t budget_, reserved_bytes_{0}, next_id_{0};
     std::size_t queue_limit_;
+    std::size_t pending_audio_{0};
     mutable std::mutex mu_;
     std::condition_variable cv_;
     std::deque<Command> queue_;
