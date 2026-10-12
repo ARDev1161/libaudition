@@ -372,8 +372,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     if (classifier) classifier->forget(id);
                     const auto previous = trackRecordingIds.find(id);
                     if (previous != trackRecordingIds.end()) {
-                        persistTimeline(previous->second);
+                        const auto completedId = previous->second;
+                        persistTimeline(completedId);
                         trackRecordingIds.erase(previous);
+                        timelines.erase(completedId);
+                        recordingOrigins.erase(completedId);
+                        annotationPaths.erase(completedId);
+                        for (auto it = seenSoundWindows.begin(); it != seenSoundWindows.end();) {
+                            if (std::get<0>(*it) == completedId)
+                                it = seenSoundWindows.erase(it);
+                            else ++it;
+                        }
                     }
                     recorder.retire(id); // do not concatenate across ALSA discontinuity
                 });
