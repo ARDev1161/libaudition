@@ -13,7 +13,8 @@ namespace detail {
 inline void appendJsonString(std::ostream& out, const std::string& value) {
     out << '"';
     constexpr char hex[] = "0123456789abcdef";
-    for (unsigned char c : value) {
+    for (const char raw : value) {
+        const auto c = static_cast<unsigned char>(raw);
         switch (c) {
             case '"': out << "\\\""; break;
             case '\\': out << "\\\\"; break;
