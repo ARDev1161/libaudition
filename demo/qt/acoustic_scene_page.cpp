@@ -3,6 +3,7 @@
 #include "odas_respeaker_profile.hpp"
 #include "acoustic_sphere_widget.hpp"
 #include "wav_io.hpp"
+#include "playback_normalizer.hpp"
 
 #if LIBAUDITION_DEMO_HAS_ODAS
 #include <audition/backends/odas.hpp>
@@ -561,6 +562,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         auto* volume = new QSlider(Qt::Horizontal, dialog);
         volume->setRange(0, 100);
         volume->setValue(75);
+        auto* normalize = new QCheckBox{"Auto normalize (-3 dBFS peak)", dialog};
+        normalize->setChecked(true);
+        auto* gainLabel = new QLabel{"", dialog};
+        column->addWidget(normalize);
+        column->addWidget(gainLabel);
         column->addWidget(playback);
         column->addWidget(progress);
         column->addWidget(times);
@@ -616,6 +622,43 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                                  .arg((duration / 1000) % 60, 2, 10, QChar('0')));
                          });
         QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
+        const auto sourcePath = iter->second.wav;
+        const auto applyNormalization = [=]() {
+            const auto previousPosition = media->position();
+            const bool wasPlaying =
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                media->playbackState() == QMediaPlayer::PlayingState;
+#else
+                media->state() == QMediaPlayer::PlayingState;
+#endif
+            media->stop();
+            try {
+                QString playbackPath = sourcePath;
+                if (normalize->isChecked()) {
+                    const auto result = demo::normalizePlaybackWav(
+                        std::filesystem::path{sourcePath.toStdString()});
+                    playbackPath = QString::fromStdString(result.path.string());
+                    gainLabel->setText(QString("Applied gain: +%1 dB")
+                        .arg(result.gain_db, 0, 'f', 1));
+                } else {
+                    gainLabel->setText("Original recording (no gain)");
+                }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                media->setSource(QUrl::fromLocalFile(playbackPath));
+#else
+                media->setMedia(QUrl::fromLocalFile(playbackPath));
+#endif
+                media->setPosition(previousPosition);
+                if (wasPlaying) media->play();
+            } catch (const std::exception& error) {
+                gainLabel->setText(QString("Normalization failed: ") +
+                                   QString::fromUtf8(error.what()));
+                normalize->setChecked(false);
+            }
+        };
+        QObject::connect(normalize, &QCheckBox::toggled, dialog,
+                         [applyNormalization](bool) { applyNormalization(); });
+        applyNormalization();
         media->play();
 #else
         playback->setEnabled(false);
