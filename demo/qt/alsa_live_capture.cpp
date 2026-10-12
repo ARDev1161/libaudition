@@ -298,6 +298,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::map<std::uint64_t, audition::RecordingTimeline> timelines;
         std::map<std::uint64_t, audition::Timestamp> recordingOrigins;
         std::map<std::uint64_t, std::uint64_t> trackRecordingIds;
+#if LIBAUDITION_DEMO_HAS_SHERPA
+        std::map<std::uint64_t, std::uint64_t> retiredAsrRecordingIds;
+#endif
         std::map<std::uint64_t, std::string> annotationPaths;
         std::set<std::tuple<std::uint64_t, std::string, std::uint64_t>> seenSoundWindows;
 #if LIBAUDITION_DEMO_HAS_SHERPA
@@ -321,6 +324,75 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 // independent and can continue without annotations.
             }
         };
+        const auto releaseTimeline = [&](std::uint64_t completedId) {
+            persistTimeline(completedId);
+            timelines.erase(completedId);
+            recordingOrigins.erase(completedId);
+            annotationPaths.erase(completedId);
+            for (auto it = seenSoundWindows.begin(); it != seenSoundWindows.end();) {
+                if (std::get<0>(*it) == completedId)
+                    it = seenSoundWindows.erase(it);
+                else ++it;
+            }
+        };
+        const auto retireSource = [&](std::uint64_t trackId) {
+            if (classifier) classifier->forget(trackId);
+            const auto previous = trackRecordingIds.find(trackId);
+            const auto recordingId = previous != trackRecordingIds.end() ?
+                previous->second : std::uint64_t{0};
+            if (previous != trackRecordingIds.end()) trackRecordingIds.erase(previous);
+            recorder.retire(trackId);
+            bool waitForAsr = false;
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            if (speech_runtime) {
+                const auto generation = speech_runtime->retire(trackId);
+                if (generation && recordingId != 0) {
+                    retiredAsrRecordingIds[*generation] = recordingId;
+                    waitForAsr = true;
+                }
+                transcripts.erase(trackId);
+            }
+#endif
+            if (!waitForAsr && recordingId != 0) releaseTimeline(recordingId);
+        };
+#if LIBAUDITION_DEMO_HAS_SHERPA
+        const auto drainAsr = [&]() {
+            if (!speech_runtime) return;
+            for (auto& result : speech_runtime->takeResults()) {
+                std::uint64_t recordingId = 0;
+                const auto retired = retiredAsrRecordingIds.find(result.generation);
+                if (retired != retiredAsrRecordingIds.end()) {
+                    recordingId = retired->second;
+                } else {
+                    // Active generation results can only be matched by the
+                    // still-live source, never a retired generation.
+                    const auto active = trackRecordingIds.find(result.track_id);
+                    if (active != trackRecordingIds.end() &&
+                        speech_runtime->trackStatus(result.track_id).exists)
+                        recordingId = active->second;
+                }
+                if (recordingId != 0 && timelines.count(recordingId) != 0) {
+                    const auto origin = recordingOrigins.at(recordingId);
+                    const auto start = sampleOffset(result.start_time, origin);
+                    const auto end = sampleOffset(result.end_time, origin);
+                    if (!result.transcript.text.empty()) {
+                        timelines.at(recordingId).add(audition::TimelineSpeechEvent{
+                            recordingId, start, std::max(start, end),
+                            result.transcript.text, result.transcript.language});
+                    }
+                }
+                if (retired == retiredAsrRecordingIds.end())
+                    transcripts[result.track_id] = std::move(result.transcript.text);
+            }
+            for (auto it = retiredAsrRecordingIds.begin();
+                 it != retiredAsrRecordingIds.end();) {
+                if (speech_runtime->pendingResults(it->first) == 0) {
+                    releaseTimeline(it->second);
+                    it = retiredAsrRecordingIds.erase(it);
+                } else ++it;
+            }
+        };
+#endif
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -371,28 +443,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
                 source_lifecycle.clear([&](std::uint64_t id) {
-                    if (classifier) classifier->forget(id);
-                    const auto previous = trackRecordingIds.find(id);
-                    if (previous != trackRecordingIds.end()) {
-                        const auto completedId = previous->second;
-                        persistTimeline(completedId);
-                        trackRecordingIds.erase(previous);
-                        timelines.erase(completedId);
-                        recordingOrigins.erase(completedId);
-                        annotationPaths.erase(completedId);
-                        for (auto it = seenSoundWindows.begin(); it != seenSoundWindows.end();) {
-                            if (std::get<0>(*it) == completedId)
-                                it = seenSoundWindows.erase(it);
-                            else ++it;
-                        }
-                    }
-                    recorder.retire(id); // do not concatenate across ALSA discontinuity
+                    retireSource(id);
                 });
 #if LIBAUDITION_DEMO_HAS_SHERPA
-                if (speech_runtime) {
-                    speech_runtime->reset();
-                    transcripts.clear();
-                }
+                drainAsr();
 #endif
                 continue;
             }
@@ -442,12 +496,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     present.insert(separated.track_id.value());
                 }
                 source_lifecycle.update(std::move(present), [&](std::uint64_t id) {
-                    if (classifier) classifier->forget(id);
-                    recorder.retire(id);
-#if LIBAUDITION_DEMO_HAS_SHERPA
-                    if (speech_runtime) speech_runtime->forget(id);
-                    transcripts.erase(id);
-#endif
+                    retireSource(id);
                 });
                 for (const auto& separated : resultFrame.separated_frames) {
                     auto& meter = sssMeters[separated.track_id.value()];
@@ -480,25 +529,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #endif
                 }
 #if LIBAUDITION_DEMO_HAS_SHERPA
-                if (speech_runtime) {
-                    for (auto& transcript_result : speech_runtime->takeResults()) {
-                        const auto currentId = trackRecordingIds.find(transcript_result.track_id);
-                        if (currentId != trackRecordingIds.end()) {
-                            const auto id = currentId->second;
-                            const auto origin = recordingOrigins.at(id);
-                            const auto start = sampleOffset(transcript_result.start_time, origin);
-                            const auto end = sampleOffset(transcript_result.end_time, origin);
-                            if (!transcript_result.transcript.text.empty()) {
-                                timelines.at(id).add(audition::TimelineSpeechEvent{
-                                    id, start, std::max(start, end),
-                                    transcript_result.transcript.text,
-                                    transcript_result.transcript.language});
-                            }
-                        }
-                        transcripts[transcript_result.track_id] =
-                            std::move(transcript_result.transcript.text);
-                    }
-                }
+                drainAsr();
 #endif
             }
             if (hops % visualStride != 0U) {
@@ -641,6 +672,22 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped());
             ++latest_.generation;
         }
+        source_lifecycle.clear([&](std::uint64_t id) { retireSource(id); });
+#if LIBAUDITION_DEMO_HAS_SHERPA
+        if (speech_runtime) {
+            // The ASR worker is asynchronous; avoid blocking live capture.
+            // At stop, allow bounded time for final inference results.
+            const auto deadline = std::chrono::steady_clock::now() +
+                                  std::chrono::seconds{10};
+            while (!retiredAsrRecordingIds.empty() &&
+                   std::chrono::steady_clock::now() < deadline) {
+                drainAsr();
+                if (!retiredAsrRecordingIds.empty())
+                    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+            }
+            drainAsr();
+        }
+#endif
         for (const auto& item : timelines) persistTimeline(item.first);
     } catch (const std::exception& error) {
         std::lock_guard<std::mutex> lock{mutex_};
