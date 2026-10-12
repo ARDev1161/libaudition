@@ -25,6 +25,7 @@
 #include <map>
 #include <QComboBox>
 #include <QFileDialog>
+#include <QFile>
 #include <QFormLayout>
 #include <QFutureWatcher>
 #include <QHBoxLayout>
@@ -624,6 +625,19 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                          });
         QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
         const auto sourcePath = iter->second.wav;
+        auto temporaryPlaybackFiles = std::make_shared<QStringList>();
+        QObject::connect(dialog, &QDialog::finished, dialog,
+                         [media, temporaryPlaybackFiles](int) {
+            media->stop();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            media->setSource(QUrl{});
+#else
+            media->setMedia(QMediaContent{});
+#endif
+            for (const auto& path : *temporaryPlaybackFiles)
+                QFile::remove(path);
+            temporaryPlaybackFiles->clear();
+        });
         const auto applyNormalization = [=]() {
             const auto previousPosition = media->position();
             const bool wasPlaying =
@@ -639,6 +653,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     const auto result = demo::normalizePlaybackWav(
                         std::filesystem::path{sourcePath.toStdString()});
                     playbackPath = QString::fromStdString(result.path.string());
+                    temporaryPlaybackFiles->append(playbackPath);
                     gainLabel->setText(QString("Applied gain: +%1 dB")
                         .arg(result.gain_db, 0, 'f', 1));
                 } else {
