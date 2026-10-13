@@ -63,6 +63,16 @@ inline std::string recordingTimelineToJson(const RecordingTimeline& timeline) {
         detail::appendJsonString(out, event.stage);
         out << '}';
     }
+    out << "\n  ],\n  \"gaps\": [";
+    first = true;
+    for (const auto& gap : timeline.gaps()) {
+        if (!first) out << ',';
+        first = false;
+        out << "\n    {\"start_sample\":" << gap.start_sample
+            << ",\"end_sample\":" << gap.end_sample << ",\"reason\":";
+        detail::appendJsonString(out, gap.reason);
+        out << '}';
+    }
     out << "\n  ]\n}\n";
     return out.str();
 }
