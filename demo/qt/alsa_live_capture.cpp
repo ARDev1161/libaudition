@@ -544,7 +544,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.recordings.clear();
             for (const auto& item : recorder.entries()) {
                 latest_.recordings.push_back({item.recording_id, item.track_id, item.path,
-                                               item.samples, item.active});
+                                               item.samples, item.active, item.lost_samples, item.error});
             }
             latest_.potentials = std::move(proposals);
             latest_.channel_rms_dbfs = std::move(rmsDbfs);
@@ -584,6 +584,14 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.speech_status = "Requires Sherpa";
 #endif
             latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped());
+            if (recordings.persistenceError())
+                latest_.speech_status += " | JSON error: " + *recordings.persistenceError();
+            for (const auto& item : recorder.entries()) {
+                if (!item.error.empty()) {
+                    latest_.speech_status += " | WAV error: " + item.error;
+                    break;
+                }
+            }
             ++latest_.generation;
         }
         drainClassification();
