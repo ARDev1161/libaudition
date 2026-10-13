@@ -152,9 +152,24 @@ SourceClassificationStatus SourceClassificationRuntime::status(
     return result;
 }
 
+std::vector<CompletedSourceClassification> SourceClassificationRuntime::takeCompleted() {
+    std::lock_guard<std::mutex> lock{mutex_};
+    std::vector<CompletedSourceClassification> out;
+    out.reserve(completed_.size());
+    while (!completed_.empty()) {
+        out.push_back(std::move(completed_.front()));
+        completed_.pop_front();
+    }
+    return out;
+}
+
 void SourceClassificationRuntime::forget(std::uint64_t source_id) {
     std::lock_guard<std::mutex> lock{mutex_};
     buffers_.erase(source_id);
+    completed_.erase(std::remove_if(completed_.begin(), completed_.end(),
+        [source_id](const CompletedSourceClassification& event) {
+            return event.source_id == source_id;
+        }), completed_.end());
     pending_.erase(std::remove_if(pending_.begin(), pending_.end(), [source_id](const Job& j){return j.source_id == source_id;}), pending_.end());
 }
 
@@ -185,6 +200,13 @@ void SourceClassificationRuntime::run() noexcept {
                 it->second.error.empty()) {
                 it->second.result = std::move(result);
                 it->second.result_end_sample = job.end_sample;
+                // Deliver every completed window, not just a GUI-polled
+                // latest snapshot. Bound retained event copies for slow clients.
+                if (completed_.size() >= max_sources_ * 4U)
+                    completed_.pop_front();
+                completed_.push_back({job.source_id, job.generation,
+                    job.end_sample - static_cast<std::uint64_t>(window_samples_),
+                    job.end_sample, *it->second.result});
                 it->second.last_result_at = inference_finished;
                 ++it->second.completed_windows;
                 it->second.last_inference_ms = std::chrono::duration<double, std::milli>(
