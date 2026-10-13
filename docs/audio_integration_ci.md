@@ -62,6 +62,65 @@ For calibrated performance gating, the Python validator supports optional
 --require-static-track to enforce stationary SST acquisition. Apply only
 after validating the bearing convention and a real baseline.
 
+## Optional near-plane source search: measured CI improvement
+
+A four-microphone array in the XY plane is ambiguous in elevation.
+**The standard upstream ReSpeaker mask (80/100 degrees relative to +Z)
+does not constrain SSL to a narrow band around the XY plane**; it
+permits polar directions and may allow SST to acquire an incorrect pole.
+The unmodified, original upstream profile remains the default.
+
+When it is physically justified that speakers are within 25 degrees
+above or below the array XY plane, opt in to
+`audition::applyOdasNearPlaneSourcePrior(options)` from
+`<audition/backends/odas/source_elevation_prior.hpp>`, **after**
+`audition::applyReSpeakerUsb4MicAngularProfile(options)`.
+The prior replaces the SSL spatial filters with two opposing +Z/-Z
+masks. It prevents polar source proposals from entering ODAS SST,
+rather than projecting or cosmetically relabeling the output tracks.
+The default half-band is 25 degrees, with a 5-degree taper, and both
+values can be specified explicitly. Never use it when elevated source
+directions must remain detectable.
+
+Comparative results on the pinned synthetic ReSpeaker-layout fixtures
+(CI #924; default ReSpeaker profile versus near-plane prior):
+
+| Scene | Default SST median angular error | Near-plane SST median angular error |
+|---|---:|---:|
+| Static | No SST track | 15.68 deg |
+| Moving | 85.21 deg | 17.77 deg |
+| Two speakers | 88.46 deg | 24.45 deg |
+
+Near-plane runs eliminated the SST pole collapse (from all near-polar
+to none) and yielded 177 hops containing two simultaneous tracks,
+compared with zero previously. Those are **synthetic ground-truth
+measurements**, not demonstrated hardware accuracy. The source
+generator assumes plane-wave propagation and ideal identical mics.
+
+CTest now includes three strict `audio_integration_near_plane_*`
+tests with generously calibrated quality gates: at most 50-degree
+median DOA error, at most 10% near-polar tracks, at least 70% temporal
+track coverage, required static-source acquisition, and >=40
+simultaneous-track hops in the two-source scene. The three original
+upstream-profile tests remain present and still report baseline
+limitations without hiding them.
+
+Qt Acoustic Scene offers the checkbox
+**Optional 2D source prior / Limit SSL search to sources within +/-25 deg**
+for both live ALSA and offline WAV analysis. It is OFF by default.
+
+To compare offline output directly:
+
+    ./build-audio-integration/tests/audition_offline_integration \
+      /tmp/respeaker-raw.wav /tmp/replayed-default
+
+    ./build-audio-integration/tests/audition_offline_integration \
+      /tmp/respeaker-raw.wav /tmp/replayed-near-plane --horizontal-sources
+
+Compare observations.csv in these directories, preferably against
+independently measured source directions. A good synthetic test does not
+establish that the restriction is appropriate for your mounted robot.
+
 ## Replaying a physical ReSpeaker capture
 
 Use the C++ runner directly on a 6-channel 16 kHz file with a sample
