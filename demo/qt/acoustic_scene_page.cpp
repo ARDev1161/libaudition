@@ -599,7 +599,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         media->setAudioOutput(output);
         output->setVolume(0.75f);
         QObject::connect(volume, &QSlider::valueChanged, dialog,
-                         [output](int v) { output->setVolume(v / 100.0f); });
+                         [output](int v) { output->setVolume(static_cast<float>(v) / 100.0f); });
         media->setSource(QUrl::fromLocalFile(iter->second.wav));
         QObject::connect(media, &QMediaPlayer::playbackStateChanged, dialog,
                          [playback](QMediaPlayer::PlaybackState state) {
