@@ -341,7 +341,7 @@ jobs:
       - name: Qt smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-efficientat/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-efficientat -R '^qt_self_test$' --output-on-failure
       - name: PyTorch reference frontend parity
         run: |
           python3 -m venv "$RUNNER_TEMP/efficientat-parity"
@@ -467,8 +467,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          ./build-qt-demo/demo/qt/libaudition_qt_demo --self-test
-          ./build-qt-demo/demo/qt/libaudition_qt_demo --model-self-test=playback-lifecycle
+          ctest --test-dir build-qt-demo -R '^qt_self_test$' --output-on-failure
+          ctest --test-dir build-qt-demo -R '^qt_playback_lifecycle$' --output-on-failure
 
   qt6-demo:
     runs-on: ubuntu-latest
@@ -496,8 +496,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          ./build-qt6-demo/demo/qt/libaudition_qt_demo --self-test
-          ./build-qt6-demo/demo/qt/libaudition_qt_demo --model-self-test=playback-lifecycle
+          ctest --test-dir build-qt6-demo -R '^qt_self_test$' --output-on-failure
+          ctest --test-dir build-qt6-demo -R '^qt_playback_lifecycle$' --output-on-failure
 
   qt6-gcc16-sherpa-arch:
     runs-on: ubuntu-latest
@@ -540,10 +540,10 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          ./build-arch-qt6/demo/qt/libaudition_qt_demo --self-test
-          ./build-arch-qt6/demo/qt/libaudition_qt_demo --model-self-test=source-track-lifecycle
-          ./build-arch-qt6/demo/qt/libaudition_qt_demo --model-self-test=playback-lifecycle
-          ./build-arch-qt6/demo/qt/libaudition_qt_demo --model-self-test=live-source-tagging-errors
+          ctest --test-dir build-arch-qt6 -R '^qt_self_test$' --output-on-failure
+          ctest --test-dir build-arch-qt6 -R '^qt_source_track_lifecycle$' --output-on-failure
+          ctest --test-dir build-arch-qt6 -R '^qt_playback_lifecycle$' --output-on-failure
+          ctest --test-dir build-arch-qt6 -R '^qt_live_source_tagging_errors$' --output-on-failure
 
   audio-integration:
     runs-on: ubuntu-latest
@@ -609,15 +609,15 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-odas/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-odas -R '^qt_self_test$' --output-on-failure
       - name: Qt async odas-errors smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-odas/demo/qt/libaudition_qt_demo --model-self-test=odas-errors
+        run: ctest --test-dir build-odas -R '^qt_odas_errors$' --output-on-failure
       - name: Test ALSA live capture device-open failure and restart
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-odas/demo/qt/libaudition_qt_demo --model-self-test=alsa-errors
+        run: ctest --test-dir build-odas -R '^qt_alsa_errors$' --output-on-failure
       - name: Test
         run: ctest --test-dir build-odas --output-on-failure
       - name: Install
@@ -668,11 +668,11 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-samplerate/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-samplerate -R '^qt_self_test$' --output-on-failure
       - name: Qt async samplerate functional smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-samplerate/demo/qt/libaudition_qt_demo --model-self-test=samplerate
+        run: ctest --test-dir build-samplerate -R '^qt_samplerate$' --output-on-failure
       - name: Test
         run: ctest --test-dir build-samplerate --output-on-failure
       - name: Install
@@ -722,11 +722,11 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-aec3/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-aec3 -R '^qt_self_test$' --output-on-failure
       - name: Qt async aec3 functional smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-aec3/demo/qt/libaudition_qt_demo --model-self-test=aec3
+        run: ctest --test-dir build-aec3 -R '^qt_aec3$' --output-on-failure
       - name: Test
         run: ctest --test-dir build-aec3 --output-on-failure
       - name: Install
@@ -779,15 +779,15 @@ jobs:
       - name: Combined Qt scene and model controls smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-acoustic-live/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-acoustic-live -R '^qt_self_test$' --output-on-failure
       - name: ODAS source retirement and ALSA reset fixture
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-acoustic-live/demo/qt/libaudition_qt_demo --model-self-test=source-track-lifecycle
+        run: ctest --test-dir build-acoustic-live -R '^qt_source_track_lifecycle$' --output-on-failure
       - name: Source-tagging invalid-model error handling
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-acoustic-live/demo/qt/libaudition_qt_demo --model-self-test=live-source-tagging-errors
+        run: ctest --test-dir build-acoustic-live -R '^qt_live_source_tagging_errors$' --output-on-failure
 
   sherpa-backend:
     runs-on: ubuntu-latest
@@ -812,11 +812,11 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-sherpa/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-sherpa -R '^qt_self_test$' --output-on-failure
       - name: Test asynchronous Sherpa GUI error and restart paths
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-sherpa/demo/qt/libaudition_qt_demo --model-self-test=sherpa-errors
+        run: ctest --test-dir build-sherpa -R '^qt_sherpa_errors$' --output-on-failure
       - name: Download pinned Silero VAD inference fixture
         shell: bash
         run: |
@@ -1007,11 +1007,11 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-sherpa-tts/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-sherpa-tts -R '^qt_self_test$' --output-on-failure
       - name: Test asynchronous Sherpa GUI error and restart paths
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-sherpa-tts/demo/qt/libaudition_qt_demo --model-self-test=sherpa-errors
+        run: ctest --test-dir build-sherpa-tts -R '^qt_sherpa_errors$' --output-on-failure
       - name: Test
         run: ctest --test-dir build-sherpa-tts --output-on-failure
       - name: Download pinned Piper Amy Low INT8 fixture
@@ -1095,7 +1095,7 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-clap/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-clap -R '^qt_self_test$' --output-on-failure
       - name: Download pinned CLAP inference fixtures
         shell: bash
         run: |
@@ -1228,7 +1228,7 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-aasist/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-aasist -R '^qt_self_test$' --output-on-failure
       - name: Download pinned AASIST inference fixture
         shell: bash
         run: |
@@ -1305,11 +1305,11 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-world/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-world -R '^qt_self_test$' --output-on-failure
       - name: Qt async world smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-world/demo/qt/libaudition_qt_demo --model-self-test=world
+        run: ctest --test-dir build-world -R '^qt_world$' --output-on-failure
       - name: Test
         run: ctest --test-dir build-world --output-on-failure
       - name: Install
@@ -1382,11 +1382,11 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-gtsam/demo/qt/libaudition_qt_demo --self-test
+        run: ctest --test-dir build-gtsam -R '^qt_self_test$' --output-on-failure
       - name: Qt async gtsam functional smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-gtsam/demo/qt/libaudition_qt_demo --model-self-test=gtsam
+        run: ctest --test-dir build-gtsam -R '^qt_gtsam$' --output-on-failure
       - name: Test
         run: ctest --test-dir build-gtsam --output-on-failure
       - name: Install
