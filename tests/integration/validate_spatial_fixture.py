@@ -53,6 +53,9 @@ def compare(manifest, scene, observations, summary):
         fail("SSS produced more audio frames than tracks")
 
     samples = []
+    proposal_errors = []
+    polar_tracks = 0
+    all_tracks = 0
     covered_hops = 0
     active_hops = 0
     simultaneous_hops = 0
@@ -70,6 +73,20 @@ def compare(manifest, scene, observations, summary):
                               ref["azimuth_start_deg"]))
         tracks = [o for o in by_hop.get(hop, [])
                   if o["kind"] == "track"]
+        proposals = [o for o in by_hop.get(hop, [])
+                     if o["kind"] == "proposal"]
+        all_tracks += len(tracks)
+        polar_tracks += sum(abs(float(o["z"])) >= 0.90 for o in tracks)
+        if known:
+            for direction in known:
+                a = math.radians(direction)
+                refvec = (math.cos(a), math.sin(a), 0.0)
+                if proposals:
+                    proposal_errors.append(min(
+                        math.degrees(math.acos(max(-1.0, min(1.0,
+                            sum(k * float(p[axis]) for k, axis in zip(
+                                refvec, ("x", "y", "z")))))))
+                        for p in proposals))
         if not known:
             silent_track_run = silent_track_run + 1 if tracks else 0
             longest_silent_track = max(longest_silent_track, silent_track_run)
@@ -106,6 +123,11 @@ def compare(manifest, scene, observations, summary):
                                 math.ceil(0.9 * len(samples))-1)], 4)
             if samples else None,
         "simultaneous_two_track_hops": simultaneous_hops,
+        "median_nearest_ssl_proposal_error_deg": round(
+            statistics.median(proposal_errors), 4)
+            if proposal_errors else None,
+        "track_near_vertical_fraction": round(
+            polar_tracks / all_tracks, 6) if all_tracks else None,
         "longest_silent_track_run": longest_silent_track,
         "proposal_observations": summary["potential_observations"],
         "track_observations": summary["track_observations"],
@@ -151,6 +173,8 @@ def main():
     p.add_argument("--results", type=Path, required=True)
     p.add_argument("--max-median-error-deg", type=float)
     p.add_argument("--min-track-coverage", type=float)
+    p.add_argument("--max-median-proposal-error-deg", type=float)
+    p.add_argument("--max-track-near-vertical-fraction", type=float)
     p.add_argument("--require-static-track", action="store_true")
     args = p.parse_args()
 
@@ -195,6 +219,16 @@ def main():
             fail("Unable to evaluate DOA against reference")
         if metrics["median_nearest_track_error_deg"] > args.max_median_error_deg:
             fail("Measured angular error exceeds calibrated threshold")
+    for threshold, metric_name in [
+        (args.max_median_proposal_error_deg,
+         "median_nearest_ssl_proposal_error_deg"),
+        (args.max_track_near_vertical_fraction,
+         "track_near_vertical_fraction"),
+    ]:
+        if threshold is not None:
+            result = metrics[metric_name]
+            if result is None or result > threshold:
+                fail(f"{metric_name} above calibrated limit or unavailable")
     if args.min_track_coverage is not None:
         if metrics["track_coverage"] is None:
             fail("No active-reference interval for coverage comparison")
