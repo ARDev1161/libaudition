@@ -366,6 +366,94 @@ audition::AudioBuffer selectMonoChannel(
         audio.sequenceNumber()};
 }
 
+WavNormalizeResult normalizePcm16Wav(
+    const std::filesystem::path& input, const std::filesystem::path& output,
+    PeakNormalizeOptions options) {
+    if (input == output) throw std::invalid_argument("WAV normalization must not overwrite its source");
+    if (!std::isfinite(options.target_peak_dbfs) ||
+        !std::isfinite(options.max_gain_db) ||
+        options.target_peak_dbfs > 0.0 ||
+        options.max_gain_db < 0.0 || options.max_gain_db > 120.0)
+        throw std::invalid_argument("Invalid WAV normalization options");
+    std::ifstream source(input, std::ios::binary);
+    if (!source) throw std::runtime_error("Cannot open WAV for normalization");
+    std::array<char, 44> header{};
+    source.read(header.data(), static_cast<std::streamsize>(header.size()));
+    if (!source || std::string(header.data(), 4) != "RIFF" ||
+        std::string(header.data() + 8, 4) != "WAVE" ||
+        std::string(header.data() + 12, 4) != "fmt " ||
+        std::string(header.data() + 36, 4) != "data" ||
+        static_cast<unsigned char>(header[20]) != 1U ||
+        static_cast<unsigned char>(header[21]) != 0U ||
+        static_cast<unsigned char>(header[22]) != 1U ||
+        static_cast<unsigned char>(header[23]) != 0U ||
+        static_cast<unsigned char>(header[34]) != 16U ||
+        static_cast<unsigned char>(header[35]) != 0U)
+        throw std::runtime_error("Normalization requires a canonical mono PCM16 WAV");
+    const auto rate = static_cast<std::uint32_t>(
+        static_cast<unsigned char>(header[24]) |
+        (static_cast<std::uint32_t>(static_cast<unsigned char>(header[25])) << 8U) |
+        (static_cast<std::uint32_t>(static_cast<unsigned char>(header[26])) << 16U) |
+        (static_cast<std::uint32_t>(static_cast<unsigned char>(header[27])) << 24U));
+    if (!rate) throw std::runtime_error("WAV sample rate is zero");
+    const auto length = std::filesystem::file_size(input);
+    if (length < header.size() || (length - header.size()) % 2 != 0)
+        throw std::runtime_error("Invalid PCM16 WAV length");
+    const auto count = (length - header.size()) / 2ULL;
+    constexpr std::size_t kBatch = 4096U;
+    std::array<char, kBatch * 2> bytes{};
+    std::array<std::int16_t, kBatch> outputPcm{};
+    auto readSample = [&](std::size_t i) {
+        const auto lo = static_cast<unsigned char>(bytes[i * 2]);
+        const auto hi = static_cast<unsigned char>(bytes[i * 2 + 1]);
+        return static_cast<std::int16_t>(
+            static_cast<std::uint16_t>(lo | (static_cast<unsigned>(hi) << 8U)));
+    };
+    std::uint32_t peak = 0;
+    for (std::uint64_t left = count; left;) {
+        const auto take = static_cast<std::size_t>(
+            std::min<std::uint64_t>(left, kBatch));
+        source.read(bytes.data(), static_cast<std::streamsize>(take * 2U));
+        if (!source) throw std::runtime_error("Recording changed during normalization scan");
+        for (std::size_t i = 0; i < take; ++i)
+            peak = std::max(peak, static_cast<std::uint32_t>(
+                std::abs(static_cast<int>(readSample(i)))));
+        left -= take;
+    }
+    double gainDb = 0.0;
+    if (peak) {
+        const auto inputDb = 20.0 * std::log10(static_cast<double>(peak) / 32768.0);
+        gainDb = std::clamp(options.target_peak_dbfs - inputDb,
+            options.allow_attenuation ? -120.0 : 0.0, options.max_gain_db);
+    }
+    const auto scale = std::pow(10.0, gainDb / 20.0);
+    source.clear();
+    source.seekg(static_cast<std::streamoff>(header.size()));
+    try {
+        StreamingPcm16WavWriter dest(output, rate, 1);
+        for (std::uint64_t left = count; left;) {
+            const auto take = static_cast<std::size_t>(
+                std::min<std::uint64_t>(left, kBatch));
+            source.read(bytes.data(), static_cast<std::streamsize>(take * 2U));
+            if (!source) throw std::runtime_error("Recording changed during normalization write");
+            for (std::size_t i = 0; i < take; ++i) {
+                const auto scaled = static_cast<long>(std::lrint(
+                    static_cast<double>(readSample(i)) * scale));
+                outputPcm[i] = static_cast<std::int16_t>(
+                    std::clamp(scaled, -32768L, 32767L));
+            }
+            dest.append(outputPcm.data(), take);
+            left -= take;
+        }
+        dest.finish();
+    } catch (...) {
+        std::error_code ignored;
+        std::filesystem::remove(output, ignored);
+        throw;
+    }
+    return {gainDb, count};
+}
+
 StreamingPcm16WavWriter::StreamingPcm16WavWriter(
     const std::filesystem::path& path, std::uint32_t rate, std::uint16_t channels)
     : stream_{path, std::ios::binary | std::ios::trunc},
