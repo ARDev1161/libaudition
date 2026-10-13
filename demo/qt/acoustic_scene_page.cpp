@@ -9,6 +9,7 @@
 
 #if LIBAUDITION_DEMO_HAS_ODAS
 #include <audition/backends/odas.hpp>
+#include <audition/backends/odas/source_elevation_prior.hpp>
 #endif
 
 #include <QCheckBox>
@@ -118,7 +119,7 @@ std::shared_ptr<SceneReplay> analyzeWav(
     const std::filesystem::path& wavFile,
     QString channels, QString geometry,
     std::uint32_t hopSize, std::uint32_t frameSize,
-    bool respeakerAngularProfile) {
+    bool respeakerAngularProfile, bool nearPlaneSources) {
     auto result = std::make_shared<SceneReplay>();
     try {
         const auto wav = demo::loadWav(wavFile);
@@ -133,6 +134,9 @@ std::shared_ptr<SceneReplay> analyzeWav(
         options.sss.enabled = false;
         if (respeakerAngularProfile) {
             demo::applyReSpeakerUsb4MicAngularProfile(options);
+        }
+        if (nearPlaneSources) {
+            audition::applyOdasNearPlaneSourcePrior(options);
         }
         audition::OdasSpatialEngine engine{options};
 
@@ -565,6 +569,15 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     configForm->addRow("ODAS hop", hop);
     configForm->addRow("ODAS frame", frame);
     configForm->addRow("ODAS angular profile", angularPreset);
+    auto* nearPlane = new QCheckBox{
+        "Limit SSL search to sources within +/-25 deg of microphone plane", page};
+    nearPlane->setObjectName("acousticSceneNearPlaneSources");
+    nearPlane->setChecked(false); // do not suppress elevated 3D sources by default
+    nearPlane->setToolTip(
+        "Use only if relevant sound sources are known to be near the XY plane "
+        "of the mounted microphone array. This intentionally excludes steep "
+        "elevation directions before ODAS tracking and separation.");
+    configForm->addRow("Optional 2D source prior", nearPlane);
     configRow->addLayout(configForm);
     layout->addLayout(configRow);
 
@@ -964,6 +977,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         hop->setEnabled(true);
         frame->setEnabled(true);
         angularPreset->setEnabled(true);
+        nearPlane->setEnabled(true);
         enableSpeech->setEnabled(LIBAUDITION_DEMO_HAS_SHERPA);
         enableTagging->setEnabled(
 #if LIBAUDITION_DEMO_HAS_SHERPA || LIBAUDITION_DEMO_HAS_YAMNET
@@ -1048,6 +1062,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.hop_size = static_cast<std::uint32_t>(hop->value());
             config.frame_size = static_cast<std::uint32_t>(frame->value());
             config.respeaker_angular_profile = angularPreset->isChecked();
+            config.near_plane_sources = nearPlane->isChecked();
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
             if (config.transcribe_sources) {
@@ -1136,6 +1151,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             hop->setEnabled(false);
             frame->setEnabled(false);
             angularPreset->setEnabled(false);
+            nearPlane->setEnabled(false);
             enableTagging->setEnabled(false);
             enableSpeech->setEnabled(false);
             taggingFamily->setEnabled(false);
@@ -1313,6 +1329,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         const auto hopSize = static_cast<std::uint32_t>(hop->value());
         const auto frameSize = static_cast<std::uint32_t>(frame->value());
         const auto respeakerAngularProfile = angularPreset->isChecked();
+        const auto nearPlaneSources = nearPlane->isChecked();
         timer->stop();
         play->setEnabled(false);
         analyze->setEnabled(false);
@@ -1320,7 +1337,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         diagnostics->setText("WAV replay mode; live ALSA levels not available.");
         watcher->setFuture(QtConcurrent::run([=]() {
             return analyzeWav(wavFile, mapping, positions, hopSize, frameSize,
-                              respeakerAngularProfile);
+                              respeakerAngularProfile, nearPlaneSources);
         }));
     });
     QObject::connect(watcher, &QFutureWatcherBase::finished, page, [=]() {
