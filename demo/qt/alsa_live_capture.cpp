@@ -3,6 +3,7 @@
 #include "source_track_lifecycle.hpp"
 #include <audition/recording/source_wav_recorder.hpp>
 #include <audition/recording/source_recording_session.hpp>
+#include <audition/dsp/streaming_level_meter.hpp>
 #include <audition/pipeline/source_track_lifecycle.hpp>
 #include <audition/audio/recording_timeline_json.hpp>
 #include <filesystem>
@@ -337,18 +338,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::uint64_t hops = 0;
         std::uint64_t xruns = 0;
         std::size_t filled = 0;
-        // Aggregate per-channel PCM levels between UI snapshots (~50 ms).
-        // Raw hardware channels include the USB reference channels as well
-        // as the four actual microphone channels.
-        std::vector<double> sumSquares(channelCount, 0.0);
-        std::vector<double> maxAbs(channelCount, 0.0);
-        std::size_t measuredFrames = 0;
-        struct SssMeter {
-            double sum_squares{0.0};
-            double peak{0.0};
-            std::uint64_t samples{0};
-        };
-        std::map<std::uint64_t, SssMeter> sssMeters;
+        std::vector<audition::dsp::StreamingLevelMeter> channelMeters(channelCount);
+        std::map<std::uint64_t, audition::dsp::StreamingLevelMeter> sssMeters;
 
         const std::uint64_t visualStride = std::max<std::uint64_t>(
             1U, static_cast<std::uint64_t>(
@@ -372,9 +363,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             if (result == -EPIPE || result == -ESTRPIPE) {
                 ++xruns;
                 filled = 0;
-                std::fill(sumSquares.begin(), sumSquares.end(), 0.0);
-                std::fill(maxAbs.begin(), maxAbs.end(), 0.0);
-                measuredFrames = 0;
+                for (auto& meter : channelMeters) meter.reset();
                 sssMeters.clear();
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
@@ -405,11 +394,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 const float sample = static_cast<float>(native[i]) / 32768.0F;
                 samples.push_back(sample);
                 const auto channel = i % channelCount;
-                const double level = static_cast<double>(sample);
-                sumSquares[channel] += level * level;
-                maxAbs[channel] = std::max(maxAbs[channel], std::abs(level));
+                channelMeters[channel].push(sample);
             }
-            measuredFrames += hop;
             const auto timestamp = audition::Timestamp{
                 static_cast<std::int64_t>(
                     (static_cast<double>(hops) *
@@ -435,14 +421,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     retireSource(id);
                 });
                 for (const auto& separated : resultFrame.separated_frames) {
-                    auto& meter = sssMeters[separated.track_id.value()];
-                    for (const float sample : separated.audio.samples()) {
-                        const auto amplitude = static_cast<double>(sample);
-                        if (!std::isfinite(amplitude)) continue;
-                        meter.sum_squares += amplitude * amplitude;
-                        meter.peak = std::max(meter.peak, std::abs(amplitude));
-                        ++meter.samples;
-                    }
+                    sssMeters[separated.track_id.value()].push(
+                        separated.audio.samples().data(),
+                        separated.audio.samples().size());
                     const auto sourceId = separated.track_id.value();
                     const auto recorded = recorder.append(sourceId, separated.audio.samples());
                     if (recorded.recording_id != 0) {
@@ -538,24 +519,18 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             std::vector<double> peakDbfs;
             rmsDbfs.reserve(channelCount);
             peakDbfs.reserve(channelCount);
-            for (std::size_t ch = 0; ch < channelCount; ++ch) {
-                const double rms = std::sqrt(
-                    sumSquares[ch] / static_cast<double>(measuredFrames));
-                rmsDbfs.push_back(20.0 * std::log10(std::max(rms, 1.0e-9)));
-                peakDbfs.push_back(20.0 * std::log10(std::max(maxAbs[ch], 1.0e-9)));
+            for (auto& meter : channelMeters) {
+                const auto snapshot = meter.snapshotAndReset();
+                rmsDbfs.push_back(snapshot.rms_dbfs);
+                peakDbfs.push_back(snapshot.peak_dbfs);
             }
-            std::fill(sumSquares.begin(), sumSquares.end(), 0.0);
-            std::fill(maxAbs.begin(), maxAbs.end(), 0.0);
-            measuredFrames = 0;
             std::vector<LiveCaptureSnapshot::SourceLevel> sssLevels;
             sssLevels.reserve(sssMeters.size());
-            for (const auto& [trackId, meter] : sssMeters) {
-                if (meter.samples == 0) continue;
-                const auto rms = std::sqrt(meter.sum_squares / static_cast<double>(meter.samples));
+            for (auto& [trackId, meter] : sssMeters) {
+                const auto level = meter.snapshotAndReset();
+                if (level.sample_count == 0) continue;
                 sssLevels.push_back({trackId,
-                    20.0 * std::log10(std::max(rms, 1.0e-9)),
-                    20.0 * std::log10(std::max(meter.peak, 1.0e-9)),
-                    meter.samples});
+                    level.rms_dbfs, level.peak_dbfs, level.sample_count});
             }
             sssMeters.clear();
             std::lock_guard<std::mutex> lock{mutex_};
