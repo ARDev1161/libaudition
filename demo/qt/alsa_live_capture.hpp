@@ -51,7 +51,15 @@ struct LiveCaptureSnapshot {
     std::uint64_t processed_hops{0};
     std::uint64_t recoveries{0};
     std::vector<AcousticSceneTrack> tracks{};
-    struct RecordedTrack { std::uint64_t id{0}; std::uint64_t track_id{0}; std::string path; std::uint64_t samples{0}; bool active{false}; };
+    struct RecordedTrack {
+        std::uint64_t id{0};
+        std::uint64_t track_id{0};
+        std::string path;
+        std::uint64_t samples{0};
+        bool active{false};
+        std::uint64_t lost_samples{0};
+        std::string error{};
+    };
     std::vector<RecordedTrack> recordings{};
     std::vector<AcousticScenePotential> potentials{};
     std::vector<double> channel_rms_dbfs{};
