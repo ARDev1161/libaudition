@@ -27,6 +27,26 @@ install(TARGETS libaudition_core
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/audition
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
+# Shared WAV format and file I/O; never depends on Qt or ALSA.
+add_library(libaudition_io io/wav_io.cpp)
+add_library(audition::io ALIAS libaudition_io)
+set_target_properties(libaudition_io PROPERTIES
+    EXPORT_NAME io OUTPUT_NAME audition_io)
+target_compile_definitions(libaudition_io PRIVATE LIBAUDITION_BUILDING_LIBRARY)
+if(BUILD_SHARED_LIBS)
+    target_compile_definitions(libaudition_io PUBLIC LIBAUDITION_SHARED)
+endif()
+target_link_libraries(libaudition_io PUBLIC audition::core)
+target_include_directories(libaudition_io PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+libaudition_configure_target(libaudition_io)
+install(TARGETS libaudition_io EXPORT libauditionTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
 add_library(libaudition_interfaces INTERFACE)
 add_library(audition::interfaces ALIAS libaudition_interfaces)
 set_target_properties(libaudition_interfaces PROPERTIES EXPORT_NAME interfaces)
