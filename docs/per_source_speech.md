@@ -210,8 +210,11 @@ the library; the Qt demo reads the sidecar using Qt JSON facilities.
 minimum-length speech and queues ASR without blocking the capture producer.
 Completed jobs retain their generation identity even if ODAS immediately reuses
 the same numeric track ID. `pendingResults(generation)` tells the consumer
-when the generation has no remaining queued/in-flight inference. After
-`takeResults()` and final sidecar persistence the consumer must call
+when the generation has no remaining queued/in-flight inference. The Qt adapter
+uses `drainReady()` to atomically collect results and finished generations;
+this avoids dropping an ASR result in the gap between separate polling calls.
+`activeGeneration(track_id)` validates current-source identity across reused
+numeric IDs. After consuming results and final sidecar persistence the consumer must call
 `releaseRetired(generation)` to free retirement state.
 
 The Qt capture adapter delays the retired recording's final JSON write until
