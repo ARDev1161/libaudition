@@ -1,4 +1,4 @@
-#include "../demo/qt/source_wav_recorder.hpp"
+#include <audition/recording/source_wav_recorder.hpp>
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -22,7 +22,7 @@ int main() {
         ("libaudition-recorder-test-" +
          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     {
-        demo::SourceWavRecorder recorder(path, 16000);
+        audition::recording::SourceWavRecorder recorder(path, 16000);
         const std::vector<float> data(1600, 0.25f);
         recorder.append(42, data);
         recorder.retire(42);
@@ -54,7 +54,9 @@ int main() {
         recorder.closeAll();
         auto all = recorder.entries();
         assert(all.size() == 1);
-        assert(all[0].samples <= 16);
+        // Dropped audio is represented by silence, retaining 100 samples.
+        assert(all[0].samples == 100);
+        assert(all[0].expected_samples == 100);
     }
     std::error_code ec;
     fs::remove_all(path, ec);
