@@ -5,6 +5,7 @@
 #include <audition/audio/audio_buffer.hpp>
 #include <audition/audio/recording_timeline_json.hpp>
 #include <audition/backends/odas/odas_spatial_engine.hpp>
+#include <audition/backends/odas/respeaker_usb4_profile.hpp>
 #include <audition/io/wav_io.hpp>
 #include <audition/recording/source_recording_session.hpp>
 #include <audition/recording/source_wav_recorder.hpp>
@@ -38,8 +39,10 @@ audition::OdasOptions optionsForFixture() {
     options.hop_size = 128U;
     options.frame_size = 256U;
     options.speed_of_sound_mps = 343.0;
-    // Keep production tracking thresholds: never special-case ODAS just to
-    // make a synthetic fixture pass. Static SSL and SST are checked separately.
+    // Match the live ReSpeaker USB 4-Mic profile: the array is planar
+    // and these fixtures contain sources at zero elevation. Without this
+    // physical prior, the symmetric 3D search can favor zenith proposals.
+    audition::applyReSpeakerUsb4MicAngularProfile(options);
     options.sss.enabled = true;
     audition::validateOdasOptions(options);
     return options;
