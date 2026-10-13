@@ -101,7 +101,9 @@ CTest now includes three strict `audio_integration_near_plane_*`
 tests with generously calibrated quality gates: at most 50-degree
 median DOA error, at most 10% near-polar tracks, at least 70% temporal
 track coverage, required static-source acquisition, and >=40
-simultaneous-track hops in the two-source scene. The three original
+simultaneous-track hops in the two-source scene, plus at least 40
+hops with a **one-to-one** source-to-track angular assignment within
+45 degrees for BOTH reference sources (no counting the same track twice). The three original
 upstream-profile tests remain present and still report baseline
 limitations without hiding them.
 
