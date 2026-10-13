@@ -52,6 +52,41 @@ set_tests_properties(progressive_stress_5_sources progressive_stress_10_sources
     PROPERTIES TIMEOUT 40)
 
 if(TARGET audition::backend_odas)
+    # Real libaudition integration: deterministic 6-channel ReSpeaker-layout
+    # fixture generation, ODAS SSL/SST/SSS, recorded mono WAV/JSON and
+    # independent ground-truth validation. No ALSA/Qt or model weights.
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_executable(audition_offline_integration
+        integration/offline_pipeline_runner.cpp)
+    target_link_libraries(audition_offline_integration PRIVATE
+        audition::backend_odas audition::io audition::pipeline audition::core)
+    libaudition_configure_target(audition_offline_integration)
+
+    set(_spatial_fixtures "${CMAKE_CURRENT_BINARY_DIR}/spatial_audio_fixtures")
+    set(_spatial_results "${CMAKE_CURRENT_BINARY_DIR}/audio_integration_results")
+    add_test(NAME audio_fixture_generate COMMAND
+        ${Python3_EXECUTABLE}
+        "${CMAKE_CURRENT_SOURCE_DIR}/integration/generate_spatial_fixtures.py"
+        --output "${_spatial_fixtures}")
+    set_tests_properties(audio_fixture_generate PROPERTIES
+        FIXTURES_SETUP spatial_audio_fixtures LABELS "audio-integration"
+        TIMEOUT 60)
+    foreach(_scene silence static moving two)
+        add_test(NAME audio_integration_${_scene} COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/validate_spatial_fixture.py"
+            --runner "$<TARGET_FILE:audition_offline_integration>"
+            --fixtures "${_spatial_fixtures}"
+            --scene "${_scene}"
+            --results "${_spatial_results}")
+        set_tests_properties(audio_integration_${_scene} PROPERTIES
+            FIXTURES_REQUIRED spatial_audio_fixtures
+            LABELS "audio-integration;odas"
+            TIMEOUT 180)
+    endforeach()
+endif()
+
+if(TARGET audition::backend_odas)
     target_sources(libaudition_tests PRIVATE odas_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_odas)
 endif()
