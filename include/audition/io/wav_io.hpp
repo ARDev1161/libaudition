@@ -7,6 +7,7 @@
 #include <audition/core/export.hpp>
 
 #include <audition/audio/audio_buffer.hpp>
+#include <audition/audio/peak_normalizer.hpp>
 
 namespace audition::io {
 
@@ -31,6 +32,16 @@ AUDITION_API void saveWavPcm16(
 [[nodiscard]] AUDITION_API audition::AudioBuffer selectMonoChannel(
     audition::AudioView audio,
     std::size_t channel_index);
+
+struct WavNormalizeResult {
+    double gain_db{0.0};
+    std::uint64_t samples_written{0};
+};
+// Two-pass bounded-memory normalization of a mono PCM16 WAV. Does not
+// modify the input, suitable for background playback preparation.
+AUDITION_API WavNormalizeResult normalizePcm16Wav(
+    const std::filesystem::path& input, const std::filesystem::path& output,
+    PeakNormalizeOptions options = {});
 
 // Incremental RIFF/PCM16 writer with bounded per-call memory. Caller owns
 // scheduling, queue backpressure, and recording-generation identity.
