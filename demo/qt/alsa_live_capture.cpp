@@ -17,6 +17,7 @@
 
 #if LIBAUDITION_DEMO_HAS_ALSA
 #include <audition/backends/odas.hpp>
+#include <audition/backends/odas/source_elevation_prior.hpp>
 #include <alsa/asoundlib.h>
 #endif
 
