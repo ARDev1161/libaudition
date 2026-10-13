@@ -456,6 +456,33 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: ./build-qt-demo/demo/qt/libaudition_qt_demo --self-test
 
+  qt6-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 6 Widgets and Multimedia
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build qt6-base-dev qt6-multimedia-dev
+      - name: Configure Qt 6 playground
+        run: >-
+          cmake -S . -B build-qt6-demo -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_WITH_YAMNET=OFF
+          -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF
+          -DLIBAUDITION_DEMO_FETCH_SPEECH_MODELS=OFF
+          -DLIBAUDITION_BUILD_TESTS=OFF
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build Qt 6 playground
+        run: cmake --build build-qt6-demo --parallel 2
+      - name: Headless Qt 6 playground self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-qt6-demo/demo/qt/libaudition_qt_demo --self-test
+
   odas-backend:
     runs-on: ubuntu-latest
     steps:
