@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 static std::uint32_t le32(const char* p) {
@@ -57,6 +58,39 @@ int main() {
         // Dropped audio is represented by silence, retaining 100 samples.
         assert(all[0].samples == 100);
         assert(all[0].expected_samples == 100);
+    }
+    {
+        audition::recording::SourceWavRecorder recorder(path / "gap", 16000, 32);
+        const std::vector<float> shortAudio(8, 0.5f);
+        const auto initial = recorder.append(9, shortAudio);
+        assert(initial.accepted_samples == 8);
+        for (int retry = 0; retry < 1000; ++retry) {
+            const auto entries = recorder.entries();
+            if (!entries.empty() && entries.front().samples == 8) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        const auto gap = recorder.append(9, std::vector<float>(100, 0.5f));
+        assert(gap.lost_samples == 100);
+        assert(gap.start_sample == 8);
+        const auto after = recorder.append(9, shortAudio);
+        assert(after.accepted_samples == 8);
+        assert(after.start_sample == 108);
+        recorder.retire(9);
+        recorder.closeAll();
+        const auto entries = recorder.entries();
+        assert(entries.size() == 1);
+        assert(entries.front().samples == 116);
+        assert(entries.front().lost_samples == 100);
+        std::ifstream wav(entries.front().path, std::ios::binary);
+        wav.seekg(44);
+        std::vector<char> pcm(116 * 2);
+        wav.read(pcm.data(), static_cast<std::streamsize>(pcm.size()));
+        assert(wav.good());
+        const auto nonzero = [](char lo, char hi) {return lo != 0 || hi != 0;};
+        assert(nonzero(pcm[0], pcm[1]));
+        for (std::size_t i = 8; i < 108; ++i)
+            assert(pcm[i * 2] == 0 && pcm[i * 2 + 1] == 0);
+        assert(nonzero(pcm[108 * 2], pcm[108 * 2 + 1]));
     }
     std::error_code ec;
     fs::remove_all(path, ec);
