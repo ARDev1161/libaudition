@@ -328,23 +328,22 @@ QDialog* createRecordingPlaybackDialog(
             double cached_gain{0};
         };
         auto temporaryPlaybackFiles = std::make_shared<PlaybackFiles>();
-        QObject::connect(dialog, &QDialog::finished, dialog,
-                         [media, temporaryPlaybackFiles](int) {
-            media->stop();
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            media->setSource(QUrl{});
-#else
-            media->setMedia(QMediaContent{});
-#endif
+        // A QDialog destroyed() signal runs BEFORE its QMediaPlayer child
+        // is destroyed. Removing the active file there can race Qt's decoder.
+        // Mark shutdown immediately, but unlink temporary WAVs only AFTER
+        // the QMediaPlayer has torn down its backend.
+        const auto markClosed = [temporaryPlaybackFiles]() {
             std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
             temporaryPlaybackFiles->closed = true;
-            for (const auto& path : temporaryPlaybackFiles->files)
-                QFile::remove(path);
-            temporaryPlaybackFiles->files.clear();
+        };
+        QObject::connect(dialog, &QDialog::finished, dialog,
+                         [media, markClosed](int) {
+            markClosed();
+            media->stop();
         });
-        // Destroyed can run without QDialog::finished when the parent page
-        // is torn down. Never let an in-flight normalization orphan its output.
         QObject::connect(dialog, &QObject::destroyed,
+                         [markClosed](QObject*) { markClosed(); });
+        QObject::connect(media, &QObject::destroyed,
                          [temporaryPlaybackFiles](QObject*) {
             std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
             temporaryPlaybackFiles->closed = true;
@@ -352,7 +351,12 @@ QDialog* createRecordingPlaybackDialog(
                 QFile::remove(path);
             temporaryPlaybackFiles->files.clear();
         });
-        const auto changeMedia = [media](const QString& path) {
+        // Defer source replacement one GUI iteration after stop(). In Qt 6
+        // the FFmpeg backend may still be unwinding callbacks for the previous
+        // source; never replace it reentrantly from completion notifications.
+        const auto sourceEpoch = std::make_shared<std::uint64_t>(0);
+        const auto changeMedia = [media, sourceEpoch](
+            const QString& path, bool autoPlay = false) {
             const auto previousPosition = media->position();
             const bool wasPlaying =
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -361,24 +365,33 @@ QDialog* createRecordingPlaybackDialog(
                 media->state() == QMediaPlayer::PlayingState;
 #endif
             media->stop();
+            const auto epoch = ++(*sourceEpoch);
+            QTimer::singleShot(0, media,
+                [media, path, previousPosition, wasPlaying, autoPlay,
+                 epoch, sourceEpoch]() {
+                if (epoch != *sourceEpoch) return;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            media->setSource(QUrl::fromLocalFile(path));
+                media->setSource(QUrl::fromLocalFile(path));
 #else
-            media->setMedia(QUrl::fromLocalFile(path));
+                media->setMedia(QUrl::fromLocalFile(path));
 #endif
-            media->setPosition(previousPosition);
-            if (wasPlaying) media->play();
+                media->setPosition(previousPosition);
+                if (wasPlaying || autoPlay) media->play();
+            });
         };
+        auto initialPlay = std::make_shared<bool>(true);
         const auto applyNormalization = [=]() {
+            const bool firstPlay = *initialPlay;
+            *initialPlay = false;
             if (!normalize->isChecked()) {
-                changeMedia(sourcePath);
+                changeMedia(sourcePath, firstPlay);
                 gainLabel->setText("Original recording (no gain)");
                 return;
             }
             {
                 std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
                 if (!temporaryPlaybackFiles->cached.isEmpty()) {
-                    changeMedia(temporaryPlaybackFiles->cached);
+                    changeMedia(temporaryPlaybackFiles->cached, firstPlay);
                     gainLabel->setText(QString("Applied gain: +%1 dB")
                         .arg(temporaryPlaybackFiles->cached_gain, 0, 'f', 1));
                     return;
@@ -386,6 +399,15 @@ QDialog* createRecordingPlaybackDialog(
             }
             // Both passes run on the Qt worker pool: never scan or rewrite a
             // long WAV from the GUI thread. This dialog has one in-flight task.
+            const bool resumePlay = firstPlay ||
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                media->playbackState() == QMediaPlayer::PlayingState;
+#else
+                media->state() == QMediaPlayer::PlayingState;
+#endif
+            // Avoid switching an actively playing decoder when the worker
+            // finishes. Resume only after the new WAV has been selected.
+            if (resumePlay && !firstPlay) media->pause();
             normalize->setEnabled(false);
             gainLabel->setText("Preparing normalized playback...");
             auto* watcher = new QFutureWatcher<demo::NormalizedWav>(dialog);
@@ -400,7 +422,7 @@ QDialog* createRecordingPlaybackDialog(
                         closed = temporaryPlaybackFiles->closed;
                     }
                     if (!closed && normalize->isChecked()) {
-                        changeMedia(QString::fromStdString(result.path.string()));
+                        changeMedia(QString::fromStdString(result.path.string()), resumePlay);
                         gainLabel->setText(QString("Applied gain: +%1 dB")
                             .arg(result.gain_db, 0, 'f', 1));
                     }
@@ -409,6 +431,8 @@ QDialog* createRecordingPlaybackDialog(
                                        QString::fromUtf8(error.what()));
                     const QSignalBlocker blocker(normalize);
                     normalize->setChecked(false);
+                    if (!temporaryPlaybackFiles->closed)
+                        changeMedia(sourcePath, resumePlay);
                 }
                 watcher->deleteLater();
             });
@@ -431,7 +455,6 @@ QDialog* createRecordingPlaybackDialog(
         QObject::connect(normalize, &QCheckBox::toggled, dialog,
                          [applyNormalization](bool) { applyNormalization(); });
         applyNormalization();
-        if (!normalize->isChecked()) media->play();
 #else
         playback->setEnabled(false);
         times->setText("Playback requires Qt Multimedia development libraries");
