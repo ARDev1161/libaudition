@@ -39,11 +39,11 @@ public:
                Timestamp capture_origin) {
         if (!recording_id || active_.count(track_id))
             throw std::invalid_argument("Recording already active or invalid ID");
-        const auto [it, inserted] = recordings_.emplace(
+        const auto inserted = recordings_.emplace(
             std::piecewise_construct, std::forward_as_tuple(recording_id),
             std::forward_as_tuple(track_id, recording_id, sample_rate,
                                    std::filesystem::path{wav.string() + ".json"},
-                                   capture_origin));
+                                   capture_origin)).second;
         if (!inserted) throw std::invalid_argument("Duplicate recording ID");
         active_[track_id] = recording_id;
     }
@@ -123,6 +123,9 @@ public:
     void flushAll() {
         for (const auto& entry : recordings_) persist(entry.second);
     }
+    [[nodiscard]] const std::optional<std::string>& persistenceError() const noexcept {
+        return last_persistence_error_;
+    }
     std::size_t pendingRetirements() const noexcept {
         std::size_t n = 0;
         for (const auto& entry : recordings_)
@@ -142,13 +145,20 @@ private:
             delta * static_cast<long double>(record.timeline.sampleRateHz()) /
             1000000000.0L);
     }
-    static void persist(const State& record) {
-        writeRecordingTimelineJson(record.sidecar, record.timeline);
+    bool persist(const State& record) {
+        try {
+            writeRecordingTimelineJson(record.sidecar, record.timeline);
+            return true;
+        } catch (const std::exception& e) {
+            // Persisting annotations must not kill capture on full/unwritable disk.
+            last_persistence_error_ = e.what();
+            return false;
+        }
     }
     void persistAndErase(RecordingId id) {
         auto it = recordings_.find(id);
         if (it == recordings_.end()) return;
-        // Never release data on a disk failure; caller can retry or flushAll().
+        // Bound session metadata even when disk is unwritable; report error.
         persist(it->second);
         recordings_.erase(it);
         for (auto seen = seen_windows_.begin(); seen != seen_windows_.end();) {
@@ -156,6 +166,7 @@ private:
             else ++seen;
         }
     }
+    std::optional<std::string> last_persistence_error_{};
     std::map<std::uint64_t, RecordingId> active_;
     std::map<RecordingId, State> recordings_;
     std::map<std::uint64_t, RecordingId> generations_;
