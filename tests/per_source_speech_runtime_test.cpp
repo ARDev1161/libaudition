@@ -398,3 +398,48 @@ TEST(PerSourceSpeechRuntime, RetireFlushesLastSpeechAndPreservesReusedIdGenerati
     EXPECT_NO_THROW(runtime.releaseRetired(*first));
     EXPECT_NO_THROW(runtime.releaseRetired(*second));
 }
+
+
+TEST(PerSourceSpeechRuntime, RetiredAsrSurvivesCancellationOfReusedId) {
+    ThresholdVad vad;
+    auto gated = std::make_shared<SlowAsr>();
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, gated, options};
+    const std::vector<float> voice(4U, 0.5F), silence(4U, 0.0F);
+    runtime.push(60U, chunk(voice));
+    runtime.push(60U, chunk(silence));
+    for (int i = 0; i < 1000 && !gated->entered.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!gated->entered.load()) {
+        gated->release.store(true);
+        FAIL() << "Initial ASR did not start";
+        return;
+    }
+    const auto originalGeneration = runtime.retire(60U);
+    ASSERT_TRUE(originalGeneration.has_value());
+    runtime.push(60U, chunk(voice));
+    runtime.push(60U, chunk(silence));
+    const auto reusedGeneration = runtime.activeGeneration(60U);
+    ASSERT_TRUE(reusedGeneration.has_value());
+    EXPECT_NE(*originalGeneration, *reusedGeneration);
+    runtime.forget(60U);
+    EXPECT_FALSE(runtime.activeGeneration(60U).has_value());
+    EXPECT_EQ(runtime.pendingResults(*originalGeneration), 1U);
+    gated->release.store(true);
+    audition::SourceSpeechDrain drained;
+    for (int i = 0; i < 1000; ++i) {
+        drained = runtime.drainReady();
+        if (!drained.ready_retired_generations.empty()) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(drained.ready_retired_generations.size(), 1U);
+    EXPECT_EQ(drained.ready_retired_generations.front(), *originalGeneration);
+    ASSERT_EQ(drained.results.size(), 1U);
+    EXPECT_EQ(drained.results.front().generation, *originalGeneration);
+    EXPECT_EQ(drained.results.front().transcript.text, "1");
+    EXPECT_NO_THROW(runtime.releaseRetired(*originalGeneration));
+    EXPECT_TRUE(runtime.drainReady().ready_retired_generations.empty());
+}
