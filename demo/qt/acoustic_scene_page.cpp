@@ -540,6 +540,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         bool active{false};
         QString wav;
         std::uint64_t samples{0};
+        std::uint64_t lostSamples{0};
+        QString error{};
     };
     auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
     auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
@@ -789,6 +791,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 entry.track.id = r.track_id;
                 entry.wav = QString::fromStdString(r.path);
                 entry.samples = r.samples;
+                entry.lostSamples = r.lost_samples;
+                entry.error = QString::fromStdString(r.error);
                 entry.active = r.active;
                 if (r.active) {
                     const auto it = std::find_if(values.begin(), values.end(),
@@ -813,7 +817,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 QString::fromStdString(track.classification_label),
                 QString::fromStdString(track.transcript),
                 entry.wav.isEmpty() ? "No audio" :
-                    QString("Play (%1 s)").arg(entry.samples / 16000)
+                    QString("Play (%1 s)%2%3").arg(entry.samples / 16000)
+                        .arg(entry.lostSamples ? QString(" | gap %1 samples").arg(entry.lostSamples) : QString{})
+                        .arg(entry.error.isEmpty() ? QString{} : QStringLiteral(" | WAV ERROR"))
             };
             auto foundRow = rowIndex->find(pair.first);
             if (foundRow == rowIndex->end()) {
@@ -834,6 +840,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 item->setForeground(entry.active ? tracks->palette().text().color()
                                                  : QColor(135, 135, 135));
                 item->setData(Qt::UserRole, QVariant::fromValue(static_cast<qulonglong>(pair.first)));
+                item->setToolTip(entry.error);
             }
             if (track.id == sphere->selectedTrack() && entry.active)
                 selected->setText(directionSummary(track));
