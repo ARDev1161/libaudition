@@ -43,6 +43,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install exporter dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/efficientat-real"
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install onnx onnxruntime numpy
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install torchaudio --index-url https://download.pytorch.org/whl/cpu
       - name: Configure real EfficientAT backend test
         run: >-
           cmake -S . -B build-efficientat-real -G Ninja
@@ -52,16 +58,11 @@ jobs:
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
           -DLIBAUDITION_REGISTER_MODEL_TOOL_TESTS=ON
+          -DPython3_EXECUTABLE=$RUNNER_TEMP/efficientat-real/bin/python
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build C++ real-model smoke tool
         run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke yamnet_progressive_multisource real_yamnet_wav_replay --parallel
-      - name: Install exporter dependencies
-        run: |
-          python3 -m venv "$RUNNER_TEMP/efficientat-real"
-          "$RUNNER_TEMP/efficientat-real/bin/pip" install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          "$RUNNER_TEMP/efficientat-real/bin/pip" install onnx onnxruntime numpy
-          "$RUNNER_TEMP/efficientat-real/bin/pip" install torchaudio --index-url https://download.pytorch.org/whl/cpu
       - name: Fetch original EfficientAT source
         run: |
           git clone --depth 1 https://github.com/fschmid56/EfficientAT.git "$RUNNER_TEMP/EfficientAT"
