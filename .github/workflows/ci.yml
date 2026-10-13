@@ -454,7 +454,9 @@ jobs:
       - name: Headless Qt playground self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-qt-demo/demo/qt/libaudition_qt_demo --self-test
+        run: |
+          ./build-qt-demo/demo/qt/libaudition_qt_demo --self-test
+          ./build-qt-demo/demo/qt/libaudition_qt_demo --model-self-test=playback-lifecycle
 
   qt6-demo:
     runs-on: ubuntu-latest
@@ -481,7 +483,9 @@ jobs:
       - name: Headless Qt 6 playground self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build-qt6-demo/demo/qt/libaudition_qt_demo --self-test
+        run: |
+          ./build-qt6-demo/demo/qt/libaudition_qt_demo --self-test
+          ./build-qt6-demo/demo/qt/libaudition_qt_demo --model-self-test=playback-lifecycle
 
   qt6-gcc16-sherpa-arch:
     runs-on: ubuntu-latest
@@ -526,6 +530,7 @@ jobs:
         run: |
           ./build-arch-qt6/demo/qt/libaudition_qt_demo --self-test
           ./build-arch-qt6/demo/qt/libaudition_qt_demo --model-self-test=source-track-lifecycle
+          ./build-arch-qt6/demo/qt/libaudition_qt_demo --model-self-test=playback-lifecycle
           ./build-arch-qt6/demo/qt/libaudition_qt_demo --model-self-test=live-source-tagging-errors
 
   odas-backend:
