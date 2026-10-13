@@ -50,7 +50,7 @@ public:
     // Budget limits queued PCM bytes, NOT the length of the entire session.
     // Lost chunks consume the same logical sample timeline; the worker writes
     // zeros in their position so WAV and inference timestamps stay aligned.
-    [[nodiscard]] AppendReport append(
+    AppendReport append(
         std::uint64_t track_id, const std::vector<float>& samples) noexcept {
         AppendReport report{};
         if (samples.empty()) return report;
@@ -221,9 +221,10 @@ private:
                     if (meta.expected_samples > file.samples)
                         fillSilence(file, meta.expected_samples - file.samples);
                     header(file);
+                    const auto written = file.samples;
                     files.erase(cmd.id);
                     std::lock_guard<std::mutex> lock(mu_);
-                    entries_.at(cmd.id).samples = file.samples;
+                    entries_.at(cmd.id).samples = written;
                     continue;
                 }
                 auto& f = ensureFile();
