@@ -38,10 +38,8 @@ audition::OdasOptions optionsForFixture() {
     options.hop_size = 128U;
     options.frame_size = 256U;
     options.speed_of_sound_mps = 343.0;
-    // Synthetic voiced-like signals are repeatable but their per-window SSL
-    // confidence peaks near 0.85. Use a documented acquisition threshold
-    // rather than changing the production OdasOptions defaults.
-    options.sst.new_threshold = 0.70;
+    // Keep production tracking thresholds: never special-case ODAS just to
+    // make a synthetic fixture pass. Static SSL and SST are checked separately.
     options.sss.enabled = true;
     audition::validateOdasOptions(options);
     return options;
