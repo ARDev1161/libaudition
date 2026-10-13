@@ -550,11 +550,11 @@ QWidget* createLanguageIdPanel(QWidget* parent) {
             const auto wavFile = fsPath(wavPath);
             const int selectedChannel = channel->value();
             audition::SherpaLanguageIdOptions options{};
-            options->encoder = fsPath(encoder);
-            options->decoder = fsPath(decoder);
-            options->sample_rate_hz =
+            options.encoder = fsPath(encoder);
+            options.decoder = fsPath(decoder);
+            options.sample_rate_hz =
                 static_cast<std::uint32_t>(sampleRate->value());
-            options->tail_paddings = tailPaddings->value();
+            options.tail_paddings = tailPaddings->value();
 
             runner->start(
                 [wavFile, selectedChannel, options]() -> QString {
@@ -638,16 +638,16 @@ QWidget* createAudioTaggerPanel(QWidget* parent) {
             const int selectedChannel = channel->value();
             audition::SherpaAudioTaggingOptions options{};
             if (family->currentIndex() == 0) {
-                options->model =
+                options.model =
                     audition::SherpaAudioTaggingZipformerModel{
                         fsPath(model)};
             } else {
-                options->model =
+                options.model =
                     audition::SherpaAudioTaggingCedModel{
                         fsPath(model)};
             }
-            options->labels = fsPath(labels);
-            options->top_k = topK->value();
+            options.labels = fsPath(labels);
+            options.top_k = topK->value();
 
             runner->start(
                 [wavFile, selectedChannel, options]() -> QString {
@@ -758,7 +758,7 @@ QWidget* createDenoiserPanel(QWidget* parent) {
             const bool selectedStreaming = mode->currentIndex() != 0;
             audition::SherpaSpeechDenoiserOptions options{};
             if (family->currentIndex() == 0) {
-                options->model = audition::SherpaSpeechDenoiserGtcrnModel{
+                options.model = audition::SherpaSpeechDenoiserGtcrnModel{
                     fsPath(model)};
             } else {
                 audition::SherpaSpeechDenoiserDpdfNetModel dpdf{
@@ -767,7 +767,7 @@ QWidget* createDenoiserPanel(QWidget* parent) {
                     dpdf.attenuation_limit_db =
                         static_cast<float>(attenuation->value());
                 }
-                options->model = dpdf;
+                options.model = dpdf;
             }
 
             runner->start(
