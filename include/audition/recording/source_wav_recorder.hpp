@@ -30,6 +30,7 @@ public:
         std::uint64_t recording_id{0}, track_id{0}, samples{0};
         std::uint64_t expected_samples{0}, lost_samples{0};
         std::string path;
+        std::string error;
         bool active{false};
     };
     struct AppendReport {
@@ -216,10 +217,21 @@ private:
                 f.samples = f.writer->sampleCount();
                 std::lock_guard<std::mutex> lock(mu_);
                 entries_[cmd.id].samples = f.samples;
+            } catch (const std::exception& e) {
+                ++dropped_;
+                failedFiles.insert(cmd.id);
+                {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    entries_[cmd.id].error = e.what();
+                }
+                files.erase(cmd.id);
             } catch (...) {
                 ++dropped_;
                 failedFiles.insert(cmd.id);
-                // Do not reopen failed files with truncation on later chunks.
+                {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    entries_[cmd.id].error = "Unknown WAV I/O failure";
+                }
                 files.erase(cmd.id);
             }
         }
