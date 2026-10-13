@@ -184,3 +184,33 @@ if(BUILD_TESTING)
         libaudition_add_qt_check(gtsam --model-self-test=gtsam)
     endif()
 endif()
+
+# The model-backed checks require independently downloaded real weights.
+# Enable explicitly on CI jobs/local machines that provision those fixtures.
+option(LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS
+    "Register Qt integration tests that require external real model assets" OFF)
+if(BUILD_TESTING AND LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
+    function(libaudition_add_qt_real_check name)
+        add_test(NAME "qt_real_${name}"
+            COMMAND $<TARGET_FILE:libaudition_qt_demo>
+                    "--model-self-test=${name}")
+        set_tests_properties("qt_real_${name}" PROPERTIES
+            LABELS "qt;real-model"
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+            TIMEOUT 240)
+    endfunction()
+    if(LIBAUDITION_WITH_SHERPA)
+        libaudition_add_qt_real_check(silero)
+        libaudition_add_qt_real_check(whisper-real)
+        libaudition_add_qt_real_check(speaker-real)
+        if(LIBAUDITION_SHERPA_ENABLE_TTS)
+            libaudition_add_qt_real_check(piper-real)
+        endif()
+    endif()
+    if(LIBAUDITION_WITH_CLAP)
+        libaudition_add_qt_real_check(clap)
+    endif()
+    if(LIBAUDITION_WITH_AASIST)
+        libaudition_add_qt_real_check(aasist)
+    endif()
+endif()
