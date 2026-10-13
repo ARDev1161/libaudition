@@ -39,9 +39,10 @@ audition::OdasOptions optionsForFixture() {
     options.hop_size = 128U;
     options.frame_size = 256U;
     options.speed_of_sound_mps = 343.0;
-    // Match the live ReSpeaker USB 4-Mic profile: the array is planar
-    // and these fixtures contain sources at zero elevation. Without this
-    // physical prior, the symmetric 3D search can favor zenith proposals.
+    // Match the live ReSpeaker USB 4-Mic angular response. This is a
+    // +Z-facing microphone/spatial-filter mask with an 80-100 degree
+    // transition, NOT a narrow horizontal-plane (zero-elevation) prior.
+    // In particular, it does not exclude directions near +Z.
     audition::applyReSpeakerUsb4MicAngularProfile(options);
     options.sss.enabled = true;
     audition::validateOdasOptions(options);
