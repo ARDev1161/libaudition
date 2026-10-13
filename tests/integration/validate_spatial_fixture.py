@@ -21,7 +21,7 @@ def fail(message):
     raise AssertionError(message)
 
 
-def compare(manifest, scene, observations, summary):
+def compare(manifest, scene, observations, summary, diagnostic_only=False):
     fs = manifest["sample_rate_hz"]
     total_hops = summary["hops"]
     hop_samples = 128
@@ -140,7 +140,7 @@ def compare(manifest, scene, observations, summary):
     # array profile and dataset, and cannot be mistaken for accuracy evidence.
     if scene == "silence":
         metrics["acceptance_scope"] = "silence-rejection"
-        if longest_silent_track > 10:
+        if longest_silent_track > 10 and not diagnostic_only:
             fail("Silence produced a stable false-positive ODAS track")
     else:
         if summary["potential_observations"] < 1:
@@ -155,9 +155,9 @@ def compare(manifest, scene, observations, summary):
                 summary["track_observations"] > 0)
         else:
             metrics["acceptance_scope"] = "ssl-sst-sss-recording"
-            if summary["track_observations"] < 1:
+            if summary["track_observations"] < 1 and not diagnostic_only:
                 fail("No tracked sources found in active spatial scene")
-            if summary["separated_frames"] < 1 or summary["recordings"] < 1:
+            if (summary["separated_frames"] < 1 or summary["recordings"] < 1) and not diagnostic_only:
                 fail("No SSS audio or recording produced from active source")
         if summary["separated_frames"] != summary["track_observations"]:
             fail("SSS did not produce one audio frame per active track")
@@ -176,6 +176,10 @@ def main():
     p.add_argument("--max-median-proposal-error-deg", type=float)
     p.add_argument("--max-track-near-vertical-fraction", type=float)
     p.add_argument("--require-static-track", action="store_true")
+    p.add_argument("--horizontal-sources", action="store_true",
+                   help="Enable experimental known-XY-plane search band")
+    p.add_argument("--diagnostic-only", action="store_true",
+                   help="Collect spatial quality without mandatory track acquisition")
     args = p.parse_args()
 
     manifest = json.loads(
@@ -196,6 +200,8 @@ def main():
     folder = args.results / args.scene
     folder.mkdir(parents=True, exist_ok=True)
     command = [str(args.runner), str(wav), str(folder)]
+    if args.horizontal_sources:
+        command.append("--horizontal-sources")
     run = subprocess.run(command, text=True, capture_output=True,
                          timeout=120, check=False)
     (folder / "runner.stdout.txt").write_text(run.stdout, encoding="utf-8")
@@ -207,7 +213,9 @@ def main():
     summary = json.loads((folder / "summary.json").read_text())
     with (folder / "observations.csv").open(newline="") as csv_file:
         observations = list(csv.DictReader(csv_file))
-    metrics = compare(manifest, args.scene, observations, summary)
+    metrics = compare(manifest, args.scene, observations, summary,
+                      diagnostic_only=args.diagnostic_only)
+    metrics["profile"] = "horizontal-band-25deg" if args.horizontal_sources else "upstream-respeaker"
     (folder / "metrics.json").write_text(
         json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
