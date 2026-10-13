@@ -28,11 +28,11 @@ add_executable(libaudition_qt_demo
     sherpa_extended_workbench.hpp
     sherpa_speaker_workbench.cpp
     sherpa_speaker_workbench.hpp
-    wav_io.cpp
     wav_io.hpp)
 
 target_link_libraries(libaudition_qt_demo PRIVATE
     audition::core
+    audition::io
     audition::interfaces
     audition::dsp
     audition::spatial
