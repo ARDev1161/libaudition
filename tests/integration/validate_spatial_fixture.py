@@ -176,6 +176,7 @@ def main():
     p.add_argument("--max-median-proposal-error-deg", type=float)
     p.add_argument("--max-track-near-vertical-fraction", type=float)
     p.add_argument("--require-static-track", action="store_true")
+    p.add_argument("--min-simultaneous-two-track-hops", type=int)
     p.add_argument("--horizontal-sources", action="store_true",
                    help="Enable experimental known-XY-plane search band")
     p.add_argument("--diagnostic-only", action="store_true",
@@ -222,6 +223,11 @@ def main():
     if args.require_static_track and args.scene == "static":
         if not metrics["sst_static_track_present"]:
             fail("Static SST acquisition missing (strict quality mode)")
+    if args.min_simultaneous_two_track_hops is not None:
+        if args.scene != "two" or (args.min_simultaneous_two_track_hops < 0 or
+            metrics["simultaneous_two_track_hops"] <
+                args.min_simultaneous_two_track_hops):
+            fail("Insufficient simultaneous two-source SST tracking")
     if args.max_median_error_deg is not None:
         if metrics["median_nearest_track_error_deg"] is None:
             fail("Unable to evaluate DOA against reference")
