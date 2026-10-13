@@ -84,6 +84,23 @@ if(TARGET audition::backend_odas)
             LABELS "audio-integration;odas"
             TIMEOUT 180)
     endforeach()
+    # Comparative diagnostic: this is an explicit synthetic-source-elevation
+    # assumption, NEVER an implicit change to production ODAS settings.
+    foreach(_scene static moving two)
+        add_test(NAME audio_diagnostic_horizontal_${_scene} COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/validate_spatial_fixture.py"
+            --runner "$<TARGET_FILE:audition_offline_integration>"
+            --fixtures "${_spatial_fixtures}"
+            --scene "${_scene}"
+            --results "${_spatial_results}/horizontal"
+            --horizontal-sources
+            --diagnostic-only)
+        set_tests_properties(audio_diagnostic_horizontal_${_scene} PROPERTIES
+            FIXTURES_REQUIRED spatial_audio_fixtures
+            LABELS "audio-integration;odas-diagnostic"
+            TIMEOUT 180)
+    endforeach()
 endif()
 
 if(TARGET audition::backend_odas)
