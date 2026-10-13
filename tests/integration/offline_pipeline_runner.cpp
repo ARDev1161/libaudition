@@ -6,6 +6,7 @@
 #include <audition/audio/recording_timeline_json.hpp>
 #include <audition/backends/odas/odas_spatial_engine.hpp>
 #include <audition/backends/odas/respeaker_usb4_profile.hpp>
+#include <audition/backends/odas/source_elevation_prior.hpp>
 #include <audition/io/wav_io.hpp>
 #include <audition/recording/source_recording_session.hpp>
 #include <audition/recording/source_wav_recorder.hpp>
@@ -45,19 +46,9 @@ audition::OdasOptions optionsForFixture(bool horizontalSources) {
     // In particular, it does not exclude directions near +Z.
     audition::applyReSpeakerUsb4MicAngularProfile(options);
     if (horizontalSources) {
-        // Experimental known-source-elevation prior: two opposing angular
-        // masks reject the polar caps, leaving directions within 25 degrees
-        // of the microphone XY plane. This is not ReSpeaker's upstream
-        // profile and is NOT suitable for unconstrained 3D localization.
-        // A 5-degree soft transition prevents numerical zero-gain edges.
-        options.spatial_filters = {
-            audition::OdasSpatialFilter{
-                audition::Direction3D::fromVector({0.0, 0.0, 1.0}),
-                110.0, 115.0},
-            audition::OdasSpatialFilter{
-                audition::Direction3D::fromVector({0.0, 0.0, -1.0}),
-                110.0, 115.0}
-        };
+        // An explicit source-elevation assumption for these synthetic
+        // near-horizontal fixtures, not a general-purpose 3D repair.
+        audition::applyOdasNearPlaneSourcePrior(options);
     }
     options.sss.enabled = true;
     audition::validateOdasOptions(options);
