@@ -483,6 +483,51 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: ./build-qt6-demo/demo/qt/libaudition_qt_demo --self-test
 
+  qt6-gcc16-sherpa-arch:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install Arch toolchain, Qt 6 Multimedia and backend prerequisites
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel gcc git cmake ninja pkgconf curl python \
+            qt6-base qt6-multimedia alsa-lib fftw libconfig libpulse
+          g++ --version
+          pacman -Q gcc qt6-base qt6-multimedia
+          test "$(g++ -dumpfullversion | cut -d. -f1)" -ge 16
+      - uses: actions/checkout@v4
+      - name: Configure GCC 16 with Qt 6, Multimedia, ODAS, Sherpa and YAMNet
+        run: >-
+          cmake -S . -B build-arch-qt6 -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_CXX_COMPILER=g++
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_WITH_ODAS=ON
+          -DLIBAUDITION_WITH_SHERPA=ON
+          -DLIBAUDITION_WITH_YAMNET=ON
+          -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF
+          -DLIBAUDITION_DEMO_FETCH_SPEECH_MODELS=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Assert Qt 6 Multimedia and ALSA enabled
+        run: |
+          grep -Fq -- '-DLIBAUDITION_DEMO_HAS_MULTIMEDIA=1' build-arch-qt6/compile_commands.json
+          grep -Fq -- '-DLIBAUDITION_DEMO_HAS_ALSA=1' build-arch-qt6/compile_commands.json
+      - name: Build all targets with GCC 16 and Werror
+        run: cmake --build build-arch-qt6 --parallel 2
+      - name: Run all C++ tests
+        run: ctest --test-dir build-arch-qt6 --output-on-failure --parallel 2
+      - name: Run Qt 6 integrated smoke and lifecycle fixtures
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ./build-arch-qt6/demo/qt/libaudition_qt_demo --self-test
+          ./build-arch-qt6/demo/qt/libaudition_qt_demo --model-self-test=source-track-lifecycle
+          ./build-arch-qt6/demo/qt/libaudition_qt_demo --model-self-test=live-source-tagging-errors
+
   odas-backend:
     runs-on: ubuntu-latest
     steps:
