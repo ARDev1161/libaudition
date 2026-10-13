@@ -53,6 +53,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -658,7 +659,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             soundLane->setPosition(pos);
             speechLane->setPosition(pos);
         });
-        auto temporaryPlaybackFiles = std::make_shared<QStringList>();
+        struct PlaybackFiles {
+            std::mutex mutex;
+            bool closed{false};
+            QStringList files;
+            QString cached;
+            double cached_gain{0};
+        };
+        auto temporaryPlaybackFiles = std::make_shared<PlaybackFiles>();
         QObject::connect(dialog, &QDialog::finished, dialog,
                          [media, temporaryPlaybackFiles](int) {
             media->stop();
@@ -667,11 +675,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
 #else
             media->setMedia(QMediaContent{});
 #endif
-            for (const auto& path : *temporaryPlaybackFiles)
+            std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+            temporaryPlaybackFiles->closed = true;
+            for (const auto& path : temporaryPlaybackFiles->files)
                 QFile::remove(path);
-            temporaryPlaybackFiles->clear();
+            temporaryPlaybackFiles->files.clear();
         });
-        const auto applyNormalization = [=]() {
+        const auto changeMedia = [media](const QString& path) {
             const auto previousPosition = media->position();
             const bool wasPlaying =
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -680,36 +690,72 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 media->state() == QMediaPlayer::PlayingState;
 #endif
             media->stop();
-            try {
-                QString playbackPath = sourcePath;
-                if (normalize->isChecked()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            media->setSource(QUrl::fromLocalFile(path));
+#else
+            media->setMedia(QUrl::fromLocalFile(path));
+#endif
+            media->setPosition(previousPosition);
+            if (wasPlaying) media->play();
+        };
+        const auto applyNormalization = [=]() {
+            if (!normalize->isChecked()) {
+                changeMedia(sourcePath);
+                gainLabel->setText("Original recording (no gain)");
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+                if (!temporaryPlaybackFiles->cached.isEmpty()) {
+                    changeMedia(temporaryPlaybackFiles->cached);
+                    gainLabel->setText(QString("Applied gain: +%1 dB")
+                        .arg(temporaryPlaybackFiles->cached_gain, 0, 'f', 1));
+                    return;
+                }
+            }
+            // Both passes run on the Qt worker pool: never scan or rewrite a
+            // long WAV from the GUI thread. This dialog has one in-flight task.
+            normalize->setEnabled(false);
+            gainLabel->setText("Preparing normalized playback...");
+            auto* watcher = new QFutureWatcher<demo::NormalizedWav>(dialog);
+            QObject::connect(watcher, &QFutureWatcher<demo::NormalizedWav>::finished,
+                             dialog, [=]() {
+                normalize->setEnabled(true);
+                try {
+                    const auto result = watcher->result();
+                    bool closed = false;
+                    {
+                        std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+                        closed = temporaryPlaybackFiles->closed;
+                    }
+                    if (!closed && normalize->isChecked()) {
+                        changeMedia(QString::fromStdString(result.path.string()));
+                        gainLabel->setText(QString("Applied gain: +%1 dB")
+                            .arg(result.gain_db, 0, 'f', 1));
+                    }
+                } catch (const std::exception& error) {
+                    gainLabel->setText(QString("Normalization failed: ") +
+                                       QString::fromUtf8(error.what()));
+                    const QSignalBlocker blocker(normalize);
+                    normalize->setChecked(false);
+                }
+                watcher->deleteLater();
+            });
+            watcher->setFuture(QtConcurrent::run(
+                [sourcePath, temporaryPlaybackFiles]() {
                     const auto result = demo::normalizePlaybackWav(
                         std::filesystem::path{sourcePath.toStdString()});
-                    playbackPath = QString::fromStdString(result.path.string());
-                    temporaryPlaybackFiles->append(playbackPath);
-                    gainLabel->setText(QString("Applied gain: +%1 dB")
-                        .arg(result.gain_db, 0, 'f', 1));
-                } else {
-                    gainLabel->setText("Original recording (no gain)");
-                }
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-                media->setSource(QUrl::fromLocalFile(playbackPath));
-#else
-                media->setMedia(QUrl::fromLocalFile(playbackPath));
-#endif
-                media->setPosition(previousPosition);
-                if (wasPlaying) media->play();
-            } catch (const std::exception& error) {
-                gainLabel->setText(QString("Normalization failed: ") +
-                                   QString::fromUtf8(error.what()));
-                const QSignalBlocker blocker(normalize);
-                normalize->setChecked(false);
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-                media->setSource(QUrl::fromLocalFile(sourcePath));
-#else
-                media->setMedia(QUrl::fromLocalFile(sourcePath));
-#endif
-            }
+                    const auto path = QString::fromStdString(result.path.string());
+                    std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+                    if (temporaryPlaybackFiles->closed) {
+                        QFile::remove(path);
+                    } else {
+                        temporaryPlaybackFiles->files.append(path);
+                        temporaryPlaybackFiles->cached = path;
+                        temporaryPlaybackFiles->cached_gain = result.gain_db;
+                    }
+                    return result;
+                }));
         };
         QObject::connect(normalize, &QCheckBox::toggled, dialog,
                          [applyNormalization](bool) { applyNormalization(); });
