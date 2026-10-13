@@ -150,6 +150,6 @@ add_test(NAME source_wav_recorder_test COMMAND source_wav_recorder_test)
 
 # Standalone public audio APIs: no Qt and no model assets.
 add_executable(recording_audio_apis_test recording_audio_apis_test.cpp)
-target_link_libraries(recording_audio_apis_test PRIVATE audition::core)
+target_link_libraries(recording_audio_apis_test PRIVATE audition::core audition::io)
 libaudition_configure_target(recording_audio_apis_test)
 add_test(NAME recording_audio_apis_test COMMAND recording_audio_apis_test)
