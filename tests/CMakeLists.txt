@@ -95,7 +95,8 @@ if(TARGET audition::backend_odas)
         if(_scene STREQUAL "static")
             list(APPEND _planar_gates --require-static-track)
         elseif(_scene STREQUAL "two")
-            list(APPEND _planar_gates --min-simultaneous-two-track-hops 40)
+            list(APPEND _planar_gates --min-simultaneous-two-track-hops 40
+                                       --min-matched-two-source-hops 40)
         endif()
         add_test(NAME audio_integration_near_plane_${_scene} COMMAND
             ${Python3_EXECUTABLE}
