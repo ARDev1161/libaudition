@@ -84,10 +84,20 @@ if(TARGET audition::backend_odas)
             LABELS "audio-integration;odas"
             TIMEOUT 180)
     endforeach()
-    # Comparative diagnostic: this is an explicit synthetic-source-elevation
-    # assumption, NEVER an implicit change to production ODAS settings.
+    # Explicit known-elevation planar scenes: quantitative quality gates
+    # compare directly against generated ground truth (no output projection).
+    # Keep unconstrained ReSpeaker profiles above as 3D diagnostics.
     foreach(_scene static moving two)
-        add_test(NAME audio_diagnostic_horizontal_${_scene} COMMAND
+        set(_planar_gates
+            --max-median-error-deg 50
+            --max-track-near-vertical-fraction 0.1
+            --min-track-coverage 0.7)
+        if(_scene STREQUAL "static")
+            list(APPEND _planar_gates --require-static-track)
+        elseif(_scene STREQUAL "two")
+            list(APPEND _planar_gates --min-simultaneous-two-track-hops 40)
+        endif()
+        add_test(NAME audio_integration_near_plane_${_scene} COMMAND
             ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/integration/validate_spatial_fixture.py"
             --runner "$<TARGET_FILE:audition_offline_integration>"
@@ -95,10 +105,10 @@ if(TARGET audition::backend_odas)
             --scene "${_scene}"
             --results "${_spatial_results}/horizontal"
             --horizontal-sources
-            --diagnostic-only)
-        set_tests_properties(audio_diagnostic_horizontal_${_scene} PROPERTIES
+            ${_planar_gates})
+        set_tests_properties(audio_integration_near_plane_${_scene} PROPERTIES
             FIXTURES_REQUIRED spatial_audio_fixtures
-            LABELS "audio-integration;odas-diagnostic"
+            LABELS "audio-integration;odas-quality"
             TIMEOUT 180)
     endforeach()
 endif()
