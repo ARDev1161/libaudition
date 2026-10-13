@@ -96,7 +96,7 @@ TEST(OdasBackend, RejectsMismatchedInputContract) {
     audition::AudioBuffer wrong_rate{std::move(samples),
                                      {48000U, 6U, audition::AudioLayout::Interleaved},
                                      audition::Timestamp{}};
-    EXPECT_THROW(engine.process(wrong_rate.view()), audition::Error);
+    EXPECT_THROW((void)engine.process(wrong_rate.view()), audition::Error);
 }
 
 TEST(OdasBackend, ProcessesOneConfiguredHopWithoutOwningScheduling) {
