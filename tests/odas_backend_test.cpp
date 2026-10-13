@@ -1,4 +1,6 @@
 #include <audition/backends/odas/odas_spatial_engine.hpp>
+#include <audition/backends/odas/source_elevation_prior.hpp>
+#include <audition/backends/odas/respeaker_usb4_profile.hpp>
 
 #include <algorithm>
 #include <vector>
@@ -49,6 +51,33 @@ TEST(OdasOptions, AcceptsUpstreamReSpeakerAngularMask) {
     audition::OdasSpatialEngine engine{options};
     auto frame = makeSilence(options);
     EXPECT_NO_THROW((void)engine.process(frame.view()));
+}
+
+TEST(OdasOptions, NearPlanePriorRequiresExplicitSelection) {
+    auto options = makeFourMicOptions();
+    const auto initialFilterCount = options.spatial_filters.size();
+    EXPECT_EQ(initialFilterCount, 1U);
+
+    audition::applyReSpeakerUsb4MicAngularProfile(options);
+    EXPECT_EQ(options.microphone_directivity.size(), 4U);
+    audition::applyOdasNearPlaneSourcePrior(options);
+    ASSERT_EQ(options.spatial_filters.size(), 2U);
+    EXPECT_NEAR(options.spatial_filters[0].direction.vector().z, 1.0, 1e-8);
+    EXPECT_NEAR(options.spatial_filters[1].direction.vector().z, -1.0, 1e-8);
+    EXPECT_DOUBLE_EQ(options.spatial_filters[0].all_pass_angle_deg, 110.0);
+    EXPECT_DOUBLE_EQ(options.spatial_filters[0].no_pass_angle_deg, 115.0);
+    EXPECT_DOUBLE_EQ(options.spatial_filters[1].all_pass_angle_deg, 110.0);
+    EXPECT_DOUBLE_EQ(options.spatial_filters[1].no_pass_angle_deg, 115.0);
+    EXPECT_NO_THROW(audition::validateOdasOptions(options));
+}
+
+TEST(OdasOptions, NearPlanePriorRejectsInvalidBounds) {
+    auto options = makeFourMicOptions();
+    EXPECT_THROW(audition::applyOdasNearPlaneSourcePrior(options, 0.0), std::invalid_argument);
+    EXPECT_THROW(audition::applyOdasNearPlaneSourcePrior(options, 90.0), std::invalid_argument);
+    EXPECT_THROW(audition::applyOdasNearPlaneSourcePrior(options, 25.0, 25.0), std::invalid_argument);
+    EXPECT_THROW(audition::applyOdasNearPlaneSourcePrior(options, 25.0, -1.0), std::invalid_argument);
+    EXPECT_EQ(options.spatial_filters.size(), 1U);
 }
 
 TEST(OdasOptions, RejectsDuplicateInputChannelMapping) {
