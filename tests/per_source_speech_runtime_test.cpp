@@ -419,11 +419,19 @@ TEST(PerSourceSpeechRuntime, RetiredAsrSurvivesCancellationOfReusedId) {
         return;
     }
     const auto originalGeneration = runtime.retire(60U);
-    ASSERT_TRUE(originalGeneration.has_value());
+    if (!originalGeneration) {
+        gated->release.store(true);
+        FAIL() << "Retirement lost the original generation";
+        return;
+    }
     runtime.push(60U, chunk(voice));
     runtime.push(60U, chunk(silence));
     const auto reusedGeneration = runtime.activeGeneration(60U);
-    ASSERT_TRUE(reusedGeneration.has_value());
+    if (!reusedGeneration) {
+        gated->release.store(true);
+        FAIL() << "Reused source generation was not created";
+        return;
+    }
     EXPECT_NE(*originalGeneration, *reusedGeneration);
     runtime.forget(60U);
     EXPECT_FALSE(runtime.activeGeneration(60U).has_value());
