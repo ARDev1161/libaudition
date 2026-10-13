@@ -31,6 +31,7 @@ struct LiveCaptureConfig {
     std::vector<std::size_t> input_channels{1, 2, 3, 4};
     std::vector<std::array<double, 3>> microphone_positions{};
     bool respeaker_angular_profile{false};
+    bool near_plane_sources{false};
     bool classify_sources{false};
     bool tagging_ced_model{false};
     bool tagging_yamnet_model{false};
