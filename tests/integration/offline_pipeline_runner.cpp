@@ -26,7 +26,7 @@
 namespace {
 namespace fs = std::filesystem;
 
-audition::OdasOptions optionsForFixture() {
+audition::OdasOptions optionsForFixture(bool horizontalSources) {
     audition::OdasOptions options{};
     options.microphone_array.microphones = {
         audition::MicrophoneGeometry{{-0.032, 0.0, 0.0}},
@@ -44,6 +44,21 @@ audition::OdasOptions optionsForFixture() {
     // transition, NOT a narrow horizontal-plane (zero-elevation) prior.
     // In particular, it does not exclude directions near +Z.
     audition::applyReSpeakerUsb4MicAngularProfile(options);
+    if (horizontalSources) {
+        // Experimental known-source-elevation prior: two opposing angular
+        // masks reject the polar caps, leaving directions within 25 degrees
+        // of the microphone XY plane. This is not ReSpeaker's upstream
+        // profile and is NOT suitable for unconstrained 3D localization.
+        // A 5-degree soft transition prevents numerical zero-gain edges.
+        options.spatial_filters = {
+            audition::OdasSpatialFilter{
+                audition::Direction3D::fromVector({0.0, 0.0, 1.0}),
+                110.0, 115.0},
+            audition::OdasSpatialFilter{
+                audition::Direction3D::fromVector({0.0, 0.0, -1.0}),
+                110.0, 115.0}
+        };
+    }
     options.sss.enabled = true;
     audition::validateOdasOptions(options);
     return options;
@@ -68,10 +83,10 @@ void writeObservation(std::ostream& out, std::uint64_t hop,
     if (!out) throw std::runtime_error("Cannot write trace CSV");
 }
 
-int run(const fs::path& path, const fs::path& outputDir) {
+int run(const fs::path& path, const fs::path& outputDir, bool horizontalSources) {
     const auto wav = audition::io::loadWav(path);
     const auto format = wav.audio.format();
-    const auto options = optionsForFixture();
+    const auto options = optionsForFixture(horizontalSources);
     if (format.sample_rate_hz != options.sample_rate_hz ||
         format.channel_count != 6U ||
         format.layout != audition::AudioLayout::Interleaved ||
@@ -211,12 +226,17 @@ int run(const fs::path& path, const fs::path& outputDir) {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        std::cerr << "Usage: audition_offline_integration INPUT_6CH_WAV OUTPUT_DIRECTORY\n";
+    if (argc != 3 && argc != 4) {
+        std::cerr << "Usage: audition_offline_integration INPUT_6CH_WAV OUTPUT_DIRECTORY [--horizontal-sources]\n";
+        return 2;
+    }
+    const bool horizontal = argc == 4 && std::string{argv[3]} == "--horizontal-sources";
+    if (argc == 4 && !horizontal) {
+        std::cerr << "Unknown offline ODAS preset\n";
         return 2;
     }
     try {
-        return run(argv[1], argv[2]);
+        return run(argv[1], argv[2], horizontal);
     } catch (const std::exception& ex) {
         std::cerr << "offline-audio-integration=fail: " << ex.what() << '\n';
         return 1;
