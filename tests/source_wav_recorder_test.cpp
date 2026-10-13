@@ -48,7 +48,7 @@ int main() {
         }
     }
     {
-        demo::SourceWavRecorder recorder(path / "limited", 16000, 32);
+        audition::recording::SourceWavRecorder recorder(path / "limited", 16000, 32);
         recorder.append(1, std::vector<float>(100, 0.1f));
         recorder.retire(1);
         recorder.closeAll();
