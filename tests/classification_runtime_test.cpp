@@ -655,3 +655,27 @@ TEST(SourceClassificationRuntime, ReportsPerSourceDropCountsAndTiming) {
     }
     EXPECT_TRUE(both_completed);
 }
+
+
+TEST(SourceClassificationRuntime, CompletedWindowsAreDeliveredWithoutGuiPolling) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U, 4U, 4U};
+    const float samples[4] = {0.1F, 0.2F, 0.3F, 0.4F};
+    for (int window = 0; window < 2; ++window) {
+        runtime.push(23U, samples, 4U);
+        for (int retry = 0; retry < 1000; ++retry) {
+            if (runtime.status(23U).completed_windows ==
+                static_cast<std::uint64_t>(window + 1)) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+    }
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 2U);
+    EXPECT_EQ(events[0].source_id, 23U);
+    EXPECT_EQ(events[0].start_sample, 0U);
+    EXPECT_EQ(events[0].end_sample, 4U);
+    EXPECT_EQ(events[1].start_sample, 4U);
+    EXPECT_EQ(events[1].end_sample, 8U);
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+    runtime.forget(23U);
+}
