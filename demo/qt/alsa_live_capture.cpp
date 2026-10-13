@@ -298,6 +298,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             std::filesystem::temp_directory_path() / "libaudition-recordings" /
                 ("session-" + std::to_string(session_stamp)), config.sample_rate_hz};
         audition::recording::SourceRecordingSession recordings;
+        const auto drainClassification = [&]() {
+            if (!classifier) return;
+            for (const auto& [sourceId, event] : classifier->takeCompleted()) {
+                recordings.addSound(sourceId,
+                    event.window_start_sample, event.window_end_sample,
+                    event.label,
+                    config.tagging_yamnet_model ? "YAMNet" :
+                    config.tagging_efficientat_model ? "EfficientAT" : "Sherpa",
+                    event.probability, event.stage);
+            }
+        };
         const auto retireSource = [&](std::uint64_t trackId) {
             if (classifier) classifier->forget(trackId);
             recorder.retire(trackId);
@@ -367,6 +378,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 sssMeters.clear();
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
+                drainClassification();
                 source_lifecycle.clear([&](std::uint64_t id) {
                     retireSource(id);
                 });
@@ -417,6 +429,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 for (const auto& separated : resultFrame.separated_frames) {
                     present.insert(separated.track_id.value());
                 }
+                drainClassification();
                 source_lifecycle.update(std::move(present), [&](std::uint64_t id) {
                     retireSource(id);
                 });
@@ -450,16 +463,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     }
 #endif
                 }
-                if (classifier) {
-                    for (const auto& [sourceId, event] : classifier->takeCompleted()) {
-                        recordings.addSound(sourceId,
-                            event.window_start_sample, event.window_end_sample,
-                            event.label,
-                            config.tagging_yamnet_model ? "YAMNet" :
-                            config.tagging_efficientat_model ? "EfficientAT" : "Sherpa",
-                            event.probability, event.stage);
-                    }
-                }
+                drainClassification();
 #if LIBAUDITION_DEMO_HAS_SHERPA
                 drainAsr();
 #endif
@@ -582,6 +586,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped());
             ++latest_.generation;
         }
+        drainClassification();
         source_lifecycle.clear([&](std::uint64_t id) { retireSource(id); });
 #if LIBAUDITION_DEMO_HAS_SHERPA
         if (speech_runtime) {
