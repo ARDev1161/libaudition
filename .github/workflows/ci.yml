@@ -436,10 +436,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Qt 5 Widgets
+      - name: Install Qt 5 Widgets and Multimedia
         run: |
           sudo apt-get update
-          sudo apt-get install -y qtbase5-dev
+          sudo apt-get install -y qtbase5-dev qtmultimedia5-dev libqt5multimedia5-plugins gstreamer1.0-plugins-good
       - name: Configure Qt playground
         run: >-
           cmake -S . -B build-qt-demo -G Ninja
