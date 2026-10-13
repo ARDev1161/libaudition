@@ -5,8 +5,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
 #include <QGraphicsView>
-#include <QJsonArray>
-#include <QJsonObject>
+#include <audition/audio/recording_timeline.hpp>
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QString>
@@ -36,34 +35,49 @@ public:
         seek_ = std::move(handler);
     }
 
-    void load(const QJsonArray& events, std::uint32_t rate, bool sound,
+    void load(const audition::RecordingTimeline& timeline, bool sound,
               qint64 durationMs) {
         scene_->clear();
         cursor_ = nullptr;
-        rate_ = rate;
-        const auto width = std::max(600.0, static_cast<double>(durationMs) * pixelsPerMs_);
+        rate_ = timeline.sampleRateHz();
+        const auto width = std::max(600.0,
+            static_cast<double>(durationMs) * pixelsPerMs_);
         scene_->setSceneRect(0, 0, width, 72);
-        for (const auto& item : events) {
-            if (!item.isObject() || !rate) continue;
-            const auto object = item.toObject();
-            const auto start = object.value("start_sample").toDouble(-1);
-            const auto end = object.value("end_sample").toDouble(-1);
-            if (!std::isfinite(start) || !std::isfinite(end) ||
-                start < 0 || end < start) continue;
-            const auto x = start * 1000.0 / static_cast<double>(rate) * pixelsPerMs_;
-            const auto right = end * 1000.0 / static_cast<double>(rate) * pixelsPerMs_;
-            const auto label = object.value(sound ? "label" : "text").toString();
-            if (label.isEmpty()) continue;
+        const auto addEvent = [&](std::uint64_t start, std::uint64_t end,
+                                  const QString& label) {
+            if (label.isEmpty() || !rate_ || end < start) return;
+            const auto x = static_cast<double>(start) * 1000.0 /
+                static_cast<double>(rate_) * pixelsPerMs_;
+            const auto right = static_cast<double>(end) * 1000.0 /
+                static_cast<double>(rate_) * pixelsPerMs_;
             const auto span = std::max(12.0, right - x);
-            const auto color = sound ? QColor(103, 155, 115, 100) : QColor(88, 137, 197, 100);
-            auto* rect = scene_->addRect(x, 12, span, 35, QPen(Qt::NoPen), QBrush(color));
-            rect->setData(0, x);
+            const auto color = sound ? QColor(103, 155, 115, 100)
+                                     : QColor(88, 137, 197, 100);
+            scene_->addRect(x, 12, span, 35, QPen(Qt::NoPen), QBrush(color));
             auto* textItem = scene_->addText(label);
             textItem->setPos(x + 2, 15);
             textItem->setTextWidth(std::min(400.0, std::max(span, 80.0)));
-            textItem->setData(0, x);
+        };
+        if (sound) {
+            for (const auto& event : timeline.sounds())
+                addEvent(event.start_sample, event.end_sample,
+                         QString::fromStdString(event.label));
+        } else {
+            for (const auto& event : timeline.speech())
+                addEvent(event.start_sample, event.end_sample,
+                         QString::fromStdString(event.text));
         }
-        cursor_ = scene_->addLine(0, 0, 0, 65, QPen(QColor(220, 75, 75), 2));
+        for (const auto& gap : timeline.gaps()) {
+            const auto x = static_cast<double>(gap.start_sample) * 1000.0 /
+                           static_cast<double>(rate_) * pixelsPerMs_;
+            const auto span = static_cast<double>(
+                gap.end_sample - gap.start_sample) * 1000.0 /
+                static_cast<double>(rate_) * pixelsPerMs_;
+            scene_->addRect(x, 0, std::max(2.0, span), 65,
+                QPen(Qt::NoPen), QBrush(QColor(210, 90, 80, 90)));
+        }
+        cursor_ = scene_->addLine(0, 0, 0, 65,
+                                   QPen(QColor(220, 75, 75), 2));
         cursor_->setZValue(10);
         setPosition(0);
     }
@@ -72,8 +86,9 @@ public:
         const double x = static_cast<double>(std::max<qint64>(0, ms)) * pixelsPerMs_;
         if (cursor_) cursor_->setLine(x, 0, x, 65);
         // Keep playback cursor in the same viewport location for both lanes.
-        horizontalScrollBar()->setValue(
-            static_cast<int>(std::max(0.0, x - viewport()->width() * 0.45)));
+        horizontalScrollBar()->setValue(static_cast<int>(std::min(
+            static_cast<double>(std::numeric_limits<int>::max()),
+            std::max(0.0, x - static_cast<double>(viewport()->width()) * 0.45))));
     }
 
 protected:
