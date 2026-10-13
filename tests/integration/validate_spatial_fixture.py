@@ -59,6 +59,7 @@ def compare(manifest, scene, observations, summary, diagnostic_only=False):
     covered_hops = 0
     active_hops = 0
     simultaneous_hops = 0
+    matched_two_source_hops_45deg = 0
     longest_silent_track = 0
     silent_track_run = 0
     for hop in range(total_hops):
@@ -93,6 +94,22 @@ def compare(manifest, scene, observations, summary, diagnostic_only=False):
             continue
         if len(known) > 1 and len(tracks) >= 2:
             simultaneous_hops += 1
+            if len(known) == 2:
+                # Require TWO DISTINCT tracked directions (one-to-one
+                # assignment). A single source may not satisfy both refs.
+                def angular_err(obs, bearing):
+                    az = math.radians(bearing)
+                    cos_angle = (float(obs["x"]) * math.cos(az) +
+                                 float(obs["y"]) * math.sin(az))
+                    return math.degrees(
+                        math.acos(max(-1.0, min(1.0, cos_angle))))
+                if any(
+                    a != b and
+                    angular_err(a, known[0]) <= 45.0 and
+                    angular_err(b, known[1]) <= 45.0
+                    for a in tracks for b in tracks
+                ):
+                    matched_two_source_hops_45deg += 1
         active_hops += 1
         if not tracks:
             continue
@@ -123,6 +140,7 @@ def compare(manifest, scene, observations, summary, diagnostic_only=False):
                                 math.ceil(0.9 * len(samples))-1)], 4)
             if samples else None,
         "simultaneous_two_track_hops": simultaneous_hops,
+        "matched_two_source_hops_within_45deg": matched_two_source_hops_45deg,
         "median_nearest_ssl_proposal_error_deg": round(
             statistics.median(proposal_errors), 4)
             if proposal_errors else None,
@@ -177,6 +195,7 @@ def main():
     p.add_argument("--max-track-near-vertical-fraction", type=float)
     p.add_argument("--require-static-track", action="store_true")
     p.add_argument("--min-simultaneous-two-track-hops", type=int)
+    p.add_argument("--min-matched-two-source-hops", type=int)
     p.add_argument("--horizontal-sources", action="store_true",
                    help="Enable experimental known-XY-plane search band")
     p.add_argument("--diagnostic-only", action="store_true",
@@ -228,6 +247,11 @@ def main():
             metrics["simultaneous_two_track_hops"] <
                 args.min_simultaneous_two_track_hops):
             fail("Insufficient simultaneous two-source SST tracking")
+    if args.min_matched_two_source_hops is not None:
+        if args.scene != "two" or (args.min_matched_two_source_hops < 0 or
+            metrics["matched_two_source_hops_within_45deg"] <
+                args.min_matched_two_source_hops):
+            fail("Not enough frames with distinct, correctly associated track directions")
     if args.max_median_error_deg is not None:
         if metrics["median_nearest_track_error_deg"] is None:
             fail("Unable to evaluate DOA against reference")
