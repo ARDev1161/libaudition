@@ -28,7 +28,7 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/audition
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # Shared WAV format and file I/O; never depends on Qt or ALSA.
-add_library(libaudition_io io/wav_io.cpp)
+add_library(libaudition_io io/wav_io.cpp io/recording_timeline_json.cpp)
 add_library(audition::io ALIAS libaudition_io)
 set_target_properties(libaudition_io PROPERTIES
     EXPORT_NAME io OUTPUT_NAME audition_io)
