@@ -103,6 +103,15 @@ endif()
 
 
 if(TARGET audition::backend_sherpa)
+    # Genuine Silero/SenseVoice inference on a real PCM WAV; deliberately
+    # no fake recognizer and no GUI fixture. A pinned model is mandatory
+    # for the CI invocation; missing files produce a nonzero exit.
+    add_executable(real_speech_model_replay
+        integration/real_speech_model_replay.cpp)
+    target_link_libraries(real_speech_model_replay PRIVATE
+        audition::backend_sherpa audition::io audition::core)
+    libaudition_configure_target(real_speech_model_replay)
+
     target_sources(libaudition_tests PRIVATE sherpa_backend_test.cpp sherpa_speaker_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_sherpa)
     add_executable(sherpa_per_source_speech_smoke sherpa_per_source_speech_smoke.cpp)
