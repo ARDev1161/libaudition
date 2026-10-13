@@ -146,8 +146,9 @@ if(LIBAUDITION_WITH_CLAP AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 # Headless application checks are first-class CTest cases, reusable by local
-# developers and CI. Keep model-weight dependent tests out of this basic suite.
-if(LIBAUDITION_BUILD_TESTS)
+# developers and CI. Register them even when GTest is disabled (Qt-only builds).
+# Keep model-weight dependent tests out of this basic suite.
+if(BUILD_TESTING)
     function(libaudition_add_qt_check name argument)
         add_test(NAME "qt_${name}"
             COMMAND $<TARGET_FILE:libaudition_qt_demo> "${argument}")
