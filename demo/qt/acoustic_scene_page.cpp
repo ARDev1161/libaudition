@@ -216,6 +216,10 @@ QString directionSummary(const AcousticSceneTrack& track) {
 QDialog* createRecordingPlaybackDialog(
     QWidget* parent, std::uint64_t id, const QString& sourcePath,
     std::uint64_t sampleCount) {
+#if !LIBAUDITION_DEMO_HAS_MULTIMEDIA
+    static_cast<void>(sourcePath);
+    static_cast<void>(sampleCount);
+#endif
         auto* dialog = new QDialog(parent);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
         dialog->setObjectName("recordingPlaybackDialog");
