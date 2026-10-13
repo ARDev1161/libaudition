@@ -804,6 +804,7 @@ jobs:
           -DLIBAUDITION_WITH_SHERPA=ON
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS=ON
           -DLIBAUDITION_BUILD_EXAMPLES=ON
           -DLIBAUDITION_BUILD_QT_DEMO=ON
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
@@ -832,7 +833,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_SILERO_MODEL: ${{ github.workspace }}/build-sherpa/silero_vad.onnx
-        run: ./build-sherpa/demo/qt/libaudition_qt_demo --model-self-test=silero
+        run: ctest --test-dir build-sherpa -R '^qt_real_silero$' --output-on-failure
       - name: Download pinned Whisper tiny.en INT8 and NeMo speaker model
         shell: bash
         run: |
@@ -862,7 +863,7 @@ jobs:
           LIBAUDITION_TEST_WHISPER_ENCODER: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-encoder.int8.onnx
           LIBAUDITION_TEST_WHISPER_DECODER: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-decoder.int8.onnx
           LIBAUDITION_TEST_WHISPER_TOKENS: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-tokens.txt
-        run: ./build-sherpa/demo/qt/libaudition_qt_demo --model-self-test=whisper-real
+        run: ctest --test-dir build-sherpa -R '^qt_real_whisper-real$' --output-on-failure
       - name: Verify genuine Whisper ONNX through per-source speech runtime
         run: |
           ./build-sherpa/tests/sherpa_per_source_speech_smoke \
@@ -873,7 +874,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_SPEAKER_MODEL: ${{ github.workspace }}/build-sherpa/nemo_en_titanet_small.onnx
-        run: ./build-sherpa/demo/qt/libaudition_qt_demo --model-self-test=speaker-real
+        run: ctest --test-dir build-sherpa -R '^qt_real_speaker-real$' --output-on-failure
       - name: Download SHA-256 pinned SenseVoiceSmall INT8 ASR and tokens
         shell: bash
         run: |
@@ -999,6 +1000,7 @@ jobs:
           -DLIBAUDITION_SHERPA_ENABLE_TTS=ON
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS=ON
           -DLIBAUDITION_BUILD_EXAMPLES=ON
           -DLIBAUDITION_BUILD_QT_DEMO=ON
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
@@ -1029,7 +1031,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_PIPER_DIR: ${{ github.workspace }}/build-sherpa-tts/vits-piper-en_US-amy-low-int8
-        run: ./build-sherpa-tts/demo/qt/libaudition_qt_demo --model-self-test=piper-real
+        run: ctest --test-dir build-sherpa-tts -R '^qt_real_piper-real$' --output-on-failure
       - name: Install
         run: cmake --install build-sherpa-tts --prefix "$PWD/install-sherpa-tts"
       - name: Verify installed sherpa TTS package from C++17 consumer
@@ -1087,6 +1089,7 @@ jobs:
           -DLIBAUDITION_WITH_CLAP=ON
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS=ON
           -DLIBAUDITION_BUILD_EXAMPLES=ON
           -DLIBAUDITION_BUILD_QT_DEMO=ON
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
@@ -1157,7 +1160,7 @@ jobs:
           LIBAUDITION_TEST_CLAP_AUDIO_MODEL: ${{ github.workspace }}/build-clap/clap_audio.onnx
           LIBAUDITION_TEST_CLAP_TEXT_MODEL: ${{ github.workspace }}/build-clap/clap_text.onnx
           LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
-        run: ./build-clap/demo/qt/libaudition_qt_demo --model-self-test=clap
+        run: ctest --test-dir build-clap -R '^qt_real_clap$' --output-on-failure
       - name: Install
         run: cmake --install build-clap --prefix "$PWD/install-clap"
       - name: Verify installed CLAP package from C++17 consumer
@@ -1220,6 +1223,7 @@ jobs:
           -DLIBAUDITION_WITH_AASIST=ON
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS=ON
           -DLIBAUDITION_BUILD_EXAMPLES=ON
           -DLIBAUDITION_BUILD_QT_DEMO=ON
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
@@ -1244,7 +1248,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
-        run: ./build-aasist/demo/qt/libaudition_qt_demo --model-self-test=aasist
+        run: ctest --test-dir build-aasist -R '^qt_real_aasist$' --output-on-failure
       - name: Install
         run: cmake --install build-aasist --prefix "$PWD/install-aasist"
       - name: Verify installed AASIST package from C++17 consumer
