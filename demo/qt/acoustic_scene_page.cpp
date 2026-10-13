@@ -638,21 +638,17 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
         const auto sourcePath = iter->second.wav;
         {
-            const auto annotationPath = sourcePath + ".json";
-            QFile file(annotationPath);
-            if (file.open(QIODevice::ReadOnly)) {
-                const auto json = QJsonDocument::fromJson(file.readAll());
-                if (json.isObject()) {
-                    const auto root = json.object();
-                    const auto rate = static_cast<std::uint32_t>(
-                        root.value("sample_rate_hz").toInt(0));
-                    const qint64 fallbackDuration = static_cast<qint64>(
-                        (iter->second.samples * 1000ULL) / 16000ULL);
-                    soundLane->load(root.value("sounds").toArray(), rate, true,
-                                    fallbackDuration);
-                    speechLane->load(root.value("speech").toArray(), rate, false,
-                                     fallbackDuration);
-                }
+            const auto annotationPath = std::filesystem::path{
+                sourcePath.toStdString() + ".json"};
+            try {
+                const auto timeline = audition::readRecordingTimelineJson(annotationPath);
+                const auto rate = timeline.sampleRateHz();
+                const auto duration = rate == 0 ? 0 :
+                    static_cast<qint64>(iter->second.samples * 1000ULL / rate);
+                soundLane->load(timeline, true, duration);
+                speechLane->load(timeline, false, duration);
+            } catch (const std::exception&) {
+                // WAV playback remains available without a completed sidecar.
             }
         }
         soundLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
