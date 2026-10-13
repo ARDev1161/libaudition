@@ -291,26 +291,26 @@ QWidget* createStreamingAsrPanel(QWidget* parent) {
             const int selectedChannel = channel->value();
             const auto selectedBlock =
                 static_cast<std::size_t>(chunkFrames->value());
-            audition::SherpaStreamingAsrOptions options{};
-            options.model = onlineModel(
+            auto options = std::make_shared<audition::SherpaStreamingAsrOptions>();
+            options->model = onlineModel(
                 modelKind->currentIndex(),
                 primary, decoder, joiner);
-            options.tokens = fsPath(tokens);
-            options.features.sample_rate_hz =
+            options->tokens = fsPath(tokens);
+            options->features.sample_rate_hz =
                 static_cast<std::uint32_t>(sampleRate->value());
-            options.features.feature_dim =
+            options->features.feature_dim =
                 static_cast<std::uint32_t>(featureDim->value());
-            options.enable_endpoint = endpoint->isChecked();
+            options->enable_endpoint = endpoint->isChecked();
 
             runner->start(
                 [wavFile, selectedChannel, selectedBlock,
-                 options = std::move(options)]() -> QString {
+                 options]() -> QString {
                     const auto wav = demo::loadWav(wavFile);
                     auto mono = demo::selectMonoChannel(
                         wav.audio.view(),
                         static_cast<std::size_t>(selectedChannel));
 
-                audition::SherpaStreamingAsr engine{options};
+                audition::SherpaStreamingAsr engine{*options};
                 auto session = engine.createSession();
 
                 std::size_t chunks = 0U;
@@ -430,32 +430,32 @@ QWidget* createKeywordSpotterPanel(QWidget* parent) {
             const int selectedChannel = channel->value();
             const auto selectedBlock =
                 static_cast<std::size_t>(chunkFrames->value());
-            audition::SherpaKeywordSpotterOptions options{};
-            options.model = onlineModel(
+            auto options = std::make_shared<audition::SherpaKeywordSpotterOptions>();
+            options->model = onlineModel(
                 modelKind->currentIndex(),
                 primary, decoder, joiner);
-            options.tokens = fsPath(tokens);
-            options.features.sample_rate_hz =
+            options->tokens = fsPath(tokens);
+            options->features.sample_rate_hz =
                 static_cast<std::uint32_t>(sampleRate->value());
-            options.features.feature_dim =
+            options->features.feature_dim =
                 static_cast<std::uint32_t>(featureDim->value());
-            options.keywords = keywords->text().toStdString();
-            options.keywords_score =
+            options->keywords = keywords->text().toStdString();
+            options->keywords_score =
                 static_cast<float>(score->value());
-            options.keywords_threshold =
+            options->keywords_threshold =
                 static_cast<float>(threshold->value());
-            options.num_trailing_blanks =
+            options->num_trailing_blanks =
                 trailingBlanks->value();
 
             runner->start(
                 [wavFile, selectedChannel, selectedBlock,
-                 options = std::move(options)]() -> QString {
+                 options]() -> QString {
                     const auto wav = demo::loadWav(wavFile);
                     auto mono = demo::selectMonoChannel(
                         wav.audio.view(),
                         static_cast<std::size_t>(selectedChannel));
 
-                audition::SherpaKeywordSpotter spotter{options};
+                audition::SherpaKeywordSpotter spotter{*options};
                 auto session = spotter.createSession();
 
                 std::vector<audition::KeywordHit> hits;
@@ -550,11 +550,11 @@ QWidget* createLanguageIdPanel(QWidget* parent) {
             const auto wavFile = fsPath(wavPath);
             const int selectedChannel = channel->value();
             audition::SherpaLanguageIdOptions options{};
-            options.encoder = fsPath(encoder);
-            options.decoder = fsPath(decoder);
-            options.sample_rate_hz =
+            options->encoder = fsPath(encoder);
+            options->decoder = fsPath(decoder);
+            options->sample_rate_hz =
                 static_cast<std::uint32_t>(sampleRate->value());
-            options.tail_paddings = tailPaddings->value();
+            options->tail_paddings = tailPaddings->value();
 
             runner->start(
                 [wavFile, selectedChannel, options]() -> QString {
@@ -638,16 +638,16 @@ QWidget* createAudioTaggerPanel(QWidget* parent) {
             const int selectedChannel = channel->value();
             audition::SherpaAudioTaggingOptions options{};
             if (family->currentIndex() == 0) {
-                options.model =
+                options->model =
                     audition::SherpaAudioTaggingZipformerModel{
                         fsPath(model)};
             } else {
-                options.model =
+                options->model =
                     audition::SherpaAudioTaggingCedModel{
                         fsPath(model)};
             }
-            options.labels = fsPath(labels);
-            options.top_k = topK->value();
+            options->labels = fsPath(labels);
+            options->top_k = topK->value();
 
             runner->start(
                 [wavFile, selectedChannel, options]() -> QString {
@@ -758,7 +758,7 @@ QWidget* createDenoiserPanel(QWidget* parent) {
             const bool selectedStreaming = mode->currentIndex() != 0;
             audition::SherpaSpeechDenoiserOptions options{};
             if (family->currentIndex() == 0) {
-                options.model = audition::SherpaSpeechDenoiserGtcrnModel{
+                options->model = audition::SherpaSpeechDenoiserGtcrnModel{
                     fsPath(model)};
             } else {
                 audition::SherpaSpeechDenoiserDpdfNetModel dpdf{
@@ -767,7 +767,7 @@ QWidget* createDenoiserPanel(QWidget* parent) {
                     dpdf.attenuation_limit_db =
                         static_cast<float>(attenuation->value());
                 }
-                options.model = dpdf;
+                options->model = dpdf;
             }
 
             runner->start(
