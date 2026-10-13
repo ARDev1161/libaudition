@@ -45,6 +45,14 @@ struct SourceClassificationStatus {
     std::optional<ClassificationResult> result{};
 };
 
+struct CompletedSourceClassification {
+    std::uint64_t source_id{0};
+    std::uint64_t generation{0};
+    std::uint64_t start_sample{0};
+    std::uint64_t end_sample{0};
+    ClassificationResult result{};
+};
+
 // Independent of ALSA, ODAS, Qt, ROS and model implementation.
 // One inference worker. The capture thread never invokes the model.
 // Repeated source IDs are not assumed to be persistent identities.
@@ -62,6 +70,7 @@ public:
     // Concurrent with status(). push() must be called by one capture producer.
     void push(std::uint64_t source_id, const float* samples, std::size_t count);
     [[nodiscard]] SourceClassificationStatus status(std::uint64_t source_id) const;
+    [[nodiscard]] std::vector<CompletedSourceClassification> takeCompleted();
     void forget(std::uint64_t source_id);
 private:
     struct Buffer {
@@ -100,6 +109,7 @@ private:
     std::condition_variable cv_{};
     std::map<std::uint64_t, Buffer> buffers_{};
     std::deque<Job> pending_{};
+    std::deque<CompletedSourceClassification> completed_{};
     std::optional<std::uint64_t> active_source_{};
     std::uint64_t active_generation_{0};
     std::uint64_t next_generation_{1};
