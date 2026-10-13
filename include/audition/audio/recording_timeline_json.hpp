@@ -1,5 +1,7 @@
 #pragma once
 #include <audition/audio/recording_timeline.hpp>
+#include <audition/core/export.hpp>
+#include <string_view>
 #include <iomanip>
 #include <filesystem>
 #include <fstream>
@@ -90,4 +92,9 @@ inline void writeRecordingTimelineJson(const std::filesystem::path& file,
     }
     std::filesystem::rename(pending, file);
 }
+
+// Strict library reader; applications do not need a Qt JSON parser.
+[[nodiscard]] AUDITION_API RecordingTimeline recordingTimelineFromJson(std::string_view json);
+[[nodiscard]] AUDITION_API RecordingTimeline readRecordingTimelineJson(
+    const std::filesystem::path& file);
 } // namespace audition
