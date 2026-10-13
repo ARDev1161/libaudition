@@ -33,11 +33,11 @@ void run(const char* silero, const char* sense, const char* tokens,
     const auto loaded = audition::io::loadWav(speechPath);
     verifyMono16k(loaded.audio);
 
-    audition::SherpaVadOptions options{};
-    options.sample_rate_hz = 16000U;
-    auto& model = std::get<audition::SherpaSileroVadModel>(options.model);
+    auto options = std::make_unique<audition::SherpaVadOptions>();
+    options->sample_rate_hz = 16000U;
+    auto& model = std::get<audition::SherpaSileroVadModel>(options->model);
     model.model = silero;
-    const audition::SherpaVad detector{options};
+    const audition::SherpaVad detector{std::move(*options)};
     auto session = detector.createSession();
     constexpr std::size_t window = 512U;
     constexpr audition::AudioFormat mono{16000U, 1U, audition::AudioLayout::Interleaved};
@@ -64,11 +64,11 @@ void run(const char* silero, const char* sense, const char* tokens,
             throw std::runtime_error("Silero false-positive on reset silence");
     }
 
-    audition::SherpaOfflineAsrOptions asrOptions{};
-    asrOptions.features.sample_rate_hz = 16000U;
-    asrOptions.model = audition::SherpaOfflineSenseVoiceModel{sense, "en", false};
-    asrOptions.tokens = tokens;
-    audition::SherpaOfflineAsr asr{std::move(asrOptions)};
+    auto asrOptions = std::make_unique<audition::SherpaOfflineAsrOptions>();
+    asrOptions->features.sample_rate_hz = 16000U;
+    asrOptions->model = audition::SherpaOfflineSenseVoiceModel{sense, "en", false};
+    asrOptions->tokens = tokens;
+    audition::SherpaOfflineAsr asr{std::move(*asrOptions)};
 
     audition::SpeechSegment segment{};
     segment.segment_id = audition::SpeechSegmentId{73U};
