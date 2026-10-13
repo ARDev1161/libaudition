@@ -205,6 +205,34 @@ std::size_t PerSourceSpeechRuntime::pendingResults(std::uint64_t generation) con
     return it == pending_by_generation_.end() ? 0U : it->second;
 }
 
+std::optional<std::uint64_t> PerSourceSpeechRuntime::activeGeneration(
+    std::uint64_t id) const {
+    std::lock_guard<std::mutex> guard{mutex_};
+    const auto it = tracks_.find(id);
+    if (it == tracks_.end()) return std::nullopt;
+    return it->second.generation;
+}
+
+SourceSpeechDrain PerSourceSpeechRuntime::drainReady() {
+    std::lock_guard<std::mutex> guard{mutex_};
+    SourceSpeechDrain drained{};
+    drained.results.swap(results_);
+    for (const auto generation : retired_generations_) {
+        const auto pending = pending_by_generation_.find(generation);
+        if (pending == pending_by_generation_.end() || pending->second == 0)
+            drained.ready_retired_generations.push_back(generation);
+    }
+    return drained;
+}
+
+void PerSourceSpeechRuntime::completeJobLocked(std::uint64_t generation) {
+    const auto pending = pending_by_generation_.find(generation);
+    if (pending == pending_by_generation_.end()) return;
+    if (pending->second > 0) --pending->second;
+    if (pending->second == 0 && retired_generations_.count(generation) == 0)
+        pending_by_generation_.erase(pending);
+}
+
 void PerSourceSpeechRuntime::releaseRetired(std::uint64_t generation) {
     std::lock_guard<std::mutex> guard{mutex_};
     const auto pending = pending_by_generation_.find(generation);
@@ -216,25 +244,28 @@ void PerSourceSpeechRuntime::releaseRetired(std::uint64_t generation) {
 
 void PerSourceSpeechRuntime::forget(std::uint64_t id) {
     std::lock_guard<std::mutex> guard{mutex_};
-    const auto it = tracks_.find(id);
-    if (it != tracks_.end()) {
-        // Retiring an ODAS track invalidates unfinished audio. Do not enqueue
-        // it and then immediately cancel it as this distorts loss metrics.
-        tracks_.erase(it);
-    }
-    // Retiring a track cancels all pending and in-flight ASR from its generation.
+    const auto current = tracks_.find(id);
+    if (current == tracks_.end()) return;
+    const auto generation = current->second.generation;
+    tracks_.erase(current);
+    // Cancel ONLY the live generation. A previously retired generation with
+    // this numeric ODAS ID must remain eligible for late ASR completion.
     const auto before = jobs_.size();
     jobs_.erase(std::remove_if(jobs_.begin(), jobs_.end(),
-                              [id](const Job& job){return job.track_id == id;}),
-                jobs_.end());
-    dropped_ += before - jobs_.size();
-    for (auto it = pending_by_generation_.begin(); it != pending_by_generation_.end();) {
-        if (it->second == 0) it = pending_by_generation_.erase(it);
-        else ++it;
+        [generation](const Job& job) { return job.generation == generation; }),
+        jobs_.end());
+    const auto cancelled = before - jobs_.size();
+    dropped_ += cancelled;
+    if (auto pending = pending_by_generation_.find(generation);
+        pending != pending_by_generation_.end()) {
+        pending->second -= std::min(pending->second, cancelled);
+        if (pending->second == 0)
+            pending_by_generation_.erase(pending);
     }
     results_.erase(std::remove_if(results_.begin(), results_.end(),
-                                  [id](const SourceSpeechResult& r){return r.track_id == id;}),
-                   results_.end());
+        [generation](const SourceSpeechResult& result) {
+            return result.generation == generation;
+        }), results_.end());
 }
 
 void PerSourceSpeechRuntime::reset() {
@@ -295,19 +326,16 @@ void PerSourceSpeechRuntime::workerLoop() {
                 }
                 ++completed_;
             }
-            if (auto it = pending_by_generation_.find(job.generation);
-                it != pending_by_generation_.end() && it->second > 0) --it->second;
+            completeJobLocked(job.generation);
         } catch (const std::exception& e) {
             std::lock_guard<std::mutex> guard{mutex_};
             error_ = e.what();
-            if (auto it = pending_by_generation_.find(job.generation);
-                it != pending_by_generation_.end() && it->second > 0) --it->second;
+            completeJobLocked(job.generation);
             ++dropped_;
         } catch (...) {
             std::lock_guard<std::mutex> guard{mutex_};
             error_ = "Unknown ASR exception";
-            if (auto it = pending_by_generation_.find(job.generation);
-                it != pending_by_generation_.end() && it->second > 0) --it->second;
+            completeJobLocked(job.generation);
             ++dropped_;
         }
     }
