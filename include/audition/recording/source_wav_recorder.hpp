@@ -1,5 +1,8 @@
 #pragma once
 #include <algorithm>
+#include <audition/io/wav_io.hpp>
+#include <memory>
+#include <set>
 #include <array>
 #include <limits>
 #include <atomic>
@@ -156,39 +159,17 @@ private:
         std::uint64_t start_sample{0};
         std::vector<std::int16_t> pcm;
     };
-    struct File { std::ofstream stream; std::uint64_t samples{0}; };
-    static void u16(std::ostream& f, std::uint16_t v) {
-        f.put(static_cast<char>(v)); f.put(static_cast<char>(v >> 8));
-    }
-    static void u32(std::ostream& f, std::uint32_t v) {
-        u16(f, static_cast<std::uint16_t>(v));
-        u16(f, static_cast<std::uint16_t>(v >> 16));
-    }
-    void header(File& f) {
-        auto& out = f.stream;
-        const auto pos = out.tellp();
-        out.seekp(0);
-        const auto bytes = static_cast<std::uint32_t>(std::min<std::uint64_t>(
-            f.samples * 2, 0xffffffffULL - 36));
-        out.write("RIFF", 4); u32(out, 36 + bytes);
-        out.write("WAVEfmt ", 8); u32(out, 16);
-        u16(out, 1); u16(out, 1); u32(out, rate_); u32(out, rate_ * 2);
-        u16(out, 2); u16(out, 16); out.write("data", 4); u32(out, bytes);
-        out.seekp(pos < std::streampos(44) ? std::streampos(44) : pos);
-        out.flush();
-    }
+    struct File {
+        std::unique_ptr<audition::io::StreamingPcm16WavWriter> writer;
+        std::uint64_t samples{0};
+    };
     static void fillSilence(File& file, std::uint64_t count) {
-        const std::array<char, 8192> silence{};
-        while (count) {
-            const auto chunk = std::min<std::uint64_t>(count, silence.size() / 2);
-            file.stream.write(silence.data(), static_cast<std::streamsize>(chunk * 2));
-            if (!file.stream) throw std::runtime_error("WAV silence write failed");
-            file.samples += chunk;
-            count -= chunk;
-        }
+        file.writer->appendSilence(count);
+        file.samples = file.writer->sampleCount();
     }
     void run() noexcept {
         std::map<std::uint64_t, File> files;
+        std::set<std::uint64_t> failedFiles;
         for (;;) {
             Command cmd;
             Entry meta;
@@ -205,13 +186,14 @@ private:
                 meta = entries_[cmd.id];
             }
             try {
+                if (failedFiles.count(cmd.id)) continue;
                 const auto ensureFile = [&]() -> File& {
                     auto it = files.find(cmd.id);
                     if (it == files.end()) {
                         File file;
-                        file.stream.open(meta.path, std::ios::binary | std::ios::trunc);
-                        if (!file.stream) throw std::runtime_error("Cannot open source WAV");
-                        header(file);
+                        file.writer =
+                            std::make_unique<audition::io::StreamingPcm16WavWriter>(
+                                meta.path, rate_);
                         it = files.emplace(cmd.id, std::move(file)).first;
                     }
                     return it->second;
@@ -220,7 +202,7 @@ private:
                     auto& file = ensureFile();
                     if (meta.expected_samples > file.samples)
                         fillSilence(file, meta.expected_samples - file.samples);
-                    header(file);
+                    file.writer->finish();
                     const auto written = file.samples;
                     files.erase(cmd.id);
                     std::lock_guard<std::mutex> lock(mu_);
@@ -230,15 +212,20 @@ private:
                 auto& f = ensureFile();
                 if (cmd.start_sample > f.samples)
                     fillSilence(f, cmd.start_sample - f.samples);
-                for (auto sample : cmd.pcm) u16(f.stream, static_cast<std::uint16_t>(sample));
-                if (!f.stream) { ++dropped_; files.erase(cmd.id); continue; }
-                f.samples += cmd.pcm.size();
-                if (f.samples % rate_ < cmd.pcm.size()) header(f);
+                f.writer->append(cmd.pcm.data(), cmd.pcm.size());
+                f.samples = f.writer->sampleCount();
                 std::lock_guard<std::mutex> lock(mu_);
                 entries_[cmd.id].samples = f.samples;
-            } catch (...) { ++dropped_; }
+            } catch (...) {
+                ++dropped_;
+                failedFiles.insert(cmd.id);
+                // Do not reopen failed files with truncation on later chunks.
+                files.erase(cmd.id);
+            }
         }
-        for (auto& p : files) { try { header(p.second); } catch (...) {} }
+        for (auto& p : files) {
+            try { p.second.writer->finish(); } catch (...) { ++dropped_; }
+        }
     }
     std::filesystem::path dir_;
     std::uint32_t rate_;
