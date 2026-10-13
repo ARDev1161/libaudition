@@ -144,3 +144,42 @@ if(LIBAUDITION_WITH_CLAP AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(libaudition_qt_demo PRIVATE
         -Wno-error=maybe-uninitialized)
 endif()
+
+# Headless application checks are first-class CTest cases, reusable by local
+# developers and CI. Keep model-weight dependent tests out of this basic suite.
+if(LIBAUDITION_BUILD_TESTS)
+    function(libaudition_add_qt_check name argument)
+        add_test(NAME "qt_${name}"
+            COMMAND $<TARGET_FILE:libaudition_qt_demo> "${argument}")
+        set_tests_properties("qt_${name}" PROPERTIES
+            LABELS "qt;qt-smoke"
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+            TIMEOUT 120)
+    endfunction()
+
+    libaudition_add_qt_check(self_test --self-test)
+    libaudition_add_qt_check(playback_lifecycle --model-self-test=playback-lifecycle)
+    libaudition_add_qt_check(source_track_lifecycle --model-self-test=source-track-lifecycle)
+    libaudition_add_qt_check(live_source_tagging_errors --model-self-test=live-source-tagging-errors)
+    if(LIBAUDITION_WITH_ODAS)
+        libaudition_add_qt_check(odas_errors --model-self-test=odas-errors)
+        if(ALSA_FOUND)
+            libaudition_add_qt_check(alsa_errors --model-self-test=alsa-errors)
+        endif()
+    endif()
+    if(LIBAUDITION_WITH_LIBSAMPLERATE)
+        libaudition_add_qt_check(samplerate --model-self-test=samplerate)
+    endif()
+    if(LIBAUDITION_WITH_WEBRTC_AEC3)
+        libaudition_add_qt_check(aec3 --model-self-test=aec3)
+    endif()
+    if(LIBAUDITION_WITH_SHERPA)
+        libaudition_add_qt_check(sherpa_errors --model-self-test=sherpa-errors)
+    endif()
+    if(LIBAUDITION_WITH_WORLD)
+        libaudition_add_qt_check(world --model-self-test=world)
+    endif()
+    if(LIBAUDITION_WITH_GTSAM)
+        libaudition_add_qt_check(gtsam --model-self-test=gtsam)
+    endif()
+endif()
