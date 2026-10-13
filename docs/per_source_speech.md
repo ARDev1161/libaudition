@@ -196,13 +196,11 @@ timestamps remain relative to the **original WAV**.
 
 Important limits: SenseVoice generally supplies utterance-level text, not
 word-aligned timing, so speech labels cover genuine VAD/ASR segments without
-inventing per-word offsets. Retiring a source cancels outstanding ASR jobs in
-the current `PerSourceSpeechRuntime` design; cancelled/incomplete utterances
-cannot be saved. Audio dropped by the bounded recorder also means inference
-sample offsets may diverge from the physically written WAV. The JSON is
-written on retirement or at shutdown, not continuously streamed for active
-tracks. Standalone model-neutral JSON *reading* is not yet implemented in
-the library; the Qt demo reads the sidecar using Qt JSON facilities.
+inventing per-word offsets. The asynchronous `retire()` drains final ASR utterances by generation,
+although shutdown still applies a 10-second deadline. Audio dropped by the bounded recorder also means inference
+sample offsets may diverge from the physically written WAV. The JSON is written on retirement or at shutdown, not continuously streamed
+for active tracks. The installed library supports strict C++17 JSON loading
+via `audition::readRecordingTimelineJson`; Qt reads this typed API.
 
 ## Draining ASR when an ODAS track retires
 
@@ -223,3 +221,38 @@ On capture shutdown it allows up to 10 seconds for outstanding ASR results
 before writing final sidecars; long-running inference may still be lost at
 this deadline. The existing `forget()` and `reset()` remain cancellation
 APIs for callers that intentionally discard unfinished work.
+
+## Recording subsystem extraction (PR #55 architecture review)
+
+Reusable modules **in installed library**, not the demo:
+
+- `audition::io`: load/save WAV, `StreamingPcm16WavWriter`,
+  `normalizePcm16Wav()` (two-pass bounded-memory normalization),
+  plus versioned timeline JSON reader/writer.
+- `audition::recording::SourceWavRecorder`: independent PCM16 disk
+  worker, bounded queue budget and per-source recording generations.
+  The default 256-MiB budget is **queued audio**, not a 256-MiB maximum
+  lifetime/session size. When a chunk is dropped under backpressure, its
+  sample-time interval is zero-filled in the WAV and represented as a
+  `gaps[]` annotation. The standard RIFF 4-GiB per-file ceiling remains.
+- `audition::recording::SourceRecordingSession`: generation-qualified
+  ASR results, independent sound-window and speech timelines,
+  audio-gap annotations, sidecar persistence and deduplication.
+  Errors saving a sidecar are reported through `persistenceError()`,
+  without aborting the live source capture.
+- `audition::pipeline::SourceTrackLifecycle`, `audition::dsp::StreamingLevelMeter`
+  and `audition::makeFastRefinedWindowPolicy`.
+- `SourceClassificationRuntime::takeCompleted()` and progressive
+  equivalent provide actual completed inference windows independently of
+  GUI repaint intervals. Returned event queues are bounded; completed
+  events may be discarded if the client cannot drain them fast enough.
+
+The Qt demo now owns only host ALSA capture, model-specific setup,
+`QMediaPlayer`, synchronized lane rendering, and playback interaction.
+Its WAV normalization runs via `QtConcurrent` rather than blocking GUI.
+
+A mono source that remains active beyond the RIFF maximum must be retired/
+rotated by the host before reaching the 4-GiB file limit. Out-of-disk errors
+and a process crash can still prevent the very last annotation save;
+full periodic journal durability and hardware SIGSEGV verification remain
+explicit acceptance work, not guarantees of this refactor.
