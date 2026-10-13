@@ -8,6 +8,7 @@
 
 #include <QByteArray>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDialog>
 #include <QPointer>
 #include <QSlider>
