@@ -346,9 +346,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_SHERPA
             if (speech_runtime) {
                 const auto generation = speech_runtime->retire(trackId);
-                if (generation && recordingId != 0) {
+                if (generation) {
                     retiredAsrRecordingIds[*generation] = recordingId;
-                    waitForAsr = true;
+                    waitForAsr = recordingId != 0;
                 }
                 transcripts.erase(trackId);
             }
@@ -358,7 +358,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_SHERPA
         const auto drainAsr = [&]() {
             if (!speech_runtime) return;
-            for (auto& result : speech_runtime->takeResults()) {
+            auto drain = speech_runtime->drainReady();
+            for (auto& result : drain.results) {
                 std::uint64_t recordingId = 0;
                 const auto retired = retiredAsrRecordingIds.find(result.generation);
                 if (retired != retiredAsrRecordingIds.end()) {
@@ -367,8 +368,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     // Active generation results can only be matched by the
                     // still-live source, never a retired generation.
                     const auto active = trackRecordingIds.find(result.track_id);
+                    const auto currentGen = speech_runtime->activeGeneration(result.track_id);
                     if (active != trackRecordingIds.end() &&
-                        speech_runtime->trackStatus(result.track_id).exists)
+                        currentGen && *currentGen == result.generation)
                         recordingId = active->second;
                 }
                 if (recordingId != 0 && timelines.count(recordingId) != 0) {
@@ -381,16 +383,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                             result.transcript.text, result.transcript.language});
                     }
                 }
-                if (retired == retiredAsrRecordingIds.end())
+                if (retired == retiredAsrRecordingIds.end() && recordingId != 0)
                     transcripts[result.track_id] = std::move(result.transcript.text);
             }
-            for (auto it = retiredAsrRecordingIds.begin();
-                 it != retiredAsrRecordingIds.end();) {
-                if (speech_runtime->pendingResults(it->first) == 0) {
-                    releaseTimeline(it->second);
-                    speech_runtime->releaseRetired(it->first);
-                    it = retiredAsrRecordingIds.erase(it);
-                } else ++it;
+            // Ready generations and results were sampled under one lock:
+            // a just-finished job cannot be missed between separate polls.
+            for (const auto generation : drain.ready_retired_generations) {
+                const auto it = retiredAsrRecordingIds.find(generation);
+                if (it == retiredAsrRecordingIds.end()) continue;
+                if (it->second != 0) releaseTimeline(it->second);
+                speech_runtime->releaseRetired(generation);
+                retiredAsrRecordingIds.erase(it);
             }
         };
 #endif
