@@ -5,6 +5,7 @@
 #include "wav_io.hpp"
 #include "playback_normalizer.hpp"
 #include "recording_timeline_view.hpp"
+#include <audition/audio/recording_timeline_json.hpp>
 
 #if LIBAUDITION_DEMO_HAS_ODAS
 #include <audition/backends/odas.hpp>
