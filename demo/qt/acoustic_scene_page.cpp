@@ -213,6 +213,234 @@ QString directionSummary(const AcousticSceneTrack& track) {
 }
 }  // namespace
 
+QDialog* createRecordingPlaybackDialog(
+    QWidget* parent, std::uint64_t id, const QString& sourcePath,
+    std::uint64_t sampleCount) {
+        auto* dialog = new QDialog(parent);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setObjectName("recordingPlaybackDialog");
+        dialog->setWindowTitle(QString("Source #%1 recording").arg(id));
+        dialog->resize(680, 365);
+        auto* column = new QVBoxLayout(dialog);
+        auto* playback = new QPushButton{"Play", dialog};
+        auto* progress = new QSlider(Qt::Horizontal, dialog);
+        progress->setRange(0, 0);
+        progress->setObjectName("recordingPlaybackProgress");
+        auto* times = new QLabel{"00:00 / 00:00", dialog};
+        auto* volume = new QSlider(Qt::Horizontal, dialog);
+        volume->setRange(0, 100);
+        volume->setValue(75);
+        auto* normalize = new QCheckBox{"Auto normalize (-3 dBFS peak)", dialog};
+        normalize->setChecked(true);
+        normalize->setObjectName("recordingPlaybackNormalize");
+        auto* gainLabel = new QLabel{"", dialog};
+        auto* soundTitle = new QLabel{"Sound events / classifier", dialog};
+        auto* soundLane = new demo::RecordingTimelineView(dialog);
+        auto* speechTitle = new QLabel{"Transcript / ASR", dialog};
+        auto* speechLane = new demo::RecordingTimelineView(dialog);
+        column->addWidget(soundTitle);
+        column->addWidget(soundLane);
+        column->addWidget(speechTitle);
+        column->addWidget(speechLane);
+        column->addWidget(normalize);
+        column->addWidget(gainLabel);
+        column->addWidget(playback);
+        column->addWidget(progress);
+        column->addWidget(times);
+        auto* volumeRow = new QHBoxLayout;
+        volumeRow->addWidget(new QLabel{"Volume", dialog});
+        volumeRow->addWidget(volume);
+        column->addLayout(volumeRow);
+#if LIBAUDITION_DEMO_HAS_MULTIMEDIA
+        auto* media = new QMediaPlayer(dialog);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        auto* output = new QAudioOutput(dialog);
+        media->setAudioOutput(output);
+        output->setVolume(0.75f);
+        QObject::connect(volume, &QSlider::valueChanged, dialog,
+                         [output](int v) { output->setVolume(static_cast<float>(v) / 100.0f); });
+        media->setSource(QUrl::fromLocalFile(sourcePath));
+        QObject::connect(media, &QMediaPlayer::playbackStateChanged, dialog,
+                         [playback](QMediaPlayer::PlaybackState state) {
+                             playback->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+                         });
+#else
+        media->setVolume(75);
+        QObject::connect(volume, &QSlider::valueChanged, media, &QMediaPlayer::setVolume);
+        media->setMedia(QUrl::fromLocalFile(iter->second.wav));
+        QObject::connect(media, &QMediaPlayer::stateChanged, dialog,
+                         [playback](QMediaPlayer::State state) {
+                             playback->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+                         });
+#endif
+        QObject::connect(playback, &QPushButton::clicked, dialog, [media]() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            if (media->playbackState() == QMediaPlayer::PlayingState) media->pause();
+#else
+            if (media->state() == QMediaPlayer::PlayingState) media->pause();
+#endif
+            else media->play();
+        });
+        QObject::connect(media, &QMediaPlayer::durationChanged, dialog,
+                         [progress, times](qint64 duration) {
+                             progress->setMaximum(static_cast<int>(duration));
+                             times->setText(QString("00:00 / %1:%2")
+                                 .arg(duration / 60000, 2, 10, QChar('0'))
+                                 .arg((duration / 1000) % 60, 2, 10, QChar('0')));
+                         });
+        QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
+                         [progress, times, media](qint64 pos) {
+                             if (!progress->isSliderDown()) progress->setValue(static_cast<int>(pos));
+                             const auto duration = media->duration();
+                             times->setText(QString("%1:%2 / %3:%4")
+                                 .arg(pos / 60000, 2, 10, QChar('0'))
+                                 .arg((pos / 1000) % 60, 2, 10, QChar('0'))
+                                 .arg(duration / 60000, 2, 10, QChar('0'))
+                                 .arg((duration / 1000) % 60, 2, 10, QChar('0')));
+                         });
+        QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
+        const auto sourcePath = iter->second.wav;
+        {
+            const auto annotationPath = std::filesystem::path{
+                sourcePath.toStdString() + ".json"};
+            try {
+                const auto timeline = audition::readRecordingTimelineJson(annotationPath);
+                const auto rate = timeline.sampleRateHz();
+                const auto duration = rate == 0 ? 0 :
+                    static_cast<qint64>(sampleCount * 1000ULL / rate);
+                soundLane->load(timeline, true, duration);
+                speechLane->load(timeline, false, duration);
+            } catch (const std::exception&) {
+                // WAV playback remains available without a completed sidecar.
+            }
+        }
+        soundLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
+        speechLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
+        QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
+                         [soundLane, speechLane](qint64 pos) {
+            soundLane->setPosition(pos);
+            speechLane->setPosition(pos);
+        });
+        struct PlaybackFiles {
+            std::mutex mutex;
+            bool closed{false};
+            QStringList files;
+            QString cached;
+            double cached_gain{0};
+        };
+        auto temporaryPlaybackFiles = std::make_shared<PlaybackFiles>();
+        QObject::connect(dialog, &QDialog::finished, dialog,
+                         [media, temporaryPlaybackFiles](int) {
+            media->stop();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            media->setSource(QUrl{});
+#else
+            media->setMedia(QMediaContent{});
+#endif
+            std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+            temporaryPlaybackFiles->closed = true;
+            for (const auto& path : temporaryPlaybackFiles->files)
+                QFile::remove(path);
+            temporaryPlaybackFiles->files.clear();
+        });
+        // Destroyed can run without QDialog::finished when the parent page
+        // is torn down. Never let an in-flight normalization orphan its output.
+        QObject::connect(dialog, &QObject::destroyed,
+                         [temporaryPlaybackFiles](QObject*) {
+            std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+            temporaryPlaybackFiles->closed = true;
+            for (const auto& path : temporaryPlaybackFiles->files)
+                QFile::remove(path);
+            temporaryPlaybackFiles->files.clear();
+        });
+        const auto changeMedia = [media](const QString& path) {
+            const auto previousPosition = media->position();
+            const bool wasPlaying =
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                media->playbackState() == QMediaPlayer::PlayingState;
+#else
+                media->state() == QMediaPlayer::PlayingState;
+#endif
+            media->stop();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            media->setSource(QUrl::fromLocalFile(path));
+#else
+            media->setMedia(QUrl::fromLocalFile(path));
+#endif
+            media->setPosition(previousPosition);
+            if (wasPlaying) media->play();
+        };
+        const auto applyNormalization = [=]() {
+            if (!normalize->isChecked()) {
+                changeMedia(sourcePath);
+                gainLabel->setText("Original recording (no gain)");
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+                if (!temporaryPlaybackFiles->cached.isEmpty()) {
+                    changeMedia(temporaryPlaybackFiles->cached);
+                    gainLabel->setText(QString("Applied gain: +%1 dB")
+                        .arg(temporaryPlaybackFiles->cached_gain, 0, 'f', 1));
+                    return;
+                }
+            }
+            // Both passes run on the Qt worker pool: never scan or rewrite a
+            // long WAV from the GUI thread. This dialog has one in-flight task.
+            normalize->setEnabled(false);
+            gainLabel->setText("Preparing normalized playback...");
+            auto* watcher = new QFutureWatcher<demo::NormalizedWav>(dialog);
+            QObject::connect(watcher, &QFutureWatcher<demo::NormalizedWav>::finished,
+                             dialog, [=]() {
+                normalize->setEnabled(true);
+                try {
+                    const auto result = watcher->result();
+                    bool closed = false;
+                    {
+                        std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+                        closed = temporaryPlaybackFiles->closed;
+                    }
+                    if (!closed && normalize->isChecked()) {
+                        changeMedia(QString::fromStdString(result.path.string()));
+                        gainLabel->setText(QString("Applied gain: +%1 dB")
+                            .arg(result.gain_db, 0, 'f', 1));
+                    }
+                } catch (const std::exception& error) {
+                    gainLabel->setText(QString("Normalization failed: ") +
+                                       QString::fromUtf8(error.what()));
+                    const QSignalBlocker blocker(normalize);
+                    normalize->setChecked(false);
+                }
+                watcher->deleteLater();
+            });
+            watcher->setFuture(QtConcurrent::run(
+                [sourcePath, temporaryPlaybackFiles]() {
+                    const auto result = demo::normalizePlaybackWav(
+                        std::filesystem::path{sourcePath.toStdString()});
+                    const auto path = QString::fromStdString(result.path.string());
+                    std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+                    if (temporaryPlaybackFiles->closed) {
+                        QFile::remove(path);
+                    } else {
+                        temporaryPlaybackFiles->files.append(path);
+                        temporaryPlaybackFiles->cached = path;
+                        temporaryPlaybackFiles->cached_gain = result.gain_db;
+                    }
+                    return result;
+                }));
+        };
+        QObject::connect(normalize, &QCheckBox::toggled, dialog,
+                         [applyNormalization](bool) { applyNormalization(); });
+        applyNormalization();
+        if (!normalize->isChecked()) media->play();
+#else
+        playback->setEnabled(false);
+        times->setText("Playback requires Qt Multimedia development libraries");
+#endif
+        dialog->show();
+        return dialog;
+}
+
 QWidget* createAcousticScenePage(QWidget* parent) {
     auto* page = new QWidget{parent};
     page->setObjectName("acousticScenePage");
@@ -558,227 +786,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         const auto item = tracks->item(selectedRows.first().row(), 0);
         if (!item) return;
         const auto id = item->data(Qt::UserRole).toULongLong();
-        auto iter = history->find(id);
+        const auto iter = history->find(id);
         if (iter == history->end() || iter->second.wav.isEmpty()) return;
-        auto* dialog = new QDialog(page);
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-        dialog->setWindowTitle(QString("Source #%1 recording").arg(id));
-        dialog->resize(680, 365);
-        auto* column = new QVBoxLayout(dialog);
-        auto* playback = new QPushButton{"Play", dialog};
-        auto* progress = new QSlider(Qt::Horizontal, dialog);
-        progress->setRange(0, 0);
-        auto* times = new QLabel{"00:00 / 00:00", dialog};
-        auto* volume = new QSlider(Qt::Horizontal, dialog);
-        volume->setRange(0, 100);
-        volume->setValue(75);
-        auto* normalize = new QCheckBox{"Auto normalize (-3 dBFS peak)", dialog};
-        normalize->setChecked(true);
-        auto* gainLabel = new QLabel{"", dialog};
-        auto* soundTitle = new QLabel{"Sound events / classifier", dialog};
-        auto* soundLane = new demo::RecordingTimelineView(dialog);
-        auto* speechTitle = new QLabel{"Transcript / ASR", dialog};
-        auto* speechLane = new demo::RecordingTimelineView(dialog);
-        column->addWidget(soundTitle);
-        column->addWidget(soundLane);
-        column->addWidget(speechTitle);
-        column->addWidget(speechLane);
-        column->addWidget(normalize);
-        column->addWidget(gainLabel);
-        column->addWidget(playback);
-        column->addWidget(progress);
-        column->addWidget(times);
-        auto* volumeRow = new QHBoxLayout;
-        volumeRow->addWidget(new QLabel{"Volume", dialog});
-        volumeRow->addWidget(volume);
-        column->addLayout(volumeRow);
-#if LIBAUDITION_DEMO_HAS_MULTIMEDIA
-        auto* media = new QMediaPlayer(dialog);
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        auto* output = new QAudioOutput(dialog);
-        media->setAudioOutput(output);
-        output->setVolume(0.75f);
-        QObject::connect(volume, &QSlider::valueChanged, dialog,
-                         [output](int v) { output->setVolume(static_cast<float>(v) / 100.0f); });
-        media->setSource(QUrl::fromLocalFile(iter->second.wav));
-        QObject::connect(media, &QMediaPlayer::playbackStateChanged, dialog,
-                         [playback](QMediaPlayer::PlaybackState state) {
-                             playback->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
-                         });
-#else
-        media->setVolume(75);
-        QObject::connect(volume, &QSlider::valueChanged, media, &QMediaPlayer::setVolume);
-        media->setMedia(QUrl::fromLocalFile(iter->second.wav));
-        QObject::connect(media, &QMediaPlayer::stateChanged, dialog,
-                         [playback](QMediaPlayer::State state) {
-                             playback->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
-                         });
-#endif
-        QObject::connect(playback, &QPushButton::clicked, dialog, [media]() {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            if (media->playbackState() == QMediaPlayer::PlayingState) media->pause();
-#else
-            if (media->state() == QMediaPlayer::PlayingState) media->pause();
-#endif
-            else media->play();
-        });
-        QObject::connect(media, &QMediaPlayer::durationChanged, dialog,
-                         [progress, times](qint64 duration) {
-                             progress->setMaximum(static_cast<int>(duration));
-                             times->setText(QString("00:00 / %1:%2")
-                                 .arg(duration / 60000, 2, 10, QChar('0'))
-                                 .arg((duration / 1000) % 60, 2, 10, QChar('0')));
-                         });
-        QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
-                         [progress, times, media](qint64 pos) {
-                             if (!progress->isSliderDown()) progress->setValue(static_cast<int>(pos));
-                             const auto duration = media->duration();
-                             times->setText(QString("%1:%2 / %3:%4")
-                                 .arg(pos / 60000, 2, 10, QChar('0'))
-                                 .arg((pos / 1000) % 60, 2, 10, QChar('0'))
-                                 .arg(duration / 60000, 2, 10, QChar('0'))
-                                 .arg((duration / 1000) % 60, 2, 10, QChar('0')));
-                         });
-        QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
-        const auto sourcePath = iter->second.wav;
-        {
-            const auto annotationPath = std::filesystem::path{
-                sourcePath.toStdString() + ".json"};
-            try {
-                const auto timeline = audition::readRecordingTimelineJson(annotationPath);
-                const auto rate = timeline.sampleRateHz();
-                const auto duration = rate == 0 ? 0 :
-                    static_cast<qint64>(iter->second.samples * 1000ULL / rate);
-                soundLane->load(timeline, true, duration);
-                speechLane->load(timeline, false, duration);
-            } catch (const std::exception&) {
-                // WAV playback remains available without a completed sidecar.
-            }
-        }
-        soundLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
-        speechLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
-        QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
-                         [soundLane, speechLane](qint64 pos) {
-            soundLane->setPosition(pos);
-            speechLane->setPosition(pos);
-        });
-        struct PlaybackFiles {
-            std::mutex mutex;
-            bool closed{false};
-            QStringList files;
-            QString cached;
-            double cached_gain{0};
-        };
-        auto temporaryPlaybackFiles = std::make_shared<PlaybackFiles>();
-        QObject::connect(dialog, &QDialog::finished, dialog,
-                         [media, temporaryPlaybackFiles](int) {
-            media->stop();
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            media->setSource(QUrl{});
-#else
-            media->setMedia(QMediaContent{});
-#endif
-            std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
-            temporaryPlaybackFiles->closed = true;
-            for (const auto& path : temporaryPlaybackFiles->files)
-                QFile::remove(path);
-            temporaryPlaybackFiles->files.clear();
-        });
-        // Destroyed can run without QDialog::finished when the parent page
-        // is torn down. Never let an in-flight normalization orphan its output.
-        QObject::connect(dialog, &QObject::destroyed,
-                         [temporaryPlaybackFiles](QObject*) {
-            std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
-            temporaryPlaybackFiles->closed = true;
-            for (const auto& path : temporaryPlaybackFiles->files)
-                QFile::remove(path);
-            temporaryPlaybackFiles->files.clear();
-        });
-        const auto changeMedia = [media](const QString& path) {
-            const auto previousPosition = media->position();
-            const bool wasPlaying =
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-                media->playbackState() == QMediaPlayer::PlayingState;
-#else
-                media->state() == QMediaPlayer::PlayingState;
-#endif
-            media->stop();
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            media->setSource(QUrl::fromLocalFile(path));
-#else
-            media->setMedia(QUrl::fromLocalFile(path));
-#endif
-            media->setPosition(previousPosition);
-            if (wasPlaying) media->play();
-        };
-        const auto applyNormalization = [=]() {
-            if (!normalize->isChecked()) {
-                changeMedia(sourcePath);
-                gainLabel->setText("Original recording (no gain)");
-                return;
-            }
-            {
-                std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
-                if (!temporaryPlaybackFiles->cached.isEmpty()) {
-                    changeMedia(temporaryPlaybackFiles->cached);
-                    gainLabel->setText(QString("Applied gain: +%1 dB")
-                        .arg(temporaryPlaybackFiles->cached_gain, 0, 'f', 1));
-                    return;
-                }
-            }
-            // Both passes run on the Qt worker pool: never scan or rewrite a
-            // long WAV from the GUI thread. This dialog has one in-flight task.
-            normalize->setEnabled(false);
-            gainLabel->setText("Preparing normalized playback...");
-            auto* watcher = new QFutureWatcher<demo::NormalizedWav>(dialog);
-            QObject::connect(watcher, &QFutureWatcher<demo::NormalizedWav>::finished,
-                             dialog, [=]() {
-                normalize->setEnabled(true);
-                try {
-                    const auto result = watcher->result();
-                    bool closed = false;
-                    {
-                        std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
-                        closed = temporaryPlaybackFiles->closed;
-                    }
-                    if (!closed && normalize->isChecked()) {
-                        changeMedia(QString::fromStdString(result.path.string()));
-                        gainLabel->setText(QString("Applied gain: +%1 dB")
-                            .arg(result.gain_db, 0, 'f', 1));
-                    }
-                } catch (const std::exception& error) {
-                    gainLabel->setText(QString("Normalization failed: ") +
-                                       QString::fromUtf8(error.what()));
-                    const QSignalBlocker blocker(normalize);
-                    normalize->setChecked(false);
-                }
-                watcher->deleteLater();
-            });
-            watcher->setFuture(QtConcurrent::run(
-                [sourcePath, temporaryPlaybackFiles]() {
-                    const auto result = demo::normalizePlaybackWav(
-                        std::filesystem::path{sourcePath.toStdString()});
-                    const auto path = QString::fromStdString(result.path.string());
-                    std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
-                    if (temporaryPlaybackFiles->closed) {
-                        QFile::remove(path);
-                    } else {
-                        temporaryPlaybackFiles->files.append(path);
-                        temporaryPlaybackFiles->cached = path;
-                        temporaryPlaybackFiles->cached_gain = result.gain_db;
-                    }
-                    return result;
-                }));
-        };
-        QObject::connect(normalize, &QCheckBox::toggled, dialog,
-                         [applyNormalization](bool) { applyNormalization(); });
-        applyNormalization();
-        media->play();
-#else
-        playback->setEnabled(false);
-        times->setText("Playback requires Qt Multimedia development libraries");
-#endif
-        dialog->show();
+        createRecordingPlaybackDialog(page, id,
+            iter->second.wav, iter->second.samples);
     });
 
     auto display = [=](const std::vector<AcousticSceneTrack>& values) {
