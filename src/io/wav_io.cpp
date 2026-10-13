@@ -366,4 +366,86 @@ audition::AudioBuffer selectMonoChannel(
         audio.sequenceNumber()};
 }
 
+StreamingPcm16WavWriter::StreamingPcm16WavWriter(
+    const std::filesystem::path& path, std::uint32_t rate, std::uint16_t channels)
+    : stream_{path, std::ios::binary | std::ios::trunc},
+      rate_(rate), channels_(channels) {
+    if (!rate_ || !channels_ ||
+        static_cast<std::uint64_t>(rate_) * channels_ * 2ULL >
+            std::numeric_limits<std::uint32_t>::max())
+        throw std::invalid_argument("Invalid streaming WAV audio format");
+    if (!stream_) throw std::runtime_error("Unable to create streaming WAV");
+    writeHeader();
+}
+StreamingPcm16WavWriter::~StreamingPcm16WavWriter() noexcept {
+    try { if (!finished_) finish(); } catch (...) {}
+}
+void StreamingPcm16WavWriter::writeHeader() {
+    constexpr std::uint64_t maxBytes = 0xffffffffULL - 36ULL;
+    if (samples_ > maxBytes / 2ULL)
+        throw std::overflow_error("RIFF WAV 4GiB limit exceeded");
+    const auto position = stream_.tellp();
+    stream_.seekp(0);
+    stream_.write("RIFF", 4);
+    const auto bytes = static_cast<std::uint32_t>(samples_ * 2ULL);
+    writeU32(stream_, 36U + bytes);
+    stream_.write("WAVEfmt ", 8);
+    writeU32(stream_, 16);
+    writeU16(stream_, 1);
+    writeU16(stream_, channels_);
+    writeU32(stream_, rate_);
+    writeU32(stream_, rate_ * static_cast<std::uint32_t>(channels_) * 2U);
+    writeU16(stream_, static_cast<std::uint16_t>(channels_ * 2U));
+    writeU16(stream_, 16);
+    stream_.write("data", 4);
+    writeU32(stream_, bytes);
+    stream_.seekp(position < std::streampos(44) ? std::streampos(44) : position);
+    if (!stream_) throw std::runtime_error("Cannot write streaming WAV header");
+}
+void StreamingPcm16WavWriter::append(
+    const std::int16_t* pcm, std::size_t sample_count) {
+    if (finished_ || (sample_count && !pcm) ||
+        sample_count % channels_ != 0U)
+        throw std::invalid_argument("Invalid PCM16 streaming append");
+    constexpr std::uint64_t maxSamples = (0xffffffffULL - 36ULL) / 2ULL;
+    if (sample_count > maxSamples - samples_)
+        throw std::overflow_error("RIFF WAV 4GiB limit exceeded");
+    for (std::size_t i = 0; i < sample_count; ++i)
+        writeU16(stream_, static_cast<std::uint16_t>(pcm[i]));
+    if (!stream_) throw std::runtime_error("Cannot append WAV PCM");
+    samples_ += sample_count;
+    // Keep WAV playable while recording; update header at least once per second.
+    if (samples_ % rate_ < sample_count) flushHeader();
+}
+void StreamingPcm16WavWriter::appendSilence(std::uint64_t count) {
+    if (finished_ || count % channels_ != 0ULL)
+        throw std::invalid_argument("Invalid WAV silence append");
+    constexpr std::uint64_t maxSamples = (0xffffffffULL - 36ULL) / 2ULL;
+    if (count > maxSamples - samples_)
+        throw std::overflow_error("RIFF WAV 4GiB limit exceeded");
+    constexpr std::size_t chunkSamples = 4096U;
+    const std::array<char, chunkSamples * 2> silence{};
+    while (count > 0) {
+        const auto take = std::min<std::uint64_t>(count, chunkSamples);
+        stream_.write(silence.data(), static_cast<std::streamsize>(take * 2ULL));
+        if (!stream_) throw std::runtime_error("Cannot append WAV silence");
+        samples_ += take;
+        count -= take;
+    }
+    flushHeader();
+}
+void StreamingPcm16WavWriter::flushHeader() {
+    if (finished_) return;
+    writeHeader();
+    stream_.flush();
+    if (!stream_) throw std::runtime_error("Cannot flush WAV header");
+}
+void StreamingPcm16WavWriter::finish() {
+    if (finished_) return;
+    flushHeader();
+    stream_.close();
+    if (!stream_) throw std::runtime_error("Cannot close WAV file");
+    finished_ = true;
+}
+
 }  // namespace audition::io
