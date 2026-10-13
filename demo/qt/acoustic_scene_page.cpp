@@ -683,6 +683,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 QFile::remove(path);
             temporaryPlaybackFiles->files.clear();
         });
+        // Destroyed can run without QDialog::finished when the parent page
+        // is torn down. Never let an in-flight normalization orphan its output.
+        QObject::connect(dialog, &QObject::destroyed,
+                         [temporaryPlaybackFiles](QObject*) {
+            std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+            temporaryPlaybackFiles->closed = true;
+            for (const auto& path : temporaryPlaybackFiles->files)
+                QFile::remove(path);
+            temporaryPlaybackFiles->files.clear();
+        });
         const auto changeMedia = [media](const QString& path) {
             const auto previousPosition = media->position();
             const bool wasPlaying =
