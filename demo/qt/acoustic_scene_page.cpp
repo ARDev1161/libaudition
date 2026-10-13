@@ -267,7 +267,7 @@ QDialog* createRecordingPlaybackDialog(
 #else
         media->setVolume(75);
         QObject::connect(volume, &QSlider::valueChanged, media, &QMediaPlayer::setVolume);
-        media->setMedia(QUrl::fromLocalFile(iter->second.wav));
+        media->setMedia(QUrl::fromLocalFile(sourcePath));
         QObject::connect(media, &QMediaPlayer::stateChanged, dialog,
                          [playback](QMediaPlayer::State state) {
                              playback->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
@@ -299,7 +299,6 @@ QDialog* createRecordingPlaybackDialog(
                                  .arg((duration / 1000) % 60, 2, 10, QChar('0')));
                          });
         QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
-        const auto sourcePath = iter->second.wav;
         {
             const auto annotationPath = std::filesystem::path{
                 sourcePath.toStdString() + ".json"};
