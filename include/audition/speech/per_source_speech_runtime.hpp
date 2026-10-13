@@ -36,6 +36,13 @@ struct SourceSpeechResult {
     Timestamp end_time{};
 };
 
+// Atomic consumer snapshot: results and completed retired generations
+// are observed under the same mutex.
+struct SourceSpeechDrain {
+    std::vector<SourceSpeechResult> results{};
+    std::vector<std::uint64_t> ready_retired_generations{};
+};
+
 struct SourceSpeechTrackStatus {
     bool exists{false};
     bool speech_active{false};
@@ -71,6 +78,8 @@ public:
     // keyed by source generation even if numeric track ID is reused.
     [[nodiscard]] std::optional<std::uint64_t> retire(std::uint64_t track_id);
     [[nodiscard]] std::size_t pendingResults(std::uint64_t generation) const;
+    [[nodiscard]] std::optional<std::uint64_t> activeGeneration(std::uint64_t track_id) const;
+    [[nodiscard]] SourceSpeechDrain drainReady();
     // Release finished retirement metadata once results have been consumed.
     void releaseRetired(std::uint64_t generation);
     // Invalidate all source generations and queued work, e.g. ALSA xrun.
@@ -99,6 +108,7 @@ private:
     };
     void queueSegment(std::uint64_t track_id, Track& track);
     void workerLoop();
+    void completeJobLocked(std::uint64_t generation);
     const IVoiceActivityDetector& vad_;
     std::shared_ptr<const IAsrEngine> asr_;
     PerSourceSpeechOptions options_{};
