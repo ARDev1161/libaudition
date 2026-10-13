@@ -30,6 +30,13 @@ struct TimelineSoundEvent {
     std::string stage;
 };
 
+struct TimelineGapEvent {
+    RecordingId recording_id{0};
+    std::uint64_t start_sample{0};
+    std::uint64_t end_sample{0};
+    std::string reason{"recorder_backpressure"};
+};
+
 // Library-owned annotation model; no GUI, codec, or ML-backend dependency.
 class RecordingTimeline {
 public:
@@ -49,6 +56,16 @@ public:
             throw std::invalid_argument("Invalid classification confidence");
         sound_.push_back(std::move(event));
     }
+    void add(TimelineGapEvent event) {
+        check(event.recording_id, event.start_sample, event.end_sample);
+        if (event.end_sample == event.start_sample) return;
+        if (!gaps_.empty() &&
+            gaps_.back().end_sample == event.start_sample &&
+            gaps_.back().reason == event.reason) {
+            gaps_.back().end_sample = event.end_sample;
+        } else gaps_.push_back(std::move(event));
+    }
+    const std::vector<TimelineGapEvent>& gaps() const noexcept { return gaps_; }
     const std::vector<TimelineSpeechEvent>& speech() const noexcept {return speech_;}
     const std::vector<TimelineSoundEvent>& sounds() const noexcept {return sound_;}
 private:
@@ -59,5 +76,6 @@ private:
     std::uint32_t rate_;
     std::vector<TimelineSpeechEvent> speech_;
     std::vector<TimelineSoundEvent> sound_;
+    std::vector<TimelineGapEvent> gaps_;
 };
 } // namespace audition
