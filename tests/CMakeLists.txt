@@ -153,3 +153,10 @@ add_executable(recording_audio_apis_test recording_audio_apis_test.cpp)
 target_link_libraries(recording_audio_apis_test PRIVATE audition::core audition::io)
 libaudition_configure_target(recording_audio_apis_test)
 add_test(NAME recording_audio_apis_test COMMAND recording_audio_apis_test)
+
+# Recording session acceptance: reusable identity, timeline, gap and JSON APIs.
+add_executable(source_recording_session_test source_recording_session_test.cpp)
+target_link_libraries(source_recording_session_test PRIVATE
+    audition::io audition::pipeline audition::core)
+libaudition_configure_target(source_recording_session_test)
+add_test(NAME source_recording_session_test COMMAND source_recording_session_test)
