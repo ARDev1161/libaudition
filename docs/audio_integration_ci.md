@@ -76,8 +76,40 @@ To score accuracy, collect a separate, independently measured source
 azimuth/elevation trajectory and microphone orientation. Do not treat
 the visual tracker or its own output as ground truth.
 
+## Real ONNX model WAV checks in existing CI
+
+Two existing model CI jobs now exercise **actual audio files**, in addition to
+the model-only smoke tests:
+
+- `efficientat-real-weights`: uses the pinned YAMNet ONNX model, converts
+  its independently generated 5-second PCM16 fixture to WAV, decodes it via
+  `audition::io::loadWav()`, runs quick 0.975-second and 5-second
+  classifications, and asserts valid, repeatable ranked probabilities.
+  Output: `yamnet-real-wav-report.txt` (job log).
+- `sherpa-backend`: builds `real_speech_model_replay`, downloads SHA-256
+  verified Silero VAD and SenseVoiceSmall INT8 weights and tokens,
+  synthesizes a deterministic English utterance with espeak-ng and converts
+  it to mono 16 kHz PCM16 WAV. Silero processes real 512-sample chunks,
+  SenseVoice decodes the WAV twice, and the test requires non-empty stable
+  ASR text with preserved segment ID. A standalone scorer reports
+  Unicode-normalized **WER** and **CER** against the exact source text.
+  The `real-speech-model-integration` CI artifact retains the transcript,
+  VAD activity statistics, WER and CER.
+
+The generated espeak-ng voice is not a natural conversation or measured
+ReSpeaker speech. The decoder's non-empty output and stable identity are
+integration gates. WER/CER remain explicitly **diagnostic**: there is no
+arbitrary accuracy threshold. The scorer supports optional calibrated
+`--max-wer` and `--max-cer` gates.
+
+`validate_spatial_fixture.py` also reports the median angular error
+of the nearest SSL proposal and the fraction of SST directions with
+`abs(z) >= 0.9` (a track-pole-collapse indicator). When calibrated, use
+`--max-median-proposal-error-deg` and
+`--max-track-near-vertical-fraction` to enforce these metrics.
+
 ## Not implemented by this suite
 
-Real-room ReSpeaker accuracy benchmarks, nightly real-model
-YAMNet/Silero/SenseVoice inference with WER/CER gates, and dedicated
-wall-clock realtime/backpressure benchmarks are separate future stages.
+Real-room ReSpeaker angular accuracy benchmarks, calibrated WER/CER
+quality gates on natural multilingual speech, and dedicated wall-clock
+real-time/backpressure benchmarks are separate future stages.
