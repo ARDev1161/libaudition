@@ -243,6 +243,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         if (config.respeaker_angular_profile) {
             applyReSpeakerUsb4MicAngularProfile(options);
         }
+        if (config.near_plane_sources) {
+            audition::applyOdasNearPlaneSourcePrior(options);
+        }
         // Source-specific classification needs actual SSS mono audio. Avoid
         // the extra DSP cost when no classifier model is configured.
         options.sss.enabled = true; // source WAV recording is available independently
