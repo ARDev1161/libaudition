@@ -241,7 +241,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 audition::MicrophoneGeometry{{xyz[0], xyz[1], xyz[2]}});
         }
         if (config.respeaker_angular_profile) {
-            applyReSpeakerUsb4MicAngularProfile(options);
+            audition::applyReSpeakerUsb4MicAngularProfile(options);
         }
         if (config.near_plane_sources) {
             audition::applyOdasNearPlaneSourcePrior(options);
