@@ -145,7 +145,7 @@ endif()
 add_executable(source_wav_recorder_test source_wav_recorder_test.cpp)
 target_compile_features(source_wav_recorder_test PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(source_wav_recorder_test PRIVATE Threads::Threads)
+target_link_libraries(source_wav_recorder_test PRIVATE Threads::Threads audition::io)
 add_test(NAME source_wav_recorder_test COMMAND source_wav_recorder_test)
 
 # Standalone public audio APIs: no Qt and no model assets.
