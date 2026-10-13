@@ -198,6 +198,43 @@ std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
     return response;
 }
 
+std::vector<std::pair<std::uint64_t, LiveTrackClassification>>
+LiveAudioTaggingWorker::takeCompleted() {
+    std::vector<std::pair<std::uint64_t, LiveTrackClassification>> out;
+    const auto append = [&](std::uint64_t id, const std::string& stage,
+                            std::uint64_t start, std::uint64_t end,
+                            const audition::ClassificationResult& classified) {
+        if (classified.classes.empty()) return;
+        std::vector<std::string> supported;
+        supported.reserve(classified.classes.size());
+        for (const auto& label : classified.classes)
+            supported.push_back(label.label);
+        auto filtered = audition::selectVocabulary(classified, selection_, supported);
+        if (filtered.classes.empty()) return;
+        LiveTrackClassification event{};
+        event.label = filtered.classes.front().label;
+        event.probability = filtered.classes.front().probability.value();
+        event.stage = stage;
+        event.has_window = true;
+        event.window_start_sample = start;
+        event.window_end_sample = end;
+        out.emplace_back(id, std::move(event));
+    };
+    if (progressive_) {
+        for (const auto& completed : progressive_->takeCompleted()) {
+            append(completed.window.source_id, completed.stage,
+                completed.window.start_sample, completed.window.end_sample,
+                completed.window.result);
+        }
+    } else if (runtime_) {
+        for (const auto& completed : runtime_->takeCompleted()) {
+            append(completed.source_id, {}, completed.start_sample,
+                completed.end_sample, completed.result);
+        }
+    }
+    return out;
+}
+
 std::string LiveAudioTaggingWorker::error() const {
     if (!initialization_error_.empty()) return initialization_error_;
     if (progressive_) return "";
