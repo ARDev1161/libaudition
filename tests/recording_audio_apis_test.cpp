@@ -73,7 +73,7 @@ int main() {
     assert(normalizedFile.gain_db <= 40.0);
     const auto originalWav = audition::io::loadWav(wav);
     const auto changedWav = audition::io::loadWav(normalizedPath);
-    assert(originalWav.audio.sampleCount() == changedWav.audio.sampleCount());
+    assert(originalWav.audio.samples().size() == changedWav.audio.samples().size());
     assert(std::abs(originalWav.audio.samples()[0] - 100.F / 32768.F) < 1e-6);
     assert(changedWav.audio.samples()[0] > originalWav.audio.samples()[0]);
     assert(changedWav.audio.samples()[40000] == 0.0F);
