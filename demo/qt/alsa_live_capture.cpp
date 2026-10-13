@@ -450,6 +450,16 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     }
 #endif
                 }
+                if (classifier) {
+                    for (const auto& [sourceId, event] : classifier->takeCompleted()) {
+                        recordings.addSound(sourceId,
+                            event.window_start_sample, event.window_end_sample,
+                            event.label,
+                            config.tagging_yamnet_model ? "YAMNet" :
+                            config.tagging_efficientat_model ? "EfficientAT" : "Sherpa",
+                            event.probability, event.stage);
+                    }
+                }
 #if LIBAUDITION_DEMO_HAS_SHERPA
                 drainAsr();
 #endif
@@ -493,15 +503,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                                          track.classification_label;
                         }
                         track.classification_probability = tag->probability;
-                        if (tag->has_window && tag->probability >= 0.0 &&
-                            tag->probability <= 1.0 && !tag->label.empty()) {
-                            recordings.addSound(t.track_id.value(),
-                                tag->window_start_sample, tag->window_end_sample,
-                                tag->label,
-                                config.tagging_yamnet_model ? "YAMNet" :
-                                config.tagging_efficientat_model ? "EfficientAT" : "Sherpa",
-                                tag->probability, tag->stage);
-                        }
+
                     }
                 }
                 tracks.push_back(std::move(track));
