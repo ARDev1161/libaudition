@@ -1,4 +1,5 @@
 #include "live_audio_tagging_worker.hpp"
+#include <audition/classify/progressive_window_policy.hpp>
 
 #if LIBAUDITION_DEMO_HAS_SHERPA
 #include <audition/backends/sherpa/audio_tagger.hpp>
@@ -100,15 +101,15 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
             const auto refined_samples = options.refined_window_samples != 0U
                 ? options.refined_window_samples
                 : static_cast<std::size_t>(options.sample_rate_hz) * 5U;
-            const auto quick_hop = options.fast_hop_samples != 0U
-                ? options.fast_hop_samples : std::max<std::size_t>(1U, fast_samples / 2U);
-            const auto refined_hop = options.refined_hop_samples != 0U
-                ? options.refined_hop_samples : static_cast<std::size_t>(options.sample_rate_hz);
+            const auto policy = audition::makeFastRefinedWindowPolicy(
+                options.sample_rate_hz, fast_samples, refined_samples,
+                options.fast_hop_samples, options.refined_hop_samples);
             std::vector<audition::ProgressiveClassificationStage> stages;
-            stages.push_back({"quick", std::move(classifier), fast_samples, quick_hop});
+            stages.push_back({"quick", std::move(classifier),
+                              policy.fast_window, policy.fast_hop});
             stages.push_back({"refined",
                 std::make_unique<audition::YamnetAudioTagger>(std::move(refined_options)),
-                refined_samples, refined_hop});
+                policy.refined_window, policy.refined_hop});
             progressive_ = std::make_unique<audition::ProgressiveSourceClassificationRuntime>(
                 options.sample_rate_hz, std::move(stages), 16U);
             return;
