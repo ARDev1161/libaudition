@@ -79,9 +79,9 @@ float decodePcm(
         return static_cast<float>(
             (static_cast<int>(data[0]) - 128) / 128.0);
     case 16U: {
-        const std::uint16_t raw =
+        const std::uint16_t raw = static_cast<std::uint16_t>(
             static_cast<std::uint16_t>(data[0]) |
-            (static_cast<std::uint16_t>(data[1]) << 8U);
+            (static_cast<std::uint16_t>(data[1]) << 8U));
         const auto value = static_cast<std::int16_t>(raw);
         return static_cast<float>(
             static_cast<double>(value) / 32768.0);
