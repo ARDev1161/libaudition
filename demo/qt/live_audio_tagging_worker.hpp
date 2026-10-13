@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include <audition/classify/source_classification_runtime.hpp>
 #include <audition/classify/progressive_source_classification_runtime.hpp>
@@ -55,6 +56,9 @@ public:
     void forget(std::uint64_t track_id);
     [[nodiscard]] std::optional<LiveTrackClassification> result(
         std::uint64_t track_id, std::uint64_t processed_hops) const;
+    // Consume completed windows directly from libaudition runtimes.
+    [[nodiscard]] std::vector<std::pair<std::uint64_t, LiveTrackClassification>>
+        takeCompleted();
     [[nodiscard]] std::string error() const;
     [[nodiscard]] std::string status(std::uint64_t track_id) const;
 private:
