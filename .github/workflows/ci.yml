@@ -54,7 +54,7 @@ jobs:
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build C++ real-model smoke tool
-        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke yamnet_progressive_multisource --parallel
+        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke yamnet_progressive_multisource real_yamnet_wav_replay --parallel
       - name: Install exporter dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/efficientat-real"
@@ -139,6 +139,26 @@ jobs:
             --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
             --pcm16 "$RUNNER_TEMP/yamnet-parity.raw" \
             --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe"
+      - name: Real YAMNet quick/refined WAV replay (not raw mock PCM)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export WAV_PATH="$RUNNER_TEMP/yamnet-parity-5s.wav"
+          python3 - <<'PY'
+          import os, pathlib, wave
+          raw = pathlib.Path(os.environ["RUNNER_TEMP"]) / "yamnet-parity-5s.raw"
+          with wave.open(os.environ["WAV_PATH"], "wb") as out:
+              out.setnchannels(1)
+              out.setsampwidth(2)
+              out.setframerate(16000)
+              out.writeframes(raw.read_bytes())
+          PY
+          ./build-efficientat-real/tests/real_yamnet_wav_replay \
+            "$RUNNER_TEMP/yamnet/yamnet.onnx" \
+            "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
+            "$WAV_PATH" \
+            "$RUNNER_TEMP/yamnet-real-wav-report.txt"
+          cat "$RUNNER_TEMP/yamnet-real-wav-report.txt"
       - name: Real-weight YAMNet fast-to-refined runtime integration
         run: |
           ./build-efficientat-real/tests/yamnet_progressive_smoke \
