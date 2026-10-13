@@ -1,5 +1,30 @@
 include(GoogleTest)
 
+# Register model-tool verification scripts with CTest rather than invoking
+# them only from GitHub Actions. This suite is opt-in because it needs the
+# Python environment provisioned by the real-model CI job.
+option(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS
+    "Register real-model Python validation scripts in CTest" OFF)
+if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    foreach(_test IN ITEMS
+            test_efficientat_wav_evaluator
+            test_compare_efficientat_wavs
+            test_audioset_vocabulary_audit
+            test_compare_audio_taggers
+            test_analyze_yamnet_event_timeline
+            test_yamnet_esc10_extended
+            test_review_audio_taggers_report)
+        add_test(NAME "model_tool_${_test}"
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/${_test}.py")
+        set_tests_properties("model_tool_${_test}" PROPERTIES
+            LABELS "model-tools;python"
+            TIMEOUT 180
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    endforeach()
+endif()
+
 add_executable(libaudition_tests
     core_time_test.cpp
     audio_buffer_test.cpp
