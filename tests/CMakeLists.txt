@@ -136,6 +136,12 @@ endif()
 
 
 if(TARGET audition::backend_yamnet)
+    add_executable(real_yamnet_wav_replay
+        integration/real_yamnet_wav_replay.cpp)
+    target_link_libraries(real_yamnet_wav_replay PRIVATE
+        audition::backend_yamnet audition::io audition::core)
+    libaudition_configure_target(real_yamnet_wav_replay)
+
     add_executable(yamnet_pcm16_probe yamnet_pcm16_probe.cpp)
     target_link_libraries(yamnet_pcm16_probe PRIVATE audition::backend_yamnet audition::core)
     libaudition_configure_target(yamnet_pcm16_probe)
