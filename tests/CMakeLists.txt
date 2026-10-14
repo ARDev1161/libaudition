@@ -649,3 +649,17 @@ if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS AND
         LABELS "real-model;esc10;yamnet;quality"
         FIXTURES_REQUIRED real_esc10_extended TIMEOUT 600)
 endif()
+
+
+# Assert that configured algorithm and backend test contracts remain discoverable.
+# This explicitly audits registration, not code or hardware-accuracy coverage.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME algorithm_coverage_contract
+    COMMAND ${Python3_EXECUTABLE}
+        "${CMAKE_CURRENT_SOURCE_DIR}/integration/audit_ctest_algorithms.py"
+        --build "${CMAKE_BINARY_DIR}"
+        --ctest "${CMAKE_CTEST_COMMAND}"
+        --output "${CMAKE_BINARY_DIR}/ctest-algorithm-coverage.json")
+set_tests_properties(algorithm_coverage_contract PROPERTIES
+    LABELS "coverage-audit;ci-contract"
+    TIMEOUT 60)
