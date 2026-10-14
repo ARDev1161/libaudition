@@ -33,6 +33,17 @@ if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
             TIMEOUT 180
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endforeach()
+
+    if(TARGET audition::backend_yamnet OR TARGET audition::backend_efficientat)
+        add_test(NAME model_fixture_benchmark_wav
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/integration/generate_model_benchmark_wav.py"
+                --output "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/efficientat-benchmark.wav")
+        set_tests_properties(model_fixture_benchmark_wav PROPERTIES
+            LABELS "model-fixture;wav-integration"
+            FIXTURES_SETUP real_model_benchmark_wav
+            TIMEOUT 60)
+    endif()
 endif()
 
 add_executable(libaudition_tests
@@ -263,6 +274,18 @@ if(TARGET audition::backend_yamnet)
     add_executable(yamnet_wav_benchmark yamnet_wav_benchmark.cpp)
     target_link_libraries(yamnet_wav_benchmark PRIVATE audition::backend_yamnet audition::core)
     libaudition_configure_target(yamnet_wav_benchmark)
+
+    if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
+        add_test(NAME real_yamnet_wav_benchmark
+            COMMAND $<TARGET_FILE:yamnet_wav_benchmark>
+                "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet.onnx"
+                "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet_class_map.csv"
+                "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/efficientat-benchmark.wav")
+        set_tests_properties(real_yamnet_wav_benchmark PROPERTIES
+            LABELS "real-model;yamnet;wav-integration"
+            FIXTURES_REQUIRED real_model_benchmark_wav
+            TIMEOUT 180)
+    endif()
     add_executable(yamnet_progressive_smoke yamnet_progressive_smoke.cpp)
     target_link_libraries(yamnet_progressive_smoke PRIVATE
         audition::backend_yamnet audition::pipeline audition::core)
@@ -312,6 +335,20 @@ if(TARGET audition::backend_efficientat)
     add_executable(efficientat_wav_benchmark efficientat_wav_benchmark.cpp)
     target_link_libraries(efficientat_wav_benchmark PRIVATE audition::backend_efficientat audition::core)
     libaudition_configure_target(efficientat_wav_benchmark)
+
+    if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
+        foreach(_variant IN ITEMS mn10_as dymn10_as)
+            add_test(NAME "real_efficientat_wav_benchmark_${_variant}"
+                COMMAND $<TARGET_FILE:efficientat_wav_benchmark>
+                    "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/eat-real/${_variant}.onnx"
+                    "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/eat-real/${_variant}_labels.txt"
+                    "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/efficientat-benchmark.wav")
+            set_tests_properties("real_efficientat_wav_benchmark_${_variant}" PROPERTIES
+                LABELS "real-model;efficientat;wav-integration"
+                FIXTURES_REQUIRED real_model_benchmark_wav
+                TIMEOUT 180)
+        endforeach()
+    endif()
     add_executable(efficientat_real_model_smoke efficientat_real_model_smoke.cpp)
     target_link_libraries(efficientat_real_model_smoke PRIVATE audition::backend_efficientat audition::core)
     libaudition_configure_target(efficientat_real_model_smoke)
