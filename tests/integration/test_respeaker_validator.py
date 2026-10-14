@@ -49,7 +49,7 @@ def main():
         mutate(d)
         check_manifest(d, False)
     intervals = [{"start_s": 0, "end_s": 0.08, "azimuth_deg": 0}]
-    obs = [{"hop": str(i), "kind": "track", "x": "1", "y": "0", "z": "0"}
+    obs = [{"hop": str(i), "kind": "track", "id": "7", "x": "1", "y": "0", "z": "0"}
            for i in range(5)]
     segments = module.evaluate(obs, intervals, 10)
     assert len(segments) == 1
@@ -85,6 +85,23 @@ def main():
         {"source_id": "a", "start_s": 0.04, "end_s": 0.12, "azimuth_deg": 90},
     ]
     check_manifest(bad, False)
+    source = [{"source_id": "speaker", "start_s": 0, "end_s": 0.08,
+               "azimuth_deg": 0}]
+    stable = [{"hop": str(i), "kind": "track", "id": "1",
+               "x": "1", "y": "0", "z": "0"} for i in range(10)]
+    result = module.evaluate(stable, source, 10)[0]
+    assert result["adjacent_hop_id_switches"] == 0
+    assert result["id_changes_after_gap"] == 0
+    switched = [dict(x) for x in stable]
+    for x in switched[5:]:
+        x["id"] = "2"
+    result = module.evaluate(switched, source, 10)[0]
+    assert result["adjacent_hop_id_switches"] == 1
+    assert result["id_changes_after_gap"] == 0
+    interrupted = [x for x in switched if x["hop"] != "5"]
+    result = module.evaluate(interrupted, source, 10)[0]
+    assert result["adjacent_hop_id_switches"] == 0
+    assert result["id_changes_after_gap"] == 1
     print("respeaker-validator-selftest=ok")
 
 
