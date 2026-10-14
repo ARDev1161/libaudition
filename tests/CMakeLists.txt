@@ -199,6 +199,11 @@ if(TARGET audition::backend_sherpa)
         audition::backend_sherpa audition::io audition::core)
     libaudition_configure_target(real_gtcrn_denoise)
 
+    add_executable(sherpa_real_kws integration/sherpa_real_kws.cpp)
+    target_link_libraries(sherpa_real_kws PRIVATE
+        audition::backend_sherpa audition::io audition::core)
+    libaudition_configure_target(sherpa_real_kws)
+
     target_sources(libaudition_tests PRIVATE
         sherpa_backend_test.cpp sherpa_speaker_backend_test.cpp
         sherpa_auxiliary_contract_test.cpp)
@@ -210,6 +215,12 @@ if(TARGET audition::backend_sherpa)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     if(LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
+        add_test(NAME speech_real_kws_gigaspeech
+            COMMAND $<TARGET_FILE:sherpa_real_kws>
+                "${CMAKE_BINARY_DIR}/kws-gigaspeech")
+        set_tests_properties(speech_real_kws_gigaspeech PROPERTIES
+            LABELS "real-model;speech-integration;kws"
+            TIMEOUT 180)
         add_test(NAME speech_real_gtcrn_denoising
             COMMAND $<TARGET_FILE:real_gtcrn_denoise>
                 "${CMAKE_BINARY_DIR}/gtcrn_simple.onnx"
