@@ -262,10 +262,15 @@ shortest circular angular arc. Example of two simultaneous sources:
 For each 128-sample hop, the evaluator assigns distinct ODAS observations
 to simultaneously active reference sources, minimizing summed angular error
 among maximum-cardinality matches; one track cannot count toward two
-sources at the same time. Reported coverage is positional detection coverage,
-**not** track identity continuity. The current evaluator does not score
-source ID switches, elevation, reverberation level, or separation quality.
-Record those as separate acceptance criteria, not implicit DOA scores.
+sources at the same time. Reported coverage is positional detection
+coverage. The evaluator now also reports `adjacent_hop_id_switches` when
+the assigned ODAS track ID changes between consecutive observed hops and
+`id_changes_after_gap` when an ID changes after one or more missed hops.
+These are operational continuity diagnostics, not standardized CLEAR MOT
+IDSW/MOTA or identity-precision scores. The evaluator still does not measure
+elevation, reverberation level or source separation quality. Track assignment
+uses directions only, so close or crossing sources can make identity scores
+ambiguous. Keep those uncertainties explicit when interpreting results.
 
 ```bash
 cmake -S . -B build-odas -G Ninja \
