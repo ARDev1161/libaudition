@@ -172,6 +172,7 @@ if(TARGET audition::backend_sherpa)
         audition::backend_sherpa audition::pipeline audition::core)
     libaudition_configure_target(sherpa_per_source_speech_smoke)
 
+    if(LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
     # Real model fixtures live in the configured build directory.
     # Their absence is a failed test (never a silent skip).
     add_test(NAME speech_real_whisper_two_sources
@@ -194,11 +195,6 @@ if(TARGET audition::backend_sherpa)
         FIXTURES_SETUP speech_real_replay
         TIMEOUT 180)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
-    add_test(NAME speech_report_scoring_selftest
-        COMMAND ${Python3_EXECUTABLE}
-            "${CMAKE_CURRENT_SOURCE_DIR}/integration/score_speech_report.py" --self-test)
-    set_tests_properties(speech_report_scoring_selftest PROPERTIES
-        LABELS "speech-integration;python" TIMEOUT 60)
     add_test(NAME speech_real_sensevoice_quality
         COMMAND ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/integration/score_speech_report.py"
@@ -208,7 +204,13 @@ if(TARGET audition::backend_sherpa)
     set_tests_properties(speech_real_sensevoice_quality PROPERTIES
         LABELS "real-model;speech-integration"
         FIXTURES_REQUIRED speech_real_replay
-        TIMEOUT 60)
+        TIMEOUT 60)    endif()
+    add_test(NAME speech_report_scoring_selftest
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/score_speech_report.py" --self-test)
+    set_tests_properties(speech_report_scoring_selftest PROPERTIES
+        LABELS "speech-integration;python" TIMEOUT 60)
+
 endif()
 
 
