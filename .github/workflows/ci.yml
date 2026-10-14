@@ -197,7 +197,7 @@ jobs:
       - name: Run all EfficientAT checks via CTest (incl. ONNX fixture and PyTorch parity)
         env:
           LIBAUDITION_EFFICIENTAT_FIXTURE_DIR: ${{ github.workspace }}/build-efficientat/fixture
-        run: ctest --test-dir build-efficientat --output-on-failure --parallel 2
+        run: ctest --test-dir build-efficientat --output-on-failure --parallel 2 --no-tests=error
       - name: Install
         run: cmake --install build-efficientat --prefix "$PWD/install-efficientat"
 
@@ -221,7 +221,7 @@ jobs:
       - name: Install
         run: cmake --install build-install --prefix "$PWD/install-default"
       - name: Verify installed C++17 consumer through CTest
-        run: ctest --test-dir build-install -R '^installed_package_cpp17_consumer$' --output-on-failure
+        run: ctest --test-dir build-install -R '^installed_package_cpp17_consumer$' --output-on-failure --no-tests=error
 
   sanitizers:
     runs-on: ubuntu-latest
