@@ -137,6 +137,50 @@ truth. For reproducible corpus-level research, record exact split,
 reference version, model hashes, resampling, scoring collar, overlap policy,
 and per-recording results; **do not** infer corpus-wide DER from one sample.
 
+#### Corpus-level DER: fail-closed multi-recording evaluation
+
+The corpus scorer matches each independent reference RTTM to its hypothesis
+by recording ID and refuses missing, extra or mismatched files. **Headline
+corpus DER is the reference-speech-weighted micro-average**:
+`Σ(missed + false_alarm + confusion) / Σ(reference_speaker_seconds)`.
+A simple average of per-recording DERs is also saved, explicitly labeled as
+diagnostic only. Scores and component durations are written per recording.
+
+When WAVs have already been evaluated, score the complete RTTM collection:
+
+```sh
+python3 tests/integration/score_diarization_corpus.py \
+  --reference-dir /data/voxconverse/dev \
+  --hypothesis-dir /data/predicted-rttm \
+  --output /data/corpus-der.json
+```
+
+For a complete local model-backed run on an annotated collection of
+**already converted mono 16-kHz WAVs**, provide the binary and model paths.
+Use a **fresh, empty** prediction directory (existing outputs cannot
+silently contaminate the benchmark):
+
+```sh
+python3 tests/integration/score_diarization_corpus.py \
+  --reference-dir /data/voxconverse/dev \
+  --wav-dir /data/voxconverse/mono16k \
+  --hypothesis-dir /data/voxconverse/predicted \
+  --diarizer build-sherpa/tests/sherpa_real_speaker_diarization \
+  --segmentation-model build-sherpa/diarization-segmentation/model.onnx \
+  --embedding-model build-sherpa/diarization-embedding.onnx \
+  --collar 0.25 \
+  --output /data/voxconverse/results.json
+```
+
+The reference RTTMs must use the same IDs as the WAV basenames. For
+compatibility with published results, document the corpus split, exact model
+hashes, collar, overlap policy and resampling. The scorer fails on missing
+ground truth or unmatched predictions; it never substitutes inferred
+speaker turns as reference labels. A mandatory CTest
+`speech_diarization_corpus_scoring_selftest` verifies that a 2s clip with
+50% DER and an 8s perfect clip aggregate to **10% corpus DER**, not the
+25% unweighted recording mean.
+
 The reference-independent algorithm self-test runs through:
 `ctest --test-dir build-sherpa -R '^speech_diarization_scoring_selftest$' --output-on-failure`.
 It checks speaker permutation, false alarms, misses, speaker confusion,
