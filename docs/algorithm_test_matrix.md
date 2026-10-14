@@ -14,6 +14,7 @@ The test writes `<build>/ctest-algorithm-coverage.json`.
 | DSP, calibration, resampling and audio frontend | `Dsp.*`, `AudioFrontend.*`, `SplCalibration.*`, `SoundLevelRangePrior.*`, `SamplerateBackend.*` | Unit and deterministic DSP |
 | Tracking, association, identity and acoustic events | `TemporalSpatialTrackSmoother.*`, `SpatialIdentityCoordinator.*`, `SourceIdentityResolver.*`, `AcousticEventAssembler.*` | Unit, lifecycle and conflicting state |
 | Per-source audio classification and overload | `SourceClassificationRuntime.*`, `ProgressiveSourceClassificationRuntime.*`, `progressive_stress_*_sources` | Multi-source ordering, queues, freshness, cancellation |
+| Sherpa English streaming Zipformer ASR | `speech_real_streaming_asr_zipformer` | Real quantized online model, 100 ms WAV chunks, incremental hypothesis, finalization, reset and independent sessions; upstream speech fixture, pending CI verification |
 | Sherpa GigaSpeech INT8 keyword spotting | `speech_real_kws_gigaspeech` | Official annotated positive WAV (`LIGHT UP`) and one-second negative silence after reset; intended real-model regression, pending CI validation |
 | Sherpa GTCRN offline and streaming denoiser | `speech_real_gtcrn_denoising` | Genuine ONNX inference on deterministic noisy speech, output contract, session flush/reset; **not** a denoising quality claim |
 | Sherpa auxiliary streaming ASR, KWS, language ID, denoising and diarization | `SherpaOnlineAsrContract.*`, `SherpaKwsContract.*`, `SherpaLanguageIdContract.*`, `SherpaDenoiserContract.*`, `SherpaDiarizationContract.*` | Supported model-family configuration, invalid thresholds, missing assets and runtime rejection; **not** real-weight inference quality |
@@ -41,7 +42,7 @@ claim optional-backend coverage.
    annotated physical ReSpeaker recordings with measured geometry,
    directions and synchronization. A hardware-in-the-loop runner is separate
    from hosted CI.
-2. **Sherpa auxiliary models**: streaming ASR, keyword spotting, language
+2. **Sherpa auxiliary models**: alternative online model families, language
    identification, DPDFNet inference and speaker diarization are
    implemented, but the registration contract does not establish that each
    has a quantitative real-weight acceptance dataset and accuracy thresholds.
