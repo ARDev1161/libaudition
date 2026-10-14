@@ -265,12 +265,61 @@ if(TARGET audition::backend_yamnet)
                 "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet-parity-5s.wav"
                 "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet-real-wav-report.txt")
         set_tests_properties(real_yamnet_wav_replay_ctest PROPERTIES
-            LABELS "real-model;yamnet;wav-integration" TIMEOUT 180)
+            LABELS "real-model;yamnet;wav-integration"
+            FIXTURES_REQUIRED yamnet_parity_audio TIMEOUT 180)
     endif()
 
     add_executable(yamnet_pcm16_probe yamnet_pcm16_probe.cpp)
     target_link_libraries(yamnet_pcm16_probe PRIVATE audition::backend_yamnet audition::core)
     libaudition_configure_target(yamnet_pcm16_probe)
+
+    if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
+        add_test(NAME real_yamnet_parity_fixture
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/integration/generate_yamnet_parity_fixture.py"
+                --output-dir "${LIBAUDITION_REAL_MODEL_ASSET_DIR}")
+        set_tests_properties(real_yamnet_parity_fixture PROPERTIES
+            LABELS "model-fixture;yamnet" FIXTURES_SETUP yamnet_parity_audio
+            TIMEOUT 60)
+
+        foreach(_version IN ITEMS short long)
+            if(_version STREQUAL "short")
+                set(_input_raw "yamnet-parity.raw")
+                set(_output_json "yamnet-onnx-cpp-parity.json")
+            else()
+                set(_input_raw "yamnet-parity-5s.raw")
+                set(_output_json "yamnet-onnx-cpp-5s-parity.json")
+            endif()
+            add_test(NAME "real_yamnet_onnx_cpp_parity_${_version}"
+                COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/verify_yamnet_onnx_cpp.py"
+                    --model "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet.onnx"
+                    --labels "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet_class_map.csv"
+                    --pcm16 "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/${_input_raw}"
+                    --cpp-probe $<TARGET_FILE:yamnet_pcm16_probe>
+                    --output "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/${_output_json}")
+            set_tests_properties("real_yamnet_onnx_cpp_parity_${_version}" PROPERTIES
+                LABELS "real-model;yamnet;parity" FIXTURES_REQUIRED yamnet_parity_audio
+                TIMEOUT 180)
+        endforeach()
+
+        add_test(NAME real_yamnet_label_rejection
+            COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/verify_yamnet_label_rejection.py"
+                --model "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet.onnx"
+                --labels "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet_class_map.csv"
+                --pcm16 "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet-parity.raw"
+                --cpp-probe $<TARGET_FILE:yamnet_pcm16_probe>)
+        set_tests_properties(real_yamnet_label_rejection PROPERTIES
+            LABELS "real-model;yamnet;negative" FIXTURES_REQUIRED yamnet_parity_audio
+            TIMEOUT 180)
+
+        add_test(NAME real_yamnet_behavior
+            COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/verify_yamnet_behavior.py"
+                --model "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet.onnx"
+                --labels "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet_class_map.csv"
+                --output "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet-behavior.json")
+        set_tests_properties(real_yamnet_behavior PROPERTIES
+            LABELS "real-model;yamnet;behavior" TIMEOUT 180)
+    endif()
     add_executable(yamnet_wav_benchmark yamnet_wav_benchmark.cpp)
     target_link_libraries(yamnet_wav_benchmark PRIVATE audition::backend_yamnet audition::core)
     libaudition_configure_target(yamnet_wav_benchmark)
