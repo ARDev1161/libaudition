@@ -144,7 +144,15 @@ def run_benchmark(args: argparse.Namespace) -> None:
                     raise ValueError(f"Invalid reference annotation ID/turns for {stem}")
 
     with ZipFile(args.audio_zip) as zaudio:
-        wavs = audio_members(zaudio, set(reference_files))
+        # Validate the ENTIRE official split before selecting deterministic
+        # shards; no clip may disappear from the source data silently.
+        wavs_all = audio_members(zaudio, set(reference_files))
+        ordered = sorted(reference_files)
+        chosen = [stem for index, stem in enumerate(ordered)
+                  if index % args.shard_count == args.shard_index]
+        if not chosen:
+            raise ValueError("Empty shard is not allowed")
+        wavs = {stem: wavs_all[stem] for stem in chosen}
         args.output_dir.mkdir(parents=True, exist_ok=True)
         ref_dir = args.output_dir / "reference"
         pred_dir = args.output_dir / "predicted"
@@ -152,7 +160,8 @@ def run_benchmark(args: argparse.Namespace) -> None:
         pred_dir.mkdir()
 
         with ZipFile(args.reference_zip) as zref:
-            for stem, member in sorted(reference_files.items()):
+            for stem in chosen:
+                member = reference_files[stem]
                 target = ref_dir / f"{stem}.rttm"
                 with zref.open(member) as src, target.open("wb") as dst:
                     shutil.copyfileobj(src, dst)
@@ -164,8 +173,14 @@ def run_benchmark(args: argparse.Namespace) -> None:
             "audio_source_url": SPLIT_AUDIO_URLS[args.split],
             "split": args.split,
             "expected_recordings": SPLIT_COUNTS[args.split],
-            "observed_audio_recordings": len(wavs),
+            "observed_audio_recordings": len(wavs_all),
             "observed_reference_recordings": len(reference_files),
+            "shard_index": args.shard_index,
+            "shard_count": args.shard_count,
+            "shard_recordings": len(chosen),
+            "full_reference_ids_sha256": hashlib.sha256(
+                "".join(stem + "\n" for stem in ordered).encode("utf-8")
+            ).hexdigest(),
             "resampling": "ffmpeg -ac 1 -ar 16000 -c:a pcm_s16le",
             "inference_backend": "sherpa-onnx Pyannote 3.0 + 3D-Speaker",
             "cluster_estimation": "automatic (num_clusters=0)",
@@ -213,7 +228,8 @@ def run_benchmark(args: argparse.Namespace) -> None:
                         f"Diarizer did not write predicted RTTM for {stem}")
                 elapsed = time.monotonic() - t0
                 durations[stem] = round(elapsed, 3)
-                print(f"VoxConverse {args.split}: {index}/{len(wavs)} "
+                print(f"VoxConverse {args.split} shard "
+                      f"{args.shard_index}/{args.shard_count}: {index}/{len(wavs)} "
                       f"{stem} elapsed_s={elapsed:.2f}", flush=True)
                 # Lightweight progress checkpoint survives a failed runner.
                 (args.output_dir / "progress.json").write_text(
@@ -225,13 +241,18 @@ def run_benchmark(args: argparse.Namespace) -> None:
 
     result = evaluate(ref_dir, pred_dir,
                       collar=args.collar, skip_overlap=args.skip_overlap)
-    if result["recordings"] != SPLIT_COUNTS[args.split]:
-        raise AssertionError("Partial results cannot be recorded as full split")
+    if result["recordings"] != len(chosen):
+        raise AssertionError("Incomplete shard results cannot be reported")
     result["voxconverse_version"] = "0.3"
     result["split"] = args.split
     result["source"] = source_sha
     result["inference_seconds_per_recording"] = durations
-    (args.output_dir / "der.json").write_text(
+    # Only shard-count=1 may write a headline full-split DER. A shard DER
+    # MUST NOT be mistaken for a verified complete 216/232 recording score.
+    destination = "der.json" if args.shard_count == 1 else "shard-der.json"
+    result["shard_index"] = args.shard_index
+    result["shard_count"] = args.shard_count
+    (args.output_dir / destination).write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n",
         encoding="utf-8")
     print(json.dumps({
@@ -286,6 +307,15 @@ def self_test() -> None:
                 assert "extra WAVs" in str(e)
             else:
                 raise AssertionError("Unmatched audio silently accepted")
+        sorted_ids = sorted(reference)
+        shards = [
+            [stem for i, stem in enumerate(sorted_ids) if i % 4 == shard]
+            for shard in range(4)
+        ]
+        assert [len(shard) for shard in shards] == [54, 54, 54, 54]
+        assert set().union(*(set(shard) for shard in shards)) == set(reference)
+        assert all(set(shards[i]).isdisjoint(shards[j])
+                   for i in range(4) for j in range(i + 1, 4)
     print("voxconverse-full-split-preflight-self-test=ok")
 
 
@@ -298,6 +328,8 @@ def main() -> None:
     p.add_argument("--segmentation-model", type=Path)
     p.add_argument("--embedding-model", type=Path)
     p.add_argument("--output-dir", type=Path)
+    p.add_argument("--shard-index", type=int, default=0)
+    p.add_argument("--shard-count", type=int, default=1)
     p.add_argument("--expected-audio-sha256")
     p.add_argument("--expected-reference-sha256")
     p.add_argument("--clip-timeout-seconds", type=int, default=1500)
@@ -312,6 +344,10 @@ def main() -> None:
                  "segmentation_model", "embedding_model", "output_dir"):
         if getattr(args, name) is None:
             p.error(f"--{name.replace('_', '-')} is required")
+    if not (1 <= args.shard_count <= SPLIT_COUNTS[args.split]):
+        p.error("--shard-count must be in [1, number of split recordings]")
+    if not (0 <= args.shard_index < args.shard_count):
+        p.error("--shard-index must be in [0, shard-count)")
     if not (args.clip_timeout_seconds > 0):
         p.error("--clip-timeout-seconds must be positive")
     if not (0 <= args.collar < float("inf")):
