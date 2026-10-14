@@ -56,6 +56,35 @@ def main():
     assert segments[0]["median_track_error_deg"] == 0
     assert segments[0]["track_coverage"] == 0.5
     assert segments[0]["track_error_samples"] == 5
+    moving = sample()
+    moving["recordings"][0]["intervals"] = [
+        {"source_id": "a", "start_s": 0, "end_s": 0.08,
+         "azimuth_start_deg": -30, "azimuth_end_deg": 30},
+        {"source_id": "b", "start_s": 0, "end_s": 0.08,
+         "azimuth_deg": 90},
+    ]
+    check_manifest(moving, True)
+    assert module.reference_azimuth(moving["recordings"][0]["intervals"][0],
+                                    0.04) == 0
+    assert len(module.associate([0, 90], [
+        {"x": "1", "y": "0", "z": "0"},
+        {"x": "0", "y": "1", "z": "0"}])) == 2
+    assert len(module.associate([0, 90], [
+        {"x": "1", "y": "0", "z": "0"}])) == 1
+    two_rows = [{"hop": str(i), "kind": "track", "x": "1", "y": "0", "z": "0"}
+                for i in range(10)]
+    scores = module.evaluate(two_rows, [
+        {"source_id": "a", "start_s": 0, "end_s": 0.08, "azimuth_deg": 0},
+        {"source_id": "b", "start_s": 0, "end_s": 0.08, "azimuth_deg": 90},
+    ], 10)
+    assert sum(s["track_coverage"] for s in scores) == 1
+    # A single track must not count as coverage for both simultaneous sources.
+    bad = sample()
+    bad["recordings"][0]["intervals"] = [
+        {"source_id": "a", "start_s": 0, "end_s": 0.08, "azimuth_deg": 0},
+        {"source_id": "a", "start_s": 0.04, "end_s": 0.12, "azimuth_deg": 90},
+    ]
+    check_manifest(bad, False)
     print("respeaker-validator-selftest=ok")
 
 
