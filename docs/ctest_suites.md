@@ -98,6 +98,45 @@ boundary exclusion width), `--skip-overlap` and `--max-der THRESHOLD` must be
 chosen and documented before comparing results across runs. DER can exceed
 100% if false alarms are high. Missing/malformed references cause a hard failure.
 
+#### Independently annotated VoxConverse recordings (optional local benchmark)
+
+For a real DER number, use a versioned, independently annotated corpus
+such as [VoxConverse v0.3](https://github.com/joonson/voxconverse).
+Its `dev/` and `test/` directories provide source-of-truth RTTM
+annotations; the corresponding WAV archives are linked from its README.
+The corpus is **not downloaded in hosted CI**: its large clips are unsuitable
+for the mandatory smoke run. Cite Chung et al., *Interspeech 2020*,
+when reporting metrics. Follow the dataset's licensing and attribution terms.
+
+With the Pyannote segmentation and 3D-Speaker embedding ONNX files already
+provisioned for the Sherpa build, choose one VoxConverse WAV and its matching
+RTTM file (both must use the same recording basename, e.g. `abjxc`).
+If necessary, convert the audio to the backend-required 16-kHz mono WAV,
+preserving the original duration:
+
+```sh
+ffmpeg -hide_banner -loglevel error -i /data/voxconverse/dev/audio/abjxc.wav \
+  -ac 1 -ar 16000 -c:a pcm_s16le /tmp/abjxc.wav
+
+build-sherpa/tests/sherpa_real_speaker_diarization \
+  build-sherpa/diarization-segmentation/model.onnx \
+  build-sherpa/diarization-embedding.onnx \
+  /tmp/abjxc.wav \
+  build-sherpa/audio-fixtures/abjxc-report.txt --benchmark
+
+python3 tests/integration/score_diarization_rttm.py \
+  --reference /data/voxconverse/dev/abjxc.rttm \
+  --hypothesis build-sherpa/audio-fixtures/abjxc-report.rttm \
+  --output build-sherpa/audio-fixtures/abjxc-der.json
+```
+
+`--benchmark` disables only the **fixture-specific** assertion that exactly
+two speakers must be found. It still verifies segment validity, the audio
+format, and the output RTTM schema. It does not assign or replace ground
+truth. For reproducible corpus-level research, record exact split,
+reference version, model hashes, resampling, scoring collar, overlap policy,
+and per-recording results; **do not** infer corpus-wide DER from one sample.
+
 The reference-independent algorithm self-test runs through:
 `ctest --test-dir build-sherpa -R '^speech_diarization_scoring_selftest$' --output-on-failure`.
 It checks speaker permutation, false alarms, misses, speaker confusion,
