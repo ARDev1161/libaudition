@@ -29,14 +29,27 @@ std::string classify(audition::SherpaLanguageIdentifier& detector,
             audio.format().channel_count == 1U &&
             audio.format().layout == audition::AudioLayout::Interleaved,
             "Language-ID fixture is not mono 16 kHz interleaved");
-    require(audio.frameCount() > 16000U,
-            "Language-ID fixture unexpectedly shorter than 1 second");
+    // Upstream's labeled language-ID fixtures intentionally include very
+    // short utterances. Duration is not an input-format constraint of this
+    // API; validate that speech is present, then run the ORIGINAL WAV.
+    require(audio.frameCount() > 0U,
+            "Language-ID fixture contains no audio frames");
 
     const auto result = detector.identify(audio.view());
-    require(result.size() == 1U,
-            "Real Whisper Language-ID must return exactly one language");
-    require(result.front().language == expected,
-            "Real Whisper Language-ID predicted the wrong language");
+    if (result.size() != 1U) {
+        throw std::runtime_error{
+            "Real Whisper Language-ID must return exactly one language for " +
+            wav.filename().string() +
+            " (original_frames=" + std::to_string(audio.frameCount()) +
+            ", returned=" + std::to_string(result.size()) + ")"};
+    }
+    if (result.front().language != expected) {
+        throw std::runtime_error{
+            "Real Whisper Language-ID mismatch for " + wav.filename().string() +
+            ": expected=" + expected +
+            ", actual=" + result.front().language +
+            ", original_frames=" + std::to_string(audio.frameCount())};
+    }
     require(!result.front().probability.has_value(),
             "Language-ID adapter must not fabricate posterior confidence");
     return result.front().language;
