@@ -89,6 +89,65 @@ BACKENDS = {
         "GTSAM spatial fusion": r"^GtsamSpatialFusion\.",
     },
 }
+# The source inventory is a change-detection contract, not a declaration
+# that every source statement has been executed. Any newly compiled .cpp
+# requires explicit inventory review in the same PR.
+CORE_SOURCE_UNITS = """
+core/error.cpp core/time.cpp core/audio_buffer.cpp
+io/wav_io.cpp io/recording_timeline_json.cpp
+spatial/level_range_prior.cpp spatial/spl_calibration.cpp spatial/temporal_smoother.cpp
+model/in_memory_model_registry.cpp logging/logging.cpp
+pipeline/acoustic_event_assembler.cpp pipeline/spatial_identity.cpp
+pipeline/vocabulary.cpp pipeline/source_classification_runtime.cpp
+pipeline/progressive_source_classification_runtime.cpp pipeline/per_source_speech_runtime.cpp
+memory/in_memory_registries.cpp memory/sound_prototype_matcher.cpp memory/source_identity_resolver.cpp
+dsp/basic.cpp dsp/audio_frontend.cpp dsp/quality.cpp
+""".split()
+BACKEND_SOURCE_UNITS = {
+    "odas": "odas_options.cpp odas_config.cpp odas_runtime.cpp odas_spatial_engine.cpp",
+    "samplerate": "samplerate_resampler.cpp",
+    "webrtc_aec3": "webrtc_aec3_echo_canceller.cpp",
+    "sherpa": """sherpa_config.cpp sherpa_vad.cpp sherpa_offline_asr.cpp
+        sherpa_streaming_asr.cpp sherpa_keyword_spotter.cpp sherpa_language_identifier.cpp
+        sherpa_audio_tagger.cpp sherpa_speech_denoiser_config.cpp
+        sherpa_offline_speech_denoiser.cpp sherpa_streaming_speech_denoiser.cpp
+        sherpa_speaker_config.cpp sherpa_speaker_embedder.cpp sherpa_speaker_verifier.cpp
+        sherpa_speaker_identifier.cpp sherpa_speaker_diarizer.cpp
+        sherpa_tts_config.cpp sherpa_tts.cpp""",
+    "clap": "clap_features.cpp clap_audio_embedder.cpp roberta_tokenizer.cpp clap_text_encoder.cpp clap_open_vocabulary_classifier.cpp",
+    "yamnet": "yamnet_audio_tagger.cpp",
+    "efficientat": "efficientat_audio_tagger.cpp frontend.cpp resampler.cpp",
+    "aasist": "aasist_authenticity_detector.cpp",
+    "world": "world_voice_traits_estimator.cpp world_acoustic_analyzer.cpp",
+    "gtsam": "gtsam_spatial_fusion.cpp",
+}
+
+
+def source_inventory(root: Path) -> dict:
+    """Read compiled C++ translation units from their actual CMake manifests."""
+    base = (root / "src" / "CMakeLists.txt").read_text(encoding="utf-8")
+    core = {"src/" + p for p in
+            re.findall(r"\b(?:core|io|spatial|model|logging|pipeline|memory|dsp)/[\w]+\.cpp", base)}
+    expected_core = {"src/" + p for p in CORE_SOURCE_UNITS}
+    unknown = sorted(core - expected_core)
+    missing = sorted(expected_core - core)
+    observed = sorted(core)
+    for backend, filenames in BACKEND_SOURCE_UNITS.items():
+        cmake_path = root / "backends" / backend / "CMakeLists.txt"
+        manifest = cmake_path.read_text(encoding="utf-8")
+        src = {f"backends/{backend}/src/" + p
+               for p in re.findall(r"\bsrc/([\w]+\.cpp)", manifest)}
+        expected = {f"backends/{backend}/src/" + p for p in filenames.split()}
+        unknown.extend(sorted(src - expected))
+        missing.extend(sorted(expected - src))
+        observed.extend(sorted(src))
+    on_disk_missing = [p for p in observed if not (root / p).is_file()]
+    return {"compiled_translation_units": len(observed),
+            "untracked_compiled_sources": sorted(unknown),
+            "missing_inventory_sources": sorted(missing),
+            "missing_source_files": sorted(on_disk_missing)}
+
+
 MODEL_TOOL_CASES = (
     "test_efficientat_wav_evaluator",
     "test_compare_efficientat_wavs",
@@ -184,11 +243,13 @@ def expectations(flags: dict[str, bool]) -> dict[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build", required=True, type=Path)
+    parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--ctest", default="ctest")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     build = args.build.resolve(strict=True)
     flags = cache_flags(build)
+    sources = source_inventory(args.source.resolve(strict=True))
     observed = observed_ctest(args.ctest, build)
     expected = expectations(flags)
     checks = {name: any(re.search(pattern, test) for test in observed)
@@ -207,6 +268,7 @@ def main() -> int:
         "registered_case_checks": checks,
         "missing": sorted(name for name, passed in checks.items() if not passed),
         "untracked_backend_options": untracked_options,
+        "source_inventory": sources,
         "limits": [
             "Names establish registration, not functional quality or code/branch coverage",
             "Real 6-channel ReSpeaker DOA accuracy requires ground-truth hardware recordings",
@@ -216,9 +278,12 @@ def main() -> int:
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({k: report[k] for k in ("registered_test_count", "required_case_count", "missing", "untracked_backend_options")},
+    print(json.dumps({k: report[k] for k in ("registered_test_count", "required_case_count", "missing", "untracked_backend_options", "source_inventory")},
                      indent=2))
-    return 0 if not report["missing"] and not untracked_options else 1
+    source_gaps = (sources["untracked_compiled_sources"]
+                   + sources["missing_inventory_sources"]
+                   + sources["missing_source_files"])
+    return 0 if not report["missing"] and not untracked_options and not source_gaps else 1
 
 
 if __name__ == "__main__":
