@@ -14,6 +14,7 @@ The test writes `<build>/ctest-algorithm-coverage.json`.
 | DSP, calibration, resampling and audio frontend | `Dsp.*`, `AudioFrontend.*`, `SplCalibration.*`, `SoundLevelRangePrior.*`, `SamplerateBackend.*` | Unit and deterministic DSP |
 | Tracking, association, identity and acoustic events | `TemporalSpatialTrackSmoother.*`, `SpatialIdentityCoordinator.*`, `SourceIdentityResolver.*`, `AcousticEventAssembler.*` | Unit, lifecycle and conflicting state |
 | Per-source audio classification and overload | `SourceClassificationRuntime.*`, `ProgressiveSourceClassificationRuntime.*`, `progressive_stress_*_sources` | Multi-source ordering, queues, freshness, cancellation |
+| Sherpa auxiliary streaming ASR, KWS, language ID, denoising and diarization | `SherpaOnlineAsrContract.*`, `SherpaKwsContract.*`, `SherpaLanguageIdContract.*`, `SherpaDenoiserContract.*`, `SherpaDiarizationContract.*` | Supported model-family configuration, invalid thresholds, missing assets and runtime rejection; **not** real-weight inference quality |
 | Per-source VAD/ASR pipeline | `PerSourceSpeechRuntime.*`, `speech_real_*`, `speech_report_scoring_selftest` | Contract tests, real Silero/Whisper/SenseVoice inference, reference-utterance diagnostics |
 | ODAS SSL, SST, SSS | `OdasOptions.*`, `OdasBackend.*`, `audio_integration_*` | Deterministic six-channel synthetic ReSpeaker-layout streams and numeric planar DOA gates |
 | Echo cancellation | `WebRtcAec3Backend.*`, `qt_aec3` | Backend contract and Qt smoke |
