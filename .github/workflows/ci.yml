@@ -865,11 +865,7 @@ jobs:
           LIBAUDITION_TEST_WHISPER_TOKENS: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-tokens.txt
         run: ctest --test-dir build-sherpa -R '^qt_real_whisper-real$' --output-on-failure
       - name: Verify genuine Whisper ONNX through per-source speech runtime
-        run: |
-          ./build-sherpa/tests/sherpa_per_source_speech_smoke \
-            build-sherpa/whisper/tiny.en-encoder.int8.onnx \
-            build-sherpa/whisper/tiny.en-decoder.int8.onnx \
-            build-sherpa/whisper/tiny.en-tokens.txt
+        run: ctest --test-dir build-sherpa -R '^speech_real_whisper_two_sources$' --output-on-failure
       - name: Test actual speaker embedding verification and identification via Qt
         env:
           QT_QPA_PLATFORM: offscreen
@@ -902,22 +898,10 @@ jobs:
             -ac 1 -ar 16000 -c:a pcm_s16le \
             build-sherpa/audio-fixtures/utterance.wav
           test -s build-sherpa/audio-fixtures/utterance.wav
-      - name: Real Silero VAD + SenseVoice ASR WAV replay
+      - name: Real Silero VAD + SenseVoice ASR WAV replay and quality scoring
         run: |
-          ./build-sherpa/tests/real_speech_model_replay \
-            build-sherpa/silero_vad.onnx \
-            build-sherpa/sensevoice/model.int8.onnx \
-            build-sherpa/sensevoice/tokens.txt \
-            build-sherpa/audio-fixtures/utterance.wav \
-            build-sherpa/audio-fixtures/real-speech-report.txt
+          ctest --test-dir build-sherpa -R '^speech_(real_silero_sensevoice_wav|real_sensevoice_quality|report_scoring_selftest)$' --output-on-failure
           cat build-sherpa/audio-fixtures/real-speech-report.txt
-      - name: Assess real SenseVoice WER/CER on reference transcript
-        run: |
-          python3 tests/integration/score_speech_report.py --self-test
-          python3 tests/integration/score_speech_report.py \
-            --report build-sherpa/audio-fixtures/real-speech-report.txt \
-            --reference 'Hello robot. Please go forward and stop at the door.' \
-            --output build-sherpa/audio-fixtures/asr-quality.json
       - name: Upload model-audio diagnostics
         if: always()
         uses: actions/upload-artifact@v4
