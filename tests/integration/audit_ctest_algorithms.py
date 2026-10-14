@@ -197,6 +197,7 @@ REAL_SPEECH = (
     "speech_real_gtcrn_denoising",
     "speech_real_kws_gigaspeech",
     "speech_real_streaming_asr_zipformer",
+    "speech_real_language_id_whisper",
 )
 REAL_QT_SHERPA = ("qt_real_silero", "qt_real_whisper-real", "qt_real_speaker-real")
 
