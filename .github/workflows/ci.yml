@@ -709,7 +709,7 @@ jobs:
           curl --fail --location --retry 3 --silent --show-error \
             --output build-sherpa/gtcrn_simple.onnx \
             https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx
-          test "$(wc -c < build-sherpa/gtcrn_simple.onnx)" -gt 400000
+          echo 'e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534  build-sherpa/gtcrn_simple.onnx' | sha256sum --check
           sha256sum build-sherpa/gtcrn_simple.onnx | tee build-sherpa/audio-fixtures/gtcrn-model.sha256
       - name: Validate offline and streaming GTCRN ONNX enhancement via CTest
         run: |
