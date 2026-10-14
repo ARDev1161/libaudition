@@ -35,10 +35,11 @@ under CC BY 4.0, with attribution and copyrights retained by its owners.
 Workflow: [voxconverse-benchmark.yml](../.github/workflows/voxconverse-benchmark.yml).
 
 Two independent jobs evaluate all 216 dev and all 232 test recordings. The
-workflow is **separate from mandatory CI** and runs on initial pull-request
-addition of this workflow, as well as manually once the workflow is available
-on the default branch. CPU-only inference uses exactly the model assets
-pinned above.
+workflow is **separate from mandatory CI**. On this PR branch,
+changing `tests/integration/benchmark_voxconverse.py` triggers the heavy
+workflow. Manual dispatch is supported once this workflow is available on
+the default branch. Unrelated PR documentation and code changes do **not**
+rerun the multi-gigabyte evaluation. Models are SHA-256 pinned.
 
 Each job records source hashes; copies independently annotated reference
 RTTMs unchanged; converts each original WAV to mono 16 kHz in isolation; runs
