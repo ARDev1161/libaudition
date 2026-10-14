@@ -716,9 +716,31 @@ jobs:
             --output "$checksums" \
             https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/checksum.txt
           echo '284637b2b9fec1287aca10315dcc960710c6ec14224fb1dfa9fe427e77eb6c18  '"$checksums" | sha256sum --check
-          expected="$(awk '$NF == "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2" {print $1}' "$checksums")"
-          test "${#expected}" -eq 64
-          echo "$expected  $archive" | sha256sum --check
+          # Upstream checksum.txt is separately pinned above. Do not assume
+          # the filename is its last whitespace-delimited field, or that the
+          # digest precedes the filename (GNU/BSD/filename-first formats differ).
+          python3 - "$archive" "$checksums" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import re
+          import sys
+
+          archive, manifest = map(Path, sys.argv[1:3])
+          name = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"
+          lines = [line for line in manifest.read_text(encoding="utf-8").splitlines()
+                   if name in line]
+          if len(lines) != 1:
+              raise SystemExit(
+                  f"Expected exactly one KWS archive checksum entry, found {len(lines)}. "
+                  f"Verified release checksum contents: {manifest.read_text()!r}")
+          hashes = re.findall(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])", lines[0])
+          if len(hashes) != 1:
+              raise SystemExit(f"Cannot parse SHA-256 checksum line: {lines[0]!r}")
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if digest.lower() != hashes[0].lower():
+              raise SystemExit(f"KWS archive checksum mismatch: expected {hashes[0]}, got {digest}")
+          print(f"KWS upstream SHA-256 verified: {digest}", flush=True)
+          PY
           sha256sum "$archive" | tee build-sherpa/kws-archive.sha256
           python3 - "$archive" "$PWD/build-sherpa" <<'PY'
           import pathlib
