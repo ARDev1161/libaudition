@@ -6,7 +6,9 @@ Corpus JSON v1:
  "recordings":[{"id":"test01","wav":"test01.wav","sha256":"<64 hex>",
  "intervals":[{"start_s":1.0,"end_s":3.0,"azimuth_deg":45.0}]}]}
 Angles are measured in the microphone-frame convention of the runner:
-atan2(y,x), degrees. Each interval describes a source (optional source_id) with either static\nazimuth_deg or linearly changing azimuth_start_deg/azimuth_end_deg.\nMultiple sources may overlap; matches are one-to-one per analysis hop.
+atan2(y,x), degrees. Each interval describes a source (optional source_id) with either static
+azimuth_deg or linearly changing azimuth_start_deg/azimuth_end_deg.
+Multiple sources may overlap; matches are one-to-one per analysis hop.
 Recordings must be 6-channel, 16-kHz, 16-bit PCM and an integer number
 of 128-frame hops. Use an independent measurement for reference azimuths.
 """
@@ -101,7 +103,7 @@ def reference_azimuth(interval, time_s):
     return (start + fraction * delta + 180) % 360 - 180
 
 
-def associate(references, observations):
+def associate_with_indices(references, observations):
     """Minimum summed angular error, distinct observations per reference.
 
     Returns (reference-index, error) pairs; unmatched references are not
@@ -123,11 +125,16 @@ def associate(references, observations):
                 continue
             count, cost, pairs = solve(ref_index + 1, occupied | (1 << index))
             candidate = (count + 1, cost + errors[ref_index][index],
-                         ((ref_index, errors[ref_index][index]),) + pairs)
+                         ((ref_index, index, errors[ref_index][index]),) + pairs)
             if (candidate[0], -candidate[1]) > (best[0], -best[1]):
                 best = candidate
         return best
     return list(solve(0, 0)[2])
+
+
+def associate(references, observations):
+    return [(ref, error) for ref, _, error in
+            associate_with_indices(references, observations)]
 
 
 def evaluate(rows, intervals, total_hops):
@@ -137,10 +144,13 @@ def evaluate(rows, intervals, total_hops):
         check(0 <= hop < total_hops, "Observation outside recording")
         check(row["kind"] in ("track", "proposal"), "Unknown observation kind")
         observed.setdefault(hop, []).append(row)
-    state = [{"errors": [], "proposals": [], "covered": 0, "hops": 0}
+    state = [{"errors": [], "proposals": [], "covered": 0, "hops": 0,
+              "identity_switches": 0, "reacquisitions": 0}
              for _ in intervals]
     simultaneous_hops = 0
     fully_associated_hops = 0
+    last_id = {}
+    last_seen_hop = {}
     for hop in range(total_hops):
         time_s = (hop + 0.5) * HOP / FS
         active = [(index, reference_azimuth(interval, time_s))
@@ -151,14 +161,23 @@ def evaluate(rows, intervals, total_hops):
         data = observed.get(hop, [])
         tracks = [row for row in data if row["kind"] == "track"]
         proposals = [row for row in data if row["kind"] == "proposal"]
-        track_matches = associate([a for _, a in active], tracks)
+        track_matches = associate_with_indices([a for _, a in active], tracks)
         proposal_matches = associate([a for _, a in active], proposals)
         for index, _ in active:
             state[index]["hops"] += 1
-        for index, error in track_matches:
-            item = state[active[index][0]]
+        for index, observation_index, error in track_matches:
+            reference_index = active[index][0]
+            item = state[reference_index]
             item["covered"] += 1
             item["errors"].append(error)
+            track_id = int(tracks[observation_index]["id"])
+            if reference_index in last_id and last_id[reference_index] != track_id:
+                if last_seen_hop[reference_index] == hop - 1:
+                    item["identity_switches"] += 1
+                else:
+                    item["reacquisitions"] += 1
+            last_id[reference_index] = track_id
+            last_seen_hop[reference_index] = hop
         for index, error in proposal_matches:
             state[active[index][0]]["proposals"].append(error)
         if len(active) >= 2:
@@ -182,6 +201,8 @@ def evaluate(rows, intervals, total_hops):
             "median_proposal_error_deg": (
                 statistics.median(item["proposals"]) if item["proposals"] else None),
             "track_error_samples": len(item["errors"]),
+            "adjacent_hop_id_switches": item["identity_switches"],
+            "id_changes_after_gap": item["reacquisitions"],
         })
     return metrics
 
@@ -237,7 +258,11 @@ def main():
             rows = list(csv.DictReader(stream))
         segments = evaluate(rows, rec["intervals"], summary["hops"])
         item = {"id": rec["id"], "wav_sha256": rec["sha256"],
-                "segments": segments, "summary": summary}
+                "segments": segments, "summary": summary,
+                "adjacent_hop_id_switches": sum(
+                    x["adjacent_hop_id_switches"] for x in segments),
+                "id_changes_after_gap": sum(
+                    x["id_changes_after_gap"] for x in segments)}
         report["recordings"].append(item)
         (dest / "metrics.json").write_text(
             json.dumps(item, indent=2, sort_keys=True) + "\n", encoding="utf-8")
