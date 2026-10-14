@@ -17,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from zipfile import ZipFile, BadZipFile
+from zipfile import ZipFile
 
 from score_diarization_corpus import evaluate
 from score_diarization_rttm import parse_rttm
@@ -145,7 +145,7 @@ def run_benchmark(args: argparse.Namespace) -> None:
 
     with ZipFile(args.audio_zip) as zaudio:
         wavs = audio_members(zaudio, set(reference_files))
-        args.output_dir.mkdir(parents=True, exist_ok=False)
+        args.output_dir.mkdir(parents=True, exist_ok=True)
         ref_dir = args.output_dir / "reference"
         pred_dir = args.output_dir / "predicted"
         ref_dir.mkdir()
@@ -248,8 +248,6 @@ def self_test() -> None:
         folder = Path(temp)
         ref = folder / "ref.zip"
         audio = folder / "audio.zip"
-        import io
-        import zipfile
         with ZipFile(ref, "w") as z:
             for i in range(SPLIT_COUNTS["dev"]):
                 name = f"clip{i:03d}"
