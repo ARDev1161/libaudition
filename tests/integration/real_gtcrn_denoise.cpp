@@ -157,12 +157,14 @@ void run(const std::string& modelPath, const std::string& wavPath,
         streamSamples.insert(streamSamples.end(),
                              output.samples().begin(), output.samples().end());
     }
-    // This pinned GTCRN artifact buffers at least one streaming chunk.
-    // Regressions in the no-output handling must fail explicitly.
-    require(emptyStreamFrames > 0U,
-            "GTCRN regression test did not exercise empty buffered output");
     const auto tail = stream->flush();
     validateOutput(tail, format);
+    const bool emptyFlush = tail.frameCount() == 0U;
+    // With the pinned GTCRN artifact the native wrapper returns a no-output
+    // state either during buffering or when flushing an empty remainder.
+    // Exercise that state without assuming which call produces it.
+    require(emptyStreamFrames > 0U || emptyFlush,
+            "GTCRN regression test did not exercise empty native output");
     streamSamples.insert(streamSamples.end(), tail.samples().begin(),
                          tail.samples().end());
     // Streaming flush and the final zero-padded frame may introduce a
@@ -190,6 +192,7 @@ void run(const std::string& modelPath, const std::string& wavPath,
            << "offline_prefix_mse_diagnostic_only=" << offlinePrefixMse << '\n'
            << "stream_frame_shift=" << frameSize << '\n'
            << "empty_stream_frames=" << emptyStreamFrames << '\n'
+           << "empty_flush=" << (emptyFlush ? 1 : 0) << '\n'
            << "stream_samples=" << streamSamples.size() << '\n'
            << "stream_length_delta_samples=" << streamLengthDelta << '\n';
     require(report.good(), "Failed to write GTCRN integration report");
