@@ -194,6 +194,7 @@ REAL_SPEECH = (
     "speech_real_whisper_two_sources",
     "speech_real_silero_sensevoice_wav",
     "speech_real_sensevoice_quality",
+    "speech_real_gtcrn_denoising",
 )
 REAL_QT_SHERPA = ("qt_real_silero", "qt_real_whisper-real", "qt_real_speaker-real")
 
