@@ -102,6 +102,36 @@ def main():
     result = module.evaluate(interrupted, source, 10)[0]
     assert result["adjacent_hop_id_switches"] == 0
     assert result["id_changes_after_gap"] == 1
+    # Corpus importer: exact WAV bytes, checksum, manifest, duplicate rejection.
+    import wave
+    importer_source = Path(__file__).with_name("import_respeaker_recording.py")
+    importer_spec = importlib.util.spec_from_file_location(
+        "respeaker_importer", importer_source)
+    importer = importlib.util.module_from_spec(importer_spec)
+    importer_spec.loader.exec_module(importer)
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        wav = root / "capture.wav"
+        with wave.open(str(wav), "wb") as output:
+            output.setnchannels(6)
+            output.setsampwidth(2)
+            output.setframerate(16000)
+            output.writeframes(bytes(128 * 6 * 2 * 20))
+        annotation = root / "annotation.json"
+        annotation.write_text(json.dumps({
+            "id": "verified_clip",
+            "intervals": [{"start_s": 0, "end_s": 0.08,
+                           "azimuth_deg": 30}]}))
+        target = root / "dataset"
+        importer.import_recording(wav, annotation, target)
+        assert (target / "verified_clip.wav").read_bytes() == wav.read_bytes()
+        assert len(module.validate_manifest(target / "corpus.json")) == 1
+        try:
+            importer.import_recording(wav, annotation, target)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Duplicate recording was accepted")
     print("respeaker-validator-selftest=ok")
 
 
