@@ -98,51 +98,10 @@ jobs:
               "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/$file" \
               --output "$RUNNER_TEMP/yamnet/$file"
           done
-      - name: Verify real YAMNet ONNX output against independent Python inference
-        run: |
-          "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
-          import math
-          import os
-          import struct
-          root = os.environ["RUNNER_TEMP"]
-          with open(os.path.join(root, "yamnet-parity.raw"), "wb") as out:
-              out.write(b"".join(struct.pack("<h", int(12000*math.sin(2*math.pi*(220+i/80)*i/16000))) for i in range(15600)))
-          with open(os.path.join(root, "yamnet-parity-5s.raw"), "wb") as out:
-              out.write(b"".join(struct.pack("<h", int(12000*math.sin(2*math.pi*(220+i/80)*i/16000))) for i in range(80000)))
-          PY
-          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_onnx_cpp.py \
-            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
-            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
-            --pcm16 "$RUNNER_TEMP/yamnet-parity.raw" \
-            --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe" \
-            --output "$RUNNER_TEMP/yamnet-onnx-cpp-parity.json"
-          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_onnx_cpp.py \
-            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
-            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
-            --pcm16 "$RUNNER_TEMP/yamnet-parity-5s.raw" \
-            --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe" \
-            --output "$RUNNER_TEMP/yamnet-onnx-cpp-5s-parity.json"
-      - name: Reject malformed YAMNet AudioSet label maps
-        run: |
-          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_label_rejection.py \
-            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
-            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
-            --pcm16 "$RUNNER_TEMP/yamnet-parity.raw" \
-            --cpp-probe "$GITHUB_WORKSPACE/build-efficientat-real/tests/yamnet_pcm16_probe"
+      - name: Validate YAMNet C++/ONNX parity and malformed label maps through CTest
+        run: ctest --test-dir build-efficientat-real -R '^real_yamnet_(onnx_cpp_parity_(short|long)|label_rejection)$' --output-on-failure --parallel 2
       - name: Real YAMNet quick/refined WAV replay (not raw mock PCM)
-        shell: bash
         run: |
-          set -euo pipefail
-          export WAV_PATH="$RUNNER_TEMP/yamnet-parity-5s.wav"
-          python3 - <<'PY'
-          import os, pathlib, wave
-          raw = pathlib.Path(os.environ["RUNNER_TEMP"]) / "yamnet-parity-5s.raw"
-          with wave.open(os.environ["WAV_PATH"], "wb") as out:
-              out.setnchannels(1)
-              out.setsampwidth(2)
-              out.setframerate(16000)
-              out.writeframes(raw.read_bytes())
-          PY
           ctest --test-dir build-efficientat-real -R '^real_yamnet_wav_replay_ctest$' --output-on-failure
           cat "$RUNNER_TEMP/yamnet-real-wav-report.txt"
       - name: Real-weight YAMNet fast-to-refined CTest integration
@@ -158,11 +117,7 @@ jobs:
             ${{ runner.temp }}/yamnet-stream-10.json
           retention-days: 14
       - name: Verify official YAMNet silence noise and sine wave behavior
-        run: |
-          "$RUNNER_TEMP/efficientat-real/bin/python" tools/verify_yamnet_behavior.py \
-            --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
-            --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
-            --output "$RUNNER_TEMP/yamnet-behavior.json"
+        run: ctest --test-dir build-efficientat-real -R '^real_yamnet_behavior$' --output-on-failure
       - name: Generate deterministic WAV and run genuine classifier benchmarks via CTest
         run: ctest --test-dir build-efficientat-real -R '^real_(efficientat_wav_benchmark_(mn10_as|dymn10_as)|yamnet_wav_benchmark)$' --output-on-failure --parallel 2
       - name: Compare all three model outputs on a common AudioSet MID
