@@ -279,6 +279,28 @@ if(TARGET audition::backend_sherpa)
         set_tests_properties(speech_real_speaker_diarization_benchmark PROPERTIES
             LABELS "real-model;speech-integration;diarization;benchmark"
             TIMEOUT 300)
+        # One genuinely independent human-labeled RTTM reference (not model output)
+        # for an end-to-end diagnostic DER computation. No accuracy cutoff is
+        # imposed from this single, short audio recording.
+        add_test(NAME speech_real_speaker_diarization_reference_der
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/integration/score_diarization_corpus.py"
+                --reference-dir
+                    "${CMAKE_BINARY_DIR}/audio-fixtures/diarization-reference/reference"
+                --wav-dir
+                    "${CMAKE_BINARY_DIR}/audio-fixtures/diarization-reference/wav"
+                --hypothesis-dir
+                    "${CMAKE_BINARY_DIR}/audio-fixtures/diarization-reference/predicted"
+                --diarizer $<TARGET_FILE:sherpa_real_speaker_diarization>
+                --segmentation-model
+                    "${CMAKE_BINARY_DIR}/diarization-segmentation/model.onnx"
+                --embedding-model
+                    "${CMAKE_BINARY_DIR}/diarization-embedding.onnx"
+                --output
+                    "${CMAKE_BINARY_DIR}/audio-fixtures/diarization-reference/der.json")
+        set_tests_properties(speech_real_speaker_diarization_reference_der PROPERTIES
+            LABELS "real-model;speech-integration;diarization;reference-der"
+            TIMEOUT 300)
         add_test(NAME speech_real_language_id_whisper
             COMMAND $<TARGET_FILE:sherpa_real_language_id>
                 "${CMAKE_BINARY_DIR}/language-id-whisper-tiny"
