@@ -159,6 +159,19 @@ if(BUILD_TESTING AND LIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE)
             --version "${PROJECT_VERSION}")
     set_tests_properties(installed_package_cpp17_consumer PROPERTIES
         LABELS "installed-package;package-consumer" TIMEOUT 180)
+    if(LIBAUDITION_WITH_SHERPA)
+        add_test(NAME installed_package_sherpa_cpp17_consumer
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/verify_installed_package.py"
+                --prefix "${LIBAUDITION_PACKAGE_SMOKE_PREFIX}"
+                --cmake "${CMAKE_COMMAND}"
+                --generator "${CMAKE_GENERATOR}"
+                --version "${PROJECT_VERSION}"
+                --backend sherpa)
+        set_tests_properties(installed_package_sherpa_cpp17_consumer PROPERTIES
+            LABELS "installed-package;package-consumer;sherpa"
+            TIMEOUT 180)
+    endif()
 endif()
 
 if(LIBAUDITION_BUILD_DOCS)
