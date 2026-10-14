@@ -654,6 +654,12 @@ endif()
 # Assert that configured algorithm and backend test contracts remain discoverable.
 # This explicitly audits registration, not code or hardware-accuracy coverage.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME algorithm_coverage_audit_selftest
+    COMMAND ${Python3_EXECUTABLE}
+        "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_ctest_coverage_audit.py")
+set_tests_properties(algorithm_coverage_audit_selftest PROPERTIES
+    LABELS "coverage-audit;ci-contract" TIMEOUT 60)
+
 add_test(NAME algorithm_coverage_contract
     COMMAND ${Python3_EXECUTABLE}
         "${CMAKE_CURRENT_SOURCE_DIR}/integration/audit_ctest_algorithms.py"
