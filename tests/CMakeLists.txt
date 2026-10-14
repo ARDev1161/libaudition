@@ -260,13 +260,21 @@ if(TARGET audition::backend_efficientat)
     target_link_libraries(efficientat_real_model_smoke PRIVATE audition::backend_efficientat audition::core)
     libaudition_configure_target(efficientat_real_model_smoke)
 
+    # The local path is configurable; CI uses the runner's asset directory.
+    if(DEFINED ENV{RUNNER_TEMP} AND NOT "$ENV{RUNNER_TEMP}" STREQUAL "")
+        set(_default_real_model_asset_dir "$ENV{RUNNER_TEMP}")
+    else()
+        set(_default_real_model_asset_dir "${CMAKE_BINARY_DIR}/model-assets")
+    endif()
+    set(LIBAUDITION_REAL_MODEL_ASSET_DIR "${_default_real_model_asset_dir}"
+        CACHE PATH "Directory holding downloaded real-model test fixtures")
     # Genuine EfficientAT weights are provisioned by the model CI job.
     if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
         foreach(_variant IN ITEMS mn10_as dymn10_as)
             add_test(NAME "real_efficientat_${_variant}"
                 COMMAND $<TARGET_FILE:efficientat_real_model_smoke>
-                    "$ENV{RUNNER_TEMP}/eat-real/${_variant}.onnx"
-                    "$ENV{RUNNER_TEMP}/eat-real/${_variant}_labels.txt")
+                    "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/eat-real/${_variant}.onnx"
+                    "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/eat-real/${_variant}_labels.txt")
             set_tests_properties("real_efficientat_${_variant}" PROPERTIES
                 LABELS "real-model;efficientat"
                 TIMEOUT 180)
