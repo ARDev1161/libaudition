@@ -116,6 +116,12 @@ if(TARGET audition::backend_odas)
         audition::backend_odas audition::io audition::pipeline audition::core)
     libaudition_configure_target(audition_offline_integration)
 
+    add_test(NAME audio_respeaker_manifest_selftest COMMAND
+        ${Python3_EXECUTABLE}
+        "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_respeaker_validator.py")
+    set_tests_properties(audio_respeaker_manifest_selftest PROPERTIES
+        LABELS "audio-integration;corpus-validation;odas" TIMEOUT 30)
+
     set(_spatial_fixtures "${CMAKE_CURRENT_BINARY_DIR}/spatial_audio_fixtures")
     set(_spatial_results "${CMAKE_CURRENT_BINARY_DIR}/audio_integration_results")
     add_test(NAME audio_fixture_generate COMMAND
