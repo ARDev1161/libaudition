@@ -14,7 +14,7 @@ The test writes `<build>/ctest-algorithm-coverage.json`.
 | DSP, calibration, resampling and audio frontend | `Dsp.*`, `AudioFrontend.*`, `SplCalibration.*`, `SoundLevelRangePrior.*`, `SamplerateBackend.*` | Unit and deterministic DSP |
 | Tracking, association, identity and acoustic events | `TemporalSpatialTrackSmoother.*`, `SpatialIdentityCoordinator.*`, `SourceIdentityResolver.*`, `AcousticEventAssembler.*` | Unit, lifecycle and conflicting state |
 | Per-source audio classification and overload | `SourceClassificationRuntime.*`, `ProgressiveSourceClassificationRuntime.*`, `progressive_stress_*_sources` | Multi-source ordering, queues, freshness, cancellation |
-| Sherpa Pyannote 3.0 speaker diarization | `speech_real_speaker_diarization` | Real segmentation+embedding models, official English two-speaker WAV, segment bounds and count, wrong-rate rejection; **pending CI validation**, model hashes recorded for later pinning |
+| Sherpa Pyannote 3.0 speaker diarization | `speech_real_speaker_diarization` | Real segmentation + 3D-Speaker embeddings and English two-speaker WAV; **CI #1032 passed:** 2 speakers, 4 segments, 8.49 s of cumulative segment durations, invalid sample rate rejected. Model/WAV SHA-256 pinned; no DER claim |
 | Sherpa Whisper multilingual Language-ID | `speech_real_language_id_whisper` | Real multilingual Tiny INT8 model, official English/German labeled WAVs, repeatability, empty-input and invalid-sample-rate rejection; **CI #1025 passed**, observed `en`, `de`, `en` |
 | Sherpa English streaming Zipformer ASR | `speech_real_streaming_asr_zipformer` | Real quantized online model, 100 ms WAV chunks, incremental hypothesis, finalization, reset and independent sessions; upstream speech fixture; **CI #1019 passed**, recognized `LIGHT UP` and produced 44 nonempty partial hypotheses |
 | Sherpa GigaSpeech INT8 keyword spotting | `speech_real_kws_gigaspeech` | Official annotated positive WAV (`LIGHT UP`) and one-second negative silence after reset; **CI #1014 passed** |
@@ -44,11 +44,13 @@ claim optional-backend coverage.
    annotated physical ReSpeaker recordings with measured geometry,
    directions and synchronization. A hardware-in-the-loop runner is separate
    from hosted CI.
-2. **Sherpa auxiliary models**: alternative online model families, broader spoken-language accuracy,
-   DPDFNet inference and diarization generalization are
-   implemented, but the registration contract does not establish that each
-   has a quantitative real-weight acceptance dataset and accuracy thresholds.
-   Configuration tests are not equivalent to functional inference.
+2. **Sherpa auxiliary models**: genuine GigaSpeech KWS, Streaming Zipformer ASR,
+   multilingual Whisper language ID, GTCRN denoising and Pyannote diarization
+   all have model-backed smoke tests. However, alternative online model
+   families, DPDFNet, representative language-ID accuracy, and robust
+   diarization metrics (DER/JER) still lack quantitative holdout datasets.
+   The two-speaker fixture checks the speaker count and segment invariants,
+   not the correctness of every timestamp or speaker assignment.
 3. **Statistical accuracy**: the ESC-10 subsets and a reference speech phrase
    are regression diagnostics, not unbiased population WER, AudioSet mAP,
    false-alarm rates, or generalization benchmarks. Model metrics need
