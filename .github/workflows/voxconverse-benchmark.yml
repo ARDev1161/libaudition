@@ -1,11 +1,13 @@
 name: VoxConverse v0.3 full diarization benchmark
 
 on:
-  # Initial PR file addition triggers both full splits. Later workflow_dispatch
-  # works once the workflow becomes available on the repository default branch.
-  pull_request:
+  # Explicit heavy benchmark: no re-run on every unrelated PR synchronize.
+  # The branch push trigger only reacts to changes in the benchmark runner.
+  push:
+    branches:
+      - ci/unified-ctest-entrypoints
     paths:
-      - .github/workflows/voxconverse-benchmark.yml
+      - tests/integration/benchmark_voxconverse.py
   workflow_dispatch:
 
 permissions:
