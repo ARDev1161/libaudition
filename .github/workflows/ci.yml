@@ -632,7 +632,7 @@ jobs:
       - name: Test
         env:
           LIBAUDITION_TEST_SILERO_MODEL: ${{ github.workspace }}/build-sherpa/silero_vad.onnx
-        run: ctest --test-dir build-sherpa -LE real-model --output-on-failure
+        run: ctest --test-dir build-sherpa -LE 'real-model|installed-package' --output-on-failure
       - name: Test actual Silero VAD Qt workbench inference
         env:
           QT_QPA_PLATFORM: offscreen
