@@ -213,6 +213,66 @@ The reference-independent algorithm self-test runs through:
 It checks speaker permutation, false alarms, misses, speaker confusion,
 overlapping speech, collar exclusion, and malformed reference records.
 
+## Real ReSpeaker recordings (opt-in)
+
+The `audio_real_respeaker_corpus` CTest uses **measured, independently
+annotated microphone captures**, not the synthetic spatial generator.
+The dataset is never downloaded implicitly. Each clip must be six-channel
+16 kHz PCM16 WAV, channels 1–4 carrying the microphone signals in the
+existing ReSpeaker USB 4-Mic profile ordering (channels 0 and 5 remain
+the reference channels). Frame count must be divisible by 128.
+
+Create a corpus folder containing `corpus.json` and WAV files. Example
+(reference azimuths are illustrative placeholders, **not** measurements):
+
+```json
+{
+  "schema": "libaudition.respeaker-corpus.v1",
+  "recordings": [
+    {
+      "id": "room1_static_01",
+      "wav": "room1_static_01.wav",
+      "sha256": "REPLACE_WITH_64_LOWERCASE_HEX_SHA256",
+      "intervals": [
+        {"start_s": 1.0, "end_s": 4.0, "azimuth_deg": 30.0}
+      ]
+    }
+  ]
+}
+```
+
+The azimuth is measured in the microphone-array frame, with zero pointing
+along +X and positive angles toward +Y (atan2(y, x)); ensure microphone
+orientation, source position and their measurement uncertainty are logged.
+Reference intervals must be ordered, non-overlapping and remain inside
+the WAV duration. This initial evaluator supports stationary **single-source**
+intervals; overlapping speech, moving sources and elevation require an
+extended annotation/evaluator and must not be silently interpreted as
+stationary ground truth.
+
+```bash
+cmake -S . -B build-odas -G Ninja \
+  -DLIBAUDITION_WITH_ODAS=ON \
+  -DLIBAUDITION_BUILD_TESTS=ON \
+  -DLIBAUDITION_RESPEAKER_CORPUS_MANIFEST=/data/respeaker/corpus.json
+cmake --build build-odas --target audition_offline_integration
+ctest --test-dir build-odas -R '^audio_real_respeaker_corpus$' \
+  --output-on-failure --no-tests=error
+```
+
+The evaluator checks the SHA-256 of every recording, WAV format, annotation
+ranges, ODAS runner execution, output consistency and zero recorder drops.
+It writes each clip's raw observations, outputs and `metrics.json`, plus
+a corpus `report.json`, under `build-odas/tests/real_respeaker_results/`.
+Report fields include per-interval track coverage, median nearest-track
+3D angular error and median nearest SSL-proposal error. Nearest-track
+metrics are diagnostics and are **not** identity-aware track-association
+scores. There are no hardcoded DOA acceptance thresholds for real captures.
+Optional manually calibrated thresholds are supported by invoking
+`tests/integration/validate_respeaker_corpus.py` directly with
+`--max-median-error-deg` and `--min-track-coverage`; do not set them
+from synthetic CI performance.
+
 ## Coverage and caveats
 
 - GTest and deterministic regression checks run without downloaded models.
