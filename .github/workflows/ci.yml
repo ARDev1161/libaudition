@@ -163,23 +163,8 @@ jobs:
             --model "$RUNNER_TEMP/yamnet/yamnet.onnx" \
             --labels "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
             --output "$RUNNER_TEMP/yamnet-behavior.json"
-      - name: Generate deterministic PCM16 WAV and benchmark both models
-        run: |
-          "$RUNNER_TEMP/efficientat-real/bin/python" - <<'PY'
-          import math
-          import wave
-          import struct
-          import os
-          path = os.path.join(os.environ["RUNNER_TEMP"], "efficientat-benchmark.wav")
-          with wave.open(path, "wb") as f:
-              f.setnchannels(1)
-              f.setsampwidth(2)
-              f.setframerate(32000)
-              f.writeframes(b"".join(struct.pack("<h", int(0.2*32767*math.sin(2*math.pi*440*i/32000))) for i in range(160000)))
-          PY
-          ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/mn10_as.onnx" "$RUNNER_TEMP/eat-real/mn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
-          ./build-efficientat-real/tests/efficientat_wav_benchmark "$RUNNER_TEMP/eat-real/dymn10_as.onnx" "$RUNNER_TEMP/eat-real/dymn10_as_labels.txt" "$RUNNER_TEMP/efficientat-benchmark.wav"
-          ./build-efficientat-real/tests/yamnet_wav_benchmark "$RUNNER_TEMP/yamnet/yamnet.onnx" "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" "$RUNNER_TEMP/efficientat-benchmark.wav"
+      - name: Generate deterministic WAV and run genuine classifier benchmarks via CTest
+        run: ctest --test-dir build-efficientat-real -R '^real_(efficientat_wav_benchmark_(mn10_as|dymn10_as)|yamnet_wav_benchmark)$' --output-on-failure --parallel 2
       - name: Compare all three model outputs on a common AudioSet MID
         run: |
           printf 'wav,mid\n%s,/m/09x0r\n' "$RUNNER_TEMP/efficientat-benchmark.wav" > "$RUNNER_TEMP/benchmark-manifest.csv"
