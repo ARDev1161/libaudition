@@ -62,7 +62,17 @@ jobs:
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build C++ real-model smoke tool
-        run: cmake --build build-efficientat-real --target efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke yamnet_progressive_multisource real_yamnet_wav_replay --parallel
+        run: cmake --build build-efficientat-real --target libaudition_tests efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke yamnet_progressive_multisource real_yamnet_wav_replay --parallel
+      - name: Audit all configured algorithm CTest registrations
+        run: ctest --test-dir build-efficientat-real -R '^algorithm_coverage_contract$' --output-on-failure
+      - name: Upload CTest algorithm coverage inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: efficientat-algorithm-ctest-contract
+          path: build-efficientat-real/ctest-algorithm-coverage.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Fetch original EfficientAT source
         run: |
           git clone --depth 1 https://github.com/fschmid56/EfficientAT.git "$RUNNER_TEMP/EfficientAT"
