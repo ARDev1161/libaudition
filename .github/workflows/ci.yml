@@ -920,6 +920,58 @@ jobs:
           python3 tests/integration/score_diarization_rttm.py \
             --validate-hypothesis build-sherpa/audio-fixtures/diarization-benchmark.rttm
           # The benchmark smoke checks output schema, NOT DER; no independent RTTM ground truth.
+      - name: Fetch version-pinned independently annotated 10s speaker recording
+        shell: bash
+        run: |
+          set -euo pipefail
+          # FHS Brain Aging Program toolkit example has a separate human-labeled
+          # ground_truth_files RTTM; do NOT use its sample_files model prediction.
+          # Download bytes only at runtime, preserve public provenance.
+          upstream="https://raw.githubusercontent.com/Digital-Working-Group/speaker-diarization/9d9ebfcdc08cde1831be697ff5fb22269737a28d"
+          root="build-sherpa/audio-fixtures/diarization-reference"
+          mkdir -p "$root/reference" "$root/wav"
+          wav_archive="$RUNNER_TEMP/first_ten_Sample_HV_Clip.wav"
+          reference_original="$RUNNER_TEMP/first_ten_Sample_HV_Clip_ground_truth.rttm"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$wav_archive" \
+            "$upstream/sample_files/short_wav/first_ten_Sample_HV_Clip.wav"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$reference_original" \
+            "$upstream/ground_truth_files/first_ten_Sample_HV_Clip%20ground_truth.rttm"
+          # Git blob hashes from the pinned upstream tree; verify both exact assets.
+          test "$(git hash-object "$wav_archive")" = e40c1201ef51fcae123fd94c37ba1f837f0b6728
+          test "$(git hash-object "$reference_original")" = 4b19562e4ad6ed70d0bdbc6f0eb657809fb39107
+          git hash-object "$wav_archive" "$reference_original" \
+            | tee "$root/upstream-blob-hashes.txt"
+          # The upstream RTTM recording ID is 'waveform'. Normalize only the ID
+          # to the pinned WAV basename, never its human-labeled boundaries.
+          python3 - "$reference_original" "$root/reference/first_ten_Sample_HV_Clip.rttm" <<'PY'
+          from pathlib import Path
+          import sys
+          original, output = map(Path, sys.argv[1:3])
+          converted = []
+          for line in original.read_text(encoding="utf-8").splitlines():
+              if not line.strip():
+                  continue
+              fields = line.split()
+              if len(fields) != 10 or fields[0] != "SPEAKER" or fields[1] != "waveform":
+                  raise SystemExit(f"Unexpected independently labeled RTTM: {line!r}")
+              fields[1] = "first_ten_Sample_HV_Clip"
+              converted.append(" ".join(fields))
+          if len(converted) < 2:
+              raise SystemExit("Missing ground-truth speaker boundaries")
+          output.write_text("\n".join(converted) + "\n", encoding="utf-8")
+          PY
+          ffmpeg -hide_banner -loglevel error -y \
+            -i "$wav_archive" -ac 1 -ar 16000 -c:a pcm_s16le \
+            "$root/wav/first_ten_Sample_HV_Clip.wav"
+          test -s "$root/wav/first_ten_Sample_HV_Clip.wav"
+      - name: Compute independent real-model diarization DER diagnostic
+        run: |
+          ctest --test-dir build-sherpa \
+            -R '^speech_real_speaker_diarization_reference_der$' \
+            --output-on-failure --no-tests=error
+          cat build-sherpa/audio-fixtures/diarization-reference/der.json
       - name: Download official Sherpa GTCRN denoising ONNX
         shell: bash
         run: |
@@ -957,6 +1009,10 @@ jobs:
             build-sherpa/audio-fixtures/diarization-benchmark.txt
             build-sherpa/audio-fixtures/diarization-benchmark.rttm
             build-sherpa/audio-fixtures/diarization-assets.sha256
+            build-sherpa/audio-fixtures/diarization-reference/der.json
+            build-sherpa/audio-fixtures/diarization-reference/reference/*.rttm
+            build-sherpa/audio-fixtures/diarization-reference/predicted/*.rttm
+            build-sherpa/audio-fixtures/diarization-reference/upstream-blob-hashes.txt
           if-no-files-found: ignore
           retention-days: 14
       - name: Install
