@@ -352,6 +352,12 @@ if(TARGET audition::backend_sherpa)
             --self-test)
     set_tests_properties(speech_diarization_scoring_selftest PROPERTIES
         LABELS "speech-integration;python;diarization" TIMEOUT 60)
+    add_test(NAME speech_diarization_corpus_scoring_selftest
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/score_diarization_corpus.py"
+            --self-test)
+    set_tests_properties(speech_diarization_corpus_scoring_selftest PROPERTIES
+        LABELS "speech-integration;python;diarization" TIMEOUT 60)
 
 endif()
 
