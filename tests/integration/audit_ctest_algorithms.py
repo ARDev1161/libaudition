@@ -64,6 +64,7 @@ BACKENDS = {
         "speech quality scorer correctness": r"^speech_report_scoring_selftest$",
         "reference RTTM DER scoring and permutation": r"^speech_diarization_scoring_selftest$",
         "multi-recording corpus DER aggregation": r"^speech_diarization_corpus_scoring_selftest$",
+        "complete VoxConverse archive and label pairing": r"^speech_voxconverse_full_split_preflight_selftest$",
         "streaming ASR model variants and runtime validation": r"^SherpaOnlineAsrContract\.",
         "keyword spotting model variants and thresholds": r"^SherpaKwsContract\.",
         "language identification configuration": r"^SherpaLanguageIdContract\.",
