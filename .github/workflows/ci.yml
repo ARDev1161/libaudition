@@ -702,6 +702,19 @@ jobs:
             -ac 1 -ar 16000 -c:a pcm_s16le \
             build-sherpa/audio-fixtures/utterance.wav
           test -s build-sherpa/audio-fixtures/utterance.wav
+      - name: Download official Sherpa GTCRN denoising ONNX
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            --output build-sherpa/gtcrn_simple.onnx \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx
+          test "$(wc -c < build-sherpa/gtcrn_simple.onnx)" -gt 400000
+          sha256sum build-sherpa/gtcrn_simple.onnx | tee build-sherpa/audio-fixtures/gtcrn-model.sha256
+      - name: Validate offline and streaming GTCRN ONNX enhancement via CTest
+        run: |
+          ctest --test-dir build-sherpa -R '^speech_real_gtcrn_denoising$' --output-on-failure --no-tests=error
+          cat build-sherpa/audio-fixtures/gtcrn-report.txt
       - name: Real Silero VAD + SenseVoice ASR WAV replay and quality scoring
         run: |
           ctest --test-dir build-sherpa -R '^speech_(real_silero_sensevoice_wav|real_sensevoice_quality|report_scoring_selftest)$' --output-on-failure
@@ -714,6 +727,8 @@ jobs:
           path: |
             build-sherpa/audio-fixtures/real-speech-report.txt
             build-sherpa/audio-fixtures/asr-quality.json
+            build-sherpa/audio-fixtures/gtcrn-report.txt
+            build-sherpa/audio-fixtures/gtcrn-model.sha256
           if-no-files-found: ignore
           retention-days: 14
       - name: Install
