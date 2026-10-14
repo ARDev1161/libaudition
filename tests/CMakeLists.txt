@@ -194,6 +194,11 @@ if(TARGET audition::backend_sherpa)
         audition::backend_sherpa audition::io audition::core)
     libaudition_configure_target(real_speech_model_replay)
 
+    add_executable(real_gtcrn_denoise integration/real_gtcrn_denoise.cpp)
+    target_link_libraries(real_gtcrn_denoise PRIVATE
+        audition::backend_sherpa audition::io audition::core)
+    libaudition_configure_target(real_gtcrn_denoise)
+
     target_sources(libaudition_tests PRIVATE
         sherpa_backend_test.cpp sherpa_speaker_backend_test.cpp
         sherpa_auxiliary_contract_test.cpp)
@@ -205,6 +210,14 @@ if(TARGET audition::backend_sherpa)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     if(LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
+        add_test(NAME speech_real_gtcrn_denoising
+            COMMAND $<TARGET_FILE:real_gtcrn_denoise>
+                "${CMAKE_BINARY_DIR}/gtcrn_simple.onnx"
+                "${CMAKE_BINARY_DIR}/audio-fixtures/utterance.wav"
+                "${CMAKE_BINARY_DIR}/audio-fixtures/gtcrn-report.txt")
+        set_tests_properties(speech_real_gtcrn_denoising PROPERTIES
+            LABELS "real-model;speech-integration;denoising"
+            TIMEOUT 180)
         # Real model fixtures live in the configured build directory.
     # Their absence is a failed test (never a silent skip).
     add_test(NAME speech_real_whisper_two_sources
