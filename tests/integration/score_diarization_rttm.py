@@ -214,13 +214,13 @@ def self_test() -> None:
     with TemporaryDirectory() as directory:
         file = Path(directory) / "sample.rttm"
         file.write_text(
-            "SPEAKER rec 1 0.000 2.000 <NA> <NA> spk_0 <NA> <NA>\\n"
-            "SPEAKER rec 1 2.000 2.000 <NA> <NA> spk_1 <NA> <NA>\\n",
+            "SPEAKER rec 1 0.000 2.000 <NA> <NA> spk_0 <NA> <NA>\n"
+            "SPEAKER rec 1 2.000 2.000 <NA> <NA> spk_1 <NA> <NA>\n",
             encoding="utf-8")
         recording, parsed = parse_rttm(file)
         assert recording == "rec" and parsed == [
             seg(0, 2, "spk_0"), seg(2, 4, "spk_1")]
-        file.write_text("SPEAKER rec 1 NaN 2 <NA> <NA> x <NA> <NA>\\n",
+        file.write_text("SPEAKER rec 1 NaN 2 <NA> <NA> x <NA> <NA>\n",
                         encoding="utf-8")
         try:
             parse_rttm(file)
