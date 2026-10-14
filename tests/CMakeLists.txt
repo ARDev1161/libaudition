@@ -81,7 +81,15 @@ target_link_libraries(libaudition_tests PRIVATE
     audition::spatial
     GTest::gtest_main)
 libaudition_configure_target(libaudition_tests)
-gtest_discover_tests(libaudition_tests)
+# With the optional reference suite, the synthesized ONNX fixture is
+# created before every discovered GTest, including tests of the model adapter.
+# Avoid relying on CI step ordering or a pre-existing fixture directory.
+if(LIBAUDITION_REGISTER_EFFICIENTAT_REFERENCE_TESTS AND TARGET audition::backend_efficientat)
+    gtest_discover_tests(libaudition_tests
+        PROPERTIES FIXTURES_REQUIRED efficientat_synthetic_onnx)
+else()
+    gtest_discover_tests(libaudition_tests)
+endif()
 
 # Synthetic streaming stress: no ONNX weights, Qt, ALSA or ODAS required.
 # Uses explicit simulated inference costs to expose queue pressure and
@@ -426,6 +434,37 @@ if(TARGET audition::backend_efficientat)
     target_link_libraries(efficientat_frontend_dump PRIVATE
         audition::backend_efficientat audition::core)
     libaudition_configure_target(efficientat_frontend_dump)
+
+    option(LIBAUDITION_REGISTER_EFFICIENTAT_REFERENCE_TESTS
+        "Register PyTorch frontend parity and generated ONNX fixture with CTest" OFF)
+    if(LIBAUDITION_REGISTER_EFFICIENTAT_REFERENCE_TESTS)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(NAME efficientat_synthetic_onnx_fixture
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/make_efficientat_onnx.py"
+                "${CMAKE_BINARY_DIR}/fixture")
+        set_tests_properties(efficientat_synthetic_onnx_fixture PROPERTIES
+            LABELS "efficientat;model-fixture"
+            FIXTURES_SETUP efficientat_synthetic_onnx
+            TIMEOUT 90)
+
+        add_test(NAME efficientat_frontend_reference_dump
+            COMMAND $<TARGET_FILE:efficientat_frontend_dump>
+                "${CMAKE_BINARY_DIR}/efficientat_mel.f32")
+        set_tests_properties(efficientat_frontend_reference_dump PROPERTIES
+            LABELS "efficientat;parity;model-fixture"
+            FIXTURES_SETUP efficientat_frontend_mel
+            TIMEOUT 90)
+
+        add_test(NAME efficientat_frontend_torch_parity
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/compare_efficientat_frontend.py"
+                "${CMAKE_BINARY_DIR}/efficientat_mel.f32")
+        set_tests_properties(efficientat_frontend_torch_parity PROPERTIES
+            LABELS "efficientat;parity"
+            FIXTURES_REQUIRED efficientat_frontend_mel
+            TIMEOUT 180)
+    endif()
     target_sources(libaudition_tests PRIVATE efficientat_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_efficientat)
 endif()
