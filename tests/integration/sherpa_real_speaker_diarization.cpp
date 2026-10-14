@@ -64,7 +64,7 @@ void run(const std::filesystem::path& segmentation,
         require(segment.speaker_index < 100U,
                 "Diarizer returned unreasonably large speaker index");
         if (segment.confidence.has_value()) {
-            const auto value = segment.confidence->value();
+            const auto value = segment.confidence->value;
             require(std::isfinite(value), "Diarizer returned nonfinite confidence");
         }
         distinct.insert(segment.speaker_index);
