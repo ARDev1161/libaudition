@@ -756,6 +756,60 @@ jobs:
           test -s build-sherpa/kws-gigaspeech/test_wavs/0.wav
       - name: Check GigaSpeech KWS against labeled WAV and silence through CTest
         run: ctest --test-dir build-sherpa -R '^speech_real_kws_gigaspeech$' --output-on-failure --no-tests=error
+      - name: Download checksum-verified small English Streaming Zipformer ASR
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/zipformer-asr-20m-mobile.tar.bz2"
+          manifest="$RUNNER_TEMP/asr-models-checksum.txt"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$archive" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17-mobile.tar.bz2
+          test "$(wc -c < "$archive")" -eq 107569151
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$manifest" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/checksum.txt
+          echo '4e34edcb64434bcf533afaee9dcc14b5b2f9c277ed3a745f263e79a4464b28d0  '"$manifest" | sha256sum --check
+          python3 - "$archive" "$manifest" "$PWD/build-sherpa" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import re
+          import shutil
+          import sys
+          import tarfile
+
+          archive, manifest, destination = map(Path, sys.argv[1:4])
+          name = "sherpa-onnx-streaming-zipformer-en-20M-2023-02-17-mobile.tar.bz2"
+          lines = [s for s in manifest.read_text(encoding="utf-8").splitlines()
+                   if name in s]
+          if len(lines) != 1:
+              raise SystemExit(f"Expected exactly one Streaming ASR checksum entry, got {len(lines)}")
+          hashes = re.findall(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])", lines[0])
+          if len(hashes) != 1:
+              raise SystemExit(f"Invalid Streaming ASR checksum line: {lines[0]!r}")
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if digest.lower() != hashes[0].lower():
+              raise SystemExit("Streaming ASR archive SHA-256 mismatch")
+          print(f"Verified Streaming ASR archive SHA-256: {digest}", flush=True)
+          with tarfile.open(archive, "r:bz2") as package:
+              package.extractall(destination, filter="data")
+          dirs = [p for p in destination.glob(
+              "sherpa-onnx-streaming-zipformer-en-20M-2023-02-17*") if p.is_dir()]
+          if len(dirs) != 1:
+              raise SystemExit(f"Unexpected Streaming ASR extracted directories: {dirs!r}")
+          root = dirs[0]
+          for file in ("encoder-epoch-99-avg-1.int8.onnx",
+                       "decoder-epoch-99-avg-1.onnx",
+                       "joiner-epoch-99-avg-1.int8.onnx", "tokens.txt"):
+              if not (root / file).is_file() or (root / file).stat().st_size == 0:
+                  raise SystemExit(f"Missing required Streaming ASR weight: {file}")
+          shutil.move(str(root), str(destination / "streaming-asr-zipformer"))
+          PY
+          sha256sum "$archive" | tee build-sherpa/audio-fixtures/streaming-asr-model.sha256
+      - name: Verify real incremental Streaming ASR with finalization and reset
+        run: |
+          ctest --test-dir build-sherpa -R '^speech_real_streaming_asr_zipformer$' --output-on-failure --no-tests=error
+          cat build-sherpa/audio-fixtures/streaming-asr-report.txt
       - name: Download official Sherpa GTCRN denoising ONNX
         shell: bash
         run: |
@@ -784,6 +838,8 @@ jobs:
             build-sherpa/audio-fixtures/gtcrn-report.txt
             build-sherpa/audio-fixtures/gtcrn-model.sha256
             build-sherpa/kws-archive.sha256
+            build-sherpa/audio-fixtures/streaming-asr-model.sha256
+            build-sherpa/audio-fixtures/streaming-asr-report.txt
           if-no-files-found: ignore
           retention-days: 14
       - name: Install
