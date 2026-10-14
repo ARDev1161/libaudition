@@ -143,11 +143,7 @@ jobs:
               out.setframerate(16000)
               out.writeframes(raw.read_bytes())
           PY
-          ./build-efficientat-real/tests/real_yamnet_wav_replay \
-            "$RUNNER_TEMP/yamnet/yamnet.onnx" \
-            "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
-            "$WAV_PATH" \
-            "$RUNNER_TEMP/yamnet-real-wav-report.txt"
+          ctest --test-dir build-efficientat-real -R '^real_yamnet_wav_replay_ctest$' --output-on-failure
           cat "$RUNNER_TEMP/yamnet-real-wav-report.txt"
       - name: Real-weight YAMNet fast-to-refined CTest integration
         run: ctest --test-dir build-efficientat-real -R '^real_yamnet_progressive_smoke$' --output-on-failure
