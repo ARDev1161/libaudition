@@ -114,10 +114,10 @@ void run(const std::filesystem::path& segmentation,
     rttm << std::fixed << std::setprecision(9);
     for (const auto& segment : detected.segments) {
         const auto start = segment.start_offset.seconds();
-        const auto duration = segment.end_offset.seconds() - start;
-        require(duration > 0.0, "Diarization produced a zero-duration segment");
+        const auto segmentDuration = segment.end_offset.seconds() - start;
+        require(segmentDuration > 0.0, "Diarization produced a zero-duration segment");
         rttm << "SPEAKER 1-two-speakers-en 1 " << start << ' '
-             << duration << " <NA> <NA> spk_" << segment.speaker_index
+             << segmentDuration << " <NA> <NA> spk_" << segment.speaker_index
              << " <NA> <NA>\n";
     }
     require(rttm.good(), "Cannot write predicted speaker RTTM");
