@@ -891,9 +891,11 @@ jobs:
             -o "$embedding" "$base/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
           curl --fail --location --retry 3 --silent --show-error \
             -o "$wav" "$base/speaker-segmentation-models/1-two-speakers-en.wav"
-          test "$(wc -c < "$archive")" -eq 6958444
-          test "$(wc -c < "$embedding")" -eq 39593761
-          test "$(wc -c < "$wav")" -eq 512044
+          # Immutable exact file hashes from the successful real-model CI #1032.
+          # Fail closed on upstream file replacement before model loading.
+          echo '24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488  '"$archive" | sha256sum --check
+          echo '1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b  '"$embedding" | sha256sum --check
+          echo 'f1c877dc01595e28be7147bf2fe38e5268147a868bf3fdb5c37b97f5940e21f3  '"$wav" | sha256sum --check
           sha256sum "$archive" "$embedding" "$wav" | tee build-sherpa/audio-fixtures/diarization-assets.sha256
           python3 - "$archive" "$PWD/build-sherpa" <<'PY'
           from pathlib import Path
