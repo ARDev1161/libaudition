@@ -387,6 +387,13 @@ if(TARGET audition::backend_sherpa)
     set_tests_properties(speech_voxconverse_full_split_preflight_selftest PROPERTIES
         LABELS "speech-integration;python;diarization;corpus"
         TIMEOUT 90)
+    add_test(NAME speech_voxconverse_shard_aggregation_selftest
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/aggregate_voxconverse_shards.py"
+            --self-test)
+    set_tests_properties(speech_voxconverse_shard_aggregation_selftest PROPERTIES
+        LABELS "speech-integration;python;diarization;corpus"
+        TIMEOUT 90)
 
 endif()
 
