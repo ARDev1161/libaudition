@@ -702,6 +702,30 @@ jobs:
             -ac 1 -ar 16000 -c:a pcm_s16le \
             build-sherpa/audio-fixtures/utterance.wav
           test -s build-sherpa/audio-fixtures/utterance.wav
+      - name: Download versioned GigaSpeech KWS INT8 model and attributed WAV
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/kws-gigaspeech-3.3m-2024.tar.bz2"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$archive" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2
+          test "$(wc -c < "$archive")" -eq 17626723
+          sha256sum "$archive" | tee build-sherpa/kws-archive.sha256
+          python3 - "$archive" "$PWD/build-sherpa" <<'PY'
+          import pathlib
+          import sys
+          import tarfile
+          archive = pathlib.Path(sys.argv[1])
+          target = pathlib.Path(sys.argv[2])
+          with tarfile.open(archive, "r:bz2") as package:
+              package.extractall(target, filter="data")
+          PY
+          mv build-sherpa/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01 build-sherpa/kws-gigaspeech
+          test -s build-sherpa/kws-gigaspeech/test_wavs/test_keywords.txt
+          test -s build-sherpa/kws-gigaspeech/test_wavs/0.wav
+      - name: Check GigaSpeech KWS against labeled WAV and silence through CTest
+        run: ctest --test-dir build-sherpa -R '^speech_real_kws_gigaspeech$' --output-on-failure --no-tests=error
       - name: Download official Sherpa GTCRN denoising ONNX
         shell: bash
         run: |
@@ -729,6 +753,7 @@ jobs:
             build-sherpa/audio-fixtures/asr-quality.json
             build-sherpa/audio-fixtures/gtcrn-report.txt
             build-sherpa/audio-fixtures/gtcrn-model.sha256
+            build-sherpa/kws-archive.sha256
           if-no-files-found: ignore
           retention-days: 14
       - name: Install
