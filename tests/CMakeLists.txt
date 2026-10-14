@@ -215,6 +215,16 @@ if(TARGET audition::backend_sherpa)
     target_link_libraries(sherpa_real_language_id PRIVATE
         audition::backend_sherpa audition::io audition::core)
     libaudition_configure_target(sherpa_real_language_id)
+
+    add_executable(sherpa_real_speaker_diarization
+        integration/sherpa_real_speaker_diarization.cpp)
+    target_link_libraries(sherpa_real_speaker_diarization PRIVATE
+        audition::backend_sherpa audition::io audition::core)
+    libaudition_configure_target(sherpa_real_speaker_diarization)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(sherpa_real_speaker_diarization PRIVATE
+            -Wno-error=maybe-uninitialized)
+    endif()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # libstdc++ std::map false-positive on an aggregate ExecutionTarget.
         target_compile_options(sherpa_real_language_id PRIVATE
@@ -248,6 +258,15 @@ if(TARGET audition::backend_sherpa)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     if(LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
+        add_test(NAME speech_real_speaker_diarization
+            COMMAND $<TARGET_FILE:sherpa_real_speaker_diarization>
+                "${CMAKE_BINARY_DIR}/diarization-segmentation/model.onnx"
+                "${CMAKE_BINARY_DIR}/diarization-embedding.onnx"
+                "${CMAKE_BINARY_DIR}/diarization-two-speakers.wav"
+                "${CMAKE_BINARY_DIR}/audio-fixtures/speaker-diarization-report.txt")
+        set_tests_properties(speech_real_speaker_diarization PROPERTIES
+            LABELS "real-model;speech-integration;diarization"
+            TIMEOUT 300)
         add_test(NAME speech_real_language_id_whisper
             COMMAND $<TARGET_FILE:sherpa_real_language_id>
                 "${CMAKE_BINARY_DIR}/language-id-whisper-tiny"
