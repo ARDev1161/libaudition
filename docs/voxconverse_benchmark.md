@@ -14,17 +14,18 @@ model and dataset hashes.
 | Component | Source / version |
 | --- | --- |
 | Reference RTTM | VoxConverse v0.3, Git commit `24bf60be297701cd7e4ef18550c6d390c1b87365` |
-| Original dev WAVs | https://www.robots.ox.ac.uk/~vgg/data/voxconverse/data/voxconverse_dev_wav.zip |
-| Original test WAVs | https://www.robots.ox.ac.uk/~vgg/data/voxconverse/data/voxconverse_test_wav.zip |
+| Original dev WAVs | Oxford ZIP SHA-256 `e83a68b5df3bc945a3cf4544102038792ae79972753c585769e58ea677c523a8` |
+| Original test WAVs | Oxford ZIP SHA-256 `472ebf1eaeb1dcb5c311b07a8b5c31bcedcccbf98f386d90a88cde2452da8c68` |
+| RTTM annotation ZIP | GitHub codeload SHA-256 `c340d2cd9da2f19eff8a3adc55b0818ec45cd0770ef72c6926c4de6efe9e9a1d` |
 | Segmentation | Pyannote 3.0 ONNX archive, SHA-256 `24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488` |
 | Embedding | 3D-Speaker ONNX, SHA-256 `1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b` |
 
-VoxConverse WAV archives are hosted by Oxford and are not versioned in the
-annotation Git repository. The workflow **computes and records SHA-256
-of each WAV archive**. After the first validated complete run, these values
-must be supplied as `--expected-audio-sha256` for future runs to reject
-unannounced upstream changes. Until then, **the WAV ZIPs are not
-cryptographically pinned**; results still record exact input digests.
+VoxConverse WAV archives are hosted by Oxford separately from the GitHub
+annotation repository. SHA-256 hashes of both Oxford ZIPs and the exact GitHub
+annotation ZIP were captured during the initial GitHub Actions runs and are
+**now enforced before each benchmark run**. Any upstream byte change fails
+closed rather than silently modifying the baseline. The original URLs are
+in `tests/integration/benchmark_voxconverse.py` and the workflow.
 
 Large audio archives, converted WAVs and ONNX weights are NOT stored in the
 repository or uploaded as artifacts. VoxConverse is available for research
@@ -34,24 +35,27 @@ under CC BY 4.0, with attribution and copyrights retained by its owners.
 
 Workflow: [voxconverse-benchmark.yml](../.github/workflows/voxconverse-benchmark.yml).
 
-Two independent jobs evaluate all 216 dev and all 232 test recordings. The
-workflow is **separate from mandatory CI**. On this PR branch,
-changing `tests/integration/benchmark_voxconverse.py` triggers the heavy
-workflow. Manual dispatch is supported once this workflow is available on
-the default branch. Unrelated PR documentation and code changes do **not**
-rerun the multi-gigabyte evaluation. Models are SHA-256 pinned.
+The workflow runs **eight model-backed shard jobs**, covering dev and test
+with four non-overlapping deterministic shards per split (54 dev clips per
+shard; 58 test clips per shard). Each shard verifies the **entire** archive
+before selecting clips, and records source/model hashes plus all predictions.
 
-Each job records source hashes; copies independently annotated reference
-RTTMs unchanged; converts each original WAV to mono 16 kHz in isolation; runs
-the C++ diarizer in `--benchmark` mode; and collects a predicted RTTM.
-Results cannot be called full-split unless *every* reference and WAV has
-a matching recording ID and an inference result.
+Two separate aggregation jobs download shard results, verify that every
+recording is present exactly once, check full source hashes and deterministic
+shard assignments, and **re-score all original RTTMs** into one complete
+split DER. A shard-level diagnostic never counts as a final benchmark. If
+any shard fails, the corresponding full-split DER is **not published**.
 
-Per-split artifacts:
-- `der.json` — aggregate and per-recording DER, error categories, scoring rules;
-- `provenance.json` — dataset commit, archive hashes, model hashes, processing;
-- `progress.json` — exact completion count and per-recording processing time;
-- `reference/*.rttm` and `predicted/*.rttm` — human labels and model predictions.
+This heavy workflow is separate from mandatory CI. On the PR branch, changes
+to `tests/integration/benchmark_voxconverse.py` trigger a run. Manual
+dispatch is available after the workflow reaches the default branch.
+Unrelated PR changes do not cause new full-corpus runs.
+
+**Per-shard artifacts:** `shard-der.json` (diagnostic only),
+`provenance.json`, `progress.json`, `reference/*.rttm`,
+`predicted/*.rttm`. **Final per-split artifact:**
+`voxconverse-v0.3-<split>-VERIFIED-DER`, with `der.json` and all matching
+reference/predicted RTTMs.
 
 No source WAV audio or model weights are uploaded.
 
@@ -94,10 +98,16 @@ python3 tests/integration/benchmark_voxconverse.py \
 Use `--split test` and the test WAV archive for all 232 test recordings.
 Pass `--expected-audio-sha256` to cryptographically pin a validated ZIP.
 
-Offline fixture preflight (no network, models or WAV):
+Offline fixture preflight and fail-closed shard-aggregation tests:
 ```sh
 python3 tests/integration/benchmark_voxconverse.py --self-test
+python3 tests/integration/aggregate_voxconverse_shards.py --self-test
 ```
+
+Optional local sharding: add `--shard-count 4 --shard-index 0` through
+`--shard-index 3` in independent output directories. These runs write
+`shard-der.json`, **not** a valid full-split `der.json`; use
+`aggregate_voxconverse_shards.py` to combine and validate them.
 
 ## Metric definition
 
