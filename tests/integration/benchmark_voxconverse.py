@@ -31,6 +31,14 @@ SPLIT_AUDIO_URLS = {
 }
 
 
+def select_shard(sorted_ids: list[str], index: int, count: int) -> list[str]:
+    """Stable disjoint partition; never dependent on source ZIP entry order."""
+    if count < 1 or not 0 <= index < count:
+        raise ValueError(f"Invalid shard {index}/{count}")
+    return [stem for position, stem in enumerate(sorted_ids)
+            if position % count == index]
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -148,8 +156,7 @@ def run_benchmark(args: argparse.Namespace) -> None:
         # shards; no clip may disappear from the source data silently.
         wavs_all = audio_members(zaudio, set(reference_files))
         ordered = sorted(reference_files)
-        chosen = [stem for index, stem in enumerate(ordered)
-                  if index % args.shard_count == args.shard_index]
+        chosen = select_shard(ordered, args.shard_index, args.shard_count)
         if not chosen:
             raise ValueError("Empty shard is not allowed")
         wavs = {stem: wavs_all[stem] for stem in chosen}
@@ -308,14 +315,18 @@ def self_test() -> None:
             else:
                 raise AssertionError("Unmatched audio silently accepted")
         sorted_ids = sorted(reference)
-        shards = [
-            [stem for i, stem in enumerate(sorted_ids) if i % 4 == shard]
-            for shard in range(4)
-        ]
+        shards = [select_shard(sorted_ids, shard, 4) for shard in range(4)]
         assert [len(shard) for shard in shards] == [54, 54, 54, 54]
         assert set().union(*(set(shard) for shard in shards)) == set(reference)
         assert all(set(shards[i]).isdisjoint(shards[j])
                    for i in range(4) for j in range(i + 1, 4)
+        for invalid_index, invalid_count in [(-1, 4), (4, 4), (0, 0)]:
+            try:
+                select_shard(sorted_ids, invalid_index, invalid_count)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Invalid shard index/count accepted")
     print("voxconverse-full-split-preflight-self-test=ok")
 
 
