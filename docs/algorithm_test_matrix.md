@@ -14,6 +14,7 @@ The test writes `<build>/ctest-algorithm-coverage.json`.
 | DSP, calibration, resampling and audio frontend | `Dsp.*`, `AudioFrontend.*`, `SplCalibration.*`, `SoundLevelRangePrior.*`, `SamplerateBackend.*` | Unit and deterministic DSP |
 | Tracking, association, identity and acoustic events | `TemporalSpatialTrackSmoother.*`, `SpatialIdentityCoordinator.*`, `SourceIdentityResolver.*`, `AcousticEventAssembler.*` | Unit, lifecycle and conflicting state |
 | Per-source audio classification and overload | `SourceClassificationRuntime.*`, `ProgressiveSourceClassificationRuntime.*`, `progressive_stress_*_sources` | Multi-source ordering, queues, freshness, cancellation |
+| Sherpa GTCRN offline and streaming denoiser | `speech_real_gtcrn_denoising` | Genuine ONNX inference on deterministic noisy speech, output contract, session flush/reset; **not** a denoising quality claim |
 | Sherpa auxiliary streaming ASR, KWS, language ID, denoising and diarization | `SherpaOnlineAsrContract.*`, `SherpaKwsContract.*`, `SherpaLanguageIdContract.*`, `SherpaDenoiserContract.*`, `SherpaDiarizationContract.*` | Supported model-family configuration, invalid thresholds, missing assets and runtime rejection; **not** real-weight inference quality |
 | Per-source VAD/ASR pipeline | `PerSourceSpeechRuntime.*`, `speech_real_*`, `speech_report_scoring_selftest` | Contract tests, real Silero/Whisper/SenseVoice inference, reference-utterance diagnostics |
 | ODAS SSL, SST, SSS | `OdasOptions.*`, `OdasBackend.*`, `audio_integration_*` | Deterministic six-channel synthetic ReSpeaker-layout streams and numeric planar DOA gates |
@@ -40,7 +41,7 @@ claim optional-backend coverage.
    directions and synchronization. A hardware-in-the-loop runner is separate
    from hosted CI.
 2. **Sherpa auxiliary models**: streaming ASR, keyword spotting, language
-   identification, offline/streaming denoising and speaker diarization are
+   identification, DPDFNet inference and speaker diarization are
    implemented, but the registration contract does not establish that each
    has a quantitative real-weight acceptance dataset and accuracy thresholds.
    Configuration tests are not equivalent to functional inference.
