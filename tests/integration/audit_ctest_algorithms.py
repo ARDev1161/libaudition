@@ -193,14 +193,11 @@ def main() -> int:
     expected = expectations(flags)
     checks = {name: any(re.search(pattern, test) for test in observed)
               for name, pattern in expected.items()}
+    # A newly introduced backend must extend this contract explicitly.
     untracked_options = sorted(option for option in flags
                                if option.startswith("LIBAUDITION_WITH_")
                                and option not in BACKENDS
-                               and option not in {"LIBAUDITION_WITH_SPDLOG"})
-    # Platform/backend accelerator selection isn't itself a new algorithm.
-    untracked_options = [opt for opt in untracked_options if
-                         not opt.startswith("LIBAUDITION_WITH_") or
-                         opt in ("LIBAUDITION_WITH_",)]
+                               and option != "LIBAUDITION_WITH_SPDLOG")
     report = {
         "kind": "CTest registration contract, NOT branch or hardware accuracy coverage",
         "build": str(build),
@@ -209,6 +206,7 @@ def main() -> int:
         "required_case_count": len(expected),
         "registered_case_checks": checks,
         "missing": sorted(name for name, passed in checks.items() if not passed),
+        "untracked_backend_options": untracked_options,
         "limits": [
             "Names establish registration, not functional quality or code/branch coverage",
             "Real 6-channel ReSpeaker DOA accuracy requires ground-truth hardware recordings",
@@ -218,9 +216,9 @@ def main() -> int:
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({k: report[k] for k in ("registered_test_count", "required_case_count", "missing")},
+    print(json.dumps({k: report[k] for k in ("registered_test_count", "required_case_count", "missing", "untracked_backend_options")},
                      indent=2))
-    return 0 if not report["missing"] else 1
+    return 0 if not report["missing"] and not untracked_options else 1
 
 
 if __name__ == "__main__":
