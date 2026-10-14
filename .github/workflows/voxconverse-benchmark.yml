@@ -97,8 +97,15 @@ jobs:
           curl --fail --location --retry 5 --retry-all-errors --connect-timeout 40 \
             -o "$audio" \
             "https://www.robots.ox.ac.uk/~vgg/data/voxconverse/data/voxconverse_""$VOXCONVERSE_SPLIT""_wav.zip"
-          test -s "$reference"
-          test -s "$audio"
+          # SHA-256 captured from both successful downloads in full corpus
+          # CI #1/#2. Fail closed if Oxford/GitHub changes the input bytes.
+          echo 'c340d2cd9da2f19eff8a3adc55b0818ec45cd0770ef72c6926c4de6efe9e9a1d  '"$reference" | sha256sum --check
+          case "$VOXCONVERSE_SPLIT" in
+            dev) audio_sha=e83a68b5df3bc945a3cf4544102038792ae79972753c585769e58ea677c523a8 ;;
+            test) audio_sha=472ebf1eaeb1dcb5c311b07a8b5c31bcedcccbf98f386d90a88cde2452da8c68 ;;
+            *) echo "Unknown split: $VOXCONVERSE_SPLIT" >&2; exit 1 ;;
+          esac
+          echo "$audio_sha  $audio" | sha256sum --check
           sha256sum "$reference" "$audio"
           df -h .
 
@@ -108,10 +115,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          case "$VOXCONVERSE_SPLIT" in
+            dev) audio_sha=e83a68b5df3bc945a3cf4544102038792ae79972753c585769e58ea677c523a8 ;;
+            test) audio_sha=472ebf1eaeb1dcb5c311b07a8b5c31bcedcccbf98f386d90a88cde2452da8c68 ;;
+            *) echo "Invalid split" >&2; exit 1 ;;
+          esac
           python3 -u tests/integration/benchmark_voxconverse.py \
             --split "$VOXCONVERSE_SPLIT" \
             --audio-zip "$RUNNER_TEMP/voxconverse-inputs/voxconverse-$VOXCONVERSE_SPLIT-audio.zip" \
             --reference-zip "$RUNNER_TEMP/voxconverse-inputs/voxconverse-v0.3.zip" \
+            --expected-reference-sha256 c340d2cd9da2f19eff8a3adc55b0818ec45cd0770ef72c6926c4de6efe9e9a1d \
+            --expected-audio-sha256 "$audio_sha" \
             --diarizer "$PWD/build-voxconverse/tests/sherpa_real_speaker_diarization" \
             --segmentation-model "$RUNNER_TEMP/voxconverse-models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx" \
             --embedding-model "$RUNNER_TEMP/voxconverse-models/embedding.onnx" \
