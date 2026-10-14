@@ -604,6 +604,8 @@ jobs:
           cmake -S . -B build-sherpa -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DLIBAUDITION_WITH_SHERPA=ON
+          -DLIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE=ON
+          -DLIBAUDITION_PACKAGE_SMOKE_PREFIX=$PWD/install-sherpa
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
           -DLIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS=ON
@@ -716,59 +718,8 @@ jobs:
           retention-days: 14
       - name: Install
         run: cmake --install build-sherpa --prefix "$PWD/install-sherpa"
-      - name: Verify installed sherpa backend package from C++17 consumer
-        shell: bash
-        run: |
-          mkdir -p /tmp/libaudition-sherpa-consumer
-          cat > /tmp/libaudition-sherpa-consumer/CMakeLists.txt <<'CMAKE'
-          cmake_minimum_required(VERSION 3.20)
-          project(libaudition_sherpa_consumer LANGUAGES CXX)
-          find_package(libaudition CONFIG REQUIRED)
-          add_executable(consumer main.cpp)
-          target_link_libraries(consumer PRIVATE audition::backend_sherpa)
-          target_compile_features(consumer PRIVATE cxx_std_17)
-          CMAKE
-          cat > /tmp/libaudition-sherpa-consumer/main.cpp <<'CPP'
-          #include <audition/backends/sherpa.hpp>
-          #include <type_traits>
-          int main() {
-              audition::SherpaVadOptions options{};
-              std::get<audition::SherpaSileroVadModel>(options.model).model = "model.onnx";
-              audition::validateSherpaVadOptions(options);
-
-              audition::SherpaAudioTaggingOptions tagging{};
-              std::get<audition::SherpaAudioTaggingZipformerModel>(tagging.model).model =
-                  "audio-tagger.onnx";
-              tagging.labels = "labels.csv";
-              audition::validateSherpaAudioTaggingOptions(tagging);
-
-              audition::SherpaSpeechDenoiserOptions denoiser{};
-              std::get<audition::SherpaSpeechDenoiserGtcrnModel>(denoiser.model).model =
-                  "gtcrn.onnx";
-              audition::validateSherpaOfflineSpeechDenoiserOptions(denoiser);
-              audition::validateSherpaStreamingSpeechDenoiserOptions(denoiser);
-              static_assert(std::is_base_of_v<audition::INoiseSuppressor,
-                                              audition::SherpaOfflineSpeechDenoiser>);
-              static_assert(std::is_base_of_v<audition::INoiseSuppressor,
-                                              audition::SherpaStreamingSpeechDenoiser>);
-
-              audition::SherpaSpeakerIdentifier identifier{{2U, "test-model"}};
-              audition::SpeakerEnrollment enrollment{};
-              enrollment.speaker_id = audition::SpeakerId{1U};
-              enrollment.display_name = "speaker";
-              enrollment.embeddings.push_back(
-                  {"test-model", {1.0F, 0.0F}, std::nullopt});
-              identifier.enroll(enrollment);
-
-              const audition::SpeakerEmbedding query{
-                  "test-model", {1.0F, 0.0F}, std::nullopt};
-              const auto match = identifier.identify(query, audition::Score{0.5});
-              return match.has_value() ? 0 : 1;
-          }
-          CPP
-          cmake -S /tmp/libaudition-sherpa-consumer             -B /tmp/libaudition-sherpa-consumer/build -G Ninja             -DCMAKE_PREFIX_PATH="$PWD/install-sherpa"
-          cmake --build /tmp/libaudition-sherpa-consumer/build --parallel
-          LD_LIBRARY_PATH="$PWD/install-sherpa/lib:${LD_LIBRARY_PATH:-}"             /tmp/libaudition-sherpa-consumer/build/consumer
+      - name: Verify installed Sherpa and core C++17 consumers through CTest
+        run: ctest --test-dir build-sherpa -R '^installed_package_.*consumer$' --output-on-failure
 
   sherpa-tts-backend:
     runs-on: ubuntu-latest
