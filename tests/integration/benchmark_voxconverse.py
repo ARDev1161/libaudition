@@ -319,7 +319,7 @@ def self_test() -> None:
         assert [len(shard) for shard in shards] == [54, 54, 54, 54]
         assert set().union(*(set(shard) for shard in shards)) == set(reference)
         assert all(set(shards[i]).isdisjoint(shards[j])
-                   for i in range(4) for j in range(i + 1, 4)
+                   for i in range(4) for j in range(i + 1, 4))
         for invalid_index, invalid_count in [(-1, 4), (4, 4), (0, 0)]:
             try:
                 select_shard(sorted_ids, invalid_index, invalid_count)
