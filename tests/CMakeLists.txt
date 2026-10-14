@@ -209,6 +209,17 @@ if(TARGET audition::backend_sherpa)
     target_link_libraries(sherpa_real_streaming_asr PRIVATE
         audition::backend_sherpa audition::io audition::core)
     libaudition_configure_target(sherpa_real_streaming_asr)
+
+    add_executable(sherpa_real_language_id
+        integration/sherpa_real_language_id.cpp)
+    target_link_libraries(sherpa_real_language_id PRIVATE
+        audition::backend_sherpa audition::io audition::core)
+    libaudition_configure_target(sherpa_real_language_id)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # libstdc++ std::map false-positive on an aggregate ExecutionTarget.
+        target_compile_options(sherpa_real_language_id PRIVATE
+            -Wno-error=maybe-uninitialized)
+    endif()
     # GCC 13 libstdc++ can false-positive on the std::map in
     # ExecutionTarget when the Sherpa options aggregate is moved.
     # Do not disable any diagnostic for library production targets.
@@ -237,6 +248,14 @@ if(TARGET audition::backend_sherpa)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     if(LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
+        add_test(NAME speech_real_language_id_whisper
+            COMMAND $<TARGET_FILE:sherpa_real_language_id>
+                "${CMAKE_BINARY_DIR}/language-id-whisper-tiny"
+                "${CMAKE_BINARY_DIR}/language-id-wavs"
+                "${CMAKE_BINARY_DIR}/audio-fixtures/language-id-report.txt")
+        set_tests_properties(speech_real_language_id_whisper PROPERTIES
+            LABELS "real-model;speech-integration;language-id"
+            TIMEOUT 180)
         add_test(NAME speech_real_streaming_asr_zipformer
             COMMAND $<TARGET_FILE:sherpa_real_streaming_asr>
                 "${CMAKE_BINARY_DIR}/streaming-asr-zipformer"
