@@ -63,6 +63,7 @@ BACKENDS = {
         "per-source speech runtime": r"^PerSourceSpeechRuntime\.",
         "speech quality scorer correctness": r"^speech_report_scoring_selftest$",
         "reference RTTM DER scoring and permutation": r"^speech_diarization_scoring_selftest$",
+        "multi-recording corpus DER aggregation": r"^speech_diarization_corpus_scoring_selftest$",
         "streaming ASR model variants and runtime validation": r"^SherpaOnlineAsrContract\.",
         "keyword spotting model variants and thresholds": r"^SherpaKwsContract\.",
         "language identification configuration": r"^SherpaLanguageIdContract\.",
