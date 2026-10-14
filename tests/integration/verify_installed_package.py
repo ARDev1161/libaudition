@@ -52,6 +52,7 @@ def main() -> int:
                 #include <audition/backends/sherpa.hpp>
                 #include <type_traits>
                 #include <variant>
+                #include <optional>
 
                 int main() {
                     audition::SherpaVadOptions options{};
@@ -74,7 +75,7 @@ def main() -> int:
                     static_assert(std::is_base_of_v<audition::INoiseSuppressor,
                                                     audition::SherpaStreamingSpeechDenoiser>);
 
-                    audition::SherpaSpeakerIdentifier identifier{2U, "test-model"};
+                    audition::SherpaSpeakerIdentifier identifier{{2U, "test-model"}};
                     audition::SpeakerEnrollment enrollment{};
                     enrollment.speaker_id = audition::SpeakerId{1U};
                     enrollment.display_name = "speaker";
