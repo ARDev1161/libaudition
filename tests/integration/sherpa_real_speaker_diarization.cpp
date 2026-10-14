@@ -24,7 +24,8 @@ void require(bool ok, const char* why) {
 void run(const std::filesystem::path& segmentation,
          const std::filesystem::path& embeddings,
          const std::filesystem::path& wav,
-         const std::filesystem::path& reportPath) {
+         const std::filesystem::path& reportPath,
+         bool benchmarkMode) {
     for (const auto& file : {segmentation, embeddings, wav}) {
         require(std::filesystem::is_regular_file(file),
                 "Missing real speaker-diarization model/WAV fixture");
@@ -73,10 +74,12 @@ void run(const std::filesystem::path& segmentation,
     }
     require(detected.speaker_count == distinct.size(),
             "Diarization speaker_count inconsistent with emitted segments");
-    require(detected.segments.size() >= 2U && distinct.size() == 2U,
-            "Real two-speaker recording did not resolve exactly two speakers");
-    require(totalSpeechSeconds >= 2.0,
-            "Diarizer failed to recover meaningful speech duration");
+    if (!benchmarkMode) {
+        require(detected.segments.size() >= 2U && distinct.size() == 2U,
+                "Real two-speaker recording did not resolve exactly two speakers");
+        require(totalSpeechSeconds >= 2.0,
+                "Diarizer failed to recover meaningful speech duration");
+    }
 
     std::vector<float> invalid(800U, 0.0F);
     const audition::AudioView invalidRate{
@@ -92,7 +95,7 @@ void run(const std::filesystem::path& segmentation,
 
     std::ofstream report{reportPath};
     require(report.good(), "Cannot create speaker-diarization diagnostic report");
-    report << "fixture=1-two-speakers-en.wav\n"
+    report << "fixture=" << wav.filename().string() << '\n'
            << "samples=" << audio.frameCount() << '\n'
            << "speaker_count=" << detected.speaker_count << '\n'
            << "segment_count=" << detected.segments.size() << '\n'
@@ -112,28 +115,38 @@ void run(const std::filesystem::path& segmentation,
     std::ofstream rttm{rttmPath};
     require(rttm.good(), "Cannot create predicted speaker RTTM");
     rttm << std::fixed << std::setprecision(9);
+    const auto recordingId = benchmarkMode
+        ? wav.stem().string() : std::string{"1-two-speakers-en"};
+    require(!recordingId.empty() &&
+                recordingId.find_first_of(" \t\r\n") == std::string::npos,
+            "RTTM recording identifier must be nonempty without whitespace");
     for (const auto& segment : detected.segments) {
         const auto start = segment.start_offset.seconds();
         const auto segmentDuration = segment.end_offset.seconds() - start;
         require(segmentDuration > 0.0, "Diarization produced a zero-duration segment");
-        rttm << "SPEAKER 1-two-speakers-en 1 " << start << ' '
+        rttm << "SPEAKER " << recordingId << " 1 " << start << ' '
              << segmentDuration << " <NA> <NA> spk_" << segment.speaker_index
              << " <NA> <NA>\n";
     }
     require(rttm.good(), "Cannot write predicted speaker RTTM");
-    std::cout << "PASS: real Pyannote speaker diarization split two labeled speakers ("
-              << detected.segments.size() << " segments)\n";
+    std::cout << (benchmarkMode
+                  ? "PASS: real Pyannote speaker diarization benchmark: "
+                  : "PASS: real Pyannote two-speaker regression: ")
+              << detected.segments.size() << " segments, "
+              << detected.speaker_count << " speakers\n";
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 5) {
-        std::cerr << "usage: sherpa_real_speaker_diarization SEGMENT_MODEL EMBEDDING_MODEL WAV REPORT\n";
+    const bool benchmarkMode = argc == 6 &&
+        std::string{argv[5]} == "--benchmark";
+    if (argc != 5 && !benchmarkMode) {
+        std::cerr << "usage: sherpa_real_speaker_diarization SEGMENT_MODEL EMBEDDING_MODEL WAV REPORT [--benchmark]\n";
         return 2;
     }
     try {
-        run(argv[1], argv[2], argv[3], argv[4]);
+        run(argv[1], argv[2], argv[3], argv[4], benchmarkMode);
         return 0;
     } catch (const std::exception& e) {
         std::cerr << "FAIL: real Sherpa diarization: " << e.what() << '\n';
