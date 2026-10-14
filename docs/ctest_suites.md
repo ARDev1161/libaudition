@@ -137,6 +137,29 @@ truth. For reproducible corpus-level research, record exact split,
 reference version, model hashes, resampling, scoring collar, overlap policy,
 and per-recording results; **do not** infer corpus-wide DER from one sample.
 
+#### Real reference-backed DER smoke (independent 10-second example)
+
+The hosted Sherpa CI adds `speech_real_speaker_diarization_reference_der`: it
+downloads a short public audio clip and its separate, independently labeled
+`ground_truth_files` RTTM from the
+[Digital Working Group speaker-diarization toolkit](https://github.com/Digital-Working-Group/speaker-diarization),
+derived from the FHS Brain Aging Program examples. Both assets are fetched
+from the exact upstream commit
+`9d9ebfcdc08cde1831be697ff5fb22269737a28d` and checked against their
+Git blob hashes before use. The ground-truth file's original recording ID
+`waveform` is renamed to the matching WAV stem for the scorer; speaker labels
+and time boundaries remain unchanged. Audio is resampled to mono 16 kHz by
+FFmpeg for the real Sherpa ONNX backend.
+
+This provides a **genuine observed DER with independently supplied labels**,
+not a self-comparison of model RTTMs. The CI uploads
+`audio-fixtures/diarization-reference/der.json`, the reference annotation,
+the model hypothesis RTTM and pinned source hashes. This ten-second fixture
+is only an integration and scoring **diagnostic**: it has no calibrated
+`--max-der` quality gate and cannot establish population accuracy or
+generalization to VoxConverse. Keep the original toolkit attribution when
+reusing the diagnostic.
+
 #### Corpus-level DER: fail-closed multi-recording evaluation
 
 The corpus scorer matches each independent reference RTTM to its hypothesis
