@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <set>
 #include <stdexcept>
@@ -103,6 +104,23 @@ void run(const std::filesystem::path& segmentation,
                << segment.end_offset.seconds() << '\n';
     }
     require(report.good(), "Could not write diarization report");
+    // Export the actual hypothesis, NOT an RTTM reference. An independent
+    // human-annotated RTTM is required before any real DER can be claimed.
+    // The RTTM recording ID is stable across the official pinned WAV fixture.
+    auto rttmPath = reportPath;
+    rttmPath.replace_extension(".rttm");
+    std::ofstream rttm{rttmPath};
+    require(rttm.good(), "Cannot create predicted speaker RTTM");
+    rttm << std::fixed << std::setprecision(9);
+    for (const auto& segment : detected.segments) {
+        const auto start = segment.start_offset.seconds();
+        const auto duration = segment.end_offset.seconds() - start;
+        require(duration > 0.0, "Diarization produced a zero-duration segment");
+        rttm << "SPEAKER 1-two-speakers-en 1 " << start << ' '
+             << duration << " <NA> <NA> spk_" << segment.speaker_index
+             << " <NA> <NA>\n";
+    }
+    require(rttm.good(), "Cannot write predicted speaker RTTM");
     std::cout << "PASS: real Pyannote speaker diarization split two labeled speakers ("
               << detected.segments.size() << " segments)\n";
 }
