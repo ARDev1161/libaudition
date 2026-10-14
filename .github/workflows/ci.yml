@@ -151,16 +151,7 @@ jobs:
           cat "$RUNNER_TEMP/yamnet-real-wav-report.txt"
       - name: Real-weight YAMNet fast-to-refined CTest integration
         run: ctest --test-dir build-efficientat-real -R '^real_yamnet_progressive_smoke      - name: Stream 5 and 10 ODAS-like sources through real YAMNet
-        run: |
-          set -o pipefail
-          ./build-efficientat-real/tests/yamnet_progressive_multisource \
-            "$RUNNER_TEMP/yamnet/yamnet.onnx" \
-            "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
-            5 8 real-time | tee "$RUNNER_TEMP/yamnet-stream-5.json"
-          ./build-efficientat-real/tests/yamnet_progressive_multisource \
-            "$RUNNER_TEMP/yamnet/yamnet.onnx" \
-            "$RUNNER_TEMP/yamnet/yamnet_class_map.csv" \
-            10 8 real-time | tee "$RUNNER_TEMP/yamnet-stream-10.json"
+        run: ctest --test-dir build-efficientat-real -L stress --output-on-failure --parallel 2
       - name: Upload real YAMNet multi-source latency and drop reports
         uses: actions/upload-artifact@v4
         with:
