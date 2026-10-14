@@ -467,3 +467,146 @@ target_link_libraries(source_recording_session_test PRIVATE
     audition::io audition::pipeline audition::core)
 libaudition_configure_target(source_recording_session_test)
 add_test(NAME source_recording_session_test COMMAND source_recording_session_test)
+
+
+# Entire real AudioSet/ESC-10 suite: CTest owns orchestration and fixtures.
+# Local users can point LIBAUDITION_REAL_MODEL_ASSET_DIR at downloaded assets.
+# No test in this opt-in suite silently skips missing weights or ESC-10 audio.
+if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS AND
+   TARGET audition::backend_efficientat AND TARGET audition::backend_yamnet)
+    set(_assets "${LIBAUDITION_REAL_MODEL_ASSET_DIR}")
+    set(_eat_upstream "${_assets}/EfficientAT")
+    set(_esc10 "${_assets}/esc10-eval")
+    set(_esc10_80 "${_assets}/esc10-yamnet-extended")
+    set(_eat_source_csv "${_eat_upstream}/metadata/class_labels_indices.csv")
+    set(_yamnet_csv "${_assets}/yamnet/yamnet_class_map.csv")
+    set(_mn_model "${_assets}/eat-real/mn10_as.onnx")
+    set(_mn_labels "${_assets}/eat-real/mn10_as_labels.txt")
+    set(_dymn_model "${_assets}/eat-real/dymn10_as.onnx")
+    set(_dymn_labels "${_assets}/eat-real/dymn10_as_labels.txt")
+    set(_yamnet_model "${_assets}/yamnet/yamnet.onnx")
+    set(_eat_cli "$<TARGET_FILE:efficientat_wav_benchmark>")
+    set(_yamnet_cli "$<TARGET_FILE:yamnet_wav_benchmark>")
+
+    add_test(NAME real_audioset_vocabulary_audit
+        COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/audit_audioset_vocabularies.py"
+            --efficientat-csv "${_eat_source_csv}"
+            --yamnet-csv "${_assets}/yamnet_class_map.csv"
+            --output "${_assets}/audioset_vocab_audit.json")
+    set_tests_properties(real_audioset_vocabulary_audit PROPERTIES
+        LABELS "real-model;audioset;vocabulary" TIMEOUT 90)
+
+    add_test(NAME real_audioset_smoke_manifest
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/write_audioset_manifest.py"
+            --wav "${_assets}/efficientat-benchmark.wav"
+            --output "${_assets}/benchmark-manifest.csv")
+    set_tests_properties(real_audioset_smoke_manifest PROPERTIES
+        LABELS "real-model;audioset;model-fixture"
+        FIXTURES_REQUIRED real_model_benchmark_wav
+        FIXTURES_SETUP audioset_smoke_manifest TIMEOUT 60)
+
+    set(_compare_tool "${PROJECT_SOURCE_DIR}/tools/compare_audio_taggers.py")
+    set(_common_comparison_args
+        --mn-model "${_mn_model}" --mn-labels "${_mn_labels}"
+        --dymn-model "${_dymn_model}" --dymn-labels "${_dymn_labels}"
+        --yamnet-model "${_yamnet_model}" --yamnet-labels "${_yamnet_csv}"
+        --efficientat-csv "${_eat_source_csv}" --yamnet-csv "${_yamnet_csv}"
+        --efficientat-benchmark "${_eat_cli}"
+        --yamnet-benchmark "${_yamnet_cli}")
+
+    add_test(NAME real_audioset_smoke_comparison
+        COMMAND ${Python3_EXECUTABLE} "${_compare_tool}"
+            --manifest "${_assets}/benchmark-manifest.csv"
+            ${_common_comparison_args}
+            --output "${_assets}/three-model-comparison.json")
+    set_tests_properties(real_audioset_smoke_comparison PROPERTIES
+        LABELS "real-model;audioset;model-comparison"
+        FIXTURES_REQUIRED audioset_smoke_manifest TIMEOUT 240)
+
+    add_test(NAME real_esc10_prepare_basic
+        COMMAND ${Python3_EXECUTABLE}
+            "${PROJECT_SOURCE_DIR}/tools/prepare_esc10_evaluation.py"
+            --output "${_esc10}"
+            --efficientat-csv "${_eat_source_csv}"
+            --yamnet-csv "${_yamnet_csv}")
+    set_tests_properties(real_esc10_prepare_basic PROPERTIES
+        LABELS "real-model;esc10;model-fixture;network"
+        FIXTURES_SETUP real_esc10_basic TIMEOUT 600)
+
+    add_test(NAME real_esc10_diagnose_mn10_wav
+        COMMAND ${Python3_EXECUTABLE}
+            "${PROJECT_SOURCE_DIR}/tools/diagnose_efficientat_wav.py"
+            --wav "${_esc10}/chainsaw.wav"
+            --model mn10_as --onnx "${_mn_model}"
+            --cpp-mel-dump "$<TARGET_FILE:efficientat_frontend_dump>"
+            --cpp-benchmark "${_eat_cli}" --cpp-labels "${_mn_labels}"
+            --output "${_esc10}/mn10-chainsaw-parity.json")
+    set_tests_properties(real_esc10_diagnose_mn10_wav PROPERTIES
+        LABELS "real-model;esc10;efficientat;parity"
+        FIXTURES_REQUIRED real_esc10_basic
+        WORKING_DIRECTORY "${_eat_upstream}"
+        ENVIRONMENT "PYTHONPATH=${_eat_upstream}" TIMEOUT 300)
+
+    add_test(NAME real_esc10_diagnose_mn10_duration
+        COMMAND ${Python3_EXECUTABLE}
+            "${PROJECT_SOURCE_DIR}/tools/diagnose_efficientat_duration.py"
+            --model mn10_as
+            --input "${_esc10}/chainsaw-original.wav"
+            --output "${_esc10}/mn10-duration.json")
+    set_tests_properties(real_esc10_diagnose_mn10_duration PROPERTIES
+        LABELS "real-model;esc10;efficientat;duration"
+        FIXTURES_REQUIRED real_esc10_basic
+        WORKING_DIRECTORY "${_eat_upstream}"
+        ENVIRONMENT "PYTHONPATH=${_eat_upstream}" TIMEOUT 300)
+
+    add_test(NAME real_esc10_compare_models
+        COMMAND ${Python3_EXECUTABLE} "${_compare_tool}"
+            --manifest "${_esc10}/manifest.csv"
+            ${_common_comparison_args}
+            --output "${_esc10}/three-model-real-events.json")
+    set_tests_properties(real_esc10_compare_models PROPERTIES
+        LABELS "real-model;esc10;model-comparison"
+        FIXTURES_REQUIRED real_esc10_basic
+        FIXTURES_SETUP real_esc10_comparison TIMEOUT 300)
+
+    add_test(NAME real_esc10_yamnet_timeline
+        COMMAND ${Python3_EXECUTABLE}
+            "${PROJECT_SOURCE_DIR}/tools/analyze_yamnet_event_timeline.py"
+            --manifest "${_esc10}/manifest.csv"
+            --model "${_yamnet_model}" --labels "${_yamnet_csv}"
+            --output "${_esc10}/yamnet-event-timeline.json")
+    set_tests_properties(real_esc10_yamnet_timeline PROPERTIES
+        LABELS "real-model;esc10;yamnet;timeline"
+        FIXTURES_REQUIRED real_esc10_basic TIMEOUT 300)
+
+    add_test(NAME real_esc10_review_scores
+        COMMAND ${Python3_EXECUTABLE}
+            "${PROJECT_SOURCE_DIR}/tools/review_audio_taggers_report.py"
+            "${_esc10}/three-model-real-events.json"
+            --output "${_esc10}/review-findings.json")
+    set_tests_properties(real_esc10_review_scores PROPERTIES
+        LABELS "real-model;esc10;model-comparison"
+        FIXTURES_REQUIRED real_esc10_comparison TIMEOUT 120)
+
+    add_test(NAME real_esc10_prepare_extended
+        COMMAND ${Python3_EXECUTABLE}
+            "${PROJECT_SOURCE_DIR}/tools/prepare_esc10_evaluation.py"
+            --output "${_esc10_80}" --clips-per-category 20
+            --efficientat-csv "${_eat_source_csv}"
+            --yamnet-csv "${_yamnet_csv}")
+    set_tests_properties(real_esc10_prepare_extended PROPERTIES
+        LABELS "real-model;esc10;model-fixture;network"
+        FIXTURES_SETUP real_esc10_extended TIMEOUT 900)
+
+    add_test(NAME real_esc10_yamnet_80
+        COMMAND ${Python3_EXECUTABLE}
+            "${PROJECT_SOURCE_DIR}/tools/evaluate_yamnet_esc10.py"
+            --manifest "${_esc10_80}/manifest.csv"
+            --model "${_yamnet_model}" --labels "${_yamnet_csv}"
+            --expected-clips 80
+            --output "${_esc10_80}/yamnet-esc10-80.json")
+    set_tests_properties(real_esc10_yamnet_80 PROPERTIES
+        LABELS "real-model;esc10;yamnet;quality"
+        FIXTURES_REQUIRED real_esc10_extended TIMEOUT 600)
+endif()
