@@ -236,6 +236,17 @@ if(TARGET audition::backend_yamnet)
         audition::backend_yamnet audition::io audition::core)
     libaudition_configure_target(real_yamnet_wav_replay)
 
+    if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
+        add_test(NAME real_yamnet_wav_replay_ctest
+            COMMAND $<TARGET_FILE:real_yamnet_wav_replay>
+                "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet.onnx"
+                "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet_class_map.csv"
+                "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet-parity-5s.wav"
+                "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet-real-wav-report.txt")
+        set_tests_properties(real_yamnet_wav_replay_ctest PROPERTIES
+            LABELS "real-model;yamnet;wav-integration" TIMEOUT 180)
+    endif()
+
     add_executable(yamnet_pcm16_probe yamnet_pcm16_probe.cpp)
     target_link_libraries(yamnet_pcm16_probe PRIVATE audition::backend_yamnet audition::core)
     libaudition_configure_target(yamnet_pcm16_probe)
