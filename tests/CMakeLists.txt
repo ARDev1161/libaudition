@@ -204,6 +204,15 @@ if(TARGET audition::backend_sherpa)
         audition::backend_sherpa audition::io audition::core)
     libaudition_configure_target(sherpa_real_kws)
 
+    # GCC 13 may incorrectly diagnose std::map's internal parent pointer as
+    # uninitialized when an aggregate SherpaKeywordSpotterOptions (containing
+    # ExecutionTarget::provider_options) is moved into the spotter.
+    # Keep the warning visible; only stop promoting this diagnostic to -Werror
+    # for the dedicated KWS test binary, as for the Qt demo target.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(sherpa_real_kws PRIVATE -Wno-error=maybe-uninitialized)
+    endif()
+
     target_sources(libaudition_tests PRIVATE
         sherpa_backend_test.cpp sherpa_speaker_backend_test.cpp
         sherpa_auxiliary_contract_test.cpp)
