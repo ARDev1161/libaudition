@@ -246,6 +246,24 @@ if(TARGET audition::backend_yamnet)
     target_link_libraries(yamnet_progressive_smoke PRIVATE
         audition::backend_yamnet audition::pipeline audition::core)
     libaudition_configure_target(yamnet_progressive_smoke)
+
+    if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
+        if(NOT DEFINED LIBAUDITION_REAL_MODEL_ASSET_DIR)
+            if(DEFINED ENV{RUNNER_TEMP} AND NOT "$ENV{RUNNER_TEMP}" STREQUAL "")
+                set(_yamnet_asset_default "$ENV{RUNNER_TEMP}")
+            else()
+                set(_yamnet_asset_default "${CMAKE_BINARY_DIR}/model-assets")
+            endif()
+            set(LIBAUDITION_REAL_MODEL_ASSET_DIR "${_yamnet_asset_default}"
+                CACHE PATH "Directory holding downloaded real-model test fixtures")
+        endif()
+        add_test(NAME real_yamnet_progressive_smoke
+            COMMAND $<TARGET_FILE:yamnet_progressive_smoke>
+                "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet.onnx"
+                "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet_class_map.csv")
+        set_tests_properties(real_yamnet_progressive_smoke PROPERTIES
+            LABELS "real-model;yamnet" TIMEOUT 180)
+    endif()
     add_executable(yamnet_progressive_multisource yamnet_progressive_multisource.cpp)
     target_link_libraries(yamnet_progressive_multisource PRIVATE
         audition::backend_yamnet audition::pipeline audition::core)
