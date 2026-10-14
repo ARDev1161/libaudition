@@ -154,10 +154,14 @@ FFmpeg for the real Sherpa ONNX backend.
 This provides a **genuine observed DER with independently supplied labels**,
 not a self-comparison of model RTTMs. The CI uploads
 `audio-fixtures/diarization-reference/der.json`, the reference annotation,
-the model hypothesis RTTM and pinned source hashes. This ten-second fixture
-is only an integration and scoring **diagnostic**: it has no calibrated
-`--max-der` quality gate and cannot establish population accuracy or
-generalization to VoxConverse. Keep the original toolkit attribution when
+the model hypothesis RTTM and pinned source hashes. In [CI #1060](https://github.com/ARDev1161/libaudition/actions/runs/38630951026),
+this exact input produced **DER = 0.056604139 (5.66%)** under a zero-second
+collar with reference overlap included: 0.440405968 seconds missed speech,
+0.000030838 seconds false alarm, zero speaker-confusion seconds, and
+7.781 reference speaker-seconds. Two reference speakers were matched to two
+hypothesized speakers. This ten-second fixture is only an integration and
+scoring **diagnostic**: it has no calibrated `--max-der` quality gate and
+cannot establish population accuracy or generalization to VoxConverse. Keep the original toolkit attribution when
 reusing the diagnostic.
 
 #### Corpus-level DER: fail-closed multi-recording evaluation
