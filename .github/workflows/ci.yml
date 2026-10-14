@@ -163,11 +163,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Qt Widgets
         run: sudo apt-get update && sudo apt-get install -y qtbase5-dev
+      - name: Install reference model-test Python dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/efficientat-parity"
+          "$RUNNER_TEMP/efficientat-parity/bin/pip" install numpy onnx
+          "$RUNNER_TEMP/efficientat-parity/bin/pip" install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
       - name: Configure EfficientAT ONNX adapter
         run: >-
           cmake -S . -B build-efficientat -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DLIBAUDITION_WITH_EFFICIENTAT=ON
+          -DLIBAUDITION_REGISTER_EFFICIENTAT_REFERENCE_TESTS=ON
+          -DPython3_EXECUTABLE=$RUNNER_TEMP/efficientat-parity/bin/python
           -DLIBAUDITION_BUILD_QT_DEMO=ON
           -DLIBAUDITION_WITH_YAMNET=OFF
           -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF
@@ -177,25 +184,10 @@ jobs:
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build-efficientat --parallel
-      - name: Qt smoke test
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-efficientat -R '^qt_self_test$' --output-on-failure
-      - name: PyTorch reference frontend parity
-        run: |
-          python3 -m venv "$RUNNER_TEMP/efficientat-parity"
-          "$RUNNER_TEMP/efficientat-parity/bin/pip" install numpy
-          "$RUNNER_TEMP/efficientat-parity/bin/pip" install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          ./build-efficientat/tests/efficientat_frontend_dump "$RUNNER_TEMP/efficientat_mel.f32"
-          "$RUNNER_TEMP/efficientat-parity/bin/python" tests/fixtures/compare_efficientat_frontend.py "$RUNNER_TEMP/efficientat_mel.f32"
-      - name: Generate deterministic ONNX fixture
-        run: |
-          python3 -m pip install --break-system-packages numpy onnx
-          python3 tests/fixtures/make_efficientat_onnx.py "$PWD/build-efficientat/fixture"
-      - name: Test
+      - name: Run all EfficientAT checks via CTest (incl. ONNX fixture and PyTorch parity)
         env:
           LIBAUDITION_EFFICIENTAT_FIXTURE_DIR: ${{ github.workspace }}/build-efficientat/fixture
-        run: ctest --test-dir build-efficientat --output-on-failure
+        run: ctest --test-dir build-efficientat --output-on-failure --parallel 2
       - name: Install
         run: cmake --install build-efficientat --prefix "$PWD/install-efficientat"
 
