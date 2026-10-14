@@ -171,6 +171,44 @@ if(TARGET audition::backend_sherpa)
     target_link_libraries(sherpa_per_source_speech_smoke PRIVATE
         audition::backend_sherpa audition::pipeline audition::core)
     libaudition_configure_target(sherpa_per_source_speech_smoke)
+
+    # Real model fixtures live in the configured build directory.
+    # Their absence is a failed test (never a silent skip).
+    add_test(NAME speech_real_whisper_two_sources
+        COMMAND $<TARGET_FILE:sherpa_per_source_speech_smoke>
+            "${CMAKE_BINARY_DIR}/whisper/tiny.en-encoder.int8.onnx"
+            "${CMAKE_BINARY_DIR}/whisper/tiny.en-decoder.int8.onnx"
+            "${CMAKE_BINARY_DIR}/whisper/tiny.en-tokens.txt")
+    set_tests_properties(speech_real_whisper_two_sources PROPERTIES
+        LABELS "real-model;speech-integration" TIMEOUT 180)
+
+    add_test(NAME speech_real_silero_sensevoice_wav
+        COMMAND $<TARGET_FILE:real_speech_model_replay>
+            "${CMAKE_BINARY_DIR}/silero_vad.onnx"
+            "${CMAKE_BINARY_DIR}/sensevoice/model.int8.onnx"
+            "${CMAKE_BINARY_DIR}/sensevoice/tokens.txt"
+            "${CMAKE_BINARY_DIR}/audio-fixtures/utterance.wav"
+            "${CMAKE_BINARY_DIR}/audio-fixtures/real-speech-report.txt")
+    set_tests_properties(speech_real_silero_sensevoice_wav PROPERTIES
+        LABELS "real-model;speech-integration"
+        FIXTURES_SETUP speech_real_replay
+        TIMEOUT 180)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME speech_report_scoring_selftest
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/score_speech_report.py" --self-test)
+    set_tests_properties(speech_report_scoring_selftest PROPERTIES
+        LABELS "speech-integration;python" TIMEOUT 60)
+    add_test(NAME speech_real_sensevoice_quality
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/score_speech_report.py"
+            --report "${CMAKE_BINARY_DIR}/audio-fixtures/real-speech-report.txt"
+            --reference "Hello robot. Please go forward and stop at the door."
+            --output "${CMAKE_BINARY_DIR}/audio-fixtures/asr-quality.json")
+    set_tests_properties(speech_real_sensevoice_quality PROPERTIES
+        LABELS "real-model;speech-integration"
+        FIXTURES_REQUIRED speech_real_replay
+        TIMEOUT 60)
 endif()
 
 
