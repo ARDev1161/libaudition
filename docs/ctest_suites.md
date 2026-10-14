@@ -244,11 +244,28 @@ Create a corpus folder containing `corpus.json` and WAV files. Example
 The azimuth is measured in the microphone-array frame, with zero pointing
 along +X and positive angles toward +Y (atan2(y, x)); ensure microphone
 orientation, source position and their measurement uncertainty are logged.
-Reference intervals must be ordered, non-overlapping and remain inside
-the WAV duration. This initial evaluator supports stationary **single-source**
-intervals; overlapping speech, moving sources and elevation require an
-extended annotation/evaluator and must not be silently interpreted as
-stationary ground truth.
+Intervals for the **same source_id** must be ordered and non-overlapping;
+intervals with different source IDs may overlap and must remain within WAV
+duration. Static intervals use `azimuth_deg`. Moving sources use both
+`azimuth_start_deg` and `azimuth_end_deg` and are interpolated via the
+shortest circular angular arc. Example of two simultaneous sources:
+
+```json
+"intervals": [
+  {"source_id":"speaker_a", "start_s":1.0, "end_s":4.0,
+   "azimuth_start_deg":-40, "azimuth_end_deg":40},
+  {"source_id":"speaker_b", "start_s":2.0, "end_s":4.0,
+   "azimuth_deg":100}
+]
+```
+
+For each 128-sample hop, the evaluator assigns distinct ODAS observations
+to simultaneously active reference sources, minimizing summed angular error
+among maximum-cardinality matches; one track cannot count toward two
+sources at the same time. Reported coverage is positional detection coverage,
+**not** track identity continuity. The current evaluator does not score
+source ID switches, elevation, reverberation level, or separation quality.
+Record those as separate acceptance criteria, not implicit DOA scores.
 
 ```bash
 cmake -S . -B build-odas -G Ninja \
@@ -265,9 +282,7 @@ ranges, ODAS runner execution, output consistency and zero recorder drops.
 It writes each clip's raw observations, outputs and `metrics.json`, plus
 a corpus `report.json`, under `build-odas/tests/real_respeaker_results/`.
 Report fields include per-interval track coverage, median nearest-track
-3D angular error and median nearest SSL-proposal error. Nearest-track
-metrics are diagnostics and are **not** identity-aware track-association
-scores. There are no hardcoded DOA acceptance thresholds for real captures.
+3D angular error and median nearest SSL-proposal error. Per-hop one-to-one matched direction metrics are diagnostics; they do\n**not** score persistent track identities across hops. There are no hardcoded DOA acceptance thresholds for real captures.
 Optional manually calibrated thresholds are supported by invoking
 `tests/integration/validate_respeaker_corpus.py` directly with
 `--max-median-error-deg` and `--min-track-coverage`; do not set them
