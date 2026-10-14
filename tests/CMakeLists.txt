@@ -204,6 +204,19 @@ if(TARGET audition::backend_sherpa)
         audition::backend_sherpa audition::io audition::core)
     libaudition_configure_target(sherpa_real_kws)
 
+    add_executable(sherpa_real_streaming_asr
+        integration/sherpa_real_streaming_asr.cpp)
+    target_link_libraries(sherpa_real_streaming_asr PRIVATE
+        audition::backend_sherpa audition::io audition::core)
+    libaudition_configure_target(sherpa_real_streaming_asr)
+    # GCC 13 libstdc++ can false-positive on the std::map in
+    # ExecutionTarget when the Sherpa options aggregate is moved.
+    # Do not disable any diagnostic for library production targets.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(sherpa_real_streaming_asr PRIVATE
+            -Wno-error=maybe-uninitialized)
+    endif()
+
     # GCC 13 may incorrectly diagnose std::map's internal parent pointer as
     # uninitialized when an aggregate SherpaKeywordSpotterOptions (containing
     # ExecutionTarget::provider_options) is moved into the spotter.
@@ -224,6 +237,14 @@ if(TARGET audition::backend_sherpa)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     if(LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
+        add_test(NAME speech_real_streaming_asr_zipformer
+            COMMAND $<TARGET_FILE:sherpa_real_streaming_asr>
+                "${CMAKE_BINARY_DIR}/streaming-asr-zipformer"
+                "${CMAKE_BINARY_DIR}/kws-gigaspeech/test_wavs/0.wav"
+                "${CMAKE_BINARY_DIR}/audio-fixtures/streaming-asr-report.txt")
+        set_tests_properties(speech_real_streaming_asr_zipformer PROPERTIES
+            LABELS "real-model;speech-integration;streaming-asr"
+            TIMEOUT 180)
         add_test(NAME speech_real_kws_gigaspeech
             COMMAND $<TARGET_FILE:sherpa_real_kws>
                 "${CMAKE_BINARY_DIR}/kws-gigaspeech")
