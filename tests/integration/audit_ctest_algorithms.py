@@ -202,6 +202,7 @@ REAL_SPEECH = (
     "speech_real_language_id_whisper",
     "speech_real_speaker_diarization",
     "speech_real_speaker_diarization_benchmark",
+    "speech_real_speaker_diarization_reference_der",
 )
 REAL_QT_SHERPA = ("qt_real_silero", "qt_real_whisper-real", "qt_real_speaker-real")
 
