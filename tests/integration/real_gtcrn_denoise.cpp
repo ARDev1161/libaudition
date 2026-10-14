@@ -90,11 +90,32 @@ void run(const std::string& modelPath, const std::string& wavPath,
     auto session = offline.createSession(format);
     const auto offlineOutput = session->process(noisy.view());
     validateOutput(offlineOutput, format);
-    require(offlineOutput.frameCount() == noisy.frameCount(),
-            "Offline GTCRN returned unexpected sample count");
+    // GTCRN is an overlap/frame-based enhancer. Its native sherpa-onnx
+    // offline output can trim a small tail (the official 2.398 s example
+    // produces 2.384 s); an exact sample-count contract would be incorrect.
+    // Still reject truncation/expansion beyond 64 ms at 16 kHz.
+    constexpr std::size_t kMaxNativeLengthSkew = 1024U;
+    const auto inputFrames = noisy.frameCount();
+    const auto outputFrames = offlineOutput.frameCount();
+    const auto skew = inputFrames > outputFrames ?
+        inputFrames - outputFrames : outputFrames - inputFrames;
+    require(outputFrames > 0U && skew <= kMaxNativeLengthSkew,
+            ("Offline GTCRN duration deviation exceeds 64 ms: input=" +
+             std::to_string(inputFrames) + " output=" +
+             std::to_string(outputFrames)).c_str());
     require(offlineOutput.sequenceNumber() == 73U,
             "Offline GTCRN lost input sequence number");
-    const auto offlineMse = meanSquaredError(offlineOutput.samples(), clean.samples());
+    // Diagnostic ONLY: frames can be delayed by the model, so a prefix MSE
+    // is not an unbiased estimate of denoising performance.
+    const auto cleanPrefix = std::vector<float>(
+        clean.samples().begin(),
+        clean.samples().begin() +
+            static_cast<std::ptrdiff_t>(std::min(outputFrames, clean.frameCount())));
+    const auto outputPrefix = std::vector<float>(
+        offlineOutput.samples().begin(),
+        offlineOutput.samples().begin() +
+            static_cast<std::ptrdiff_t>(cleanPrefix.size()));
+    const auto offlinePrefixMse = meanSquaredError(outputPrefix, cleanPrefix);
     require(!session->flush().frameCount(), "Offline GTCRN flush returned unexpected audio");
     requireFlushedRejection(*session, noisy.view());
     session->reset();
@@ -128,8 +149,15 @@ void run(const std::string& modelPath, const std::string& wavPath,
     validateOutput(tail, format);
     streamSamples.insert(streamSamples.end(), tail.samples().begin(),
                          tail.samples().end());
-    require(streamSamples.size() >= frameSize,
-            "Streaming GTCRN did not emit enhanced audio");
+    // Streaming flush and the final zero-padded frame may introduce a
+    // frame-sized difference; large unexplained duration changes are defects.
+    const auto streamLengthDelta = streamSamples.size() > inputFrames ?
+        streamSamples.size() - inputFrames : inputFrames - streamSamples.size();
+    require(streamSamples.size() >= frameSize &&
+            streamLengthDelta <= frameSize + kMaxNativeLengthSkew,
+            ("Streaming GTCRN duration deviation exceeds frame/padding budget: input=" +
+             std::to_string(inputFrames) + " output=" +
+             std::to_string(streamSamples.size())).c_str());
     const audition::AudioView firstFrame{
         noisy.samples().data(), frameSize, format, clean.captureTime(), 1U};
     requireFlushedRejection(*stream, firstFrame);
@@ -142,9 +170,11 @@ void run(const std::string& modelPath, const std::string& wavPath,
            << "fixture_samples=" << clean.frameCount() << '\n'
            << "noise_mse=" << inputMse << '\n'
            << "offline_samples=" << offlineOutput.frameCount() << '\n'
-           << "offline_mse=" << offlineMse << '\n'
+           << "offline_length_delta_samples=" << skew << '\n'
+           << "offline_prefix_mse_diagnostic_only=" << offlinePrefixMse << '\n'
            << "stream_frame_shift=" << frameSize << '\n'
-           << "stream_samples=" << streamSamples.size() << '\n';
+           << "stream_samples=" << streamSamples.size() << '\n'
+           << "stream_length_delta_samples=" << streamLengthDelta << '\n';
     require(report.good(), "Failed to write GTCRN integration report");
     std::cout << "PASS: GTCRN real ONNX offline and streaming sessions" << '\n';
 }
