@@ -73,6 +73,36 @@ cmake --install build-install --prefix "$PWD/install-default"
 ctest --test-dir build-install -R '^installed_package_cpp17_consumer$' --output-on-failure
 ```
 
+### Speaker diarization: reference-based DER evaluation
+
+The pinned sherpa-onnx two-speaker WAV verifies the C++ model pipeline, speaker
+count and time-segment invariants. It has **no verified independent RTTM reference
+in this repository**, so passing `speech_real_speaker_diarization` is **not**
+a DER score or a diarization accuracy benchmark. The CI job exports the model
+hypothesis as `build-sherpa/audio-fixtures/speaker-diarization-report.rttm`
+and checks its syntax without comparing it to itself as ground truth.
+
+Once an independent RTTM reference has been annotated and reviewed:
+
+```sh
+python3 tests/integration/score_diarization_rttm.py \
+  --reference /path/to/independently-annotated.rttm \
+  --hypothesis build-sherpa/audio-fixtures/speaker-diarization-report.rttm \
+  --output build-sherpa/audio-fixtures/diarization-der.json
+```
+
+The tool scores exact non-quantized intervals, optimally remaps anonymous speaker
+IDs, includes overlapping speakers by default, and reports missed, false-alarm,
+and speaker-confusion durations. Optional flags `--collar SECONDS` (full
+boundary exclusion width), `--skip-overlap` and `--max-der THRESHOLD` must be
+chosen and documented before comparing results across runs. DER can exceed
+100% if false alarms are high. Missing/malformed references cause a hard failure.
+
+The reference-independent algorithm self-test runs through:
+`ctest --test-dir build-sherpa -R '^speech_diarization_scoring_selftest$' --output-on-failure`.
+It checks speaker permutation, false alarms, misses, speaker confusion,
+overlapping speech, collar exclusion, and malformed reference records.
+
 ## Coverage and caveats
 
 - GTest and deterministic regression checks run without downloaded models.
