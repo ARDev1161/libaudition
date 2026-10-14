@@ -268,6 +268,23 @@ if(TARGET audition::backend_yamnet)
     target_link_libraries(yamnet_progressive_multisource PRIVATE
         audition::backend_yamnet audition::pipeline audition::core)
     libaudition_configure_target(yamnet_progressive_multisource)
+
+    if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        foreach(_sources IN ITEMS 5 10)
+            add_test(NAME "real_yamnet_stress_${_sources}"
+                COMMAND ${Python3_EXECUTABLE}
+                    "${CMAKE_CURRENT_SOURCE_DIR}/integration/capture_model_benchmark.py"
+                    --output "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet-stream-${_sources}.json"
+                    --
+                    $<TARGET_FILE:yamnet_progressive_multisource>
+                    "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet.onnx"
+                    "${LIBAUDITION_REAL_MODEL_ASSET_DIR}/yamnet/yamnet_class_map.csv"
+                    "${_sources}" 8 real-time)
+            set_tests_properties("real_yamnet_stress_${_sources}" PROPERTIES
+                LABELS "real-model;yamnet;stress" TIMEOUT 180)
+        endforeach()
+    endif()
 endif()
 
 if(TARGET audition::backend_efficientat)
