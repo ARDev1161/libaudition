@@ -63,8 +63,14 @@ void run(const std::filesystem::path& segmentation,
         require(std::isfinite(start) && std::isfinite(end) &&
                 start >= 0.0 && end >= start && end <= duration + 0.5,
                 "Diarizer returned invalid/out-of-bounds segment timestamps");
-        require(segment.speaker_index < 100U,
-                "Diarizer returned unreasonably large speaker index");
+        // Speaker IDs are anonymous backend labels, NOT a count or a bounded
+        // ordinal. Do not impose a made-up <100 limit on arbitrary corpus WAVs:
+        // preserve actual IDs for optimal permutation-invariant DER scoring.
+        // The strict 2-voice fixture still checks the returned speaker count.
+        if (!benchmarkMode) {
+            require(segment.speaker_index < 100U,
+                    "Two-speaker fixture returned unexpected speaker label");
+        }
         if (segment.confidence.has_value()) {
             const auto value = segment.confidence->value;
             require(std::isfinite(value), "Diarizer returned nonfinite confidence");
@@ -98,7 +104,7 @@ void run(const std::filesystem::path& segmentation,
     report << "fixture=" << wav.filename().string() << '\n'
            << "samples=" << audio.frameCount() << '\n'
            << "speaker_count=" << detected.speaker_count << '\n'
-           << "segment_count=" << detected.segments.size() << '\n'
+           << "segment_count=" << detected.segments.size() << '\n'           << "max_speaker_label=" << (distinct.empty() ? 0U : *distinct.rbegin()) << '\n'
            << "total_speech_seconds=" << totalSpeechSeconds << '\n'
            << "wrong_rate_rejected=" << (rejected ? 1 : 0) << '\n';
     for (const auto& segment : detected.segments) {
