@@ -201,6 +201,8 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=OFF
+          -DLIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE=ON
+          -DLIBAUDITION_PACKAGE_SMOKE_PREFIX=$PWD/install-default
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_FETCH_DEPENDENCIES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
@@ -208,49 +210,8 @@ jobs:
         run: cmake --build build-install --parallel
       - name: Install
         run: cmake --install build-install --prefix "$PWD/install-default"
-      - name: Verify installed default package from C++17 consumer
-        shell: bash
-        run: |
-          mkdir -p /tmp/libaudition-default-consumer
-          cat > /tmp/libaudition-default-consumer/CMakeLists.txt <<'CMAKE'
-          cmake_minimum_required(VERSION 3.20)
-          project(libaudition_default_consumer LANGUAGES CXX)
-          find_package(libaudition 0.5.0 EXACT CONFIG REQUIRED)
-          add_executable(consumer main.cpp)
-          target_link_libraries(consumer PRIVATE
-            audition::core
-            audition::interfaces
-            audition::dsp
-            audition::spatial
-            audition::memory
-            audition::pipeline)
-          target_compile_features(consumer PRIVATE cxx_std_17)
-          CMAKE
-          cat > /tmp/libaudition-default-consumer/main.cpp <<'CPP'
-          #include <audition/audition.hpp>
-
-          int main() {
-              if (audition::kVersion != "0.5.0") {
-                  return 1;
-              }
-
-              audition::TemporalSpatialTrackSmoother smoother{};
-              audition::AcousticEventAssembler events{};
-              audition::InMemoryAcousticSourceRegistry registry{};
-
-              return smoother.trackedCount() == 0U &&
-                             events.activeCount() == 0U &&
-                             registry.list().empty()
-                         ? 0
-                         : 2;
-          }
-          CPP
-          cmake -S /tmp/libaudition-default-consumer \
-            -B /tmp/libaudition-default-consumer/build -G Ninja \
-            -DCMAKE_PREFIX_PATH="$PWD/install-default"
-          cmake --build /tmp/libaudition-default-consumer/build --parallel
-          LD_LIBRARY_PATH="$PWD/install-default/lib:${LD_LIBRARY_PATH:-}" \
-            /tmp/libaudition-default-consumer/build/consumer
+      - name: Verify installed C++17 consumer through CTest
+        run: ctest --test-dir build-install -R '^installed_package_cpp17_consumer$' --output-on-failure
 
   sanitizers:
     runs-on: ubuntu-latest
