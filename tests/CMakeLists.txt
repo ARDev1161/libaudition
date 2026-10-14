@@ -1,5 +1,15 @@
 include(GoogleTest)
 
+if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
+    if(DEFINED ENV{RUNNER_TEMP} AND NOT "$ENV{RUNNER_TEMP}" STREQUAL "")
+        set(_real_model_asset_default "$ENV{RUNNER_TEMP}")
+    else()
+        set(_real_model_asset_default "${CMAKE_BINARY_DIR}/model-assets")
+    endif()
+    set(LIBAUDITION_REAL_MODEL_ASSET_DIR "${_real_model_asset_default}"
+        CACHE PATH "Directory containing real-model CI fixtures")
+endif()
+
 # Register model-tool verification scripts with CTest rather than invoking
 # them only from GitHub Actions. This suite is opt-in because it needs the
 # Python environment provisioned by the real-model CI job.
