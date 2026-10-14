@@ -168,6 +168,26 @@ if(TARGET audition::backend_odas)
     endforeach()
 endif()
 
+# Real microphone captures are opt-in: no recordings are downloaded or
+# represented as measured ground truth by synthetic CI fixtures.
+set(LIBAUDITION_RESPEAKER_CORPUS_MANIFEST "" CACHE FILEPATH
+    "JSON manifest of independently annotated six-channel ReSpeaker recordings")
+if(TARGET audition::backend_odas AND LIBAUDITION_RESPEAKER_CORPUS_MANIFEST)
+    if(NOT EXISTS "${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}")
+        message(FATAL_ERROR "ReSpeaker corpus manifest not found: ${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}")
+    endif()
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME audio_real_respeaker_corpus COMMAND
+        ${Python3_EXECUTABLE}
+        "${CMAKE_CURRENT_SOURCE_DIR}/integration/validate_respeaker_corpus.py"
+        --runner "$<TARGET_FILE:audition_offline_integration>"
+        --manifest "${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}"
+        --results "${CMAKE_CURRENT_BINARY_DIR}/real_respeaker_results")
+    set_tests_properties(audio_real_respeaker_corpus PROPERTIES
+        LABELS "audio-integration;real-hardware-recording;odas"
+        TIMEOUT 600)
+endif()
+
 if(TARGET audition::backend_odas)
     target_sources(libaudition_tests PRIVATE odas_backend_test.cpp)
     target_link_libraries(libaudition_tests PRIVATE audition::backend_odas)
