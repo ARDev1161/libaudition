@@ -38,8 +38,9 @@ double meanSquaredError(const std::vector<float>& a,
 void validateOutput(const audition::AudioBuffer& output,
                     audition::AudioFormat expected) {
     require(output.format().sample_rate_hz == expected.sample_rate_hz &&
-            output.format().channel_count == expected.channel_count,
-            "GTCRN changed output sample rate or channel count");
+            output.format().channel_count == expected.channel_count &&
+            output.format().layout == expected.layout,
+            "GTCRN changed output audio format");
     for (const float value : output.samples()) {
         require(std::isfinite(value), "GTCRN emitted a non-finite sample");
     }
@@ -132,6 +133,7 @@ void run(const std::string& modelPath, const std::string& wavPath,
     auto stream = streaming.createSession(format);
     std::vector<float> frame(frameSize, 0.0F);
     std::vector<float> streamSamples;
+    std::size_t emptyStreamFrames = 0U;
     for (std::size_t offset = 0U; offset < noisy.samples().size(); offset += frameSize) {
         const auto remaining = noisy.samples().size() - offset;
         const auto count = std::min(frameSize, remaining);
@@ -142,9 +144,23 @@ void run(const std::string& modelPath, const std::string& wavPath,
             static_cast<std::uint64_t>(offset / frameSize + 1U)};
         const auto output = stream->process(view);
         validateOutput(output, format);
+        require(output.sequenceNumber() == view.sequenceNumber(),
+                "Streaming GTCRN lost chunk sequence number");
+        if (output.frameCount() == 0U) {
+            // A real model can buffer several chunks before producing samples.
+            // Empty output must retain the public format and source timestamp.
+            ++emptyStreamFrames;
+            require(output.captureTime().comparableWith(view.captureTime()) &&
+                    output.captureTime().nanoseconds() >= view.captureTime().nanoseconds(),
+                    "GTCRN empty output lost its capture clock");
+        }
         streamSamples.insert(streamSamples.end(),
                              output.samples().begin(), output.samples().end());
     }
+    // This pinned GTCRN artifact buffers at least one streaming chunk.
+    // Regressions in the no-output handling must fail explicitly.
+    require(emptyStreamFrames > 0U,
+            "GTCRN regression test did not exercise empty buffered output");
     const auto tail = stream->flush();
     validateOutput(tail, format);
     streamSamples.insert(streamSamples.end(), tail.samples().begin(),
@@ -173,6 +189,7 @@ void run(const std::string& modelPath, const std::string& wavPath,
            << "offline_length_delta_samples=" << skew << '\n'
            << "offline_prefix_mse_diagnostic_only=" << offlinePrefixMse << '\n'
            << "stream_frame_shift=" << frameSize << '\n'
+           << "empty_stream_frames=" << emptyStreamFrames << '\n'
            << "stream_samples=" << streamSamples.size() << '\n'
            << "stream_length_delta_samples=" << streamLengthDelta << '\n';
     require(report.good(), "Failed to write GTCRN integration report");
