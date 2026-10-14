@@ -168,6 +168,14 @@ AudioBuffer denoisedAudioBuffer(sherpa_onnx::cxx::DenoisedAudio output,
                                 Timestamp capture_time,
                                 std::uint64_t sequence_number,
                                 const char* role) {
+    // sherpa-onnx online Run() and Flush() may return no audio while
+    // buffering / when the buffered tail is empty. The C++ wrapper maps
+    // the native NULL result to an empty DenoisedAudio with no sample rate.
+    // Preserve our session format and timestamp for this valid no-output
+    // state. A nonempty output MUST still declare the expected rate.
+    if (output.samples.empty() && output.sample_rate <= 0) {
+        return AudioBuffer{{}, format, capture_time, sequence_number};
+    }
     if (output.sample_rate <= 0 ||
         static_cast<std::uint32_t>(output.sample_rate) !=
             format.sample_rate_hz) {
