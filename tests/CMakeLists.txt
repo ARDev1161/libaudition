@@ -658,6 +658,7 @@ add_test(NAME algorithm_coverage_contract
     COMMAND ${Python3_EXECUTABLE}
         "${CMAKE_CURRENT_SOURCE_DIR}/integration/audit_ctest_algorithms.py"
         --build "${CMAKE_BINARY_DIR}"
+        --source "${PROJECT_SOURCE_DIR}"
         --ctest "${CMAKE_CTEST_COMMAND}"
         --output "${CMAKE_BINARY_DIR}/ctest-algorithm-coverage.json")
 set_tests_properties(algorithm_coverage_contract PROPERTIES
