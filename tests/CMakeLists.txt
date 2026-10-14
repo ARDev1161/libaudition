@@ -259,6 +259,19 @@ if(TARGET audition::backend_efficientat)
     add_executable(efficientat_real_model_smoke efficientat_real_model_smoke.cpp)
     target_link_libraries(efficientat_real_model_smoke PRIVATE audition::backend_efficientat audition::core)
     libaudition_configure_target(efficientat_real_model_smoke)
+
+    # Genuine EfficientAT weights are provisioned by the model CI job.
+    if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
+        foreach(_variant IN ITEMS mn10_as dymn10_as)
+            add_test(NAME "real_efficientat_${_variant}"
+                COMMAND $<TARGET_FILE:efficientat_real_model_smoke>
+                    "$ENV{RUNNER_TEMP}/eat-real/${_variant}.onnx"
+                    "$ENV{RUNNER_TEMP}/eat-real/${_variant}_labels.txt")
+            set_tests_properties("real_efficientat_${_variant}" PROPERTIES
+                LABELS "real-model;efficientat"
+                TIMEOUT 180)
+        endforeach()
+    endif()
     add_executable(efficientat_frontend_dump efficientat_frontend_dump.cpp)
     target_link_libraries(efficientat_frontend_dump PRIVATE
         audition::backend_efficientat audition::core)
