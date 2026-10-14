@@ -810,6 +810,73 @@ jobs:
         run: |
           ctest --test-dir build-sherpa -R '^speech_real_streaming_asr_zipformer$' --output-on-failure --no-tests=error
           cat build-sherpa/audio-fixtures/streaming-asr-report.txt
+      - name: Fetch SHA-256 verified multilingual Whisper Tiny and labeled language WAVs
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
+          weights="$RUNNER_TEMP/language-id-whisper-tiny.tar.bz2"
+          waves="$RUNNER_TEMP/language-id-test-wavs.tar.bz2"
+          manifest="$RUNNER_TEMP/language-id-checksum.txt"
+          curl --fail --location --retry 3 --silent --show-error \
+            -o "$weights" "$base/sherpa-onnx-whisper-tiny.tar.bz2"
+          curl --fail --location --retry 3 --silent --show-error \
+            -o "$waves" "$base/spoken-language-identification-test-wavs.tar.bz2"
+          curl --fail --location --retry 3 --silent --show-error \
+            -o "$manifest" "$base/checksum.txt"
+          echo '4e34edcb64434bcf533afaee9dcc14b5b2f9c277ed3a745f263e79a4464b28d0  '"$manifest" | sha256sum --check
+          python3 - "$weights" "$waves" "$manifest" "$PWD/build-sherpa" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import re
+          import shutil
+          import sys
+          import tarfile
+
+          weights, waves, manifest, root = map(Path, sys.argv[1:5])
+          expected = {
+              weights: ("sherpa-onnx-whisper-tiny.tar.bz2", 116204861),
+              waves: ("spoken-language-identification-test-wavs.tar.bz2", 3324009),
+          }
+          lines = manifest.read_text(encoding="utf-8").splitlines()
+          for archive, (name, size) in expected.items():
+              if archive.stat().st_size != size:
+                  raise SystemExit(f"Language-ID archive size mismatch for {name}")
+              matches = [line for line in lines if name in line]
+              if len(matches) != 1:
+                  raise SystemExit(f"Expected one SHA-256 manifest entry for {name}, got {len(matches)}")
+              hashes = re.findall(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])", matches[0])
+              if len(hashes) != 1:
+                  raise SystemExit(f"Cannot parse SHA-256 for {name}: {matches[0]!r}")
+              actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+              if actual.lower() != hashes[0].lower():
+                  raise SystemExit(f"Language-ID SHA-256 mismatch for {name}")
+              print(f"Validated {name} SHA-256: {actual}", flush=True)
+              with tarfile.open(archive, "r:bz2") as package:
+                  package.extractall(root, filter="data")
+          sources = {
+              root / "sherpa-onnx-whisper-tiny": root / "language-id-whisper-tiny",
+              root / "spoken-language-identification-test-wavs": root / "language-id-wavs",
+          }
+          for source, target in sources.items():
+              if not source.is_dir():
+                  raise SystemExit(f"Language-ID extracted folder missing: {source}")
+              shutil.move(str(source), str(target))
+          required = (
+              root / "language-id-whisper-tiny" / "tiny-encoder.int8.onnx",
+              root / "language-id-whisper-tiny" / "tiny-decoder.int8.onnx",
+              root / "language-id-wavs" / "en-english.wav",
+              root / "language-id-wavs" / "de-german.wav",
+          )
+          for path in required:
+              if not path.is_file() or not path.stat().st_size:
+                  raise SystemExit(f"Language-ID fixture missing: {path}")
+          PY
+          sha256sum "$weights" "$waves" | tee build-sherpa/audio-fixtures/language-id-assets.sha256
+      - name: Run real multilingual Whisper Language Identification CTest
+        run: |
+          ctest --test-dir build-sherpa -R '^speech_real_language_id_whisper$' --output-on-failure --no-tests=error
+          cat build-sherpa/audio-fixtures/language-id-report.txt
       - name: Download official Sherpa GTCRN denoising ONNX
         shell: bash
         run: |
@@ -840,6 +907,8 @@ jobs:
             build-sherpa/kws-archive.sha256
             build-sherpa/audio-fixtures/streaming-asr-model.sha256
             build-sherpa/audio-fixtures/streaming-asr-report.txt
+            build-sherpa/audio-fixtures/language-id-report.txt
+            build-sherpa/audio-fixtures/language-id-assets.sha256
           if-no-files-found: ignore
           retention-days: 14
       - name: Install
