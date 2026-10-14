@@ -222,6 +222,60 @@ The dataset is never downloaded implicitly. Each clip must be six-channel
 existing ReSpeaker USB 4-Mic profile ordering (channels 0 and 5 remain
 the reference channels). Frame count must be divisible by 128.
 
+### Capture and import protocol
+
+Place the array on a fixed mount and record the microphone orientation:
++X is the zero-angle direction and +Y is positive rotation. Measure the
+speaker bearing independently of ODAS (for example, from measured XY
+coordinates in the array frame); include distance, room description,
+microphone height, orientation, gain and source type in your experiment
+notes. These fields are not treated as ground truth unless explicitly
+measured. Preserve the raw six-channel ReSpeaker PCM16 capture rather
+than downmixing, remapping, or changing the channel order. For typical
+ALSA devices an initial capture command is:
+
+```bash
+arecord -l
+arecord -D hw:CARD,DEVICE -f S16_LE -r 16000 -c 6 -t wav capture.wav
+```
+
+Replace `CARD,DEVICE` with the actual ALSA device numbers and verify the
+channel layout of your firmware. Stop recording with Ctrl+C. The importer
+requires an integer multiple of 128 frames; use a capture tool that preserves
+that alignment or trim excess complete tail frames *losslessly* while
+maintaining the reference time origin. Never resample or silently convert.
+
+For each take, create an independently measured annotation JSON:
+
+```json
+{
+  "id": "room01_bearing030_take01",
+  "intervals": [
+    {"source_id":"speaker_a", "start_s":1.0, "end_s":3.0,
+     "azimuth_deg":30.0}
+  ]
+}
+```
+
+Import the original WAV and validate annotations (duplicate IDs and
+overwriting existing WAVs are rejected):
+
+```bash
+python3 tests/integration/import_respeaker_recording.py \
+  --wav capture.wav --annotation take01.json --corpus /data/respeaker
+```
+
+The importer copies bytes without changing the signal, computes SHA-256,
+validates annotations and appends the recording to `corpus.json`. A useful
+capture matrix is silence, several fixed bearings around 360 degrees,
+near/far distances, moving azimuths, two simultaneous emitters, varying
+reverberation and background noise. Record *actual* start/end times and
+positions; do not substitute nominal intended angles for measured labels.
+For moving sources, linear interpolation is an approximation and should
+only be used with a controlled, approximately constant-angular-speed path.
+A future timestamped trajectory format would be preferable for arbitrary
+motions.
+
 Create a corpus folder containing `corpus.json` and WAV files. Example
 (reference azimuths are illustrative placeholders, **not** measurements):
 
