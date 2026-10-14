@@ -370,7 +370,7 @@ jobs:
       - name: Build real offline ODAS/SSS runner
         run: cmake --build build-audio-integration --target audition_offline_integration --parallel 2
       - name: Replay synthetic spatial WAV and validate ground truth
-        run: ctest --test-dir build-audio-integration -L audio-integration --output-on-failure --parallel 2
+        run: ctest --test-dir build-audio-integration -L audio-integration --output-on-failure --parallel 2 --no-tests=error
       - name: Upload audio traces, ground truth and recordings
         if: always()
         uses: actions/upload-artifact@v4
