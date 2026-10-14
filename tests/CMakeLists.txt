@@ -267,6 +267,18 @@ if(TARGET audition::backend_sherpa)
         set_tests_properties(speech_real_speaker_diarization PROPERTIES
             LABELS "real-model;speech-integration;diarization"
             TIMEOUT 300)
+        # Smoke the separate unconstrained benchmark path with the same pinned
+        # upstream WAV; this does NOT imply any reference-backed DER score.
+        add_test(NAME speech_real_speaker_diarization_benchmark
+            COMMAND $<TARGET_FILE:sherpa_real_speaker_diarization>
+                "${CMAKE_BINARY_DIR}/diarization-segmentation/model.onnx"
+                "${CMAKE_BINARY_DIR}/diarization-embedding.onnx"
+                "${CMAKE_BINARY_DIR}/diarization-two-speakers.wav"
+                "${CMAKE_BINARY_DIR}/audio-fixtures/diarization-benchmark.txt"
+                --benchmark)
+        set_tests_properties(speech_real_speaker_diarization_benchmark PROPERTIES
+            LABELS "real-model;speech-integration;diarization;benchmark"
+            TIMEOUT 300)
         add_test(NAME speech_real_language_id_whisper
             COMMAND $<TARGET_FILE:sherpa_real_language_id>
                 "${CMAKE_BINARY_DIR}/language-id-whisper-tiny"
