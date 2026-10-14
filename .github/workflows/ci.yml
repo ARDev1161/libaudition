@@ -911,13 +911,15 @@ jobs:
               raise SystemExit("Missing Pyannote 3.0 segmentation ONNX after extraction")
           shutil.move(str(source), str(root / "diarization-segmentation"))
           PY
-      - name: Run real two-speaker Pyannote diarization CTest and validate prediction RTTM
+      - name: Run two-speaker regression and unconstrained diarization benchmark smoke
         run: |
-          ctest --test-dir build-sherpa -R '^speech_real_speaker_diarization$' --output-on-failure --no-tests=error
+          ctest --test-dir build-sherpa -R '^speech_real_speaker_diarization(_benchmark)?$' --output-on-failure --no-tests=error
           cat build-sherpa/audio-fixtures/speaker-diarization-report.txt
           python3 tests/integration/score_diarization_rttm.py \
             --validate-hypothesis build-sherpa/audio-fixtures/speaker-diarization-report.rttm
-          # No real DER is reported: this recording has no independently verified RTTM labels.
+          python3 tests/integration/score_diarization_rttm.py \
+            --validate-hypothesis build-sherpa/audio-fixtures/diarization-benchmark.rttm
+          # The benchmark smoke checks output schema, NOT DER; no independent RTTM ground truth.
       - name: Download official Sherpa GTCRN denoising ONNX
         shell: bash
         run: |
@@ -952,6 +954,8 @@ jobs:
             build-sherpa/audio-fixtures/language-id-assets.sha256
             build-sherpa/audio-fixtures/speaker-diarization-report.txt
             build-sherpa/audio-fixtures/speaker-diarization-report.rttm
+            build-sherpa/audio-fixtures/diarization-benchmark.txt
+            build-sherpa/audio-fixtures/diarization-benchmark.rttm
             build-sherpa/audio-fixtures/diarization-assets.sha256
           if-no-files-found: ignore
           retention-days: 14
