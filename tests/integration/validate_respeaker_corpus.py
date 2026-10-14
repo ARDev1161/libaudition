@@ -6,7 +6,7 @@ Corpus JSON v1:
  "recordings":[{"id":"test01","wav":"test01.wav","sha256":"<64 hex>",
  "intervals":[{"start_s":1.0,"end_s":3.0,"azimuth_deg":45.0}]}]}
 Angles are measured in the microphone-frame convention of the runner:
-atan2(y,x), degrees. Each reference interval describes one stationary source.
+atan2(y,x), degrees. Each interval describes a source (optional source_id) with either static\nazimuth_deg or linearly changing azimuth_start_deg/azimuth_end_deg.\nMultiple sources may overlap; matches are one-to-one per analysis hop.
 Recordings must be 6-channel, 16-kHz, 16-bit PCM and an integer number
 of 128-frame hops. Use an independent measurement for reference azimuths.
 """
@@ -59,18 +59,75 @@ def validate_manifest(path):
               "A SHA-256 checksum is required for each recording")
         intervals = rec.get("intervals")
         check(isinstance(intervals, list) and intervals, "Missing ground truth")
-        last_end = 0.0
-        for interval in intervals:
-            start, end, azimuth = (interval.get(x) for x in
-                                   ("start_s", "end_s", "azimuth_deg"))
+        per_source_end = {}
+        for index, interval in enumerate(intervals):
+            check(isinstance(interval, dict), "Interval must be an object")
+            source = interval.get("source_id", "default")
+            check(isinstance(source, str) and
+                  re.fullmatch(r"[A-Za-z0-9_-]{1,64}", source),
+                  "Invalid source_id")
+            start, end = interval.get("start_s"), interval.get("end_s")
             check(all(isinstance(x, (int, float)) and
                       not isinstance(x, bool) and math.isfinite(x)
-                      for x in (start, end, azimuth)), "Nonfinite annotation")
-            check(0 <= start < end and start >= last_end,
-                  "Invalid or overlapping reference intervals")
-            check(-180 <= azimuth <= 180, "Azimuth must be in degrees")
-            last_end = end
+                      for x in (start, end)), "Nonfinite interval timestamp")
+            check(0 <= start < end and start >= per_source_end.get(source, 0),
+                  "Overlapping or unordered intervals for the same source")
+            per_source_end[source] = end
+            static = "azimuth_deg" in interval
+            moving = ("azimuth_start_deg" in interval or
+                      "azimuth_end_deg" in interval)
+            check(static != moving, "Specify static OR moving azimuth")
+            keys = (("azimuth_deg",) if static else
+                    ("azimuth_start_deg", "azimuth_end_deg"))
+            for key in keys:
+                azimuth = interval.get(key)
+                check(isinstance(azimuth, (int, float)) and
+                      not isinstance(azimuth, bool) and math.isfinite(azimuth) and
+                      -180 <= azimuth <= 180, "Invalid azimuth: " + key)
+            check(math.floor(end * FS / HOP) > math.ceil(start * FS / HOP),
+                  "Annotation must include at least one full hop")
     return recordings
+
+
+def reference_azimuth(interval, time_s):
+    if "azimuth_deg" in interval:
+        return float(interval["azimuth_deg"])
+    fraction = (time_s - interval["start_s"]) / (
+        interval["end_s"] - interval["start_s"])
+    start = float(interval["azimuth_start_deg"])
+    end = float(interval["azimuth_end_deg"])
+    # Interpolate shortest circular path, including the +/-180 wrap.
+    delta = (end - start + 180) % 360 - 180
+    return (start + fraction * delta + 180) % 360 - 180
+
+
+def associate(references, observations):
+    """Minimum summed angular error, distinct observations per reference.
+
+    Returns (reference-index, error) pairs; unmatched references are not
+    scored as successful coverage. Small ODAS source counts make an exact
+    dynamic-programming assignment inexpensive.
+    """
+    if not observations or not references:
+        return []
+    from functools import lru_cache
+    errors = [[angular_error(row, angle) for row in observations]
+              for angle in references]
+    @lru_cache(None)
+    def solve(ref_index, occupied):
+        if ref_index == len(references):
+            return (0, 0.0, ())
+        best = solve(ref_index + 1, occupied)
+        for index in range(len(observations)):
+            if occupied & (1 << index):
+                continue
+            count, cost, pairs = solve(ref_index + 1, occupied | (1 << index))
+            candidate = (count + 1, cost + errors[ref_index][index],
+                         ((ref_index, errors[ref_index][index]),) + pairs)
+            if (candidate[0], -candidate[1]) > (best[0], -best[1]):
+                best = candidate
+        return best
+    return list(solve(0, 0)[2])
 
 
 def evaluate(rows, intervals, total_hops):
@@ -80,34 +137,54 @@ def evaluate(rows, intervals, total_hops):
         check(0 <= hop < total_hops, "Observation outside recording")
         check(row["kind"] in ("track", "proposal"), "Unknown observation kind")
         observed.setdefault(hop, []).append(row)
+    state = [{"errors": [], "proposals": [], "covered": 0, "hops": 0}
+             for _ in intervals]
+    simultaneous_hops = 0
+    fully_associated_hops = 0
+    for hop in range(total_hops):
+        time_s = (hop + 0.5) * HOP / FS
+        active = [(index, reference_azimuth(interval, time_s))
+                  for index, interval in enumerate(intervals)
+                  if interval["start_s"] <= time_s < interval["end_s"]]
+        if not active:
+            continue
+        data = observed.get(hop, [])
+        tracks = [row for row in data if row["kind"] == "track"]
+        proposals = [row for row in data if row["kind"] == "proposal"]
+        track_matches = associate([a for _, a in active], tracks)
+        proposal_matches = associate([a for _, a in active], proposals)
+        for index, _ in active:
+            state[index]["hops"] += 1
+        for index, error in track_matches:
+            item = state[active[index][0]]
+            item["covered"] += 1
+            item["errors"].append(error)
+        for index, error in proposal_matches:
+            state[active[index][0]]["proposals"].append(error)
+        if len(active) >= 2:
+            simultaneous_hops += 1
+            if len(track_matches) == len(active):
+                fully_associated_hops += 1
     metrics = []
-    for interval in intervals:
-        start_hop = math.ceil(float(interval["start_s"]) * FS / HOP)
-        end_hop = math.floor(float(interval["end_s"]) * FS / HOP)
-        check(end_hop > start_hop, "Annotation interval shorter than a hop")
-        bearing = float(interval["azimuth_deg"])
-        tracks = []
-        proposals = []
-        covered = 0
-        for hop in range(start_hop, end_hop):
-            data = observed.get(hop, [])
-            ts = [row for row in data if row["kind"] == "track"]
-            ps = [row for row in data if row["kind"] == "proposal"]
-            if ts:
-                covered += 1
-                tracks.append(min(angular_error(row, bearing) for row in ts))
-            if ps:
-                proposals.append(min(angular_error(row, bearing) for row in ps))
+    for interval, item in zip(intervals, state):
+        check(item["hops"] > 0, "Interval has no evaluated hops")
         metrics.append({
+            "source_id": interval.get("source_id", "default"),
             "start_s": interval["start_s"],
             "end_s": interval["end_s"],
-            "reference_azimuth_deg": bearing,
-            "track_coverage": covered / (end_hop - start_hop),
-            "median_track_error_deg": statistics.median(tracks) if tracks else None,
-            "median_proposal_error_deg": statistics.median(proposals) if proposals else None,
-            "track_error_samples": len(tracks),
+            "reference_azimuth_start_deg": reference_azimuth(
+                interval, interval["start_s"]),
+            "reference_azimuth_end_deg": reference_azimuth(
+                interval, interval["end_s"]),
+            "track_coverage": item["covered"] / item["hops"],
+            "median_track_error_deg": (
+                statistics.median(item["errors"]) if item["errors"] else None),
+            "median_proposal_error_deg": (
+                statistics.median(item["proposals"]) if item["proposals"] else None),
+            "track_error_samples": len(item["errors"]),
         })
     return metrics
+
 
 
 def main():
