@@ -711,6 +711,14 @@ jobs:
             --output "$archive" \
             https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2
           test "$(wc -c < "$archive")" -eq 17626723
+          checksums="$RUNNER_TEMP/kws-checksum.txt"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$checksums" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/checksum.txt
+          echo '284637b2b9fec1287aca10315dcc960710c6ec14224fb1dfa9fe427e77eb6c18  '"$checksums" | sha256sum --check
+          expected="$(awk '$NF == "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2" {print $1}' "$checksums")"
+          test "${#expected}" -eq 64
+          echo "$expected  $archive" | sha256sum --check
           sha256sum "$archive" | tee build-sherpa/kws-archive.sha256
           python3 - "$archive" "$PWD/build-sherpa" <<'PY'
           import pathlib
