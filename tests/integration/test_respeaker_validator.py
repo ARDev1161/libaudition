@@ -71,7 +71,7 @@ def main():
         {"x": "0", "y": "1", "z": "0"}])) == 2
     assert len(module.associate([0, 90], [
         {"x": "1", "y": "0", "z": "0"}])) == 1
-    two_rows = [{"hop": str(i), "kind": "track", "x": "1", "y": "0", "z": "0"}
+    two_rows = [{"hop": str(i), "kind": "track", "id": "7", "x": "1", "y": "0", "z": "0"}
                 for i in range(10)]
     scores = module.evaluate(two_rows, [
         {"source_id": "a", "start_s": 0, "end_s": 0.08, "azimuth_deg": 0},
