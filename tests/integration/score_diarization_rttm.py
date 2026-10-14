@@ -22,7 +22,7 @@ class Segment:
     speaker: str
 
 
-def parse_rttm(path: Path) -> tuple[str, list[Segment]]:
+def parse_rttm(path: Path, *, allow_empty: bool = False) -> tuple[str | None, list[Segment]]:
     """Strict single-recording RTTM reader; never silently skip bad records."""
     lines = path.read_text(encoding="utf-8").splitlines()
     recording = None
@@ -51,7 +51,7 @@ def parse_rttm(path: Path) -> tuple[str, list[Segment]]:
         if not speaker or speaker == "<NA>":
             raise ValueError(f"{path}:{number}: missing speaker ID")
         segments.append(Segment(start, start + duration, speaker))
-    if not segments or recording is None:
+    if not segments and not allow_empty:
         raise ValueError(f"{path}: missing annotated speaker segments")
     return recording, segments
 
@@ -208,6 +208,27 @@ def self_test() -> None:
     approx(score([seg(0, 2, "A")], [seg(0, 1.95, "X")],
                  collar=0.2)["der"], 0.0)
     assert score(ref, same)["speaker_mapping"] == {"X": "A", "Y": "B"}
+    assert score(ref, [])["der"] == 1.0
+    # Round-trip strict RTTM parsing and forbid using an empty reference.
+    from tempfile import TemporaryDirectory
+    with TemporaryDirectory() as directory:
+        file = Path(directory) / "sample.rttm"
+        file.write_text(
+            "SPEAKER rec 1 0.000 2.000 <NA> <NA> spk_0 <NA> <NA>\\n"
+            "SPEAKER rec 1 2.000 2.000 <NA> <NA> spk_1 <NA> <NA>\\n",
+            encoding="utf-8")
+        recording, parsed = parse_rttm(file)
+        assert recording == "rec" and parsed == [
+            seg(0, 2, "spk_0"), seg(2, 4, "spk_1")]
+        file.write_text("SPEAKER rec 1 NaN 2 <NA> <NA> x <NA> <NA>\\n",
+                        encoding="utf-8")
+        try:
+            parse_rttm(file)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Non-finite RTTM accepted")
+
     for bad in [[], [seg(1, 1, "X")]]:
         try:
             score(bad, same)
@@ -227,16 +248,29 @@ def main() -> None:
                    help="Full collar width in seconds around reference boundaries")
     p.add_argument("--skip-overlap", action="store_true")
     p.add_argument("--max-der", type=float, help="Optional acceptance threshold; may exceed 1")
+    p.add_argument("--validate-hypothesis", type=Path,
+                   help="Check predicted RTTM format only; does NOT calculate DER")
     p.add_argument("--self-test", action="store_true")
     args = p.parse_args()
     if args.self_test:
         self_test()
         return
+    if args.validate_hypothesis is not None:
+        if (args.reference is not None or args.hypothesis is not None or
+                args.output is not None or args.max_der is not None):
+            p.error("--validate-hypothesis cannot be combined with DER evaluation")
+        recording, segments = parse_rttm(args.validate_hypothesis)
+        print(json.dumps({"recording_id": recording,
+                          "hypothesis_segments": len(segments),
+                          "metric": None,
+                          "reason": "No independently annotated reference provided"},
+                         sort_keys=True))
+        return
     if args.reference is None or args.hypothesis is None or args.output is None:
         p.error("--reference --hypothesis --output required; cannot score without ground truth")
     ref_id, reference = parse_rttm(args.reference)
-    hyp_id, hypothesis = parse_rttm(args.hypothesis)
-    if ref_id != hyp_id:
+    hyp_id, hypothesis = parse_rttm(args.hypothesis, allow_empty=True)
+    if hyp_id is not None and ref_id != hyp_id:
         raise ValueError(f"RTTM recording mismatch: {ref_id!r} != {hyp_id!r}")
     metrics = score(reference, hypothesis, collar=args.collar,
                     skip_overlap=args.skip_overlap)
