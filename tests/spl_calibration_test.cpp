@@ -247,11 +247,20 @@ TEST(SplCalibration, RejectsNonfiniteOrOverflowingProfilesAndOutput) {
     EXPECT_THROW(static_cast<void>(audition::SoundPressureLevelCalibrator{invalid}),
                  audition::Error);
 
-    const audition::SoundPressureLevelCalibrator calibrator{profile()};
-    auto measured = observation(std::numeric_limits<double>::max());
+    auto large = profile();
+    large.reference_level_db_spl.mean = std::numeric_limits<double>::max() * 0.75;
+    large.measured_level_dbfs.mean = 0.0;
+    const audition::SoundPressureLevelCalibrator calibrator{large};
+    auto measured = observation(std::numeric_limits<double>::max() * 0.75);
     EXPECT_THROW(static_cast<void>(calibrator.calibrate(measured)), audition::Error);
-    measured = observation(-30.0, std::numeric_limits<double>::max());
+    measured = observation(-30.0);
     const auto result = calibrator.calibrate(measured);
     ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(std::isfinite(result->level_db_spl.variance));
+    EXPECT_TRUE(std::isfinite(result->level_db_spl.mean));
+
+    large = profile();
+    large.reference_level_db_spl.variance = std::numeric_limits<double>::max() * 0.75;
+    const audition::SoundPressureLevelCalibrator variance_calibrator{large};
+    measured = observation(-30.0, std::numeric_limits<double>::max() * 0.75);
+    EXPECT_THROW(static_cast<void>(variance_calibrator.calibrate(measured)), audition::Error);
 }
