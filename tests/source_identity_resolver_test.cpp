@@ -660,3 +660,47 @@ TEST(SourceIdentityResolver, StrongerFingerprintOutranksLowerSourceId) {
     EXPECT_EQ(selected_fallback.source_id, weaker.source_id);
     EXPECT_EQ(registry.list().size(), 2U);
 }
+
+
+TEST(SourceIdentityResolver, RecentGeometryCapacityEvictsLowestIdOnEqualAge) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    options.max_active_tracks = 1U;
+    options.max_recent_sources = 2U;
+    audition::HeuristicSourceIdentityResolver resolver{registry, options};
+
+    auto first = observation(1U, 0);
+    first.position = position(0.0, 0.0, 0.0);
+    const auto source_a = resolver.observe(first);
+    resolver.endTrack(first.track_id, ts(10));
+
+    auto second = observation(2U, 10);
+    second.position = position(10.0, 0.0, 0.0);
+    const auto source_b = resolver.observe(second);
+    ASSERT_NE(source_a.source_id, source_b.source_id);
+    ASSERT_LT(source_a.source_id.value(), source_b.source_id.value());
+    resolver.endTrack(second.track_id, ts(10));
+
+    // A and B have identical last-seen times. Inserting C must evict A's
+    // transient geometry by the source-ID tie-break, not the hash-map order.
+    auto third = observation(3U, 11);
+    third.position = position(20.0, 0.0, 0.0);
+    const auto source_c = resolver.observe(third);
+    EXPECT_TRUE(source_c.newly_created);
+    resolver.endTrack(third.track_id, ts(11));
+
+    auto recover_b = observation(4U, 12);
+    recover_b.position = second.position;
+    const auto reacquired_b = resolver.observe(recover_b);
+    EXPECT_FALSE(reacquired_b.newly_created);
+    EXPECT_EQ(reacquired_b.source_id, source_b.source_id);
+    resolver.endTrack(recover_b.track_id, ts(13));
+
+    auto recover_a = observation(5U, 14);
+    recover_a.position = first.position;
+    const auto replacement_a = resolver.observe(recover_a);
+    EXPECT_TRUE(replacement_a.newly_created);
+    EXPECT_NE(replacement_a.source_id, source_a.source_id);
+    EXPECT_EQ(registry.list().size(), 4U);
+    EXPECT_TRUE(registry.find(source_a.source_id).has_value());
+}
