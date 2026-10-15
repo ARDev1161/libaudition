@@ -9,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 TEST_CMAKE = ROOT / "tests" / "CMakeLists.txt"
+CORPUS_WORKFLOW = ROOT / ".github" / "workflows" / "voxconverse-benchmark.yml"
 
 
 class CiCTestEntrypointTests(unittest.TestCase):
@@ -34,6 +35,17 @@ class CiCTestEntrypointTests(unittest.TestCase):
             workflow,
             r"(?m)^\s*(?:\./)?build[\w/-]*/tests/"
             r"\w[\w.-]*(?:\s|$)")
+
+    def test_heavy_corpus_workflow_uses_ctest_for_selftests(self):
+        workflow = CORPUS_WORKFLOW.read_text(encoding="utf-8")
+        self.assertNotRegex(
+            workflow, r"(?m)^\\s*python3?\\s+tests/integration/[\\w-]+\\.py\\s+--self-test")
+        self.assertIn("ctest --no-tests=error --test-dir build-voxconverse", workflow)
+        for name in ("voxconverse_full_split_preflight_selftest",
+                     "diarization_scoring_selftest",
+                     "diarization_corpus_scoring_selftest",
+                     "voxconverse_shard_aggregation_selftest"):
+            self.assertIn(name, workflow)
 
     def test_real_diarization_rttm_checks_have_ctest_fixtures(self):
         cmake = TEST_CMAKE.read_text(encoding="utf-8")
