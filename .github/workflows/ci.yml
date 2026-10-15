@@ -62,6 +62,10 @@ jobs:
             --xml build-coverage/reports/cobertura.xml --xml-pretty \
             --html-details build-coverage/reports/coverage.html
           cat build-coverage/reports/coverage.txt
+          "$RUNNER_TEMP/gcovr/bin/gcovr" build-coverage \
+            --root . --filter 'src/' --exclude-unreachable-branches \
+            --txt-metric branch --txt build-coverage/reports/branches.txt
+          cat build-coverage/reports/branches.txt
       - name: Enforce and publish C++ core coverage thresholds
         run: |
           python3 - <<'PY'
