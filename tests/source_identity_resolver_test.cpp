@@ -623,3 +623,40 @@ TEST(SourceIdentityResolver, EqualFingerprintCandidatesPreferLowestFreeSourceId)
     EXPECT_EQ(matched_b.source_id, original_b.source_id);
     EXPECT_EQ(registry.list().size(), 2U);
 }
+
+
+TEST(SourceIdentityResolver, StrongerFingerprintOutranksLowerSourceId) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    options.fingerprint_weight = 1.0;
+    options.position_weight = 0.0;
+    options.range_weight = 0.0;
+    options.direction_weight = 0.0;
+    audition::HeuristicSourceIdentityResolver resolver{registry, options};
+
+    auto first = observation(11U, 0);
+    first.fingerprint = fingerprint("same-model", {0.92F, 0.392F});
+    const auto weaker = resolver.observe(first);
+
+    auto second = observation(12U, 1);
+    second.fingerprint = fingerprint("same-model", {1.0F, 0.0F});
+    const auto stronger = resolver.observe(second);
+    ASSERT_NE(weaker.source_id, stronger.source_id);
+    resolver.endTrack(first.track_id, ts(2));
+    resolver.endTrack(second.track_id, ts(3));
+
+    auto query = observation(13U, 4);
+    query.fingerprint = fingerprint("same-model", {1.0F, 0.0F});
+    const auto selected = resolver.observe(query);
+    EXPECT_FALSE(selected.newly_created);
+    EXPECT_EQ(selected.source_id, stronger.source_id);
+
+    // The better-scoring candidate is now occupied; the next observation
+    // can still recover the lower-ranked but compatible source.
+    auto fallback = observation(14U, 5);
+    fallback.fingerprint = query.fingerprint;
+    const auto selected_fallback = resolver.observe(fallback);
+    EXPECT_FALSE(selected_fallback.newly_created);
+    EXPECT_EQ(selected_fallback.source_id, weaker.source_id);
+    EXPECT_EQ(registry.list().size(), 2U);
+}
