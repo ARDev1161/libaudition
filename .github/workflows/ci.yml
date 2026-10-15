@@ -25,7 +25,7 @@ jobs:
       - name: Build
         run: cmake --build --preset ci --parallel
       - name: Test
-        run: ctest --preset ci
+        run: ctest --no-tests=error --preset ci
 
 
   cpp-coverage:
@@ -142,7 +142,7 @@ jobs:
       - name: Build C++ real-model smoke tool
         run: cmake --build build-efficientat-real --target libaudition_tests efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke yamnet_progressive_multisource real_yamnet_wav_replay --parallel
       - name: Audit all configured algorithm CTest registrations
-        run: ctest --test-dir build-efficientat-real -R '^algorithm_coverage_contract$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^algorithm_coverage_contract$' --output-on-failure
       - name: Upload CTest algorithm coverage inventory
         if: always()
         uses: actions/upload-artifact@v4
@@ -160,7 +160,7 @@ jobs:
           curl --fail --location --retry 3 --silent --show-error \
             "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/yamnet_class_map.csv" \
             --output "$RUNNER_TEMP/yamnet_class_map.csv"
-          ctest --test-dir build-efficientat-real -R '^real_audioset_vocabulary_audit$' --output-on-failure
+          ctest --no-tests=error --test-dir build-efficientat-real -R '^real_audioset_vocabulary_audit$' --output-on-failure
       - name: Export genuine mn10_as and dymn10_as weights and compare ONNX logits
         run: |
           cd "$RUNNER_TEMP/EfficientAT"
@@ -168,13 +168,13 @@ jobs:
           "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model mn10_as --output "$RUNNER_TEMP/eat-real"
           "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model dymn10_as --output "$RUNNER_TEMP/eat-real"
       - name: CTest classifier smoke against genuine weights
-        run: ctest --test-dir build-efficientat-real -R '^real_efficientat_(mn10_as|dymn10_as)$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_efficientat_(mn10_as|dymn10_as)$' --output-on-failure
       - name: Run model-tool validation suite via CTest
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           export PATH="$RUNNER_TEMP/efficientat-real/bin:$PATH"
-          ctest --test-dir build-efficientat-real -L model-tools --output-on-failure --parallel 2
+          ctest --no-tests=error --test-dir build-efficientat-real -L model-tools --output-on-failure --parallel 2
       - name: Fetch pinned YAMNet ONNX demo model and labels
         run: |
           mkdir -p "$RUNNER_TEMP/yamnet"
@@ -184,15 +184,15 @@ jobs:
               --output "$RUNNER_TEMP/yamnet/$file"
           done
       - name: Validate YAMNet C++/ONNX parity and malformed label maps through CTest
-        run: ctest --test-dir build-efficientat-real -R '^real_yamnet_(onnx_cpp_parity_(short|long)|label_rejection)$' --output-on-failure --parallel 2
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_yamnet_(onnx_cpp_parity_(short|long)|label_rejection)$' --output-on-failure --parallel 2
       - name: Real YAMNet quick/refined WAV replay (not raw mock PCM)
         run: |
-          ctest --test-dir build-efficientat-real -R '^real_yamnet_wav_replay_ctest$' --output-on-failure
+          ctest --no-tests=error --test-dir build-efficientat-real -R '^real_yamnet_wav_replay_ctest$' --output-on-failure
           cat "$RUNNER_TEMP/yamnet-real-wav-report.txt"
       - name: Real-weight YAMNet fast-to-refined CTest integration
-        run: ctest --test-dir build-efficientat-real -R '^real_yamnet_progressive_smoke$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_yamnet_progressive_smoke$' --output-on-failure
       - name: Stream 5 and 10 ODAS-like sources through real YAMNet
-        run: ctest --test-dir build-efficientat-real -L stress --output-on-failure --parallel 2
+        run: ctest --no-tests=error --test-dir build-efficientat-real -L stress --output-on-failure --parallel 2
       - name: Upload real YAMNet multi-source latency and drop reports
         uses: actions/upload-artifact@v4
         with:
@@ -202,15 +202,15 @@ jobs:
             ${{ runner.temp }}/yamnet-stream-10.json
           retention-days: 14
       - name: Verify official YAMNet silence noise and sine wave behavior
-        run: ctest --test-dir build-efficientat-real -R '^real_yamnet_behavior$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_yamnet_behavior$' --output-on-failure
       - name: Generate deterministic WAV and run genuine classifier benchmarks via CTest
-        run: ctest --test-dir build-efficientat-real -R '^real_(efficientat_wav_benchmark_(mn10_as|dymn10_as)|yamnet_wav_benchmark)$' --output-on-failure --parallel 2
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_(efficientat_wav_benchmark_(mn10_as|dymn10_as)|yamnet_wav_benchmark)$' --output-on-failure --parallel 2
       - name: Compare all three real models on shared AudioSet ontology via CTest
-        run: ctest --test-dir build-efficientat-real -R '^real_audioset_smoke_comparison$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_audioset_smoke_comparison$' --output-on-failure
       - name: Install audio conversion tool for ESC-10 evaluation
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Run full attributed ESC-10 real-model acceptance suite via CTest
-        run: ctest --test-dir build-efficientat-real -R '^real_esc10_' --output-on-failure --parallel 1
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_esc10_' --output-on-failure --parallel 1
       - name: Upload expanded ESC-10 YAMNet evaluation and licensing
         uses: actions/upload-artifact@v4
         with:
@@ -322,7 +322,7 @@ jobs:
       - name: Build
         run: cmake --build build-sanitizers --parallel
       - name: Test under sanitizers
-        run: ctest --test-dir build-sanitizers --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sanitizers --output-on-failure
 
   qt-demo:
     runs-on: ubuntu-latest
@@ -347,8 +347,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          ctest --test-dir build-qt-demo -R '^qt_self_test$' --output-on-failure
-          ctest --test-dir build-qt-demo -R '^qt_playback_lifecycle$' --output-on-failure
+          ctest --no-tests=error --test-dir build-qt-demo -R '^qt_self_test$' --output-on-failure
+          ctest --no-tests=error --test-dir build-qt-demo -R '^qt_playback_lifecycle$' --output-on-failure
 
   qt6-demo:
     runs-on: ubuntu-latest
@@ -376,8 +376,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          ctest --test-dir build-qt6-demo -R '^qt_self_test$' --output-on-failure
-          ctest --test-dir build-qt6-demo -R '^qt_playback_lifecycle$' --output-on-failure
+          ctest --no-tests=error --test-dir build-qt6-demo -R '^qt_self_test$' --output-on-failure
+          ctest --no-tests=error --test-dir build-qt6-demo -R '^qt_playback_lifecycle$' --output-on-failure
 
   qt6-gcc16-sherpa-arch:
     runs-on: ubuntu-latest
@@ -415,15 +415,15 @@ jobs:
       - name: Build all targets with GCC 16 and Werror
         run: cmake --build build-arch-qt6 --parallel 2
       - name: Run all C++ tests
-        run: ctest --test-dir build-arch-qt6 --output-on-failure --parallel 2
+        run: ctest --no-tests=error --test-dir build-arch-qt6 --output-on-failure --parallel 2
       - name: Run Qt 6 integrated smoke and lifecycle fixtures
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          ctest --test-dir build-arch-qt6 -R '^qt_self_test$' --output-on-failure
-          ctest --test-dir build-arch-qt6 -R '^qt_source_track_lifecycle$' --output-on-failure
-          ctest --test-dir build-arch-qt6 -R '^qt_playback_lifecycle$' --output-on-failure
-          ctest --test-dir build-arch-qt6 -R '^qt_live_source_tagging_errors$' --output-on-failure
+          ctest --no-tests=error --test-dir build-arch-qt6 -R '^qt_self_test$' --output-on-failure
+          ctest --no-tests=error --test-dir build-arch-qt6 -R '^qt_source_track_lifecycle$' --output-on-failure
+          ctest --no-tests=error --test-dir build-arch-qt6 -R '^qt_playback_lifecycle$' --output-on-failure
+          ctest --no-tests=error --test-dir build-arch-qt6 -R '^qt_live_source_tagging_errors$' --output-on-failure
 
   audio-integration:
     runs-on: ubuntu-latest
@@ -489,17 +489,17 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-odas -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-odas -R '^qt_self_test$' --output-on-failure
       - name: Qt async odas-errors smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-odas -R '^qt_odas_errors$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-odas -R '^qt_odas_errors$' --output-on-failure
       - name: Test ALSA live capture device-open failure and restart
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-odas -R '^qt_alsa_errors$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-odas -R '^qt_alsa_errors$' --output-on-failure
       - name: Test
-        run: ctest --test-dir build-odas --output-on-failure
+        run: ctest --no-tests=error --test-dir build-odas --output-on-failure
       - name: Install
         run: cmake --install build-odas --prefix "$PWD/install-odas"
       - name: Verify installed ODAS backend package
@@ -548,13 +548,13 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-samplerate -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-samplerate -R '^qt_self_test$' --output-on-failure
       - name: Qt async samplerate functional smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-samplerate -R '^qt_samplerate$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-samplerate -R '^qt_samplerate$' --output-on-failure
       - name: Test
-        run: ctest --test-dir build-samplerate --output-on-failure
+        run: ctest --no-tests=error --test-dir build-samplerate --output-on-failure
       - name: Install
         run: cmake --install build-samplerate --prefix "$PWD/install-samplerate"
       - name: Verify installed libsamplerate backend package
@@ -602,13 +602,13 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-aec3 -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-aec3 -R '^qt_self_test$' --output-on-failure
       - name: Qt async aec3 functional smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-aec3 -R '^qt_aec3$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-aec3 -R '^qt_aec3$' --output-on-failure
       - name: Test
-        run: ctest --test-dir build-aec3 --output-on-failure
+        run: ctest --no-tests=error --test-dir build-aec3 --output-on-failure
       - name: Install
         run: cmake --install build-aec3 --prefix "$PWD/install-aec3"
       - name: Verify installed AEC3 backend package from C++17 consumer
@@ -659,15 +659,15 @@ jobs:
       - name: Combined Qt scene and model controls smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-acoustic-live -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-acoustic-live -R '^qt_self_test$' --output-on-failure
       - name: ODAS source retirement and ALSA reset fixture
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-acoustic-live -R '^qt_source_track_lifecycle$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-acoustic-live -R '^qt_source_track_lifecycle$' --output-on-failure
       - name: Source-tagging invalid-model error handling
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-acoustic-live -R '^qt_live_source_tagging_errors$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-acoustic-live -R '^qt_live_source_tagging_errors$' --output-on-failure
 
   sherpa-backend:
     runs-on: ubuntu-latest
@@ -695,11 +695,11 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-sherpa -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_self_test$' --output-on-failure
       - name: Test asynchronous Sherpa GUI error and restart paths
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-sherpa -R '^qt_sherpa_errors$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_sherpa_errors$' --output-on-failure
       - name: Download pinned Silero VAD inference fixture
         shell: bash
         run: |
@@ -710,12 +710,12 @@ jobs:
       - name: Test
         env:
           LIBAUDITION_TEST_SILERO_MODEL: ${{ github.workspace }}/build-sherpa/silero_vad.onnx
-        run: ctest --test-dir build-sherpa -LE 'real-model|installed-package' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa -LE 'real-model|installed-package' --output-on-failure
       - name: Test actual Silero VAD Qt workbench inference
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_SILERO_MODEL: ${{ github.workspace }}/build-sherpa/silero_vad.onnx
-        run: ctest --test-dir build-sherpa -R '^qt_real_silero$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_real_silero$' --output-on-failure
       - name: Download pinned Whisper tiny.en INT8 and NeMo speaker model
         shell: bash
         run: |
@@ -745,14 +745,14 @@ jobs:
           LIBAUDITION_TEST_WHISPER_ENCODER: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-encoder.int8.onnx
           LIBAUDITION_TEST_WHISPER_DECODER: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-decoder.int8.onnx
           LIBAUDITION_TEST_WHISPER_TOKENS: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-tokens.txt
-        run: ctest --test-dir build-sherpa -R '^qt_real_whisper-real$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_real_whisper-real$' --output-on-failure
       - name: Verify genuine Whisper ONNX through per-source speech runtime
-        run: ctest --test-dir build-sherpa -R '^speech_real_whisper_two_sources$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^speech_real_whisper_two_sources$' --output-on-failure
       - name: Test actual speaker embedding verification and identification via Qt
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_SPEAKER_MODEL: ${{ github.workspace }}/build-sherpa/nemo_en_titanet_small.onnx
-        run: ctest --test-dir build-sherpa -R '^qt_real_speaker-real$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_real_speaker-real$' --output-on-failure
       - name: Download SHA-256 pinned SenseVoiceSmall INT8 ASR and tokens
         shell: bash
         run: |
@@ -991,7 +991,7 @@ jobs:
           PY
       - name: Run two-speaker regression and unconstrained diarization benchmark smoke
         run: |
-          ctest --test-dir build-sherpa -R '^speech_real_speaker_diarization(_benchmark|_rttm_syntax|_benchmark_rttm_syntax)?
+          ctest --no-tests=error --test-dir build-sherpa -R '^speech_real_speaker_diarization(_benchmark|_rttm_syntax|_benchmark_rttm_syntax)?
           # The benchmark smoke checks output schema, NOT DER; no independent RTTM ground truth.
       - name: Fetch version-pinned independently annotated 10s speaker recording
         shell: bash
@@ -1041,7 +1041,7 @@ jobs:
           test -s "$root/wav/first_ten_Sample_HV_Clip.wav"
       - name: Compute independent real-model diarization DER diagnostic
         run: |
-          ctest --test-dir build-sherpa \
+          ctest --no-tests=error --test-dir build-sherpa \
             -R '^speech_real_speaker_diarization_reference_der$' \
             --output-on-failure --no-tests=error
           cat build-sherpa/audio-fixtures/diarization-reference/der.json
@@ -1060,7 +1060,7 @@ jobs:
           cat build-sherpa/audio-fixtures/gtcrn-report.txt
       - name: Real Silero VAD + SenseVoice ASR WAV replay and quality scoring
         run: |
-          ctest --test-dir build-sherpa -R '^speech_(real_silero_sensevoice_wav|real_sensevoice_quality|report_scoring_selftest)$' --output-on-failure
+          ctest --no-tests=error --test-dir build-sherpa -R '^speech_(real_silero_sensevoice_wav|real_sensevoice_quality|report_scoring_selftest)$' --output-on-failure
           cat build-sherpa/audio-fixtures/real-speech-report.txt
       - name: Upload model-audio diagnostics
         if: always()
@@ -1091,7 +1091,7 @@ jobs:
       - name: Install
         run: cmake --install build-sherpa --prefix "$PWD/install-sherpa"
       - name: Verify installed Sherpa and core C++17 consumers through CTest
-        run: ctest --test-dir build-sherpa -R '^installed_package_.*consumer$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^installed_package_.*consumer$' --output-on-failure
 
   sherpa-tts-backend:
     runs-on: ubuntu-latest
@@ -1118,13 +1118,13 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-sherpa-tts -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -R '^qt_self_test$' --output-on-failure
       - name: Test asynchronous Sherpa GUI error and restart paths
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-sherpa-tts -R '^qt_sherpa_errors$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -R '^qt_sherpa_errors$' --output-on-failure
       - name: Test
-        run: ctest --test-dir build-sherpa-tts -LE real-model --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -LE real-model --output-on-failure
       - name: Download pinned Piper Amy Low INT8 fixture
         shell: bash
         run: |
@@ -1140,7 +1140,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_PIPER_DIR: ${{ github.workspace }}/build-sherpa-tts/vits-piper-en_US-amy-low-int8
-        run: ctest --test-dir build-sherpa-tts -R '^qt_real_piper-real$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -R '^qt_real_piper-real$' --output-on-failure
       - name: Install
         run: cmake --install build-sherpa-tts --prefix "$PWD/install-sherpa-tts"
       - name: Verify installed sherpa TTS package from C++17 consumer
@@ -1207,7 +1207,7 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-clap -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-clap -R '^qt_self_test$' --output-on-failure
       - name: Download pinned CLAP inference fixtures
         shell: bash
         run: |
@@ -1262,14 +1262,14 @@ jobs:
           LIBAUDITION_TEST_CLAP_TEXT_MODEL: ${{ github.workspace }}/build-clap/clap_text.onnx
           LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
           LIBAUDITION_TEST_CLAP_TOKENIZER_GOLDEN: ${{ github.workspace }}/build-clap/tokenizer_golden.tsv
-        run: ctest --test-dir build-clap -LE real-model --output-on-failure
+        run: ctest --no-tests=error --test-dir build-clap -LE real-model --output-on-failure
       - name: Test actual CLAP Qt workbench inference
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_CLAP_AUDIO_MODEL: ${{ github.workspace }}/build-clap/clap_audio.onnx
           LIBAUDITION_TEST_CLAP_TEXT_MODEL: ${{ github.workspace }}/build-clap/clap_text.onnx
           LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
-        run: ctest --test-dir build-clap -R '^qt_real_clap$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-clap -R '^qt_real_clap$' --output-on-failure
       - name: Install
         run: cmake --install build-clap --prefix "$PWD/install-clap"
       - name: Verify installed CLAP package from C++17 consumer
@@ -1341,7 +1341,7 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-aasist -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-aasist -R '^qt_self_test$' --output-on-failure
       - name: Download pinned AASIST inference fixture
         shell: bash
         run: |
@@ -1352,12 +1352,12 @@ jobs:
       - name: Test
         env:
           LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
-        run: ctest --test-dir build-aasist -LE real-model --output-on-failure
+        run: ctest --no-tests=error --test-dir build-aasist -LE real-model --output-on-failure
       - name: Test actual AASIST Qt workbench inference
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
-        run: ctest --test-dir build-aasist -R '^qt_real_aasist$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-aasist -R '^qt_real_aasist$' --output-on-failure
       - name: Install
         run: cmake --install build-aasist --prefix "$PWD/install-aasist"
       - name: Verify installed AASIST package from C++17 consumer
@@ -1418,13 +1418,13 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-world -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-world -R '^qt_self_test$' --output-on-failure
       - name: Qt async world smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-world -R '^qt_world$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-world -R '^qt_world$' --output-on-failure
       - name: Test
-        run: ctest --test-dir build-world --output-on-failure
+        run: ctest --no-tests=error --test-dir build-world --output-on-failure
       - name: Install
         run: cmake --install build-world --prefix "$PWD/install-world"
       - name: Verify installed WORLD package from C++17 consumer
@@ -1495,13 +1495,13 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-gtsam -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-gtsam -R '^qt_self_test$' --output-on-failure
       - name: Qt async gtsam functional smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-gtsam -R '^qt_gtsam$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-gtsam -R '^qt_gtsam$' --output-on-failure
       - name: Test
-        run: ctest --test-dir build-gtsam --output-on-failure
+        run: ctest --no-tests=error --test-dir build-gtsam --output-on-failure
       - name: Install
         run: cmake --install build-gtsam --prefix "$PWD/install-gtsam"
       - name: Verify installed GTSAM backend package
@@ -1585,7 +1585,7 @@ jobs:
           test -s "$root/wav/first_ten_Sample_HV_Clip.wav"
       - name: Compute independent real-model diarization DER diagnostic
         run: |
-          ctest --test-dir build-sherpa \
+          ctest --no-tests=error --test-dir build-sherpa \
             -R '^speech_real_speaker_diarization_reference_der$' \
             --output-on-failure --no-tests=error
           cat build-sherpa/audio-fixtures/diarization-reference/der.json
@@ -1604,7 +1604,7 @@ jobs:
           cat build-sherpa/audio-fixtures/gtcrn-report.txt
       - name: Real Silero VAD + SenseVoice ASR WAV replay and quality scoring
         run: |
-          ctest --test-dir build-sherpa -R '^speech_(real_silero_sensevoice_wav|real_sensevoice_quality|report_scoring_selftest)$' --output-on-failure
+          ctest --no-tests=error --test-dir build-sherpa -R '^speech_(real_silero_sensevoice_wav|real_sensevoice_quality|report_scoring_selftest)$' --output-on-failure
           cat build-sherpa/audio-fixtures/real-speech-report.txt
       - name: Upload model-audio diagnostics
         if: always()
@@ -1635,7 +1635,7 @@ jobs:
       - name: Install
         run: cmake --install build-sherpa --prefix "$PWD/install-sherpa"
       - name: Verify installed Sherpa and core C++17 consumers through CTest
-        run: ctest --test-dir build-sherpa -R '^installed_package_.*consumer$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^installed_package_.*consumer$' --output-on-failure
 
   sherpa-tts-backend:
     runs-on: ubuntu-latest
@@ -1662,13 +1662,13 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-sherpa-tts -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -R '^qt_self_test$' --output-on-failure
       - name: Test asynchronous Sherpa GUI error and restart paths
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-sherpa-tts -R '^qt_sherpa_errors$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -R '^qt_sherpa_errors$' --output-on-failure
       - name: Test
-        run: ctest --test-dir build-sherpa-tts -LE real-model --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -LE real-model --output-on-failure
       - name: Download pinned Piper Amy Low INT8 fixture
         shell: bash
         run: |
@@ -1684,7 +1684,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_PIPER_DIR: ${{ github.workspace }}/build-sherpa-tts/vits-piper-en_US-amy-low-int8
-        run: ctest --test-dir build-sherpa-tts -R '^qt_real_piper-real$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -R '^qt_real_piper-real$' --output-on-failure
       - name: Install
         run: cmake --install build-sherpa-tts --prefix "$PWD/install-sherpa-tts"
       - name: Verify installed sherpa TTS package from C++17 consumer
@@ -1751,7 +1751,7 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-clap -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-clap -R '^qt_self_test$' --output-on-failure
       - name: Download pinned CLAP inference fixtures
         shell: bash
         run: |
@@ -1806,14 +1806,14 @@ jobs:
           LIBAUDITION_TEST_CLAP_TEXT_MODEL: ${{ github.workspace }}/build-clap/clap_text.onnx
           LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
           LIBAUDITION_TEST_CLAP_TOKENIZER_GOLDEN: ${{ github.workspace }}/build-clap/tokenizer_golden.tsv
-        run: ctest --test-dir build-clap -LE real-model --output-on-failure
+        run: ctest --no-tests=error --test-dir build-clap -LE real-model --output-on-failure
       - name: Test actual CLAP Qt workbench inference
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_CLAP_AUDIO_MODEL: ${{ github.workspace }}/build-clap/clap_audio.onnx
           LIBAUDITION_TEST_CLAP_TEXT_MODEL: ${{ github.workspace }}/build-clap/clap_text.onnx
           LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
-        run: ctest --test-dir build-clap -R '^qt_real_clap$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-clap -R '^qt_real_clap$' --output-on-failure
       - name: Install
         run: cmake --install build-clap --prefix "$PWD/install-clap"
       - name: Verify installed CLAP package from C++17 consumer
@@ -1885,7 +1885,7 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-aasist -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-aasist -R '^qt_self_test$' --output-on-failure
       - name: Download pinned AASIST inference fixture
         shell: bash
         run: |
@@ -1896,12 +1896,12 @@ jobs:
       - name: Test
         env:
           LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
-        run: ctest --test-dir build-aasist -LE real-model --output-on-failure
+        run: ctest --no-tests=error --test-dir build-aasist -LE real-model --output-on-failure
       - name: Test actual AASIST Qt workbench inference
         env:
           QT_QPA_PLATFORM: offscreen
           LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
-        run: ctest --test-dir build-aasist -R '^qt_real_aasist$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-aasist -R '^qt_real_aasist$' --output-on-failure
       - name: Install
         run: cmake --install build-aasist --prefix "$PWD/install-aasist"
       - name: Verify installed AASIST package from C++17 consumer
@@ -1962,13 +1962,13 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-world -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-world -R '^qt_self_test$' --output-on-failure
       - name: Qt async world smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-world -R '^qt_world$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-world -R '^qt_world$' --output-on-failure
       - name: Test
-        run: ctest --test-dir build-world --output-on-failure
+        run: ctest --no-tests=error --test-dir build-world --output-on-failure
       - name: Install
         run: cmake --install build-world --prefix "$PWD/install-world"
       - name: Verify installed WORLD package from C++17 consumer
@@ -2039,13 +2039,13 @@ jobs:
       - name: Headless Qt workbench self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-gtsam -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-gtsam -R '^qt_self_test$' --output-on-failure
       - name: Qt async gtsam functional smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-gtsam -R '^qt_gtsam$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-gtsam -R '^qt_gtsam$' --output-on-failure
       - name: Test
-        run: ctest --test-dir build-gtsam --output-on-failure
+        run: ctest --no-tests=error --test-dir build-gtsam --output-on-failure
       - name: Install
         run: cmake --install build-gtsam --prefix "$PWD/install-gtsam"
       - name: Verify installed GTSAM backend package
