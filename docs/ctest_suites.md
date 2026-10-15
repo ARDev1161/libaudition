@@ -29,6 +29,33 @@ ctest --test-dir build-sherpa -L speech-integration --output-on-failure
 ctest --test-dir build-qt -L qt --output-on-failure
 ```
 
+## Instrumented C++ core coverage
+
+The `cpp-coverage` GitHub Actions job compiles a separate Debug configuration
+with GCC gcov instrumentation (`--coverage`), executes its entire CTest
+suite, and archives text, JSON, Cobertura XML, and HTML coverage reports.
+Only `src/` library implementation sources count toward these results;
+optional backends, third-party libraries and Qt are not included.
+
+Locally (GCC, gcov and gcovr required):
+
+```sh
+cmake -S . -B build-coverage -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=OFF \
+  -DLIBAUDITION_WITH_SPDLOG=OFF -DLIBAUDITION_BUILD_TESTS=ON \
+  -DLIBAUDITION_BUILD_EXAMPLES=ON -DLIBAUDITION_BUILD_QT_DEMO=OFF \
+  -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage
+cmake --build build-coverage --parallel 2
+ctest --test-dir build-coverage --output-on-failure --parallel 2
+gcovr --root . --filter 'src/' --txt --json-summary \
+  build-coverage/reports/coverage-summary.json build-coverage
+```
+
+The initial coverage job reports measurements, without a percentage gate.
+Its output must not be interpreted as coverage of optional model backends
+or of hardware accuracy. Percentage gates can be introduced after reviewing
+a successful baseline and documented exclusions.
+
 ## Suites requiring external assets
 
 | CMake option | Purpose | Required preparation |
