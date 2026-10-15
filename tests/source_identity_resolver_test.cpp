@@ -474,3 +474,22 @@ TEST(SourceIdentityResolver, PositionOnlyReacquisitionRejectsDistantCandidate) {
     EXPECT_NE(recovered.source_id, unrelated.source_id);
     EXPECT_EQ(registry.list().size(), 2U);
 }
+
+
+TEST(SourceIdentityResolver, RangeWithoutFingerprintOrPositionCannotReacquire) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    auto first = observation(1U, 0);
+    first.range = audition::RangeEstimate{
+        {2.0, 0.1}, audition::Probability::one(),
+        audition::RangeEstimate::Method::Fused};
+    const auto original = resolver.observe(first);
+    resolver.endTrack(first.track_id, ts(10));
+
+    auto second = observation(2U, 20);
+    second.range = first.range;
+    const auto decision = resolver.observe(second);
+    EXPECT_TRUE(decision.newly_created);
+    EXPECT_NE(decision.source_id, original.source_id);
+    EXPECT_EQ(registry.list().size(), 2U);
+}
