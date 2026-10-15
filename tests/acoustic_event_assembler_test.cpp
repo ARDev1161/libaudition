@@ -525,3 +525,35 @@ TEST(AcousticEventAssembler, FailedFinishKeepsEventAvailableForRecovery) {
     EXPECT_FALSE(assembler.find(id).has_value());
     EXPECT_THROW(static_cast<void>(assembler.finish(id, ts(200))), audition::Error);
 }
+
+
+TEST(AcousticEventAssembler, FailedTrackHandoffDoesNotOverwriteExistingGeometry) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    auto original = trackAt(1U, 0, 10, 101U);
+    original.position = position(1.0, 2.0, 3.0);
+    assembler.updateFromTrack(id, original);
+
+    auto conflict = trackAt(2U, 10, 20, 202U);
+    conflict.position = position(99.0, 99.0, 99.0);
+    EXPECT_THROW(assembler.updateFromTrack(id, conflict), audition::Error);
+
+    const auto snapshot = assembler.find(id);
+    ASSERT_TRUE(snapshot.has_value());
+    EXPECT_EQ(snapshot->track_id, original.track_id);
+    EXPECT_EQ(snapshot->source_id, original.source_id);
+    EXPECT_EQ(snapshot->end_time.nanoseconds(), 10);
+    ASSERT_TRUE(snapshot->position.has_value());
+    EXPECT_DOUBLE_EQ(snapshot->position->mean_m.x, 1.0);
+
+    auto handoff = trackAt(2U, 10, 30, 101U);
+    handoff.position = position(4.0, 5.0, 6.0);
+    EXPECT_NO_THROW(assembler.updateFromTrack(id, handoff));
+    const auto updated = assembler.find(id);
+    ASSERT_TRUE(updated.has_value());
+    EXPECT_EQ(updated->track_id, handoff.track_id);
+    EXPECT_EQ(updated->source_id, original.source_id);
+    EXPECT_EQ(updated->end_time.nanoseconds(), 30);
+    ASSERT_TRUE(updated->position.has_value());
+    EXPECT_DOUBLE_EQ(updated->position->mean_m.x, 4.0);
+}
