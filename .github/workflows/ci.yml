@@ -62,7 +62,7 @@ jobs:
             --xml build-coverage/reports/cobertura.xml --xml-pretty \
             --html-details build-coverage/reports/coverage.html
           cat build-coverage/reports/coverage.txt
-      - name: Publish C++ line and branch coverage summary
+      - name: Enforce and publish C++ core coverage thresholds
         run: |
           python3 - <<'PY'
           import json
@@ -70,21 +70,31 @@ jobs:
           from pathlib import Path
 
           report = json.loads(Path("build-coverage/reports/coverage-summary.json").read_text())
+          thresholds = (("Lines", "line", 88.0), ("Branches", "branch", 55.0))
           rows = ["### Instrumented C++ core coverage", "",
-                  "| Metric | Covered / total | Coverage |", "| --- | ---: | ---: |"]
-          for label, key in (("Lines", "line"), ("Branches", "branch")):
+                  "| Metric | Covered / total | Coverage | Minimum | Result |",
+                  "| --- | ---: | ---: | ---: | --- |"]
+          failures = []
+          for label, key, minimum in thresholds:
               covered = report[f"{key}_covered"]
               total = report[f"{key}_total"]
               if total <= 0:
                   raise SystemExit(f"No {key} coverage data available")
               percent = 100.0 * covered / total
-              rows.append(f"| {label} | {covered} / {total} | {percent:.1f}% |")
+              passed = percent >= minimum
+              rows.append(
+                  f"| {label} | {covered} / {total} | {percent:.1f}% | "
+                  f"{minimum:.0f}% | {'PASS' if passed else 'FAIL'} |")
+              if not passed:
+                  failures.append(f"{label}: {percent:.2f}% < {minimum:.0f}%")
           rows.extend(["", "Scope: `src/` only; optional backends are excluded.",
-                       "Measurements only; no coverage threshold is enforced."])
+                       "Coverage quality gates measure execution, not algorithm accuracy."])
           summary = "\n".join(rows) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
               out.write(summary)
+          if failures:
+              raise SystemExit("C++ core coverage regression: " + "; ".join(failures))
           PY
       - name: Upload C++ coverage reports
         if: always()
