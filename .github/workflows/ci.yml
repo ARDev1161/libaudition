@@ -57,6 +57,7 @@ jobs:
           mkdir -p build-coverage/reports
           "$RUNNER_TEMP/gcovr/bin/gcovr" build-coverage \
             --root . --filter 'src/' --exclude-unreachable-branches \
+            --gcov-ignore-parse-errors negative_hits.warn_once_per_file \
             --txt build-coverage/reports/coverage.txt \
             --json-summary build-coverage/reports/coverage-summary.json \
             --xml build-coverage/reports/cobertura.xml --xml-pretty \
@@ -64,6 +65,7 @@ jobs:
           cat build-coverage/reports/coverage.txt
           "$RUNNER_TEMP/gcovr/bin/gcovr" build-coverage \
             --root . --filter 'src/' --exclude-unreachable-branches \
+            --gcov-ignore-parse-errors negative_hits.warn_once_per_file \
             --txt-metric branch --txt build-coverage/reports/branches.txt
           cat build-coverage/reports/branches.txt
       - name: Enforce and publish C++ core coverage thresholds
