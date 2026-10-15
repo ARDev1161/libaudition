@@ -46,6 +46,16 @@ if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
     endif()
 endif()
 
+# The corpus format, reference association and lossless WAV importer are
+# independent of ODAS and physical microphone geometry. Validate these
+# contracts in every CTest-enabled build, including the minimal core.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME audio_respeaker_manifest_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_respeaker_validator.py")
+set_tests_properties(audio_respeaker_manifest_selftest PROPERTIES
+    LABELS "audio-integration;corpus-validation;python" TIMEOUT 30)
+
 add_executable(libaudition_tests
     core_time_test.cpp
     audio_buffer_test.cpp
@@ -115,12 +125,6 @@ if(TARGET audition::backend_odas)
     target_link_libraries(audition_offline_integration PRIVATE
         audition::backend_odas audition::io audition::pipeline audition::core)
     libaudition_configure_target(audition_offline_integration)
-
-    add_test(NAME audio_respeaker_manifest_selftest COMMAND
-        ${Python3_EXECUTABLE}
-        "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_respeaker_validator.py")
-    set_tests_properties(audio_respeaker_manifest_selftest PROPERTIES
-        LABELS "audio-integration;corpus-validation;odas" TIMEOUT 30)
 
     set(_spatial_fixtures "${CMAKE_CURRENT_BINARY_DIR}/spatial_audio_fixtures")
     set(_spatial_results "${CMAKE_CURRENT_BINARY_DIR}/audio_integration_results")
