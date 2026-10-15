@@ -878,10 +878,21 @@ TEST(PerSourceSpeechRuntime, BoundedAsrQueueDropsOverflowAndRecovers) {
     EXPECT_EQ(runtime.statistics().pending_segments, 1U);
     EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
     gated->release.store(true);
-    const auto results = awaitSpeech(runtime, 2U);
-    ASSERT_EQ(results.size(), 2U);
-    EXPECT_EQ(results[0].track_id, 301U);
-    EXPECT_EQ(results[1].track_id, 302U);
+    bool completed = false;
+    for (int i = 0; i < 1000; ++i) {
+        if (runtime.statistics().completed_segments == 2U) {
+            completed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(completed);
+    const auto results = runtime.takeResults();
+    // The result mailbox shares the same bound as the pending ASR queue.
+    // The second completion evicts the oldest unread result.
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results[0].track_id, 302U);
+    EXPECT_EQ(runtime.statistics().dropped_segments, 2U);
     EXPECT_EQ(runtime.statistics().pending_segments, 0U);
     runtime.push(303U, chunk(voice));
     runtime.push(303U, chunk(quiet));
