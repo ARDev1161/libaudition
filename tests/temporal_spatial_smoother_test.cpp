@@ -1,6 +1,7 @@
 #include <audition/spatial/temporal_smoother.hpp>
 
 #include <cstdint>
+#include <limits>
 
 #include <gtest/gtest.h>
 
@@ -465,4 +466,204 @@ TEST(TemporalSpatialTrackSmoother, RejectsInvalidOptions) {
     EXPECT_THROW(
         audition::TemporalSpatialTrackSmoother{options},
         audition::Error);
+}
+
+
+TEST(TemporalSpatialTrackSmoother, EmptyUnknownTrackDoesNotConsumeCapacity) {
+    audition::TemporalSpatialSmootherOptions options{};
+    options.max_tracks = 1U;
+    audition::TemporalSpatialTrackSmoother smoother{options};
+    auto unknown = trackAt(1U, 0);
+    smoother.update(unknown);
+    EXPECT_EQ(smoother.trackedCount(), 0U);
+
+    auto known = trackAt(2U, 1);
+    known.range = range(3.0, 0.5);
+    smoother.update(known);
+    EXPECT_EQ(smoother.trackedCount(), 1U);
+    auto still_empty = trackAt(3U, 2);
+    EXPECT_NO_THROW(smoother.update(still_empty));
+    EXPECT_EQ(smoother.trackedCount(), 1U);
+}
+
+TEST(TemporalSpatialTrackSmoother, ExactGapBoundaryBlendsAndLaterGapResets) {
+    audition::TemporalSpatialSmootherOptions options{};
+    options.max_gap = audition::Duration{10};
+    options.range_measurement_weight = 0.5;
+    audition::TemporalSpatialTrackSmoother smoother{options};
+    auto first = trackAt(1U, 0);
+    first.range = range(2.0, 1.0);
+    smoother.update(first);
+
+    auto boundary = trackAt(1U, 10);
+    boundary.range = range(8.0, 1.0);
+    smoother.update(boundary);
+    ASSERT_TRUE(boundary.range.has_value());
+    EXPECT_DOUBLE_EQ(boundary.range->distance_m.mean, 5.0);
+    EXPECT_EQ(boundary.range->method, audition::RangeEstimate::Method::Fused);
+
+    auto gap = trackAt(1U, 21);
+    gap.range = range(9.0, 2.0);
+    smoother.update(gap);
+    ASSERT_TRUE(gap.range.has_value());
+    EXPECT_DOUBLE_EQ(gap.range->distance_m.mean, 9.0);
+    EXPECT_EQ(gap.range->method, audition::RangeEstimate::Method::LevelPrior);
+}
+
+TEST(TemporalSpatialTrackSmoother, ZeroRangeMeasurementWeightRetainsPredictedState) {
+    audition::TemporalSpatialSmootherOptions options{};
+    options.range_measurement_weight = 0.0;
+    options.range_process_variance_m2_per_s = 2.0;
+    audition::TemporalSpatialTrackSmoother smoother{options};
+    auto first = trackAt(1U, 0);
+    first.range = range(4.0, 1.0);
+    smoother.update(first);
+    auto second = trackAt(1U, 1'000'000'000LL);
+    second.range = range(100.0, 4.0);
+    smoother.update(second);
+    ASSERT_TRUE(second.range.has_value());
+    EXPECT_DOUBLE_EQ(second.range->distance_m.mean, 4.0);
+    EXPECT_DOUBLE_EQ(second.range->distance_m.variance, 3.0);
+    EXPECT_EQ(second.range->method, audition::RangeEstimate::Method::Fused);
+}
+
+TEST(TemporalSpatialTrackSmoother, PositionProcessNoiseIncreasesDiagonalVariance) {
+    audition::TemporalSpatialSmootherOptions options{};
+    options.position_measurement_weight = 0.5;
+    options.position_process_variance_m2_per_s = 2.0;
+    audition::TemporalSpatialTrackSmoother smoother{options};
+    auto first = trackAt(2U, 0);
+    first.position = position(0.0, 0.0, 0.0, diagonalCovariance(1.0, 1.0, 1.0));
+    smoother.update(first);
+    auto second = trackAt(2U, 1'000'000'000LL);
+    second.position = position(0.0, 0.0, 0.0, diagonalCovariance(1.0, 1.0, 1.0));
+    smoother.update(second);
+    ASSERT_TRUE(second.position.has_value());
+    EXPECT_DOUBLE_EQ(second.position->covariance_m2[0], 2.0);
+    EXPECT_DOUBLE_EQ(second.position->covariance_m2[4], 2.0);
+    EXPECT_DOUBLE_EQ(second.position->covariance_m2[8], 2.0);
+}
+
+TEST(TemporalSpatialTrackSmoother, InvalidTrackLifecycleNeverAllocatesState) {
+    audition::TemporalSpatialTrackSmoother smoother;
+    auto missing_id = trackAt(0U, 0);
+    missing_id.range = range(1.0, 1.0);
+    EXPECT_THROW(smoother.update(missing_id), audition::Error);
+
+    auto conflicting_clock = trackAt(1U, 0);
+    conflicting_clock.first_seen = ts(0, 1U);
+    conflicting_clock.range = range(1.0, 1.0);
+    EXPECT_THROW(smoother.update(conflicting_clock), audition::Error);
+
+    auto reversed = trackAt(2U, -1);
+    reversed.range = range(1.0, 1.0);
+    EXPECT_THROW(smoother.update(reversed), audition::Error);
+    EXPECT_EQ(smoother.trackedCount(), 0U);
+}
+
+TEST(TemporalSpatialTrackSmoother, NonfiniteAndNegativeMeasurementsAreRejected) {
+    audition::TemporalSpatialTrackSmoother smoother;
+    auto bad = trackAt(1U, 0);
+    bad.range = range(-1.0, 1.0);
+    EXPECT_THROW(smoother.update(bad), audition::Error);
+    bad.range = range(1.0, -1.0);
+    EXPECT_THROW(smoother.update(bad), audition::Error);
+    bad.range.reset();
+
+    bad.position = position(
+        std::numeric_limits<double>::infinity(), 0.0, 0.0,
+        diagonalCovariance(1.0, 1.0, 1.0));
+    EXPECT_THROW(smoother.update(bad), audition::Error);
+    bad.position = position(0.0, 0.0, 0.0,
+        diagonalCovariance(1.0, std::numeric_limits<double>::quiet_NaN(), 1.0));
+    EXPECT_THROW(smoother.update(bad), audition::Error);
+    EXPECT_EQ(smoother.trackedCount(), 0U);
+}
+
+TEST(TemporalSpatialTrackSmoother, RejectsNegativeMinorsAndNegativeDeterminant) {
+    audition::TemporalSpatialTrackSmoother smoother;
+    auto bad = trackAt(3U, 0);
+    bad.position = position(0.0, 0.0, 0.0,
+        diagonalCovariance(-1.0, 1.0, 1.0));
+    EXPECT_THROW(smoother.update(bad), audition::Error);
+
+    bad.position = position(0.0, 0.0, 0.0,
+        audition::Covariance3{1.0, 2.0, 0.0,
+                             2.0, 1.0, 0.0,
+                             0.0, 0.0, 1.0});
+    EXPECT_THROW(smoother.update(bad), audition::Error);
+
+    // All pairwise principal minors are non-negative, but the
+    // full determinant is negative: this matrix is not PSD.
+    bad.position = position(0.0, 0.0, 0.0,
+        audition::Covariance3{1.0, 0.9, 0.9,
+                             0.9, 1.0, 0.0,
+                             0.9, 0.0, 1.0});
+    EXPECT_THROW(smoother.update(bad), audition::Error);
+    EXPECT_EQ(smoother.trackedCount(), 0U);
+}
+
+TEST(TemporalSpatialTrackSmoother, InvalidPositionUpdatePreservesRangeState) {
+    audition::TemporalSpatialSmootherOptions options{};
+    options.range_measurement_weight = 0.5;
+    audition::TemporalSpatialTrackSmoother smoother{options};
+    auto first = trackAt(5U, 0);
+    first.range = range(2.0, 1.0);
+    smoother.update(first);
+
+    auto invalid = trackAt(5U, 1);
+    invalid.range = range(100.0, 1.0);
+    invalid.position = position(0.0, 0.0, 0.0,
+        audition::Covariance3{1.0, 0.4, 0.0,
+                             0.0, 1.0, 0.0,
+                             0.0, 0.0, 1.0});
+    EXPECT_THROW(smoother.update(invalid), audition::Error);
+    EXPECT_EQ(smoother.trackedCount(), 1U);
+
+    auto recovered = trackAt(5U, 2);
+    recovered.range = range(4.0, 1.0);
+    smoother.update(recovered);
+    ASSERT_TRUE(recovered.range.has_value());
+    EXPECT_DOUBLE_EQ(recovered.range->distance_m.mean, 3.0);
+}
+
+TEST(TemporalSpatialTrackSmoother, RangeProcessVarianceOverflowIsTransactional) {
+    audition::TemporalSpatialSmootherOptions options{};
+    options.range_process_variance_m2_per_s =
+        std::numeric_limits<double>::max();
+    audition::TemporalSpatialTrackSmoother smoother{options};
+    auto first = trackAt(6U, 0);
+    first.range = range(1.0, 1.0);
+    smoother.update(first);
+
+    auto overflow = trackAt(6U, 2'000'000'000LL);
+    overflow.range = range(3.0, 1.0);
+    EXPECT_THROW(smoother.update(overflow), audition::Error);
+    EXPECT_EQ(smoother.trackedCount(), 1U);
+
+    auto recovered = trackAt(6U, 0);
+    recovered.range = range(3.0, 1.0);
+    EXPECT_NO_THROW(smoother.update(recovered));
+    ASSERT_TRUE(recovered.range.has_value());
+    EXPECT_DOUBLE_EQ(recovered.range->distance_m.mean, 1.7);
+}
+
+TEST(TemporalSpatialTrackSmoother, AcceptsNearlySymmetricCovarianceAndCanonicalizes) {
+    audition::TemporalSpatialSmootherOptions options{};
+    options.position_measurement_weight = 0.5;
+    audition::TemporalSpatialTrackSmoother smoother{options};
+    auto first = trackAt(7U, 0);
+    auto covariance = diagonalCovariance(1.0, 1.0, 1.0);
+    covariance[1] = 0.2;
+    covariance[3] = 0.2 + 1.0e-12;
+    first.position = position(0.0, 0.0, 0.0, covariance);
+    smoother.update(first);
+    auto second = trackAt(7U, 1);
+    second.position = position(0.0, 0.0, 0.0,
+                               diagonalCovariance(1.0, 1.0, 1.0));
+    smoother.update(second);
+    ASSERT_TRUE(second.position.has_value());
+    EXPECT_NEAR(second.position->covariance_m2[1], 0.1, 1.0e-10);
+    EXPECT_DOUBLE_EQ(second.position->covariance_m2[1],
+                     second.position->covariance_m2[3]);
 }
