@@ -531,3 +531,27 @@ TEST(SourceIdentityResolver, LowSimilarityFingerprintDoesNotOverrideMatchingPosi
     EXPECT_NE(decision.source_id, original.source_id);
     EXPECT_EQ(registry.list().size(), 2U);
 }
+
+
+TEST(SourceIdentityResolver, WeakFingerprintQualityDoesNotVetoStrongPositionMatch) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+
+    auto first = observation(1U, 0);
+    first.position = position(1.0, 2.0, 3.0);
+    first.fingerprint = fingerprint("source-embed", {1.0F, 0.0F});
+    const auto original = resolver.observe(first);
+    resolver.endTrack(first.track_id, ts(10));
+
+    auto replacement = observation(2U, 20);
+    replacement.position = first.position;
+    replacement.fingerprint = fingerprint(
+        "source-embed", {0.0F, 1.0F}, 0.10);
+    const auto decision = resolver.observe(replacement);
+    EXPECT_FALSE(decision.newly_created);
+    EXPECT_EQ(decision.source_id, original.source_id);
+    EXPECT_EQ(registry.list().size(), 1U);
+    const auto stored = registry.find(original.source_id);
+    ASSERT_TRUE(stored.has_value());
+    EXPECT_EQ(stored->fingerprints.size(), 1U);
+}
