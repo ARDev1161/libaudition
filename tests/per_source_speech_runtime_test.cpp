@@ -729,3 +729,31 @@ TEST(PerSourceSpeechRuntime, EmptyInputAndUnknownTrackOperationsAreNoOps) {
     EXPECT_EQ(runtime.statistics().completed_segments, 0U);
     EXPECT_EQ(runtime.statistics().dropped_segments, 0U);
 }
+
+
+TEST(PerSourceSpeechRuntime, ResetInvalidatesGenerationWithoutReusingIt) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<MockAsr>(), options};
+    const std::vector<float> voiced(4U, 0.5F), quiet(4U, 0.0F);
+    runtime.push(23U, chunk(voiced));
+    const auto before_reset = runtime.activeGeneration(23U);
+    ASSERT_TRUE(before_reset.has_value());
+    runtime.reset();
+    EXPECT_FALSE(runtime.activeGeneration(23U).has_value());
+    EXPECT_FALSE(runtime.trackStatus(23U).exists);
+    EXPECT_TRUE(runtime.drainReady().results.empty());
+    runtime.push(23U, chunk(voiced));
+    const auto after_reset = runtime.activeGeneration(23U);
+    ASSERT_TRUE(after_reset.has_value());
+    EXPECT_NE(*after_reset, *before_reset);
+    runtime.push(23U, chunk(quiet));
+    const auto results = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results.front().generation, *after_reset);
+    EXPECT_EQ(results.front().track_id, 23U);
+    EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+}
