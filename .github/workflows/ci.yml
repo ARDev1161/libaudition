@@ -81,7 +81,7 @@ jobs:
               rows.append(f"| {label} | {covered} / {total} | {percent:.1f}% |")
           rows.extend(["", "Scope: `src/` only; optional backends are excluded.",
                        "Measurements only; no coverage threshold is enforced."])
-          summary = "\\n".join(rows) + "\\n"
+          summary = "\n".join(rows) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
               out.write(summary)
