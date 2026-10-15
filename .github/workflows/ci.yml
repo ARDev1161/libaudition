@@ -62,6 +62,30 @@ jobs:
             --xml build-coverage/reports/cobertura.xml --xml-pretty \
             --html-details build-coverage/reports/coverage.html
           cat build-coverage/reports/coverage.txt
+      - name: Publish C++ line and branch coverage summary
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("build-coverage/reports/coverage-summary.json").read_text())
+          rows = ["### Instrumented C++ core coverage", "",
+                  "| Metric | Covered / total | Coverage |", "| --- | ---: | ---: |"]
+          for label, key in (("Lines", "line"), ("Branches", "branch")):
+              covered = report[f"{key}_covered"]
+              total = report[f"{key}_total"]
+              if total <= 0:
+                  raise SystemExit(f"No {key} coverage data available")
+              percent = 100.0 * covered / total
+              rows.append(f"| {label} | {covered} / {total} | {percent:.1f}% |")
+          rows.extend(["", "Scope: `src/` only; optional backends are excluded.",
+                       "Measurements only; no coverage threshold is enforced."])
+          summary = "\\n".join(rows) + "\\n"
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write(summary)
+          PY
       - name: Upload C++ coverage reports
         if: always()
         uses: actions/upload-artifact@v4
