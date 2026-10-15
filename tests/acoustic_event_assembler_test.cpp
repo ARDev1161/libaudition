@@ -633,3 +633,29 @@ TEST(AcousticEventAssembler, RejectedCrossSourceHandoffRetainsSpeechAnnotations)
     ASSERT_TRUE(recovered.transcript.has_value());
     EXPECT_EQ(recovered.transcript->text, "original");
 }
+
+
+TEST(AcousticEventAssembler, CancelIsIdempotentAndDoesNotDisturbConcurrentEvent) {
+    audition::AcousticEventAssembler assembler;
+    const auto cancelled = assembler.begin(ts(0));
+    const auto retained = assembler.begin(ts(5));
+
+    audition::AcousticEventPatch patch{};
+    patch.timestamp = ts(10);
+    patch.source_id = audition::AcousticSourceId{88U};
+    assembler.update(retained, patch);
+
+    assembler.cancel(cancelled);
+    assembler.cancel(cancelled);
+    assembler.cancel(audition::AcousticEventId{9999U});
+    EXPECT_FALSE(assembler.find(cancelled).has_value());
+    EXPECT_EQ(assembler.activeCount(), 1U);
+
+    const auto remaining = assembler.find(retained);
+    ASSERT_TRUE(remaining.has_value());
+    EXPECT_EQ(remaining->source_id, patch.source_id);
+    EXPECT_EQ(remaining->end_time.nanoseconds(), 10);
+    const auto result = assembler.finish(retained, ts(20));
+    EXPECT_EQ(result.source_id, patch.source_id);
+    EXPECT_EQ(assembler.activeCount(), 0U);
+}
