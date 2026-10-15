@@ -39,7 +39,7 @@ class CiCTestEntrypointTests(unittest.TestCase):
     def test_heavy_corpus_workflow_uses_ctest_for_selftests(self):
         workflow = CORPUS_WORKFLOW.read_text(encoding="utf-8")
         self.assertNotRegex(
-            workflow, r"(?m)^\\s*python3?\\s+tests/integration/[\\w-]+\\.py\\s+--self-test")
+            workflow, r"(?m)^\s*python3?\s+tests/integration/[\w-]+\.py\s+--self-test")
         self.assertIn("ctest --no-tests=error --test-dir build-voxconverse", workflow)
         for name in ("voxconverse_full_split_preflight_selftest",
                      "diarization_scoring_selftest",
