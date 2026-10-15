@@ -449,3 +449,28 @@ TEST(SourceIdentityResolver, ReacquiredSourceCannotBeSharedByAnotherActiveTrack)
     EXPECT_EQ(still_active.source_id, source.source_id);
     EXPECT_EQ(registry.list().size(), 2U);
 }
+
+
+TEST(SourceIdentityResolver, PositionOnlyReacquisitionRejectsDistantCandidate) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    auto original = observation(1U, 0);
+    original.position = position(1.0, 2.0, 3.0);
+    const auto first = resolver.observe(original);
+    resolver.endTrack(original.track_id, ts(10));
+
+    auto distant = observation(2U, 20);
+    distant.position = position(100.0, 2.0, 3.0);
+    const auto unrelated = resolver.observe(distant);
+    EXPECT_TRUE(unrelated.newly_created);
+    EXPECT_NE(unrelated.source_id, first.source_id);
+    resolver.endTrack(distant.track_id, ts(30));
+
+    auto nearby = observation(3U, 40);
+    nearby.position = position(1.0, 2.0, 3.0);
+    const auto recovered = resolver.observe(nearby);
+    EXPECT_FALSE(recovered.newly_created);
+    EXPECT_EQ(recovered.source_id, first.source_id);
+    EXPECT_NE(recovered.source_id, unrelated.source_id);
+    EXPECT_EQ(registry.list().size(), 2U);
+}
