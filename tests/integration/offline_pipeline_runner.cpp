@@ -20,6 +20,8 @@
 #include <iomanip>
 #include <iostream>
 #include <set>
+#include <sstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -27,7 +29,8 @@
 namespace {
 namespace fs = std::filesystem;
 
-audition::OdasOptions optionsForFixture(bool horizontalSources) {
+audition::OdasOptions optionsForFixture(bool horizontalSources,
+                                        const std::vector<std::string>& microphoneSpecs) {
     audition::OdasOptions options{};
     options.microphone_array.microphones = {
         audition::MicrophoneGeometry{{-0.032, 0.0, 0.0}},
@@ -36,6 +39,36 @@ audition::OdasOptions optionsForFixture(bool horizontalSources) {
         audition::MicrophoneGeometry{{0.0, 0.032, 0.0}},
     };
     options.input_channels = {1U, 2U, 3U, 4U};
+    if (!microphoneSpecs.empty()) {
+        options.microphone_array.microphones.clear();
+        options.input_channels.clear();
+        for (const auto& spec : microphoneSpecs) {
+            // CHANNEL:X:Y:Z in metres; prevents implicit geometry remapping.
+            std::istringstream stream{spec};
+            std::string token;
+            std::vector<std::string> fields;
+            while (std::getline(stream, token, ':')) fields.push_back(token);
+            if (fields.size() != 4U)
+                throw std::invalid_argument("Expected --mic CHANNEL:X:Y:Z");
+            auto parse = [](const std::string& value) {
+                std::size_t used = 0;
+                const auto number = std::stod(value, &used);
+                if (used != value.size() || !std::isfinite(number))
+                    throw std::invalid_argument("Invalid microphone coordinate");
+                return number;
+            };
+            std::size_t used = 0;
+            const auto channel = std::stoul(fields[0], &used);
+            if (used != fields[0].size() ||
+                channel > std::numeric_limits<unsigned int>::max())
+                throw std::invalid_argument("Invalid microphone channel");
+            options.input_channels.push_back(static_cast<unsigned int>(channel));
+            options.microphone_array.microphones.push_back(
+                audition::MicrophoneGeometry{{parse(fields[1]),
+                                              parse(fields[2]),
+                                              parse(fields[3])}});
+        }
+    }
     options.sample_rate_hz = 16000U;
     options.hop_size = 128U;
     options.frame_size = 256U;
@@ -44,7 +77,8 @@ audition::OdasOptions optionsForFixture(bool horizontalSources) {
     // +Z-facing microphone/spatial-filter mask with an 80-100 degree
     // transition, NOT a narrow horizontal-plane (zero-elevation) prior.
     // In particular, it does not exclude directions near +Z.
-    audition::applyReSpeakerUsb4MicAngularProfile(options);
+    if (microphoneSpecs.empty())
+        audition::applyReSpeakerUsb4MicAngularProfile(options);
     if (horizontalSources) {
         // An explicit source-elevation assumption for these synthetic
         // near-horizontal fixtures, not a general-purpose 3D repair.
@@ -74,17 +108,22 @@ void writeObservation(std::ostream& out, std::uint64_t hop,
     if (!out) throw std::runtime_error("Cannot write trace CSV");
 }
 
-int run(const fs::path& path, const fs::path& outputDir, bool horizontalSources) {
+int run(const fs::path& path, const fs::path& outputDir,
+        bool horizontalSources, const std::vector<std::string>& microphones) {
     const auto wav = audition::io::loadWav(path);
     const auto format = wav.audio.format();
-    const auto options = optionsForFixture(horizontalSources);
+    const auto options = optionsForFixture(horizontalSources, microphones);
     if (format.sample_rate_hz != options.sample_rate_hz ||
-        format.channel_count != 6U ||
+        (microphones.empty() && format.channel_count != 6U) ||
         format.layout != audition::AudioLayout::Interleaved ||
         wav.audio.frameCount() < options.hop_size ||
         wav.audio.frameCount() % options.hop_size != 0U)
         throw std::invalid_argument("Fixture must be 6-channel 16kHz with full ODAS hops");
 
+    for (const auto channel : options.input_channels) {
+        if (channel >= format.channel_count)
+            throw std::invalid_argument("Microphone channel exceeds WAV channel count");
+    }
     fs::create_directories(outputDir);
     std::ofstream trace{outputDir / "observations.csv", std::ios::trunc};
     if (!trace) throw std::runtime_error("Cannot create observations.csv");
@@ -217,19 +256,29 @@ int run(const fs::path& path, const fs::path& outputDir, bool horizontalSources)
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 3 && argc != 4) {
-        std::cerr << "Usage: audition_offline_integration INPUT_6CH_WAV OUTPUT_DIRECTORY [--horizontal-sources]\n";
+    if (argc < 3) {
+        std::cerr << "Usage: audition_offline_integration INPUT_WAV OUTPUT_DIR "
+                     "[--horizontal-sources] [--mic CHANNEL:X:Y:Z ...]\\n";
         return 2;
     }
-    const bool horizontal = argc == 4 && std::string{argv[3]} == "--horizontal-sources";
-    if (argc == 4 && !horizontal) {
-        std::cerr << "Unknown offline ODAS preset\n";
-        return 2;
+    bool horizontal = false;
+    std::vector<std::string> microphones;
+    for (int i = 3; i < argc; ++i) {
+        const std::string flag{argv[i]};
+        if (flag == "--horizontal-sources") {
+            horizontal = true;
+        } else if (flag == "--mic" && i + 1 < argc) {
+            microphones.emplace_back(argv[++i]);
+        } else {
+            std::cerr << "Unknown or incomplete offline ODAS option: "
+                      << flag << '\\n';
+            return 2;
+        }
     }
     try {
-        return run(argv[1], argv[2], horizontal);
+        return run(argv[1], argv[2], horizontal, microphones);
     } catch (const std::exception& ex) {
-        std::cerr << "offline-audio-integration=fail: " << ex.what() << '\n';
+        std::cerr << "offline-audio-integration=fail: " << ex.what() << '\\n';
         return 1;
     }
 }
