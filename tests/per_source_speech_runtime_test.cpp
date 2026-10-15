@@ -625,3 +625,42 @@ TEST(PerSourceSpeechRuntime, UnknownAsrExceptionDoesNotStopWorker) {
     ASSERT_TRUE(runtime.statistics().last_error.has_value());
     EXPECT_EQ(*runtime.statistics().last_error, "Unknown ASR exception");
 }
+
+
+TEST(PerSourceSpeechRuntime, ForgetCancelsQueuedOldGenerationBeforeTrackIdReuse) {
+    ThresholdVad vad;
+    auto gated = std::make_shared<SlowAsr>();
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, gated, options};
+    const std::vector<float> voice(4U, 0.5F), silence(4U, 0.0F);
+    runtime.push(70U, chunk(voice));
+    runtime.push(70U, chunk(silence));
+    for (int i = 0; i < 1000 && !gated->entered.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!gated->entered.load()) {
+        gated->release.store(true);
+        FAIL() << "First ASR job did not enter worker";
+        return;
+    }
+    const auto old_generation = runtime.activeGeneration(70U);
+    runtime.push(70U, chunk(voice));
+    runtime.push(70U, chunk(silence));
+    EXPECT_EQ(runtime.statistics().pending_segments, 1U);
+    runtime.forget(70U);
+    EXPECT_FALSE(runtime.activeGeneration(70U).has_value());
+    EXPECT_EQ(runtime.statistics().pending_segments, 0U);
+    runtime.push(70U, chunk(voice));
+    runtime.push(70U, chunk(silence));
+    const auto new_generation = runtime.activeGeneration(70U);
+    EXPECT_NE(new_generation, old_generation);
+    gated->release.store(true);
+    const auto results = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results[0].generation, *new_generation);
+    EXPECT_EQ(results[0].transcript.text, "2");
+    EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+    EXPECT_GE(runtime.statistics().dropped_segments, 1U);
+}
