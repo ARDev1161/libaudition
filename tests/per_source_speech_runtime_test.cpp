@@ -664,3 +664,49 @@ TEST(PerSourceSpeechRuntime, ForgetCancelsQueuedOldGenerationBeforeTrackIdReuse)
     EXPECT_EQ(runtime.statistics().completed_segments, 1U);
     EXPECT_GE(runtime.statistics().dropped_segments, 1U);
 }
+
+
+TEST(PerSourceSpeechRuntime, CannotReleaseRetiredGenerationWithInflightAsr) {
+    ThresholdVad vad;
+    auto gated = std::make_shared<SlowAsr>();
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, gated, options};
+    const std::vector<float> voice(4U, 0.5F), quiet(4U, 0.0F);
+    runtime.push(91U, chunk(voice));
+    runtime.push(91U, chunk(quiet));
+    for (int i = 0; i < 1000 && !gated->entered.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!gated->entered.load()) {
+        gated->release.store(true);
+        FAIL() << "ASR worker did not start";
+        return;
+    }
+    const auto generation = runtime.retire(91U);
+    if (!generation.has_value()) {
+        gated->release.store(true);
+        FAIL() << "Retirement did not produce a generation";
+        return;
+    }
+    EXPECT_EQ(runtime.pendingResults(*generation), 1U);
+    EXPECT_THROW(runtime.releaseRetired(*generation), std::logic_error);
+    EXPECT_TRUE(runtime.drainReady().ready_retired_generations.empty());
+    gated->release.store(true);
+    bool ready = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto drained = runtime.drainReady();
+        if (!drained.ready_retired_generations.empty()) {
+            EXPECT_EQ(drained.ready_retired_generations.front(), *generation);
+            ASSERT_EQ(drained.results.size(), 1U);
+            EXPECT_EQ(drained.results.front().generation, *generation);
+            ready = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(ready);
+    EXPECT_NO_THROW(runtime.releaseRetired(*generation));
+    EXPECT_TRUE(runtime.drainReady().ready_retired_generations.empty());
+}
