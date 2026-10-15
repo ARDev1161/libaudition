@@ -422,3 +422,30 @@ TEST(SourceIdentityResolver, FailedEndTrackPreservesActiveTrackBinding) {
     EXPECT_TRUE(recycled.newly_created);
     EXPECT_NE(recycled.source_id, first.source_id);
 }
+
+
+TEST(SourceIdentityResolver, ReacquiredSourceCannotBeSharedByAnotherActiveTrack) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+
+    auto initial = observation(1U, 0);
+    initial.fingerprint = fingerprint("source-embed", {1.0F, 0.0F});
+    const auto source = resolver.observe(initial);
+    resolver.endTrack(initial.track_id, ts(10));
+
+    auto reacquired = observation(2U, 20);
+    reacquired.fingerprint = fingerprint("source-embed", {1.0F, 0.0F});
+    const auto returned = resolver.observe(reacquired);
+    EXPECT_EQ(returned.source_id, source.source_id);
+    EXPECT_FALSE(returned.newly_created);
+
+    auto simultaneous = observation(3U, 30);
+    simultaneous.fingerprint = fingerprint("source-embed", {1.0F, 0.0F});
+    const auto competing = resolver.observe(simultaneous);
+    EXPECT_TRUE(competing.newly_created);
+    EXPECT_NE(competing.source_id, source.source_id);
+
+    const auto still_active = resolver.observe(observation(2U, 40));
+    EXPECT_EQ(still_active.source_id, source.source_id);
+    EXPECT_EQ(registry.list().size(), 2U);
+}
