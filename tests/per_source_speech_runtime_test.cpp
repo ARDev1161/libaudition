@@ -849,3 +849,43 @@ TEST(PerSourceSpeechRuntime, ResetClearsQueuedJobsWithoutLeakingOldGeneration) {
     EXPECT_EQ(results.front().transcript.text, "2");
     EXPECT_TRUE(runtime.takeResults().empty());
 }
+
+
+TEST(PerSourceSpeechRuntime, BoundedAsrQueueDropsOverflowAndRecovers) {
+    ThresholdVad vad;
+    auto gated = std::make_shared<SlowAsr>();
+    PerSourceSpeechOptions options{};
+    options.max_pending_segments = 1U;
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, gated, options};
+    const std::vector<float> voice(4U, 0.5F), quiet(4U, 0.0F);
+    runtime.push(301U, chunk(voice));
+    runtime.push(301U, chunk(quiet));
+    for (int i = 0; i < 1000 && !gated->entered.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!gated->entered.load()) {
+        gated->release.store(true);
+        FAIL() << "ASR worker did not start";
+        return;
+    }
+    runtime.push(302U, chunk(voice));
+    runtime.push(302U, chunk(quiet));
+    EXPECT_EQ(runtime.statistics().pending_segments, 1U);
+    runtime.push(303U, chunk(voice));
+    runtime.push(303U, chunk(quiet));
+    EXPECT_EQ(runtime.statistics().pending_segments, 1U);
+    EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
+    gated->release.store(true);
+    const auto results = awaitSpeech(runtime, 2U);
+    ASSERT_EQ(results.size(), 2U);
+    EXPECT_EQ(results[0].track_id, 301U);
+    EXPECT_EQ(results[1].track_id, 302U);
+    EXPECT_EQ(runtime.statistics().pending_segments, 0U);
+    runtime.push(303U, chunk(voice));
+    runtime.push(303U, chunk(quiet));
+    const auto recovered = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(recovered.size(), 1U);
+    EXPECT_EQ(recovered.front().track_id, 303U);
+}
