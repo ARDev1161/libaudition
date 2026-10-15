@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <audition/classify/vocabulary.hpp>
+#include <audition/core/error.hpp>
 #include <audition/classify/efficientat_frontend_spec.hpp>
 #include <audition/classify/source_classification_runtime.hpp>
 #include <audition/classify/progressive_source_classification_runtime.hpp>
@@ -38,6 +39,38 @@ TEST(Vocabulary, ExplicitUnsupportedClassDoesNotFabricateScore) {
     EXPECT_EQ(out.classes.front().label, "Speech");
     ASSERT_EQ(out.unsupported_labels.size(), 1U);
     EXPECT_EQ(out.unsupported_labels.front(), "Footsteps");
+}
+
+
+TEST(Vocabulary, RejectsInvalidTopKAndEmptySelectedCandidates) {
+    audition::ClassificationResult result{};
+    EXPECT_THROW(static_cast<void>(audition::selectVocabulary(
+        result, {audition::VocabularyMode::AllClasses, {}, 0U}, {})), audition::Error);
+    EXPECT_THROW(static_cast<void>(audition::selectVocabulary(
+        result, {audition::VocabularyMode::SelectedClasses, {}, 3U}, {})), audition::Error);
+}
+
+TEST(Vocabulary, DeduplicatesUnsupportedLabelsAndStablySortsTopK) {
+    audition::ClassificationResult result{};
+    result.classes.push_back({"Music", audition::Probability::from(0.4)});
+    result.classes.push_back({"Speech", audition::Probability::from(0.9)});
+    result.classes.push_back({"Noise", audition::Probability::from(0.4)});
+    const auto selected = audition::selectVocabulary(
+        result,
+        {audition::VocabularyMode::SelectedClasses,
+         {"Noise", "Missing", "Speech", "Missing", "Music"}, 2U},
+        {"Music", "Speech", "Noise"});
+    ASSERT_EQ(selected.unsupported_labels.size(), 1U);
+    EXPECT_EQ(selected.unsupported_labels[0], "Missing");
+    ASSERT_EQ(selected.classes.size(), 2U);
+    EXPECT_EQ(selected.classes[0].label, "Speech");
+    EXPECT_EQ(selected.classes[1].label, "Music");
+    EXPECT_EQ(selected.classes[0].score_kind, audition::VocabularyScoreKind::ModelProbability);
+    const auto all = audition::selectVocabulary(
+        result, {audition::VocabularyMode::AllClasses, {}, 3U}, {});
+    ASSERT_EQ(all.classes.size(), 3U);
+    EXPECT_EQ(all.classes[1].label, "Music");
+    EXPECT_EQ(all.classes[2].label, "Noise");
 }
 
 TEST(Vocabulary, SelectedNotInTruncatedTopKIsNotUnsupported) {
