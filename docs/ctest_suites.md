@@ -213,6 +213,32 @@ The reference-independent algorithm self-test runs through:
 It checks speaker permutation, false alarms, misses, speaker confusion,
 overlapping speech, collar exclusion, and malformed reference records.
 
+## Generic ODAS array geometry (opt-in)
+
+The same real-corpus evaluator can now accept an `array` object in
+`corpus.json`; without it, the existing six-channel ReSpeaker fixture
+profile remains the backward-compatible default:
+
+```json
+"array": {
+  "microphones": [
+    {"channel":0, "xyz_m":[-0.05, 0.0, 0.0]},
+    {"channel":1, "xyz_m":[ 0.05, 0.0, 0.0]},
+    {"channel":2, "xyz_m":[0.0, -0.05, 0.0]},
+    {"channel":3, "xyz_m":[0.0,  0.05, 0.0]}
+  ]
+}
+```
+
+This example is illustrative, **not LOCATA geometry**. Use measured
+coordinates and recording channel order from the actual array. Explicit
+geometry bypasses the ReSpeaker angular mask. The offline runner accepts
+repeated `--mic CHANNEL:X:Y:Z` arguments (metres) and checks that each
+selected channel exists. The current ODAS integration path still requires
+16-kHz PCM16 and 128-frame-aligned WAV; other sampling rates and dataset
+coordinate transforms need explicit conversion with documented provenance.
+LOCATA is not yet imported or benchmarked by the default GitHub CI.
+
 ## Real ReSpeaker recordings (opt-in)
 
 The `audio_real_respeaker_corpus` CTest uses **measured, independently
