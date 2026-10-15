@@ -74,6 +74,7 @@ add_executable(libaudition_tests
     spl_calibration_test.cpp
     temporal_spatial_smoother_test.cpp
     dsp_test.cpp
+    wav_io_test.cpp
     audio_frontend_test.cpp
     quality_test.cpp
     speech_contracts_test.cpp
@@ -87,6 +88,7 @@ target_link_libraries(libaudition_tests PRIVATE
     audition::memory
     audition::logging
     audition::dsp
+    audition::io
     audition::pipeline
     audition::spatial
     GTest::gtest_main)
