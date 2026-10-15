@@ -557,3 +557,40 @@ TEST(AcousticEventAssembler, FailedTrackHandoffDoesNotOverwriteExistingGeometry)
     ASSERT_TRUE(updated->position.has_value());
     EXPECT_DOUBLE_EQ(updated->position->mean_m.x, 4.0);
 }
+
+
+TEST(AcousticEventAssembler, TrackHandoffPreservesAnnotationsWhenSnapshotOmitsThem) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+
+    auto original = trackAt(11U, 0, 10, 777U);
+    original.position = position(1.0, 2.0, 3.0);
+    original.range = audition::RangeEstimate{
+        {2.0, 0.1},
+        audition::Probability::zero(),
+        audition::RangeEstimate::Method::LevelPrior};
+    assembler.updateFromTrack(id, original);
+
+    audition::AcousticEventPatch speech{};
+    speech.timestamp = ts(15);
+    audition::Transcript transcript{};
+    transcript.segment_id = audition::SpeechSegmentId{55U};
+    transcript.text = "stop";
+    speech.transcript = transcript;
+    assembler.update(id, speech);
+
+    auto successor = trackAt(12U, 10, 20, 777U);
+    assembler.updateFromTrack(id, successor);
+
+    const auto event = assembler.find(id);
+    ASSERT_TRUE(event.has_value());
+    EXPECT_EQ(event->track_id, successor.track_id);
+    EXPECT_EQ(event->source_id, original.source_id);
+    EXPECT_EQ(event->end_time.nanoseconds(), 20);
+    ASSERT_TRUE(event->position.has_value());
+    EXPECT_DOUBLE_EQ(event->position->mean_m.x, 1.0);
+    ASSERT_TRUE(event->range.has_value());
+    EXPECT_DOUBLE_EQ(event->range->distance_m.mean, 2.0);
+    ASSERT_TRUE(event->transcript.has_value());
+    EXPECT_EQ(event->transcript->text, "stop");
+}
