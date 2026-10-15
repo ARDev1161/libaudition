@@ -59,7 +59,7 @@ jobs:
             --root . --filter 'src/' --exclude-unreachable-branches \
             --txt build-coverage/reports/coverage.txt \
             --json-summary build-coverage/reports/coverage-summary.json \
-            --xml-pretty build-coverage/reports/cobertura.xml \
+            --xml build-coverage/reports/cobertura.xml --xml-pretty \
             --html-details build-coverage/reports/coverage.html
           cat build-coverage/reports/coverage.txt
       - name: Upload C++ coverage reports
