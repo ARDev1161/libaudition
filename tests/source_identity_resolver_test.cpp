@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -295,4 +296,104 @@ TEST(SourceIdentityResolver, EndTrackIsIdempotentForUnknownTrack) {
     resolver.endTrack(audition::SpatialTrackId{123U}, ts(0));
     resolver.endTrack(audition::SpatialTrackId{123U}, ts(1));
     EXPECT_TRUE(registry.list().empty());
+}
+
+
+TEST(SourceIdentityResolver, RejectsInvalidConfigurationBoundaries) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    const auto invalid = [&](audition::HeuristicSourceIdentityResolverOptions opts) {
+        EXPECT_THROW(
+            static_cast<void>(audition::HeuristicSourceIdentityResolver{registry, opts}),
+            audition::Error);
+    };
+    audition::HeuristicSourceIdentityResolverOptions opts{};
+    opts.max_active_tracks = 0U;
+    invalid(opts);
+    opts = {};
+    opts.max_recent_sources = 0U;
+    invalid(opts);
+    opts = {};
+    opts.max_active_tracks = 3U;
+    opts.max_recent_sources = 2U;
+    invalid(opts);
+    opts = {};
+    opts.max_position_distance_m = 0.0;
+    invalid(opts);
+    opts = {};
+    opts.max_range_delta_m = std::numeric_limits<double>::infinity();
+    invalid(opts);
+    opts = {};
+    opts.max_direction_angle_rad = -1.0;
+    invalid(opts);
+    opts = {};
+    opts.min_fingerprint_quality = -0.1;
+    invalid(opts);
+    opts = {};
+    opts.association_threshold = 1.1;
+    invalid(opts);
+    opts = {};
+    opts.min_fingerprint_cosine_similarity = -1.1;
+    invalid(opts);
+    opts = {};
+    opts.fingerprint_weight = -0.1;
+    invalid(opts);
+    opts = {};
+    opts.fingerprint_weight = 0.0;
+    opts.position_weight = 0.0;
+    opts.range_weight = 0.0;
+    opts.direction_weight = 0.0;
+    invalid(opts);
+}
+
+TEST(SourceIdentityResolver, CapacityFailureDoesNotReplaceActiveIdentity) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions opts{};
+    opts.max_active_tracks = 1U;
+    opts.max_recent_sources = 2U;
+    audition::HeuristicSourceIdentityResolver resolver{registry, opts};
+    const auto original = resolver.observe(observation(1U, 0));
+    EXPECT_THROW(static_cast<void>(resolver.observe(observation(2U, 1))),
+                 audition::Error);
+    EXPECT_EQ(registry.list().size(), 1U);
+    const auto updated = resolver.observe(observation(1U, 2));
+    EXPECT_EQ(updated.source_id, original.source_id);
+    EXPECT_FALSE(updated.newly_created);
+    resolver.endTrack(audition::SpatialTrackId{1U}, ts(3));
+    const auto replacement = resolver.observe(observation(2U, 4));
+    EXPECT_TRUE(replacement.newly_created);
+    EXPECT_NE(replacement.source_id, original.source_id);
+}
+
+TEST(SourceIdentityResolver, RejectsZeroTrackAndInvalidFingerprintVectors) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    auto bad = observation(0U, 0);
+    EXPECT_THROW(static_cast<void>(resolver.observe(bad)), audition::Error);
+    bad = observation(1U, 0);
+    bad.fingerprint = fingerprint("embedding", {});
+    EXPECT_THROW(static_cast<void>(resolver.observe(bad)), audition::Error);
+    bad.fingerprint = fingerprint("embedding", {0.0F, 0.0F});
+    EXPECT_THROW(static_cast<void>(resolver.observe(bad)), audition::Error);
+    bad.fingerprint = fingerprint(
+        "embedding", {std::numeric_limits<float>::quiet_NaN(), 1.0F});
+    EXPECT_THROW(static_cast<void>(resolver.observe(bad)), audition::Error);
+    bad.fingerprint = fingerprint(
+        "embedding", {std::numeric_limits<float>::infinity(), 1.0F});
+    EXPECT_THROW(static_cast<void>(resolver.observe(bad)), audition::Error);
+    EXPECT_TRUE(registry.list().empty());
+}
+
+TEST(SourceIdentityResolver, RecycledTrackIdAfterEndIsNewGenerationWithoutEvidence) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    auto first = observation(7U, 0);
+    first.fingerprint = fingerprint("model-a", {1.0F, 0.0F});
+    const auto original = resolver.observe(first);
+    resolver.endTrack(first.track_id, ts(1));
+    auto recycled = observation(7U, 2);
+    recycled.fingerprint = fingerprint("model-b", {0.0F, 1.0F});
+    const auto next = resolver.observe(recycled);
+    EXPECT_TRUE(next.newly_created);
+    EXPECT_NE(next.source_id, original.source_id);
+    EXPECT_EQ(registry.list().size(), 2U);
 }
