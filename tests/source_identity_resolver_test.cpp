@@ -588,7 +588,14 @@ TEST(SourceIdentityResolver, PositionReacquisitionExpiresStrictlyAfterAgeLimit) 
 
 TEST(SourceIdentityResolver, EqualFingerprintCandidatesPreferLowestFreeSourceId) {
     audition::InMemoryAcousticSourceRegistry registry;
-    audition::HeuristicSourceIdentityResolver resolver{registry};
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    // Ignore direction/geometry recency so identical fingerprints produce
+    // genuinely equal candidate scores, regardless of endTrack timestamps.
+    options.fingerprint_weight = 1.0;
+    options.position_weight = 0.0;
+    options.range_weight = 0.0;
+    options.direction_weight = 0.0;
+    audition::HeuristicSourceIdentityResolver resolver{registry, options};
 
     auto first = observation(1U, 0);
     first.fingerprint = fingerprint("same-model", {1.0F, 0.0F});
