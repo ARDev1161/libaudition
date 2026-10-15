@@ -22,6 +22,13 @@ class AuditContractTests(unittest.TestCase):
         self.assertEqual(report["missing_inventory_sources"], [])
         self.assertEqual(report["missing_source_files"], [])
 
+    def test_audio_corpus_contract_is_mandatory_without_odas(self):
+        required = audit.expectations({})
+        self.assertIn("audio corpus manifest and independent annotations", required)
+        self.assertRegex("audio_respeaker_manifest_selftest",
+                         required["audio corpus manifest and independent annotations"])
+        self.assertNotRegex("audio_respeaker_manifest_selftest", r"^OdasBackend\\.")
+
     def test_core_contract_is_not_optional(self):
         expected = audit.expectations({})
         for feature in audit.CORE:
