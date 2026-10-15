@@ -414,3 +414,50 @@ TEST(AcousticEventAssembler, RejectsZeroCapacity) {
         audition::AcousticEventAssembler{options},
         audition::Error);
 }
+
+
+TEST(AcousticEventAssembler, ConflictingUpdateDoesNotMutateOtherActiveEvent) {
+    audition::AcousticEventAssembler assembler;
+    const auto first = assembler.begin(ts(0));
+    const auto second = assembler.begin(ts(0));
+
+    audition::AcousticEventPatch first_patch{};
+    first_patch.timestamp = ts(10);
+    first_patch.track_id = audition::SpatialTrackId{1U};
+    first_patch.source_id = audition::AcousticSourceId{101U};
+    assembler.update(first, first_patch);
+
+    audition::AcousticEventPatch second_patch{};
+    second_patch.timestamp = ts(12);
+    second_patch.track_id = audition::SpatialTrackId{2U};
+    second_patch.source_id = audition::AcousticSourceId{202U};
+    assembler.update(second, second_patch);
+
+    auto conflict = first_patch;
+    conflict.timestamp = ts(20);
+    conflict.track_id = audition::SpatialTrackId{2U};
+    conflict.source_id = audition::AcousticSourceId{202U};
+    EXPECT_THROW(assembler.update(first, conflict), audition::Error);
+
+    const auto unchanged = assembler.find(first);
+    ASSERT_TRUE(unchanged.has_value());
+    ASSERT_TRUE(unchanged->track_id.has_value());
+    ASSERT_TRUE(unchanged->source_id.has_value());
+    EXPECT_EQ(*unchanged->track_id, audition::SpatialTrackId{1U});
+    EXPECT_EQ(*unchanged->source_id, audition::AcousticSourceId{101U});
+    EXPECT_EQ(unchanged->end_time.nanoseconds(), 10);
+
+    auto valid = second_patch;
+    valid.timestamp = ts(25);
+    audition::ClassificationResult classification{};
+    classification.classes.push_back(
+        {"speech", audition::Probability::from(0.9)});
+    valid.classification = classification;
+    EXPECT_NO_THROW(assembler.update(second, valid));
+    const auto healthy = assembler.find(second);
+    ASSERT_TRUE(healthy.has_value());
+    ASSERT_TRUE(healthy->classification.has_value());
+    EXPECT_EQ(healthy->classification->classes[0].label, "speech");
+    EXPECT_EQ(healthy->end_time.nanoseconds(), 25);
+    EXPECT_EQ(assembler.activeCount(), 2U);
+}
