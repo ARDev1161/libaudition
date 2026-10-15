@@ -76,6 +76,7 @@ add_executable(libaudition_tests
     temporal_spatial_smoother_test.cpp
     dsp_test.cpp
     wav_io_test.cpp
+    recording_timeline_json_test.cpp
     audio_frontend_test.cpp
     quality_test.cpp
     speech_contracts_test.cpp
