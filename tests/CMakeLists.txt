@@ -63,6 +63,7 @@ add_executable(libaudition_tests
     factory_registry_test.cpp
     bounded_queue_test.cpp
     model_registry_test.cpp
+    logging_test.cpp
     public_headers_test.cpp
     memory_registry_test.cpp
     sound_prototype_matcher_test.cpp
