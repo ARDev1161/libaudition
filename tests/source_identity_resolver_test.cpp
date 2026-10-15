@@ -493,3 +493,21 @@ TEST(SourceIdentityResolver, RangeWithoutFingerprintOrPositionCannotReacquire) {
     EXPECT_NE(decision.source_id, original.source_id);
     EXPECT_EQ(registry.list().size(), 2U);
 }
+
+
+TEST(SourceIdentityResolver, DirectionOnlyCannotReacquireEndedSource) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    auto first = observation(1U, 0);
+    first.direction.direction =
+        audition::Direction3D::fromVector({0.0, 1.0, 0.0});
+    const auto original = resolver.observe(first);
+    resolver.endTrack(first.track_id, ts(10));
+
+    auto second = observation(2U, 20);
+    second.direction.direction = first.direction.direction;
+    const auto decision = resolver.observe(second);
+    EXPECT_TRUE(decision.newly_created);
+    EXPECT_NE(decision.source_id, original.source_id);
+    EXPECT_EQ(registry.list().size(), 2U);
+}
