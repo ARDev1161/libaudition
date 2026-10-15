@@ -88,6 +88,24 @@ def validate_manifest(path):
                       -180 <= azimuth <= 180, "Invalid azimuth: " + key)
             check(math.floor(end * FS / HOP) > math.ceil(start * FS / HOP),
                   "Annotation must include at least one full hop")
+    array = document.get("array")
+    if array is not None:
+        check(isinstance(array, dict), "array must be an object")
+        microphones = array.get("microphones")
+        check(isinstance(microphones, list) and len(microphones) >= 2,
+              "array.microphones must contain two or more entries")
+        used = set()
+        for mic in microphones:
+            check(isinstance(mic, dict), "Microphone must be an object")
+            channel = mic.get("channel")
+            xyz = mic.get("xyz_m")
+            check(type(channel) is int and 0 <= channel < 1024 and
+                  channel not in used, "Invalid or duplicate microphone channel")
+            used.add(channel)
+            check(isinstance(xyz, list) and len(xyz) == 3 and
+                  all(isinstance(v, (int, float)) and
+                      not isinstance(v, bool) and math.isfinite(v)
+                      for v in xyz), "Invalid microphone position")
     return recordings
 
 
@@ -224,6 +242,7 @@ def main():
     check(args.runner.is_file(), "Missing ODAS runner")
     check(args.manifest.is_file(), "Missing corpus manifest")
     corpus = validate_manifest(args.manifest)
+    array = json.loads(args.manifest.read_text(encoding="utf-8")).get("array")
     args.results.mkdir(parents=True, exist_ok=True)
     report = {"schema": "libaudition.respeaker-evaluation.v1", "recordings": []}
     for rec in corpus:
@@ -232,10 +251,14 @@ def main():
         check(hashlib.sha256(wav_path.read_bytes()).hexdigest() == rec["sha256"],
               "WAV checksum mismatch: " + rec["wav"])
         with wave.open(str(wav_path)) as stream:
-            check(stream.getnchannels() == 6 and stream.getframerate() == FS
+            check((array is not None or stream.getnchannels() == 6) and stream.getframerate() == FS
                   and stream.getsampwidth() == 2 and
                   stream.getcomptype() == "NONE", "Expected 6-channel PCM16 16kHz")
             frames = stream.getnframes()
+            if array is not None:
+                check(all(mic["channel"] < stream.getnchannels()
+                          for mic in array["microphones"]),
+                      "Microphone channel outside WAV channel count")
         check(frames > 0 and frames % HOP == 0, "WAV must contain full ODAS hops")
         for interval in rec["intervals"]:
             check(interval["end_s"] <= frames / FS,
@@ -245,6 +268,11 @@ def main():
         cmd = [str(args.runner), str(wav_path), str(dest)]
         if args.horizontal_sources:
             cmd.append("--horizontal-sources")
+        if array is not None:
+            for mic in array["microphones"]:
+                cmd.extend(["--mic", ":".join([
+                    str(mic["channel"]), *(str(v) for v in mic["xyz_m"])
+                ])])
         run = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         (dest / "runner.stdout.txt").write_text(run.stdout, encoding="utf-8")
         (dest / "runner.stderr.txt").write_text(run.stderr, encoding="utf-8")
