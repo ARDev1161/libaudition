@@ -397,3 +397,28 @@ TEST(SourceIdentityResolver, RecycledTrackIdAfterEndIsNewGenerationWithoutEviden
     EXPECT_NE(next.source_id, original.source_id);
     EXPECT_EQ(registry.list().size(), 2U);
 }
+
+
+TEST(SourceIdentityResolver, FailedEndTrackPreservesActiveTrackBinding) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    const auto first = resolver.observe(observation(41U, 100));
+
+    EXPECT_THROW(
+        resolver.endTrack(audition::SpatialTrackId{41U}, ts(99)),
+        audition::Error);
+    EXPECT_THROW(
+        resolver.endTrack(audition::SpatialTrackId{41U}, ts(101, 7U)),
+        audition::Error);
+
+    const auto continued = resolver.observe(observation(41U, 102));
+    EXPECT_EQ(continued.source_id, first.source_id);
+    EXPECT_FALSE(continued.newly_created);
+    EXPECT_DOUBLE_EQ(continued.confidence.value(), 1.0);
+    EXPECT_EQ(registry.list().size(), 1U);
+
+    resolver.endTrack(audition::SpatialTrackId{41U}, ts(103));
+    const auto recycled = resolver.observe(observation(41U, 104));
+    EXPECT_TRUE(recycled.newly_created);
+    EXPECT_NE(recycled.source_id, first.source_id);
+}
