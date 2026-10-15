@@ -584,3 +584,35 @@ TEST(SourceIdentityResolver, PositionReacquisitionExpiresStrictlyAfterAgeLimit) 
     EXPECT_NE(fresh.source_id, original.source_id);
     EXPECT_NE(fresh.source_id, reacquired.source_id);
 }
+
+
+TEST(SourceIdentityResolver, EqualFingerprintCandidatesPreferLowestFreeSourceId) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+
+    auto first = observation(1U, 0);
+    first.fingerprint = fingerprint("same-model", {1.0F, 0.0F});
+    const auto original_a = resolver.observe(first);
+
+    // While source A is active, identical evidence must not claim its ID.
+    auto second = observation(2U, 1);
+    second.fingerprint = first.fingerprint;
+    const auto original_b = resolver.observe(second);
+    ASSERT_NE(original_a.source_id, original_b.source_id);
+    resolver.endTrack(first.track_id, ts(2));
+    resolver.endTrack(second.track_id, ts(3));
+
+    auto replacement_a = observation(3U, 4);
+    replacement_a.fingerprint = first.fingerprint;
+    const auto matched_a = resolver.observe(replacement_a);
+    EXPECT_FALSE(matched_a.newly_created);
+    EXPECT_EQ(matched_a.source_id, original_a.source_id);
+
+    // Once A is bound again, the same observation must fall back to B.
+    auto replacement_b = observation(4U, 5);
+    replacement_b.fingerprint = first.fingerprint;
+    const auto matched_b = resolver.observe(replacement_b);
+    EXPECT_FALSE(matched_b.newly_created);
+    EXPECT_EQ(matched_b.source_id, original_b.source_id);
+    EXPECT_EQ(registry.list().size(), 2U);
+}
