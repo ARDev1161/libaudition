@@ -810,3 +810,42 @@ TEST(PerSourceSpeechRuntime, RejectsMultichannelAndPlanarCaptureWithoutTrackMuta
     EXPECT_FALSE(runtime.activeGeneration(75U).has_value());
     EXPECT_EQ(runtime.statistics().dropped_segments, 0U);
 }
+
+
+TEST(PerSourceSpeechRuntime, ResetClearsQueuedJobsWithoutLeakingOldGeneration) {
+    ThresholdVad vad;
+    auto gated = std::make_shared<SlowAsr>();
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, gated, options};
+    const std::vector<float> voice(4U, 0.5F), silence(4U, 0.0F);
+    runtime.push(85U, chunk(voice));
+    runtime.push(85U, chunk(silence));
+    for (int i = 0; i < 1000 && !gated->entered.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!gated->entered.load()) {
+        gated->release.store(true);
+        FAIL() << "Initial ASR job did not start";
+        return;
+    }
+    runtime.push(85U, chunk(voice));
+    runtime.push(85U, chunk(silence));
+    EXPECT_EQ(runtime.statistics().pending_segments, 1U);
+    const auto previous_generation = runtime.activeGeneration(85U);
+    runtime.reset();
+    EXPECT_EQ(runtime.statistics().pending_segments, 0U);
+    EXPECT_FALSE(runtime.activeGeneration(85U).has_value());
+    EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
+    runtime.push(85U, chunk(voice));
+    runtime.push(85U, chunk(silence));
+    const auto current_generation = runtime.activeGeneration(85U);
+    EXPECT_NE(previous_generation, current_generation);
+    gated->release.store(true);
+    const auto results = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results.front().generation, *current_generation);
+    EXPECT_EQ(results.front().transcript.text, "2");
+    EXPECT_TRUE(runtime.takeResults().empty());
+}
