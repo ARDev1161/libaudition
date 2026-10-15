@@ -506,3 +506,48 @@ TEST(PerSourceSpeechRuntime, RejectsInvalidConstructorLimits) {
     reject(options);
     EXPECT_THROW(PerSourceSpeechRuntime(vad, nullptr), std::invalid_argument);
 }
+
+
+namespace {
+class FailingSessionVad final : public IVoiceActivityDetector {
+public:
+    enum class Failure { NullSession, StandardException, UnknownException };
+    explicit FailingSessionVad(Failure failure) : failure_(failure) {}
+    BackendInfo backendInfo() const override { return {"test-session-failure", "1"}; }
+    AudioRequirements audioRequirements() const override { return {}; }
+    std::unique_ptr<IVadSession> createSession() const override {
+        if (failure_ == Failure::NullSession) return nullptr;
+        if (failure_ == Failure::StandardException)
+            throw std::runtime_error{"cannot create VAD session"};
+        throw 17;
+    }
+private:
+    Failure failure_;
+};
+} // namespace
+
+TEST(PerSourceSpeechRuntime, FailedVadSessionIsQuarantinedPerTrack) {
+    for (const auto failure : {
+             FailingSessionVad::Failure::NullSession,
+             FailingSessionVad::Failure::StandardException,
+             FailingSessionVad::Failure::UnknownException}) {
+        FailingSessionVad vad{failure};
+        PerSourceSpeechOptions options{};
+        options.min_speech_samples = 4U;
+        PerSourceSpeechRuntime runtime{vad, std::make_shared<MockAsr>(), options};
+        const std::vector<float> input(4U, 0.5F);
+        EXPECT_NO_THROW(runtime.push(1U, chunk(input)));
+        const auto first = runtime.trackStatus(1U);
+        ASSERT_TRUE(first.exists);
+        ASSERT_TRUE(first.error.has_value());
+        EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
+        EXPECT_NO_THROW(runtime.push(1U, chunk(input)));
+        EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
+        EXPECT_NO_THROW(runtime.push(2U, chunk(input)));
+        EXPECT_TRUE(runtime.trackStatus(2U).error.has_value());
+        EXPECT_EQ(runtime.statistics().dropped_segments, 2U);
+        runtime.forget(1U);
+        EXPECT_FALSE(runtime.trackStatus(1U).exists);
+        EXPECT_TRUE(runtime.takeResults().empty());
+    }
+}
