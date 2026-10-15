@@ -511,3 +511,23 @@ TEST(SourceIdentityResolver, DirectionOnlyCannotReacquireEndedSource) {
     EXPECT_NE(decision.source_id, original.source_id);
     EXPECT_EQ(registry.list().size(), 2U);
 }
+
+
+TEST(SourceIdentityResolver, LowSimilarityFingerprintDoesNotOverrideMatchingPosition) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+
+    auto first = observation(1U, 0);
+    first.position = position(1.0, 2.0, 3.0);
+    first.fingerprint = fingerprint("source-embed", {1.0F, 0.0F});
+    const auto original = resolver.observe(first);
+    resolver.endTrack(first.track_id, ts(10));
+
+    auto incompatible = observation(2U, 20);
+    incompatible.position = first.position;
+    incompatible.fingerprint = fingerprint("source-embed", {0.0F, 1.0F});
+    const auto decision = resolver.observe(incompatible);
+    EXPECT_TRUE(decision.newly_created);
+    EXPECT_NE(decision.source_id, original.source_id);
+    EXPECT_EQ(registry.list().size(), 2U);
+}
