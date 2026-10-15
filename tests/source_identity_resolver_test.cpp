@@ -555,3 +555,32 @@ TEST(SourceIdentityResolver, WeakFingerprintQualityDoesNotVetoStrongPositionMatc
     ASSERT_TRUE(stored.has_value());
     EXPECT_EQ(stored->fingerprints.size(), 1U);
 }
+
+
+TEST(SourceIdentityResolver, PositionReacquisitionExpiresStrictlyAfterAgeLimit) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    options.max_reacquisition_age = audition::Duration{100};
+    audition::HeuristicSourceIdentityResolver resolver{registry, options};
+
+    auto initial = observation(1U, 0);
+    initial.position = position(1.0, 2.0, 3.0);
+    const auto original = resolver.observe(initial);
+    resolver.endTrack(initial.track_id, ts(10));
+
+    auto within_window = observation(2U, 109);
+    within_window.position = initial.position;
+    const auto reacquired = resolver.observe(within_window);
+    // Geometry confidence is recency-weighted; near expiry it no longer
+    // reaches the association threshold even before pruning.
+    EXPECT_TRUE(reacquired.newly_created);
+    EXPECT_NE(reacquired.source_id, original.source_id);
+    resolver.endTrack(within_window.track_id, ts(110));
+
+    auto expired = observation(3U, 211);
+    expired.position = initial.position;
+    const auto fresh = resolver.observe(expired);
+    EXPECT_TRUE(fresh.newly_created);
+    EXPECT_NE(fresh.source_id, original.source_id);
+    EXPECT_NE(fresh.source_id, reacquired.source_id);
+}
