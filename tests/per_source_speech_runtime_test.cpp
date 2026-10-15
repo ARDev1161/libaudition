@@ -476,3 +476,33 @@ TEST(PerSourceSpeechRuntime, CapacityIsolatesActiveTrack) {
     runtime.push(12U, chunk(voice));
     EXPECT_TRUE(runtime.activeGeneration(12U).has_value());
 }
+
+TEST(PerSourceSpeechRuntime, RejectsInvalidConstructorLimits) {
+    ThresholdVad vad;
+    const auto asr = std::make_shared<MockAsr>();
+    auto reject = [&](PerSourceSpeechOptions options) {
+        EXPECT_THROW(PerSourceSpeechRuntime(vad, asr, options), std::invalid_argument);
+    };
+    PerSourceSpeechOptions options{};
+    options.sample_rate_hz = 0U;
+    reject(options);
+    options = {};
+    options.max_sources = 0U;
+    reject(options);
+    options = {};
+    options.max_pending_segments = 0U;
+    reject(options);
+    options = {};
+    options.min_speech_samples = 0U;
+    reject(options);
+    options = {};
+    options.max_segment_samples = 2U;
+    reject(options);
+    options = {};
+    options.pre_roll_samples = options.max_segment_samples + 1U;
+    reject(options);
+    options = {};
+    options.post_roll_samples = options.max_segment_samples + 1U;
+    reject(options);
+    EXPECT_THROW(PerSourceSpeechRuntime(vad, nullptr), std::invalid_argument);
+}
