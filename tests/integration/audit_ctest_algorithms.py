@@ -21,6 +21,7 @@ CORE = {
     "factory registration": r"^FactoryRegistry\.",
     "bounded queues": r"^BoundedQueue\.",
     "model registry": r"^ModelRegistry\.",
+    "logging sink contracts": r"^Logging\\.",
     "public API headers": r"^PublicHeaders\.",
     "memory registry": r"^MemoryRegistry\.",
     "sound prototype matching": r"^(SoundPrototypeRegistry|SoundPrototypeMatcher)\.",
@@ -32,6 +33,8 @@ CORE = {
     "SPL calibration": r"^SplCalibration\.",
     "temporal track smoothing": r"^TemporalSpatialTrackSmoother\.",
     "basic DSP / channel conversions": r"^Dsp\.",
+    "WAV parser and streaming I/O": r"^WavIoTest\\.",
+    "strict timeline JSON parser": r"^RecordingTimelineJson\\.",
     "multi-channel audio frontend": r"^AudioFrontend\.",
     "audio quality": r"^AudioQuality\.",
     "speech contracts": r"^SpeechContracts\.",
@@ -45,6 +48,7 @@ CORE = {
     "WAV file recording": r"^source_wav_recorder_test$",
     "public audio recording APIs": r"^recording_audio_apis_test$",
     "audio corpus manifest and independent annotations": r"^audio_respeaker_manifest_selftest$",
+    "CI fail-closed CTest entrypoints": r"^ci_ctest_entrypoints_selftest$",
     "recording session lifecycle": r"^source_recording_session_test$",
 }
 BACKENDS = {
