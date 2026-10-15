@@ -1,4 +1,5 @@
 #include <audition/model/in_memory_model_registry.hpp>
+#include <audition/core/error.hpp>
 
 #include <gtest/gtest.h>
 
