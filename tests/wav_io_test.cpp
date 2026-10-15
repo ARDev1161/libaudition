@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -122,4 +125,78 @@ TEST_F(WavIoTest, StreamingWriterRejectsInvalidAppendsAndFinalizesIdempotently) 
     ASSERT_EQ(loaded.audio.samples().size(), 6U);
     EXPECT_FLOAT_EQ(loaded.audio.samples()[4], 0.F);
     EXPECT_FLOAT_EQ(loaded.audio.samples()[5], 0.F);
+}
+
+
+TEST_F(WavIoTest, NormalizesMonoPcm16InBoundedBatchesWithoutChangingSource) {
+    std::vector<float> samples(5000U, 0.125F);
+    samples[2000] = -0.25F;
+    audition::AudioBuffer original{samples,
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto input = file("mono-source.wav");
+    const auto output = file("mono-normalized.wav");
+    audition::io::saveWavPcm16(input, original.view());
+    const auto before = audition::io::loadWav(input);
+    const auto result = audition::io::normalizePcm16Wav(input, output);
+    EXPECT_EQ(result.samples_written, samples.size());
+    EXPECT_GT(result.gain_db, 0.0);
+    EXPECT_LE(result.gain_db, 40.0);
+    const auto after = audition::io::loadWav(output);
+    ASSERT_EQ(after.audio.samples().size(), samples.size());
+    EXPECT_GT(std::abs(after.audio.samples()[2000]),
+              std::abs(before.audio.samples()[2000]));
+    EXPECT_EQ(audition::io::loadWav(input).audio.samples(),
+              before.audio.samples());
+}
+
+TEST_F(WavIoTest, NormalizationRespectsAttenuationAndSilence) {
+    audition::AudioBuffer loud{{0.9F, -0.9F, 0.4F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto input = file("loud.wav");
+    audition::io::saveWavPcm16(input, loud.view());
+    audition::PeakNormalizeOptions options{};
+    options.target_peak_dbfs = -12.0;
+    const auto unchanged = audition::io::normalizePcm16Wav(
+        input, file("no-attenuation.wav"), options);
+    EXPECT_DOUBLE_EQ(unchanged.gain_db, 0.0);
+    options.allow_attenuation = true;
+    const auto attenuated = audition::io::normalizePcm16Wav(
+        input, file("attenuated.wav"), options);
+    EXPECT_LT(attenuated.gain_db, 0.0);
+    const auto normalized = audition::io::loadWav(file("attenuated.wav"));
+    ASSERT_EQ(normalized.audio.samples().size(), 3U);
+    EXPECT_LT(std::abs(normalized.audio.samples()[0]), 0.3F);
+
+    audition::AudioBuffer silent{{0.F, 0.F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto silentInput = file("silent.wav");
+    audition::io::saveWavPcm16(silentInput, silent.view());
+    const auto quiet = audition::io::normalizePcm16Wav(silentInput, file("quiet.wav"));
+    EXPECT_DOUBLE_EQ(quiet.gain_db, 0.0);
+    EXPECT_EQ(quiet.samples_written, 2U);
+    EXPECT_EQ(audition::io::loadWav(file("quiet.wav")).audio.samples(),
+              silent.samples());
+}
+
+TEST_F(WavIoTest, RejectsInvalidNormalizationOptionsAndNoncanonicalInputs) {
+    const auto input = fixture("mono.wav", 1, 16, 1, {0, 0});
+    audition::PeakNormalizeOptions invalid{};
+    invalid.target_peak_dbfs = 1.0;
+    EXPECT_THROW(static_cast<void>(audition::io::normalizePcm16Wav(
+        input, file("invalid-gain.wav"), invalid)), std::invalid_argument);
+    invalid = {};
+    invalid.max_gain_db = -1.0;
+    EXPECT_THROW(static_cast<void>(audition::io::normalizePcm16Wav(
+        input, file("invalid-limit.wav"), invalid)), std::invalid_argument);
+    invalid = {};
+    invalid.max_gain_db = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_THROW(static_cast<void>(audition::io::normalizePcm16Wav(
+        input, file("nan-limit.wav"), invalid)), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(audition::io::normalizePcm16Wav(
+        input, input)), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(audition::io::normalizePcm16Wav(
+        file("missing.wav"), file("out.wav"))), std::runtime_error);
+    const auto stereo = fixture("stereo.wav", 1, 16, 2, {0, 0, 0, 0});
+    EXPECT_THROW(static_cast<void>(audition::io::normalizePcm16Wav(
+        stereo, file("bad-layout.wav"))), std::runtime_error);
 }
