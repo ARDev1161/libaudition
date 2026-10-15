@@ -73,7 +73,7 @@ TEST_F(WavIoTest, RoundTripsStereoPcm16WithSaturation) {
     ASSERT_EQ(right.samples().size(), 2U);
     EXPECT_FLOAT_EQ(right.samples()[0], loaded.audio.samples()[1]);
     EXPECT_FLOAT_EQ(right.samples()[1], loaded.audio.samples()[3]);
-    EXPECT_THROW(audition::io::selectMonoChannel(loaded.audio.view(), 2U), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::selectMonoChannel(loaded.audio.view(), 2U)), std::runtime_error);
 }
 
 TEST_F(WavIoTest, DecodesPcm8Pcm24Pcm32AndFloat32) {
@@ -90,24 +90,17 @@ TEST_F(WavIoTest, DecodesPcm8Pcm24Pcm32AndFloat32) {
 }
 
 TEST_F(WavIoTest, RejectsMalformedAndUnsupportedWav) {
-    EXPECT_THROW(audition::io::loadWav(file("absent.wav")), std::runtime_error);
-    EXPECT_THROW(audition::io::loadWav(fixture("badformat.wav", 7, 16, 1, {0, 0})),
-                 std::runtime_error);
-    EXPECT_THROW(audition::io::loadWav(fixture("badbits.wav", 1, 12, 1, {0, 0})),
-                 std::runtime_error);
-    EXPECT_THROW(audition::io::loadWav(fixture("badfloat.wav", 3, 16, 1, {0, 0})),
-                 std::runtime_error);
-    EXPECT_THROW(audition::io::loadWav(fixture("badchannels.wav", 1, 16, 0, {0, 0})),
-                 std::runtime_error);
-    EXPECT_THROW(audition::io::loadWav(fixture("partial.wav", 1, 16, 1, {0})),
-                 std::runtime_error);
-    EXPECT_THROW(audition::io::loadWav(fixture("partialframe.wav", 1, 16, 2, {0, 0})),
-                 std::runtime_error);
-    EXPECT_THROW(audition::io::loadWav(fixture("nan.wav", 3, 32, 1, {0, 0, 0xc0, 0x7f})),
-                 std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(file("absent.wav"))), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(fixture("badformat.wav", 7, 16, 1, {0, 0}))), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(fixture("badbits.wav", 1, 12, 1, {0, 0}))), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(fixture("badfloat.wav", 3, 16, 1, {0, 0}))), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(fixture("badchannels.wav", 1, 16, 0, {0, 0}))), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(fixture("partial.wav", 1, 16, 1, {0}))), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(fixture("partialframe.wav", 1, 16, 2, {0, 0}))), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(fixture("nan.wav", 3, 32, 1, {0, 0, 0xc0, 0x7f}))), std::runtime_error);
     const auto truncated = fixture("truncated.wav", 1, 16, 1, {0, 0, 0, 0});
     std::filesystem::resize_file(truncated, 45U);
-    EXPECT_THROW(audition::io::loadWav(truncated), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(truncated)), std::runtime_error);
 }
 
 TEST_F(WavIoTest, StreamingWriterRejectsInvalidAppendsAndFinalizesIdempotently) {
