@@ -587,3 +587,41 @@ TEST(PerSourceSpeechRuntime, VadInitializationFailureDoesNotBlockHealthyTrack) {
     EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
     EXPECT_TRUE(runtime.trackStatus(100U).error.has_value());
 }
+
+
+namespace {
+class NonstandardFailureAsr final : public IAsrEngine {
+public:
+    BackendInfo backendInfo() const override { return {"nonstandard-failure-asr", "1"}; }
+    AsrCapabilities capabilities() const override { return {}; }
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        if (segment.track_id->value() == 201U) throw 42;
+        Transcript out{};
+        out.segment_id = segment.segment_id;
+        out.text = "healthy";
+        return out;
+    }
+};
+} // namespace
+
+TEST(PerSourceSpeechRuntime, UnknownAsrExceptionDoesNotStopWorker) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<NonstandardFailureAsr>(), options};
+    const std::vector<float> voice(4U, 0.5F), silence(4U, 0.0F);
+    runtime.push(201U, chunk(voice));
+    runtime.push(201U, chunk(silence));
+    runtime.push(202U, chunk(voice));
+    runtime.push(202U, chunk(silence));
+    const auto results = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results.front().track_id, 202U);
+    EXPECT_EQ(results.front().transcript.text, "healthy");
+    EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+    EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
+    ASSERT_TRUE(runtime.statistics().last_error.has_value());
+    EXPECT_EQ(*runtime.statistics().last_error, "Unknown ASR exception");
+}
