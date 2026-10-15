@@ -33,7 +33,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install coverage reporter
-        run: python3 -m pip install --break-system-packages "gcovr==8.4"
+        run: |
+          python3 -m venv "$RUNNER_TEMP/gcovr"
+          "$RUNNER_TEMP/gcovr/bin/pip" install "gcovr==8.4"
       - name: Configure instrumented core and tests
         run: >-
           cmake -S . -B build-coverage -G Ninja
@@ -53,7 +55,7 @@ jobs:
       - name: Report library-only C++ line and branch coverage
         run: |
           mkdir -p build-coverage/reports
-          python3 -m gcovr --root . --filter '^src/' --exclude-unreachable-branches \
+          "$RUNNER_TEMP/gcovr/bin/gcovr" --root . --filter 'src/' --exclude-unreachable-branches \
             --txt build-coverage/reports/coverage.txt \
             --json-summary build-coverage/reports/coverage-summary.json \
             --xml-pretty build-coverage/reports/cobertura.xml \
