@@ -47,14 +47,20 @@ cmake -S . -B build-coverage -G Ninja \
   -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage
 cmake --build build-coverage --parallel 2
 ctest --test-dir build-coverage --output-on-failure --parallel 2
-gcovr --root . --filter 'src/' --txt --json-summary \
-  build-coverage/reports/coverage-summary.json build-coverage
+gcovr build-coverage --root . --filter 'src/' --txt --json-summary \
+  build-coverage/reports/coverage-summary.json
 ```
 
-The initial coverage job reports measurements, without a percentage gate.
-Its output must not be interpreted as coverage of optional model backends
-or of hardware accuracy. Percentage gates can be introduced after reviewing
-a successful baseline and documented exclusions.
+The core coverage job publishes the measured percentages and enforces minimum
+thresholds of **88% line coverage** and **55% branch coverage**. The baseline
+from CI #1124 was **2625 / 2889 lines (90.9%)** and **2142 / 3703 branches
+(57.8%)**. CI fails on a regression below either threshold or on missing
+coverage totals, but still uploads the generated reports. The thresholds
+intentionally leave a small margin for instrumentation and test changes.
+
+Coverage percentages reflect execution of instrumented core code paths, not
+classification accuracy, branch behavior correctness, or optional backend and
+hardware coverage. Consult the HTML report for per-file and per-branch gaps.
 
 ## Suites requiring external assets
 
