@@ -451,3 +451,28 @@ TEST(PerSourceSpeechRuntime, RetiredAsrSurvivesCancellationOfReusedId) {
     EXPECT_NO_THROW(runtime.releaseRetired(*originalGeneration));
     EXPECT_TRUE(runtime.drainReady().ready_retired_generations.empty());
 }
+
+TEST(PerSourceSpeechRuntime, CapacityIsolatesActiveTrack) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.max_sources = 1U;
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<MockAsr>(), options};
+    const std::vector<float> voice(4U, 0.5F), quiet(4U, 0.0F);
+    runtime.push(11U, chunk(voice));
+    const auto first_generation = runtime.activeGeneration(11U);
+    ASSERT_TRUE(first_generation.has_value());
+    runtime.push(12U, chunk(voice));
+    EXPECT_FALSE(runtime.trackStatus(12U).exists);
+    EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
+    EXPECT_EQ(runtime.activeGeneration(11U), first_generation);
+    runtime.push(11U, chunk(quiet));
+    const auto results = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results[0].track_id, 11U);
+    runtime.forget(11U);
+    runtime.push(12U, chunk(voice));
+    EXPECT_TRUE(runtime.activeGeneration(12U).has_value());
+}
