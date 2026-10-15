@@ -12,6 +12,7 @@
 #include <limits>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 namespace {
 class ConstantClassifier final : public audition::IAudioClassifier {
@@ -71,6 +72,52 @@ TEST(Vocabulary, DeduplicatesUnsupportedLabelsAndStablySortsTopK) {
     ASSERT_EQ(all.classes.size(), 3U);
     EXPECT_EQ(all.classes[1].label, "Music");
     EXPECT_EQ(all.classes[2].label, "Noise");
+}
+
+
+namespace {
+class CandidateEchoOpenClassifier final : public audition::IOpenVocabularyAudioClassifier {
+public:
+    audition::BackendInfo backendInfo() const override { return {"stub-open", "1"}; }
+    audition::ClassifierCapabilities capabilities() const override { return {}; }
+    audition::ClassificationResult classify(
+        audition::AudioView, const std::vector<std::string>& candidates) const override {
+        received = candidates;
+        audition::ClassificationResult result;
+        result.classes.push_back({"speech", audition::Probability::from(0.3)});
+        result.classes.push_back({"alarm", audition::Probability::from(0.8)});
+        result.classes.push_back({"bird", audition::Probability::from(0.3)});
+        return result;
+    }
+    mutable std::vector<std::string> received{};
+};
+} // namespace
+
+TEST(Vocabulary, OpenVocabularyUsesExplicitCandidatesAndSimilarityScores) {
+    CandidateEchoOpenClassifier classifier;
+    const audition::VocabularySelection selected{
+        audition::VocabularyMode::SelectedClasses, {"bird", "alarm", "speech"}, 2U};
+    const auto output = audition::classifyVocabulary(classifier, audition::AudioView{}, selected);
+    EXPECT_EQ(classifier.received, selected.labels);
+    ASSERT_EQ(output.classes.size(), 2U);
+    EXPECT_EQ(output.classes[0].label, "alarm");
+    EXPECT_EQ(output.classes[1].label, "speech");
+    EXPECT_EQ(output.classes[0].score_kind, audition::VocabularyScoreKind::RelativeSimilarity);
+    EXPECT_TRUE(output.unsupported_labels.empty());
+}
+
+TEST(Vocabulary, OpenVocabularyRejectsMissingOrImplicitCandidates) {
+    CandidateEchoOpenClassifier classifier;
+    EXPECT_THROW(static_cast<void>(audition::classifyVocabulary(
+        classifier, audition::AudioView{},
+        {audition::VocabularyMode::AllClasses, {"speech"}, 3U})), audition::Error);
+    EXPECT_THROW(static_cast<void>(audition::classifyVocabulary(
+        classifier, audition::AudioView{},
+        {audition::VocabularyMode::SelectedClasses, {}, 3U})), audition::Error);
+    EXPECT_THROW(static_cast<void>(audition::classifyVocabulary(
+        classifier, audition::AudioView{},
+        {audition::VocabularyMode::SelectedClasses, {"speech"}, 0U})), audition::Error);
+    EXPECT_TRUE(classifier.received.empty());
 }
 
 TEST(Vocabulary, SelectedNotInTruncatedTopKIsNotUnsupported) {
