@@ -710,3 +710,22 @@ TEST(PerSourceSpeechRuntime, CannotReleaseRetiredGenerationWithInflightAsr) {
     EXPECT_NO_THROW(runtime.releaseRetired(*generation));
     EXPECT_TRUE(runtime.drainReady().ready_retired_generations.empty());
 }
+
+
+TEST(PerSourceSpeechRuntime, EmptyInputAndUnknownTrackOperationsAreNoOps) {
+    ThresholdVad vad;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<MockAsr>()};
+    const std::vector<float> empty;
+    runtime.push(404U, chunk(empty));
+    EXPECT_FALSE(runtime.activeGeneration(404U).has_value());
+    EXPECT_FALSE(runtime.trackStatus(404U).exists);
+    EXPECT_FALSE(runtime.retire(404U).has_value());
+    runtime.forget(404U);
+    EXPECT_EQ(runtime.pendingResults(999U), 0U);
+    EXPECT_NO_THROW(runtime.releaseRetired(999U));
+    const auto drained = runtime.drainReady();
+    EXPECT_TRUE(drained.results.empty());
+    EXPECT_TRUE(drained.ready_retired_generations.empty());
+    EXPECT_EQ(runtime.statistics().completed_segments, 0U);
+    EXPECT_EQ(runtime.statistics().dropped_segments, 0U);
+}
