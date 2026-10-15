@@ -551,3 +551,39 @@ TEST(PerSourceSpeechRuntime, FailedVadSessionIsQuarantinedPerTrack) {
         EXPECT_TRUE(runtime.takeResults().empty());
     }
 }
+
+
+namespace {
+class FirstTrackSessionFailureVad final : public IVoiceActivityDetector {
+public:
+    BackendInfo backendInfo() const override { return {"selective-vad-failure", "1"}; }
+    AudioRequirements audioRequirements() const override { return {}; }
+    std::unique_ptr<IVadSession> createSession() const override {
+        if (calls_++ == 0U) throw std::runtime_error{"first VAD session failed"};
+        return std::make_unique<ThresholdSession>();
+    }
+private:
+    mutable std::size_t calls_{0U};
+};
+} // namespace
+
+TEST(PerSourceSpeechRuntime, VadInitializationFailureDoesNotBlockHealthyTrack) {
+    FirstTrackSessionFailureVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<MockAsr>(), options};
+    const std::vector<float> voice(4U, 0.5F), quiet(4U, 0.0F);
+    runtime.push(100U, chunk(voice));
+    ASSERT_TRUE(runtime.trackStatus(100U).error.has_value());
+    runtime.push(101U, chunk(voice));
+    runtime.push(101U, chunk(quiet));
+    const auto results = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results.front().track_id, 101U);
+    EXPECT_EQ(results.front().transcript.text, "101:4");
+    EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+    EXPECT_EQ(runtime.statistics().dropped_segments, 1U);
+    EXPECT_TRUE(runtime.trackStatus(100U).error.has_value());
+}
