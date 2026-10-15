@@ -44,6 +44,7 @@ CORE = {
     "synthetic multi-source stress (10)": r"^progressive_stress_10_sources$",
     "WAV file recording": r"^source_wav_recorder_test$",
     "public audio recording APIs": r"^recording_audio_apis_test$",
+    "audio corpus manifest and independent annotations": r"^audio_respeaker_manifest_selftest$",
     "recording session lifecycle": r"^source_recording_session_test$",
 }
 BACKENDS = {
