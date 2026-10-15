@@ -793,3 +793,20 @@ TEST(PerSourceSpeechRuntime, ResetDuringInflightAsrDoesNotPublishStaleResult) {
     EXPECT_EQ(results.front().transcript.text, "2");
     EXPECT_TRUE(runtime.takeResults().empty());
 }
+
+
+TEST(PerSourceSpeechRuntime, RejectsMultichannelAndPlanarCaptureWithoutTrackMutation) {
+    ThresholdVad vad;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<MockAsr>()};
+    const std::vector<float> samples(8U, 0.5F);
+    const Timestamp timestamp{};
+    const AudioView stereo{samples.data(), samples.size(),
+        {16000U, 2U, AudioLayout::Interleaved}, timestamp};
+    const AudioView planar{samples.data(), samples.size(),
+        {16000U, 1U, AudioLayout::Planar}, timestamp};
+    EXPECT_THROW(runtime.push(75U, stereo), std::invalid_argument);
+    EXPECT_THROW(runtime.push(75U, planar), std::invalid_argument);
+    EXPECT_FALSE(runtime.trackStatus(75U).exists);
+    EXPECT_FALSE(runtime.activeGeneration(75U).has_value());
+    EXPECT_EQ(runtime.statistics().dropped_segments, 0U);
+}
