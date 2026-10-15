@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include <gtest/gtest.h>
 
@@ -313,4 +314,71 @@ TEST(SoundLevelRangePrior, BackendInfoIdentifiesEstimator) {
     const auto info = estimator.backendInfo();
     EXPECT_EQ(info.name, "sound-level-prior");
     EXPECT_EQ(info.implementation_version, "1");
+}
+
+
+TEST(SoundLevelRangePrior, RejectsNonfiniteOptionsAndSpatialObservation) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (const double bad : {nan, inf, -inf}) {
+        audition::SoundLevelRangePriorOptions options{};
+        options.path_loss_exponent = bad;
+        EXPECT_THROW(static_cast<void>(audition::SoundLevelRangePriorEstimator{options}), audition::Error);
+        options = {};
+        options.propagation_variance_db2 = bad;
+        EXPECT_THROW(static_cast<void>(audition::SoundLevelRangePriorEstimator{options}), audition::Error);
+    }
+
+    const audition::SoundLevelRangePriorEstimator estimator;
+    audition::SourceLevelPrior priors[] = {prior("machine", 90.0)};
+    audition::RangeEstimationInput input{};
+    input.source_level_priors = priors;
+    for (const double bad : {nan, inf, -inf}) {
+        auto measured = level(60.0);
+        measured.sensor_pose.position.x = bad;
+        input.sound_level = measured;
+        EXPECT_THROW(static_cast<void>(estimator.estimate(input)), audition::Error);
+        measured = level(60.0);
+        measured.sensor_pose.position.y = bad;
+        input.sound_level = measured;
+        EXPECT_THROW(static_cast<void>(estimator.estimate(input)), audition::Error);
+        measured = level(60.0);
+        measured.sensor_pose.position.z = bad;
+        input.sound_level = measured;
+        EXPECT_THROW(static_cast<void>(estimator.estimate(input)), audition::Error);
+    }
+}
+
+TEST(SoundLevelRangePrior, RejectsMalformedHypothesesAndOverflow) {
+    const audition::SoundLevelRangePriorEstimator estimator;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    audition::SourceLevelPrior priors[] = {prior("alarm", 80.0)};
+    audition::RangeEstimationInput input{};
+    input.sound_level = level(60.0);
+    input.source_level_priors = priors;
+
+    for (const double bad : {nan, inf, -inf}) {
+        priors[0] = prior("alarm", 80.0);
+        priors[0].reference_distance_m = bad;
+        EXPECT_THROW(static_cast<void>(estimator.estimate(input)), audition::Error);
+        priors[0] = prior("alarm", 80.0);
+        priors[0].weight = bad;
+        EXPECT_THROW(static_cast<void>(estimator.estimate(input)), audition::Error);
+    }
+    priors[0] = prior("alarm", 80.0);
+    priors[0].level_db_spl_at_reference.variance = -1.0;
+    EXPECT_THROW(static_cast<void>(estimator.estimate(input)), audition::Error);
+    priors[0] = prior("alarm", 20000.0);
+    EXPECT_THROW(static_cast<void>(estimator.estimate(input)), audition::Error);
+    priors[0] = prior("alarm", 80.0);
+    EXPECT_TRUE(estimator.estimate(input).has_value());
+}
+
+TEST(SoundLevelRangePrior, MissingHypothesesYieldNoScalarObservation) {
+    const audition::SoundLevelRangePriorEstimator estimator;
+    audition::RangeEstimationInput input{};
+    EXPECT_FALSE(estimator.estimateObservation(input).has_value());
+    input.sound_level = level(60.0);
+    EXPECT_FALSE(estimator.estimateObservation(input).has_value());
 }
