@@ -258,7 +258,7 @@ int run(const fs::path& path, const fs::path& outputDir,
 int main(int argc, char** argv) {
     if (argc < 3) {
         std::cerr << "Usage: audition_offline_integration INPUT_WAV OUTPUT_DIR "
-                     "[--horizontal-sources] [--mic CHANNEL:X:Y:Z ...]\\n";
+                     "[--horizontal-sources] [--mic CHANNEL:X:Y:Z ...]\n";
         return 2;
     }
     bool horizontal = false;
@@ -271,14 +271,14 @@ int main(int argc, char** argv) {
             microphones.emplace_back(argv[++i]);
         } else {
             std::cerr << "Unknown or incomplete offline ODAS option: "
-                      << flag << '\\n';
+                      << flag << '\n';
             return 2;
         }
     }
     try {
         return run(argv[1], argv[2], horizontal, microphones);
     } catch (const std::exception& ex) {
-        std::cerr << "offline-audio-integration=fail: " << ex.what() << '\\n';
+        std::cerr << "offline-audio-integration=fail: " << ex.what() << '\n';
         return 1;
     }
 }
