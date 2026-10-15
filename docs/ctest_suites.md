@@ -7,6 +7,20 @@ exporters, downloads and installation are **preparation**, not tests.
 CTest only lists tests built for the configured backends. A successful
 minimal build does not imply that all optional backends were exercised.
 
+The main GitHub Actions CI now passes `--no-tests=error` to **every**
+CTest invocation. An empty `-R` or `-L` selection must fail the job, rather
+than silently passing. `ci_ctest_entrypoints_selftest` independently guards
+against accidental bypass of CTest and checks that generated diarization RTTM
+syntax reports are validated as fixture-dependent CTest tests.
+
+The independent corpus-manifest validator, WAV and JSON parser tests, logging
+tests, and CI entrypoint selftest run in ordinary CTest builds. Real-model
+RTTM syntax checks depend on the corresponding diarization producer through
+CTest fixtures. The `algorithm_coverage_contract` asserts that these test
+families remain registered. Spatial audio generation and ODAS algorithm
+accuracy benchmarks are **outside** this library's CI scope; the ODAS adapter
+retains bounded synthetic smoke and integration checks.
+
 ## Inspect and run
 
 ```sh
