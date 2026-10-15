@@ -313,6 +313,29 @@ if(TARGET audition::backend_sherpa)
         set_tests_properties(speech_real_speaker_diarization_benchmark PROPERTIES
             LABELS "real-model;speech-integration;diarization;benchmark"
             TIMEOUT 300)
+        # Validate both produced RTTM hypotheses through CTest, not ad-hoc
+        # Python commands in CI. Fixtures ensure the producer runs first even
+        # when an individual syntax test is selected by -R.
+        set_tests_properties(speech_real_speaker_diarization PROPERTIES
+            FIXTURES_SETUP speech_diarization_report)
+        set_tests_properties(speech_real_speaker_diarization_benchmark PROPERTIES
+            FIXTURES_SETUP speech_diarization_benchmark_report)
+        add_test(NAME speech_real_speaker_diarization_rttm_syntax
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/integration/score_diarization_rttm.py"
+                --validate-hypothesis
+                "${CMAKE_BINARY_DIR}/audio-fixtures/speaker-diarization-report.rttm")
+        set_tests_properties(speech_real_speaker_diarization_rttm_syntax PROPERTIES
+            LABELS "real-model;speech-integration;diarization;python"
+            FIXTURES_REQUIRED speech_diarization_report TIMEOUT 60)
+        add_test(NAME speech_real_speaker_diarization_benchmark_rttm_syntax
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/integration/score_diarization_rttm.py"
+                --validate-hypothesis
+                "${CMAKE_BINARY_DIR}/audio-fixtures/diarization-benchmark.rttm")
+        set_tests_properties(speech_real_speaker_diarization_benchmark_rttm_syntax PROPERTIES
+            LABELS "real-model;speech-integration;diarization;python;benchmark"
+            FIXTURES_REQUIRED speech_diarization_benchmark_report TIMEOUT 60)
         # One genuinely independent human-labeled RTTM reference (not model output)
         # for an end-to-end diagnostic DER computation. No accuracy cutoff is
         # imposed from this single, short audio recording.
