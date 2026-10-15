@@ -499,3 +499,29 @@ TEST(AcousticEventAssembler, InvalidTimestampPatchIsAtomicAndLaterValidUpdateSuc
     EXPECT_DOUBLE_EQ(complete.position->mean_m.x, 4.0);
     EXPECT_EQ(complete.source_id, first.source_id);
 }
+
+
+TEST(AcousticEventAssembler, FailedFinishKeepsEventAvailableForRecovery) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(100));
+    audition::AcousticEventPatch patch{};
+    patch.timestamp = ts(150);
+    patch.source_id = audition::AcousticSourceId{17U};
+    assembler.update(id, patch);
+
+    EXPECT_THROW(static_cast<void>(assembler.finish(id, ts(149))), audition::Error);
+    EXPECT_THROW(static_cast<void>(assembler.finish(id, ts(160, 9U))), audition::Error);
+    EXPECT_EQ(assembler.activeCount(), 1U);
+
+    const auto pending = assembler.find(id);
+    ASSERT_TRUE(pending.has_value());
+    EXPECT_EQ(pending->end_time.nanoseconds(), 150);
+    EXPECT_EQ(pending->source_id, patch.source_id);
+
+    const auto completed = assembler.finish(id, ts(150));
+    EXPECT_EQ(completed.end_time.nanoseconds(), 150);
+    EXPECT_EQ(completed.source_id, patch.source_id);
+    EXPECT_EQ(assembler.activeCount(), 0U);
+    EXPECT_FALSE(assembler.find(id).has_value());
+    EXPECT_THROW(static_cast<void>(assembler.finish(id, ts(200))), audition::Error);
+}
