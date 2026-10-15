@@ -10,8 +10,8 @@ The test writes `<build>/ctest-algorithm-coverage.json`.
 
 | Algorithm / subsystem | CTest evidence | Scope of evidence |
 |---|---|---|
-| Core audio representation, timestamps and buffer layouts | `Time.*`, `AudioBuffer.*` | Unit and rejection paths |
-| DSP, calibration, resampling and audio frontend | `Dsp.*`, `AudioFrontend.*`, `SplCalibration.*`, `SoundLevelRangePrior.*`, `SamplerateBackend.*` | Unit and deterministic DSP |
+| Core audio representation, timestamps and buffer layouts | `Time.*`, `AudioBuffer.*` | Unit and rejection paths, clock factories, signed time deltas |
+| DSP, calibration, resampling and audio frontend | `Dsp.*`, `AudioQuality.*`, `AudioFrontend.*`, `SplCalibration.*`, `SoundLevelRangePrior.*`, `SamplerateBackend.*` | Unit, multichannel layouts, silence, clipping and invalid levels |
 | Tracking, association, identity and acoustic events | `TemporalSpatialTrackSmoother.*`, `SpatialIdentityCoordinator.*`, `SourceIdentityResolver.*`, `AcousticEventAssembler.*` | Unit, lifecycle and conflicting state |
 | Per-source audio classification and overload | `SourceClassificationRuntime.*`, `ProgressiveSourceClassificationRuntime.*`, `progressive_stress_*_sources` | Multi-source ordering, queues, freshness, cancellation |
 | VoxConverse v0.3 full dev/test DER baseline | `speech_voxconverse_full_split_preflight_selftest`, `benchmark_voxconverse.py`, `.github/workflows/voxconverse-benchmark.yml` | Real ONNX diarization on complete independently labeled 216-dev/232-test recordings, separate weighted DER and per-clip RTTM, model SHA-256 pinned, Oxford archive hashes logged; **full-split DER pending benchmark workflow result**, not covered by short fixture |
@@ -34,7 +34,10 @@ The test writes `<build>/ctest-algorithm-coverage.json`.
 | AASIST anti-spoofing | `AasistBackend.*`, `qt_real_aasist` | API and real-model smoke |
 | WORLD traits and acoustic analysis | `WorldBackend.*`, `WorldAcousticBackend.*`, `qt_world` | Numeric and frontend/backend smoke |
 | GTSAM spatial fusion | `GtsamSpatialFusion.*`, `qt_gtsam` | Spatial constraints/fusion and GUI smoke |
-| WAV/JSON recording, lifecycle, timestamps | `source_wav_recorder_test`, `recording_audio_apis_test`, `source_recording_session_test` | File I/O and lifecycle regression |
+| WAV/JSON recording, lifecycle, timestamps | `WavIoTest.*`, `RecordingTimelineJson.*`, `source_wav_recorder_test`, `recording_audio_apis_test`, `source_recording_session_test` | PCM formats, strict parser rejection, Unicode, limits, file I/O and lifecycle |
+| Logging sinks and default routing | `Logging.*` | Levels, sink replacement and null fallback |
+| CI test registration integrity | `algorithm_coverage_contract`, `ci_ctest_entrypoints_selftest` | Discovery/source inventory and fail-closed CI CTest selectors |
+| C++ core instrumented coverage | `cpp-coverage` GitHub Actions job, CTest | GCC branch/line coverage under `src/` only; gates >=88% lines / >=55% branches |
 | Installed binary interface | `installed_package_cpp17_consumer` | External C++17 consumer of installed CMake package |
 
 All `real-*` tests require weights/fixtures and the CMake options documented
@@ -43,12 +46,13 @@ claim optional-backend coverage.
 
 ## Known gaps; do not claim complete algorithm quality
 
-1. **Real ReSpeaker microphone-array localization and separation**: existing
-   gates use deterministic simulated six-channel recordings. Actual DOA
-   accuracy, source-association rate and SSS quality must be measured on
-   annotated physical ReSpeaker recordings with measured geometry,
-   directions and synchronization. A hardware-in-the-loop runner is separate
-   from hosted CI.
+1. **ODAS owns spatial localization and separation quality**, not libaudition.
+   Existing CI covers ODAS integration with deterministic multichannel audio,
+   numeric DOA smoke checks, generic array geometry, source identity and
+   adapter failure paths. Comprehensive DOA/SSS accuracy and device-specific
+   geometry calibration belong to separate ODAS evaluations; they do **not**
+   block libaudition's core CI. External audio-scene generation, if ever
+   used, is explicitly outside the libaudition repository.
 2. **Sherpa auxiliary models**: genuine GigaSpeech KWS, Streaming Zipformer ASR,
    multilingual Whisper language ID, GTCRN denoising and Pyannote diarization
    all have model-backed smoke tests. However, alternative online model
@@ -63,10 +67,12 @@ claim optional-backend coverage.
 4. **CPU/GPU/NPU variants**: a passing CPU backend does not validate every
    optional accelerator (RKNN/QNN/DirectML/etc.). Those require their own
    runners and runtime/provider checks.
-5. **Code and branch coverage**: CTest discovery checks that tests are
-   registered, not that all statements, branches or malformed inputs are
-   exercised. A coverage-instrumented compiler/build with reports is required
-   before making numerical code-coverage claims.
+5. **Optional backend code coverage**: the GCC-instrumented `cpp-coverage`
+   job measures only the library's `src/` implementation (CI #1124 baseline:
+   90.9% lines, 57.8% branches). Its minimum gates are 88% lines and 55%
+   branches. These numbers exclude optional backends and do not establish
+   functional correctness or model accuracy. Backend instrumentation and
+   branch-level failure-path tests remain follow-up work.
 6. **Long-running hardware reliability**: device disconnect/reconnect, ALSA
    capture under load and multi-hour soak tests need physical hardware and
    controlled collection of diagnostics.
