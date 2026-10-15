@@ -55,12 +55,12 @@ jobs:
       - name: Report library-only C++ line and branch coverage
         run: |
           mkdir -p build-coverage/reports
-          "$RUNNER_TEMP/gcovr/bin/gcovr" --root . --filter 'src/' --exclude-unreachable-branches \
+          "$RUNNER_TEMP/gcovr/bin/gcovr" build-coverage \
+            --root . --filter 'src/' --exclude-unreachable-branches \
             --txt build-coverage/reports/coverage.txt \
             --json-summary build-coverage/reports/coverage-summary.json \
             --xml-pretty build-coverage/reports/cobertura.xml \
-            --html-details build-coverage/reports/coverage.html \
-            build-coverage
+            --html-details build-coverage/reports/coverage.html
           cat build-coverage/reports/coverage.txt
       - name: Upload C++ coverage reports
         if: always()
