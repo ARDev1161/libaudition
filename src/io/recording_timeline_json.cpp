@@ -221,7 +221,12 @@ std::uint64_t integer(const Json& json) {
         json.value.front() == '-')
         throw std::invalid_argument("Expected nonnegative JSON integer");
     std::size_t parsed = 0;
-    const auto n = std::stoull(json.value, &parsed, 10);
+    std::uint64_t n = 0;
+    try {
+        n = std::stoull(json.value, &parsed, 10);
+    } catch (const std::out_of_range&) {
+        throw std::invalid_argument("JSON integer exceeds uint64 range");
+    }
     if (parsed != json.value.size())
         throw std::invalid_argument("Expected integral JSON number");
     return n;
