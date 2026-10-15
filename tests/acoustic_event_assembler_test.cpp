@@ -461,3 +461,41 @@ TEST(AcousticEventAssembler, ConflictingUpdateDoesNotMutateOtherActiveEvent) {
     EXPECT_EQ(healthy->end_time.nanoseconds(), 25);
     EXPECT_EQ(assembler.activeCount(), 2U);
 }
+
+
+TEST(AcousticEventAssembler, InvalidTimestampPatchIsAtomicAndLaterValidUpdateSucceeds) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(100));
+
+    audition::AcousticEventPatch first{};
+    first.timestamp = ts(120);
+    first.track_id = audition::SpatialTrackId{10U};
+    first.source_id = audition::AcousticSourceId{20U};
+    first.position = position(1.0, 2.0, 3.0);
+    assembler.update(id, first);
+
+    audition::AcousticEventPatch invalid{};
+    invalid.timestamp = ts(119);
+    invalid.position = position(99.0, 99.0, 99.0);
+    EXPECT_THROW(assembler.update(id, invalid), audition::Error);
+    invalid.timestamp = ts(130, 2U);
+    EXPECT_THROW(assembler.update(id, invalid), audition::Error);
+
+    const auto unchanged = assembler.find(id);
+    ASSERT_TRUE(unchanged.has_value());
+    EXPECT_EQ(unchanged->end_time.nanoseconds(), 120);
+    ASSERT_TRUE(unchanged->position.has_value());
+    EXPECT_DOUBLE_EQ(unchanged->position->mean_m.x, 1.0);
+    EXPECT_EQ(unchanged->source_id, first.source_id);
+    EXPECT_EQ(unchanged->track_id, first.track_id);
+
+    audition::AcousticEventPatch valid{};
+    valid.timestamp = ts(140);
+    valid.position = position(4.0, 5.0, 6.0);
+    EXPECT_NO_THROW(assembler.update(id, valid));
+    const auto complete = assembler.finish(id, ts(150));
+    EXPECT_EQ(complete.end_time.nanoseconds(), 150);
+    ASSERT_TRUE(complete.position.has_value());
+    EXPECT_DOUBLE_EQ(complete.position->mean_m.x, 4.0);
+    EXPECT_EQ(complete.source_id, first.source_id);
+}
