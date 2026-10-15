@@ -38,7 +38,7 @@ TEST(Dsp, MeasuresRmsPeakAndClippingAcrossAllSamples) {
     EXPECT_DOUBLE_EQ(audition::dsp::clippingRatio(audio.view(), 0.5), 0.75);
     EXPECT_DOUBLE_EQ(audition::dsp::clippingRatio(audio.view(), 2.0), 0.25);
     EXPECT_DOUBLE_EQ(audition::dsp::clippingRatio(audio.view(), -1.0), 1.0);
-    EXPECT_THROW(audition::dsp::channelRms(audio.view(), 2), audition::Error);
+    EXPECT_THROW(static_cast<void>(audition::dsp::channelRms(audio.view(), 2)), audition::Error);
 }
 
 TEST(Dsp, EmptyAudioHasZeroLevelsAndPreservesMetadataOnConversion) {
