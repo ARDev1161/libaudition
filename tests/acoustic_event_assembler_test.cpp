@@ -594,3 +594,42 @@ TEST(AcousticEventAssembler, TrackHandoffPreservesAnnotationsWhenSnapshotOmitsTh
     ASSERT_TRUE(event->transcript.has_value());
     EXPECT_EQ(event->transcript->text, "stop");
 }
+
+
+TEST(AcousticEventAssembler, RejectedCrossSourceHandoffRetainsSpeechAnnotations) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    auto first = trackAt(10U, 0, 10, 100U);
+    first.position = position(1.0, 0.0, 0.0);
+    assembler.updateFromTrack(id, first);
+
+    audition::AcousticEventPatch speech{};
+    speech.timestamp = ts(15);
+    audition::Transcript transcript{};
+    transcript.segment_id = audition::SpeechSegmentId{9U};
+    transcript.text = "original";
+    speech.transcript = transcript;
+    assembler.update(id, speech);
+
+    auto impostor = trackAt(20U, 10, 30, 200U);
+    impostor.position = position(20.0, 0.0, 0.0);
+    EXPECT_THROW(assembler.updateFromTrack(id, impostor), audition::Error);
+
+    const auto unchanged = assembler.find(id);
+    ASSERT_TRUE(unchanged.has_value());
+    EXPECT_EQ(unchanged->track_id, first.track_id);
+    EXPECT_EQ(unchanged->source_id, first.source_id);
+    EXPECT_EQ(unchanged->end_time.nanoseconds(), 15);
+    ASSERT_TRUE(unchanged->transcript.has_value());
+    EXPECT_EQ(unchanged->transcript->text, "original");
+    ASSERT_TRUE(unchanged->position.has_value());
+    EXPECT_DOUBLE_EQ(unchanged->position->mean_m.x, 1.0);
+
+    auto valid = trackAt(21U, 15, 40, 100U);
+    assembler.updateFromTrack(id, valid);
+    const auto recovered = assembler.finish(id, ts(45));
+    EXPECT_EQ(recovered.track_id, valid.track_id);
+    EXPECT_EQ(recovered.source_id, first.source_id);
+    ASSERT_TRUE(recovered.transcript.has_value());
+    EXPECT_EQ(recovered.transcript->text, "original");
+}
