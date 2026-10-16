@@ -118,3 +118,76 @@ or inferred from synthetic data.
 The ODAS backend remains geometry-neutral. The other model/real-recording
 tests (YAMNet, EfficientAT, speech, etc.) measure their own contracts and
 must not be interpreted as microphone-array DOA accuracy.
+
+## Importing an independently annotated arbitrary array
+
+The legacy `import_respeaker_recording.py` entrypoint remains compatible with
+six-channel captures. For a different array, use
+`tests/integration/import_spatial_recording.py`: the `--array` argument is
+**mandatory** and must contain independently measured channel indices and
+coordinates, for example:
+
+```json
+{
+  "microphones": [
+    {"channel": 0, "xyz_m": [-0.04, 0.00, 0.00]},
+    {"channel": 1, "xyz_m": [ 0.04, 0.00, 0.00]},
+    {"channel": 2, "xyz_m": [ 0.00,-0.04, 0.00]},
+    {"channel": 3, "xyz_m": [ 0.00, 0.04, 0.00]}
+  ]
+}
+```
+
+The annotation is a separate JSON file such as:
+
+```json
+{
+  "id": "clip_001",
+  "intervals": [
+    {"source_id": "speaker_1", "start_s": 0.5, "end_s": 2.0,
+     "azimuth_deg": 35.0}
+  ]
+}
+```
+
+Run:
+
+```sh
+python3 tests/integration/import_spatial_recording.py \
+  --wav /data/real_4ch_pcm16_16khz.wav \
+  --annotation /data/independently_measured_truth.json \
+  --array /data/measured_microphone_geometry.json \
+  --corpus /data/libaudition-spatial-corpus
+```
+
+The importer checks that all selected channels exist, refuses array-geometry
+changes within the same corpus, validates independent annotations, verifies the
+copied SHA-256, and stages the WAV and JSON before publication. It refuses
+duplicate recording IDs. It does **not** convert audio, guess position labels,
+or turn synthetic audio into purported hardware evidence. All imported WAVs
+must already be 16 kHz PCM16, have a positive number of complete 128-sample
+hops, and share the declared array geometry.
+
+### Public measured data candidate: LOCATA
+
+[LOCATA Challenge dataset](https://zenodo.org/records/3630471) has real
+multichannel audio from several arrays (NAO head, Eigenmike, DICIT, hearing
+aids) and independent OptiTrack source/array ground truth. The final
+development ZIP is roughly **6.2 GB**. Do not download the entire archive on
+every PR run. A practical integration uses a small, checksum-pinned subset
+from the official corpus that has been explicitly licensed for redistribution
+or is fetched from the original provider.
+
+LOCATA material is commonly sampled at 48 kHz, so preparation for the current
+16 kHz offline runner requires a separately documented anti-aliased
+resampling step. The local coordinate axes, synchronization, source-to-array
+transform, and reference angular convention must be reconciled with LOCATA's
+ground truth, rather than copying its reported angles as-is. Moving-array
+recordings require time-varying geometry and are **not** yet supported by this
+static-geometry runner; start with a static-array task.
+
+After a representative real subset is published at a stable URL with a pinned
+checksum, it can be retrieved once per CI run and scored via the existing
+`audio_real_respeaker_corpus` CTest registration. Until then, ordinary green CI
+validates the scoring logic and synthetic ODAS integration, **not** measured
+real-world localization accuracy.

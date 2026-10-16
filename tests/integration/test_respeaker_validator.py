@@ -199,6 +199,7 @@ def main():
 
     # Corpus importer: exact WAV bytes, checksum, manifest, duplicate rejection.
     import wave
+    import hashlib
     importer_source = Path(__file__).with_name("import_respeaker_recording.py")
     importer_spec = importlib.util.spec_from_file_location(
         "respeaker_importer", importer_source)
@@ -227,6 +228,101 @@ def main():
             pass
         else:
             raise AssertionError("Duplicate recording was accepted")
+    # Geometry-neutral import: no ReSpeaker layout, 4-channel example with
+    # externally measured coordinates. Never derive directions from audio.
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        four_channel = root / "four-channel.wav"
+        with wave.open(str(four_channel), "wb") as output:
+            output.setnchannels(4)
+            output.setsampwidth(2)
+            output.setframerate(16000)
+            output.writeframes(bytes(128 * 4 * 2 * 20))
+        array = {"microphones": [
+            {"channel": 0, "xyz_m": [-0.04, 0.0, 0.0]},
+            {"channel": 1, "xyz_m": [0.04, 0.0, 0.0]},
+            {"channel": 2, "xyz_m": [0.0, -0.04, 0.0]},
+            {"channel": 3, "xyz_m": [0.0, 0.04, 0.0]},
+        ]}
+        target = root / "generic-array"
+        annotation = root / "ground-truth.json"
+
+        def import_named(clip_id, geometry=array):
+            annotation.write_text(json.dumps({
+                "id": clip_id, "intervals": [
+                    {"source_id": "reference", "start_s": 0,
+                     "end_s": 0.08, "azimuth_deg": 30}]}))
+            importer.import_recording(
+                four_channel, annotation, target, geometry)
+
+        import_named("array_a")
+        import_named("array_b")
+        stored = json.loads((target / "corpus.json").read_text())
+        assert stored["array"] == array
+        assert [x["id"] for x in stored["recordings"]] == ["array_a", "array_b"]
+        assert len(module.validate_manifest(target / "corpus.json")) == 2
+        for rec in stored["recordings"]:
+            imported_audio = target / rec["wav"]
+            assert imported_audio.read_bytes() == four_channel.read_bytes()
+            assert hashlib.sha256(imported_audio.read_bytes()).hexdigest() == rec["sha256"]
+
+        # No geometry may be inferred from a four-channel waveform.
+        annotation.write_text(json.dumps({
+            "id": "wrong_implicit", "intervals": [
+                {"start_s": 0, "end_s": 0.08, "azimuth_deg": 0}]}))
+        for invalid_geometry in (
+            None,
+            {"microphones": [
+                {"channel": 0, "xyz_m": [0, 0, 0]},
+                {"channel": 5, "xyz_m": [1, 0, 0]}]},
+            {"microphones": [
+                {"channel": 0, "xyz_m": [0, 0, 0]},
+                {"channel": 0, "xyz_m": [1, 0, 0]}]},
+            {"microphones": [
+                {"channel": 0, "xyz_m": [-0.05, 0.0, 0.0]},
+                {"channel": 1, "xyz_m": [0.04, 0.0, 0.0]},
+                {"channel": 2, "xyz_m": [0.0, -0.04, 0.0]},
+                {"channel": 3, "xyz_m": [0.0, 0.04, 0.0]}]},
+
+            {"microphones": [
+                {"channel": 0, "xyz_m": [0, 0, 0]},
+                {"channel": 1, "xyz_m": [float("nan"), 0, 0]}]},
+        ):
+            before = (target / "corpus.json").read_bytes()
+            try:
+                importer.import_recording(
+                    four_channel, annotation, target, invalid_geometry)
+            except (ValueError, TypeError):
+                pass
+            else:
+                raise AssertionError("Invalid or inconsistent geometry accepted")
+            assert (target / "corpus.json").read_bytes() == before
+            assert not (target / "wrong_implicit.wav").exists()
+
+        # An already-imported ID must never overwrite a WAV or its manifest.
+        before = (target / "corpus.json").read_bytes()
+        try:
+            import_named("array_a")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Duplicate real recording ID accepted")
+        assert (target / "corpus.json").read_bytes() == before
+
+        # The WAV chunk header may advertise more PCM than actually exists.
+        truncated = root / "truncated.wav"
+        truncated.write_bytes(four_channel.read_bytes()[:-8])
+        annotation.write_text(json.dumps({
+            "id": "truncated", "intervals": [
+                {"start_s": 0, "end_s": 0.08, "azimuth_deg": 0}]}))
+        try:
+            importer.import_recording(truncated, annotation, target, array)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Truncated real WAV accepted")
+        assert not (target / "truncated.wav").exists()
+
     print("respeaker-validator-selftest=ok")
 
 
