@@ -7,6 +7,7 @@
 #include <fstream>
 #include <cmath>
 #include <limits>
+#include <utility>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -412,4 +413,99 @@ TEST_F(WavIoTest, StreamingWriterRejectsInvalidRateAndUnwritableOutput) {
         audition::io::StreamingPcm16WavWriter(
             file("missing-dir") / "bad.wav", 16000),
         std::runtime_error);
+}
+
+
+TEST_F(WavIoTest, RejectsOversizedDeclaredDataBeforeAllocatingSamples) {
+    const auto path = fixture("false-data-size.wav", 1, 16, 1, {0, 0});
+    // Only two data bytes exist; the untrusted WAV header advertises ~4 GiB.
+    // A regression must fail with a parse error, never by allocating that size.
+    for (std::streamoff offset = 40; offset != 44; ++offset) {
+        overwriteWavByte(path, offset, 0xffU);
+    }
+    try {
+        static_cast<void>(audition::io::loadWav(path));
+        FAIL() << "Truncated WAV data must be rejected";
+    } catch (const std::runtime_error& error) {
+        EXPECT_NE(std::string{error.what()}.find("Truncated WAV data chunk"),
+                  std::string::npos);
+    }
+}
+
+TEST_F(WavIoTest, DataSizeExactlyAtFileBoundaryIsAccepted) {
+    const auto path = fixture("exact-data-size.wav", 1, 16, 1,
+                              {0x00U, 0x40U, 0x00U, 0xc0U});
+    const auto wav = audition::io::loadWav(path);
+    ASSERT_EQ(wav.audio.samples().size(), 2U);
+    EXPECT_FLOAT_EQ(wav.audio.samples()[0], 0.5F);
+    EXPECT_FLOAT_EQ(wav.audio.samples()[1], -0.5F);
+}
+
+TEST_F(WavIoTest, RejectsIncompleteChunkIdAndLengthWithoutAllocating) {
+    for (const auto& [name, partial] :
+        {std::pair<const char*, std::vector<unsigned char>>{
+             "partial-chunk-id.wav", {'d', 'a'}},
+         {"partial-chunk-length.wav", {'d', 'a', 't', 'a', 1, 0}}}) {
+        SCOPED_TRACE(name);
+        const auto path = file(name);
+        std::vector<unsigned char> bytes{
+            'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V', 'E'};
+        bytes.insert(bytes.end(), partial.begin(), partial.end());
+        writeWavBytes(path, bytes);
+        EXPECT_THROW(static_cast<void>(audition::io::loadWav(path)),
+                     std::runtime_error);
+    }
+}
+
+TEST_F(WavIoTest, NormalizerRejectsIndividualCanonicalHeaderViolations) {
+    const auto valid = fixture("canonical.wav", 1, 16, 1, {0, 0});
+    const auto original = wavBytes(valid);
+    const auto bad = file("mutated.wav");
+    const auto output = file("mutated-normalized.wav");
+    struct Mutation { std::size_t offset; unsigned char value; };
+    // Exercise each independently validated canonical requirement, including
+    // RIFF/WAVE/fmt/data and both bytes of format, channels and bit depth.
+    const Mutation mutations[] = {
+        {0U, 'X'}, {8U, 'X'}, {12U, 'X'}, {36U, 'X'},
+        {20U, 3U}, {21U, 1U}, {22U, 2U}, {23U, 1U},
+        {34U, 8U}, {35U, 1U},
+    };
+    for (const auto& mutation : mutations) {
+        SCOPED_TRACE(mutation.offset);
+        auto bytes = original;
+        bytes[mutation.offset] = mutation.value;
+        writeWavBytes(bad, bytes);
+        EXPECT_THROW(static_cast<void>(
+            audition::io::normalizePcm16Wav(bad, output)), std::runtime_error);
+        EXPECT_FALSE(std::filesystem::exists(output));
+    }
+    EXPECT_EQ(wavBytes(valid), original);
+}
+
+TEST_F(WavIoTest, NormalizerUnwritableDestinationLeavesSourceUnchanged) {
+    const auto source = fixture("normalization-unchanged.wav", 1, 16, 1,
+                                {0, 0, 0x00U, 0x40U});
+    const auto before = wavBytes(source);
+    const auto output = file("missing-parent") / "result.wav";
+    EXPECT_THROW(static_cast<void>(
+        audition::io::normalizePcm16Wav(source, output)), std::runtime_error);
+    EXPECT_FALSE(std::filesystem::exists(output));
+    EXPECT_EQ(wavBytes(source), before);
+}
+
+TEST_F(WavIoTest, NormalizerRejectsHeaderShorterThanPcmPayloadOffset) {
+    const auto source = fixture("truncated-header-normalizer.wav", 1, 16, 1,
+                                {0, 0});
+    std::filesystem::resize_file(source, 43U);
+    EXPECT_THROW(static_cast<void>(
+        audition::io::normalizePcm16Wav(source, file("bad-output.wav"))),
+        std::runtime_error);
+    EXPECT_FALSE(std::filesystem::exists(file("bad-output.wav")));
+}
+
+TEST_F(WavIoTest, RejectsInfiniteFloat32Samples) {
+    const auto path = fixture("infinite-float.wav", 3, 32, 1,
+                              {0U, 0U, 0x80U, 0x7fU});
+    EXPECT_THROW(static_cast<void>(audition::io::loadWav(path)),
+                 std::runtime_error);
 }

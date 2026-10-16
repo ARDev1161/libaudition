@@ -178,6 +178,21 @@ LoadedWav loadWav(
                 std::ios::cur);
             have_fmt = true;
         } else if (chunk_id == "data") {
+            // Validate the declared chunk against the actual file before
+            // allocating. Otherwise a truncated 44-byte WAV can request
+            // almost 4 GiB of memory from an untrusted RIFF length.
+            const auto data_start = input.tellg();
+            if (data_start == std::streampos{-1}) {
+                throw std::runtime_error{"Cannot determine WAV data position"};
+            }
+            const auto available_bytes = std::filesystem::file_size(path);
+            const auto start_offset = static_cast<std::uintmax_t>(
+                static_cast<std::streamoff>(data_start));
+            if (start_offset > available_bytes ||
+                static_cast<std::uintmax_t>(chunk_size) >
+                    available_bytes - start_offset) {
+                throw std::runtime_error{"Truncated WAV data chunk"};
+            }
             data.resize(chunk_size);
             input.read(
                 reinterpret_cast<char*>(data.data()),
