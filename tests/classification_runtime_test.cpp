@@ -984,3 +984,148 @@ TEST(ProgressiveSourceClassificationRuntime, ForgetClearsAllCompletedStages) {
                   audition::SourceClassificationState::WaitingForAudio);
     }
 }
+
+
+namespace {
+bool waitForClassifiedWindows(
+    audition::SourceClassificationRuntime& runtime,
+    std::uint64_t source_id,
+    std::uint64_t count) {
+    for (int retry = 0; retry < 1000; ++retry) {
+        if (runtime.status(source_id).completed_windows >= count) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    return false;
+}
+}  // namespace
+
+TEST(SourceClassificationRuntime, CapacityEvictionPurgesUndeliveredCompletedResults) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U, 1U};
+    const float audio[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(101U, audio, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 101U, 1U));
+
+    // 102 arrives while 101 has an unread completed event. Capacity eviction
+    // is a lifecycle boundary; it must not leak 101 into takeCompleted().
+    runtime.push(102U, audio, 1U);
+    EXPECT_EQ(runtime.status(101U).state,
+              audition::SourceClassificationState::WaitingForAudio);
+    EXPECT_EQ(runtime.status(102U).received_samples, 1U);
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+}
+
+TEST(SourceClassificationRuntime, CapacityEvictionRetainsUnrelatedCompletion) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U, 2U};
+    const float audio[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(201U, audio, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 201U, 1U));
+    runtime.push(202U, audio, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 202U, 1U));
+
+    runtime.push(203U, audio, 1U);  // LRU: 201, not 202.
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].source_id, 202U);
+    EXPECT_EQ(events[0].start_sample, 0U);
+    EXPECT_EQ(events[0].end_sample, 4U);
+    EXPECT_EQ(runtime.status(201U).state,
+              audition::SourceClassificationState::WaitingForAudio);
+}
+
+TEST(SourceClassificationRuntime, EvictedAndReusedSourceIdGetsFreshGeneration) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U, 1U};
+    const float audio[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(301U, audio, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 301U, 1U));
+    const auto first = runtime.takeCompleted();
+    ASSERT_EQ(first.size(), 1U);
+    const auto prior_generation = first[0].generation;
+
+    runtime.push(302U, audio, 1U);
+    runtime.push(301U, audio, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 301U, 1U));
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].source_id, 301U);
+    EXPECT_NE(events[0].generation, prior_generation);
+    EXPECT_EQ(events[0].start_sample, 0U);
+    EXPECT_EQ(events[0].end_sample, 4U);
+    EXPECT_EQ(runtime.status(301U).received_samples, 4U);
+}
+
+TEST(SourceClassificationRuntime, InflightEvictionCannotPublishRetiredSource) {
+    std::atomic<bool> started{false};
+    std::atomic<bool> release{false};
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<GatedWindowClassifier>(started, release),
+        16000U, 4U, 1U};
+    const float first[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    const float second[] = {0.5F, 0.6F, 0.7F, 0.8F};
+    runtime.push(401U, first, 4U);
+    for (int retry = 0; retry < 1000 && !started.load(); ++retry)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    // Avoid deadlocking the worker on a failed test.
+    const bool began = started.load();
+    runtime.push(402U, second, 4U);
+    release.store(true);
+    ASSERT_TRUE(began);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 402U, 1U));
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].source_id, 402U);
+    EXPECT_EQ(events[0].start_sample, 0U);
+    EXPECT_EQ(events[0].end_sample, 4U);
+    EXPECT_EQ(runtime.status(401U).state,
+              audition::SourceClassificationState::WaitingForAudio);
+}
+
+TEST(SourceClassificationRuntime, EvictingPendingSourcePreservesOtherJobs) {
+    std::atomic<bool> started{false};
+    std::atomic<bool> release{false};
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<GatedWindowClassifier>(started, release),
+        16000U, 4U, 2U};
+    const float audio[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(501U, audio, 4U);
+    for (int retry = 0; retry < 1000 && !started.load(); ++retry)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    const bool began = started.load();
+    runtime.push(502U, audio, 4U);  // Queued while 501 is in flight.
+    EXPECT_EQ(runtime.status(502U).state,
+              audition::SourceClassificationState::Queued);
+    runtime.push(501U, audio, 1U);  // Make 502 the LRU source.
+    runtime.push(503U, audio, 4U);  // Evict queued 502.
+    release.store(true);
+    ASSERT_TRUE(began);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 501U, 1U));
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 503U, 1U));
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 2U);
+    EXPECT_EQ(events[0].source_id, 501U);
+    EXPECT_EQ(events[1].source_id, 503U);
+    EXPECT_EQ(runtime.status(502U).state,
+              audition::SourceClassificationState::WaitingForAudio);
+}
+
+TEST(SourceClassificationRuntime, CompletedMailboxDropsOldestAtCapacity) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U, 1U};
+    const float audio[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    for (std::uint64_t window = 1U; window <= 6U; ++window) {
+        runtime.push(601U, audio, 4U);
+        ASSERT_TRUE(waitForClassifiedWindows(runtime, 601U, window));
+    }
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 4U);
+    for (std::size_t i = 0U; i < events.size(); ++i) {
+        EXPECT_EQ(events[i].source_id, 601U);
+        EXPECT_EQ(events[i].start_sample,
+                  static_cast<std::uint64_t>((i + 2U) * 4U));
+        EXPECT_EQ(events[i].end_sample,
+                  static_cast<std::uint64_t>((i + 3U) * 4U));
+    }
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+}

@@ -57,6 +57,15 @@ void SourceClassificationRuntime::push(
                     return job.source_id == evicted_id &&
                            job.generation == evicted_generation;
                 }), pending_.end());
+            // Eviction ends the source epoch, just like forget(). A delayed
+            // GUI/ROS consumer must not receive completed predictions from
+            // an epoch that the runtime has already retired.
+            completed_.erase(std::remove_if(completed_.begin(), completed_.end(),
+                [evicted_id, evicted_generation](
+                    const CompletedSourceClassification& event) {
+                    return event.source_id == evicted_id &&
+                           event.generation == evicted_generation;
+                }), completed_.end());
             buffers_.erase(victim);
         }
         Buffer fresh{};
