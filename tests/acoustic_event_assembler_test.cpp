@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -835,4 +836,221 @@ TEST(AcousticEventAssembler, ActiveEventsReturnsValueSnapshotsNotLiveReferences)
     EXPECT_EQ(snapshot.size(), 2U);
     ASSERT_EQ(assembler.activeEvents().size(), 1U);
     EXPECT_EQ(assembler.activeEvents().front().event_id, second);
+}
+
+
+TEST(AcousticEventAssembler, RejectsInvalidPatchTrackWithoutAdvancingEvent) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(10));
+    audition::AcousticEventPatch bad{};
+    bad.timestamp = ts(20);
+    bad.track_id = audition::SpatialTrackId{0U};
+    bad.source_id = audition::AcousticSourceId{5U};
+    EXPECT_THROW(assembler.update(id, bad), audition::Error);
+    const auto current = assembler.find(id);
+    ASSERT_TRUE(current.has_value());
+    EXPECT_EQ(current->end_time.nanoseconds(), 10);
+    EXPECT_FALSE(current->track_id.has_value());
+    EXPECT_FALSE(current->source_id.has_value());
+}
+
+TEST(AcousticEventAssembler, RejectsInvalidPatchSourceWithoutAdvancingEvent) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(10));
+    audition::AcousticEventPatch bad{};
+    bad.timestamp = ts(20);
+    bad.track_id = audition::SpatialTrackId{1U};
+    bad.source_id = audition::AcousticSourceId{0U};
+    EXPECT_THROW(assembler.update(id, bad), audition::Error);
+    const auto current = assembler.find(id);
+    ASSERT_TRUE(current.has_value());
+    EXPECT_EQ(current->end_time.nanoseconds(), 10);
+    EXPECT_FALSE(current->track_id.has_value());
+}
+
+TEST(AcousticEventAssembler, RejectsInvalidTranscriptBeforeUpdatingClassification) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch bad{};
+    bad.timestamp = ts(10);
+    audition::Transcript transcript{};
+    transcript.text = "unattributed";
+    bad.transcript = transcript;
+    audition::ClassificationResult classes{};
+    classes.classes.push_back({"Speech", audition::Probability::one()});
+    bad.classification = classes;
+    EXPECT_THROW(assembler.update(id, bad), audition::Error);
+    const auto current = assembler.find(id);
+    ASSERT_TRUE(current.has_value());
+    EXPECT_FALSE(current->classification.has_value());
+    EXPECT_FALSE(current->transcript.has_value());
+    EXPECT_EQ(current->end_time.nanoseconds(), 0);
+}
+
+TEST(AcousticEventAssembler, RejectsInvalidSpeakerBeforeUpdatingTranscript) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch bad{};
+    bad.timestamp = ts(10);
+    audition::SpeakerIdentity speaker{};
+    bad.speaker = speaker;
+    audition::Transcript transcript{};
+    transcript.segment_id = audition::SpeechSegmentId{1U};
+    transcript.text = "hello";
+    bad.transcript = transcript;
+    EXPECT_THROW(assembler.update(id, bad), audition::Error);
+    const auto current = assembler.find(id);
+    ASSERT_TRUE(current.has_value());
+    EXPECT_FALSE(current->transcript.has_value());
+    EXPECT_FALSE(current->speaker.has_value());
+}
+
+TEST(AcousticEventAssembler, RejectsInvalidRangeVarianceAndNonfiniteMean) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch patch{};
+    patch.timestamp = ts(10);
+    for (const auto [mean, variance] :
+         {std::pair<double, double>{1.0, -1.0},
+          {std::numeric_limits<double>::infinity(), 1.0},
+          {1.0, std::numeric_limits<double>::quiet_NaN()}}) {
+        patch.range = audition::RangeEstimate{
+            {mean, variance}, audition::Probability::one(),
+            audition::RangeEstimate::Method::LevelPrior};
+        EXPECT_THROW(assembler.update(id, patch), audition::Error);
+    }
+    EXPECT_FALSE(assembler.find(id)->range.has_value());
+    EXPECT_EQ(assembler.find(id)->end_time.nanoseconds(), 0);
+}
+
+TEST(AcousticEventAssembler, DirectionWithoutVarianceIsAccepted) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch patch{};
+    patch.timestamp = ts(1);
+    patch.direction = audition::DirectionEstimate{};
+    patch.direction->direction =
+        audition::Direction3D::fromVector({0.0, 1.0, 0.0});
+    EXPECT_NO_THROW(assembler.update(id, patch));
+    const auto result = assembler.find(id);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->direction.has_value());
+    EXPECT_FALSE(result->direction->angular_variance_rad2.has_value());
+}
+
+TEST(AcousticEventAssembler, ExistingTrackCanGainPersistentSourceLater) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch first{};
+    first.timestamp = ts(10);
+    first.track_id = audition::SpatialTrackId{11U};
+    assembler.update(id, first);
+    audition::AcousticEventPatch second{};
+    second.timestamp = ts(20);
+    second.track_id = first.track_id;
+    second.source_id = audition::AcousticSourceId{77U};
+    EXPECT_NO_THROW(assembler.update(id, second));
+    const auto snapshot = assembler.find(id);
+    ASSERT_TRUE(snapshot.has_value());
+    EXPECT_EQ(snapshot->track_id, first.track_id);
+    EXPECT_EQ(snapshot->source_id, second.source_id);
+}
+
+TEST(AcousticEventAssembler, TrackSwitchWithImplicitSourceIsRejected) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch first{};
+    first.timestamp = ts(10);
+    first.track_id = audition::SpatialTrackId{1U};
+    first.source_id = audition::AcousticSourceId{77U};
+    assembler.update(id, first);
+    audition::AcousticEventPatch handoff{};
+    handoff.timestamp = ts(20);
+    handoff.track_id = audition::SpatialTrackId{2U};
+    // Even an existing persistent ID is insufficient: the update must affirm it.
+    EXPECT_THROW(assembler.update(id, handoff), audition::Error);
+    EXPECT_EQ(assembler.find(id)->track_id, first.track_id);
+    EXPECT_EQ(assembler.find(id)->source_id, first.source_id);
+    EXPECT_EQ(assembler.find(id)->end_time.nanoseconds(), 10);
+}
+
+TEST(AcousticEventAssembler, ExplicitSourceAuthorizesSameTimestampHandoff) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch first{};
+    first.timestamp = ts(10);
+    first.track_id = audition::SpatialTrackId{1U};
+    first.source_id = audition::AcousticSourceId{77U};
+    assembler.update(id, first);
+    audition::AcousticEventPatch handoff{};
+    handoff.timestamp = ts(10);
+    handoff.track_id = audition::SpatialTrackId{2U};
+    handoff.source_id = first.source_id;
+    EXPECT_NO_THROW(assembler.update(id, handoff));
+    const auto snapshot = assembler.find(id);
+    ASSERT_TRUE(snapshot.has_value());
+    EXPECT_EQ(snapshot->track_id, handoff.track_id);
+    EXPECT_EQ(snapshot->source_id, first.source_id);
+    EXPECT_EQ(snapshot->end_time.nanoseconds(), 10);
+}
+
+TEST(AcousticEventAssembler, IndependentSpeechAndVoicePatchesAccumulate) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch speech{};
+    speech.timestamp = ts(10);
+    audition::Transcript transcript{};
+    transcript.segment_id = audition::SpeechSegmentId{33U};
+    transcript.text = "stop";
+    speech.transcript = transcript;
+    assembler.update(id, speech);
+
+    audition::AcousticEventPatch voice{};
+    voice.timestamp = ts(20);
+    voice.voice_traits = audition::VoiceTraits{};
+    voice.voice_state = audition::VoiceState{};
+    voice.authenticity = audition::AuthenticityResult{};
+    assembler.update(id, voice);
+    const auto snapshot = assembler.find(id);
+    ASSERT_TRUE(snapshot.has_value());
+    ASSERT_TRUE(snapshot->transcript.has_value());
+    EXPECT_EQ(snapshot->transcript->text, "stop");
+    EXPECT_TRUE(snapshot->voice_traits.has_value());
+    EXPECT_TRUE(snapshot->voice_state.has_value());
+    EXPECT_TRUE(snapshot->authenticity.has_value());
+}
+
+TEST(AcousticEventAssembler, PatchFromTrackDoesNotIntroduceSemanticAnnotations) {
+    auto track = trackAt(14U, 5, 10, 80U);
+    track.direction.direction =
+        audition::Direction3D::fromVector({0.0, 0.0, 1.0});
+    track.fingerprint = audition::SourceFingerprint{};
+    const auto patch = audition::AcousticEventAssembler::patchFromTrack(track);
+    EXPECT_EQ(patch.timestamp.nanoseconds(), 10);
+    EXPECT_EQ(patch.track_id, track.track_id);
+    EXPECT_EQ(patch.source_id, track.source_id);
+    EXPECT_FALSE(patch.transcript.has_value());
+    EXPECT_FALSE(patch.speaker.has_value());
+    EXPECT_FALSE(patch.classification.has_value());
+    EXPECT_FALSE(patch.voice_traits.has_value());
+    EXPECT_FALSE(patch.voice_state.has_value());
+}
+
+TEST(AcousticEventAssembler, EmptyAnnotationMayAdvanceTimeButNotClearGeometry) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch first{};
+    first.timestamp = ts(10);
+    first.position = position(1.0, 2.0, 3.0);
+    first.source_id = audition::AcousticSourceId{91U};
+    assembler.update(id, first);
+    audition::AcousticEventPatch empty{};
+    empty.timestamp = ts(20);
+    assembler.update(id, empty);
+    const auto current = assembler.find(id);
+    ASSERT_TRUE(current.has_value());
+    EXPECT_EQ(current->end_time.nanoseconds(), 20);
+    ASSERT_TRUE(current->position.has_value());
+    EXPECT_DOUBLE_EQ(current->position->mean_m.x, 1.0);
+    EXPECT_EQ(current->source_id, first.source_id);
 }
