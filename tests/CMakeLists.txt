@@ -879,6 +879,14 @@ add_test(NAME algorithm_coverage_audit_selftest
 set_tests_properties(algorithm_coverage_audit_selftest PROPERTIES
     LABELS "coverage-audit;ci-contract" TIMEOUT 60)
 
+# The branch audit consumes real gcovr execution data; independently test
+# its fail-closed parsing and ranking on small synthetic reports.
+add_test(NAME branch_coverage_audit_selftest
+    COMMAND ${Python3_EXECUTABLE}
+        "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_gcovr_branch_audit.py")
+set_tests_properties(branch_coverage_audit_selftest PROPERTIES
+    LABELS "coverage-audit;ci-contract" TIMEOUT 30)
+
 add_test(NAME algorithm_coverage_contract
     COMMAND ${Python3_EXECUTABLE}
         "${CMAKE_CURRENT_SOURCE_DIR}/integration/audit_ctest_algorithms.py"

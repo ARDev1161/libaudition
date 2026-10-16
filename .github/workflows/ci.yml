@@ -61,13 +61,24 @@ jobs:
             --txt build-coverage/reports/coverage.txt \
             --json-summary build-coverage/reports/coverage-summary.json \
             --xml build-coverage/reports/cobertura.xml --xml-pretty \
-            --html-details build-coverage/reports/coverage.html
+            --html-details build-coverage/reports/coverage.html \
+            --json build-coverage/reports/coverage.json
           cat build-coverage/reports/coverage.txt
           "$RUNNER_TEMP/gcovr/bin/gcovr" build-coverage \
             --root . --filter 'src/' --exclude-unreachable-branches \
             --gcov-ignore-parse-errors negative_hits.warn_once_per_file \
             --txt-metric branch --txt build-coverage/reports/branches.txt
           cat build-coverage/reports/branches.txt
+      - name: Audit uncovered C++ branches by source location
+        run: |
+          python3 tools/audit_gcovr_branches.py \
+            --report build-coverage/reports/coverage.json \
+            --source . \
+            --json-output build-coverage/reports/branch-audit.json \
+            --markdown-output build-coverage/reports/branch-audit.md \
+            --top 30
+          cat build-coverage/reports/branch-audit.md
+          cat build-coverage/reports/branch-audit.md >> "$GITHUB_STEP_SUMMARY"
       - name: Enforce and publish C++ core coverage thresholds
         run: |
           python3 - <<'PY'

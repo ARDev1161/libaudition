@@ -910,7 +910,7 @@ TEST(AcousticEventAssembler, RejectsInvalidRangeVarianceAndNonfiniteMean) {
     const auto id = assembler.begin(ts(0));
     audition::AcousticEventPatch patch{};
     patch.timestamp = ts(10);
-    for (const auto [mean, variance] :
+    for (const auto& [mean, variance] :
          {std::pair<double, double>{1.0, -1.0},
           {std::numeric_limits<double>::infinity(), 1.0},
           {1.0, std::numeric_limits<double>::quiet_NaN()}}) {

@@ -712,7 +712,7 @@ TEST(SourceIdentityResolver, InvalidRangeMomentsDoNotCreateOrChangeIdentity) {
     auto bad = observation(1U, 0);
     const double nan = std::numeric_limits<double>::quiet_NaN();
     const double inf = std::numeric_limits<double>::infinity();
-    for (const auto [mean, variance] :
+    for (const auto& [mean, variance] :
          {std::pair<double, double>{-1.0, 1.0}, {1.0, -1.0},
           {nan, 1.0}, {1.0, inf}}) {
         bad.range = audition::RangeEstimate{
