@@ -759,3 +759,228 @@ TEST(SourceClassificationRuntime, CompletedWindowsAreDeliveredWithoutGuiPolling)
     EXPECT_TRUE(runtime.takeCompleted().empty());
     runtime.forget(23U);
 }
+
+
+TEST(SourceClassificationRuntime, RejectsInvalidConstructorBounds) {
+    EXPECT_THROW((audition::SourceClassificationRuntime{
+        std::unique_ptr<audition::IAudioClassifier>{}, 16000U, 4U}),
+        std::invalid_argument);
+    EXPECT_THROW((audition::SourceClassificationRuntime{
+        std::make_unique<ConstantClassifier>(), 0U, 4U}),
+        std::invalid_argument);
+    EXPECT_THROW((audition::SourceClassificationRuntime{
+        std::make_unique<ConstantClassifier>(), 16000U, 0U}),
+        std::invalid_argument);
+    EXPECT_THROW((audition::SourceClassificationRuntime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U, 0U}),
+        std::invalid_argument);
+    EXPECT_THROW((audition::SourceClassificationRuntime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U, 2U, 5U}),
+        std::invalid_argument);
+}
+
+TEST(SourceClassificationRuntime, EmptyInputDoesNotCreatePhantomSource) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U};
+    const float samples[1] = {0.5F};
+    runtime.push(77U, nullptr, 4U);
+    runtime.push(77U, samples, 0U);
+    const auto untouched = runtime.status(77U);
+    EXPECT_EQ(untouched.state, audition::SourceClassificationState::WaitingForAudio);
+    EXPECT_EQ(untouched.required_samples, 4U);
+    EXPECT_EQ(untouched.received_samples, 0U);
+    EXPECT_FALSE(untouched.result.has_value());
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+    runtime.forget(77U);
+    runtime.forget(77U);
+}
+
+TEST(SourceClassificationRuntime, PartialChunksBecomeOneWindowAtExpectedBoundary) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U, 2U, 4U};
+    const float first[] = {0.1F, 0.2F, 0.3F};
+    runtime.push(51U, first, 3U);
+    auto state = runtime.status(51U);
+    EXPECT_EQ(state.state, audition::SourceClassificationState::Collecting);
+    EXPECT_EQ(state.collected_samples, 3U);
+    EXPECT_EQ(state.received_samples, 3U);
+    EXPECT_EQ(state.completed_windows, 0U);
+
+    const float last[] = {0.4F};
+    runtime.push(51U, last, 1U);
+    bool completed = false;
+    for (int i = 0; i < 1000; ++i) {
+        if (runtime.status(51U).completed_windows == 1U) {
+            completed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(completed);
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].source_id, 51U);
+    EXPECT_EQ(events[0].start_sample, 0U);
+    EXPECT_EQ(events[0].end_sample, 4U);
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+}
+
+TEST(SourceClassificationRuntime, ForgetPurgesCompletedEventsAndRestartsSampleEpoch) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U};
+    const float samples[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(62U, samples, 4U);
+    bool completed = false;
+    for (int i = 0; i < 1000; ++i) {
+        if (runtime.status(62U).completed_windows == 1U) {
+            completed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(completed);
+    runtime.forget(62U);
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+    EXPECT_EQ(runtime.status(62U).state,
+              audition::SourceClassificationState::WaitingForAudio);
+
+    runtime.push(62U, samples, 4U);
+    bool reused = false;
+    for (int i = 0; i < 1000; ++i) {
+        if (runtime.status(62U).completed_windows == 1U) {
+            reused = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(reused);
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].source_id, 62U);
+    EXPECT_EQ(events[0].start_sample, 0U);
+    EXPECT_EQ(events[0].end_sample, 4U);
+}
+
+TEST(ProgressiveSourceClassificationRuntime, RejectsEmptyStagesAndInvalidCapacity) {
+    using Stage = audition::ProgressiveClassificationStage;
+    EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
+        16000U, std::vector<Stage>{}}), std::invalid_argument);
+    std::vector<Stage> no_rate;
+    no_rate.push_back({"test", std::make_unique<ConstantClassifier>(), 4U, 4U});
+    EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
+        0U, std::move(no_rate)}), std::invalid_argument);
+    std::vector<Stage> no_capacity;
+    no_capacity.push_back({"test", std::make_unique<ConstantClassifier>(), 4U, 4U});
+    EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
+        16000U, std::move(no_capacity), 0U}), std::invalid_argument);
+}
+
+TEST(ProgressiveSourceClassificationRuntime, RejectsUnnamedNullAndZeroWindowStages) {
+    using Stage = audition::ProgressiveClassificationStage;
+    std::vector<Stage> unnamed;
+    unnamed.push_back({"", std::make_unique<ConstantClassifier>(), 4U, 4U});
+    EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
+        16000U, std::move(unnamed)}), std::invalid_argument);
+
+    std::vector<Stage> no_classifier;
+    no_classifier.push_back({"missing", nullptr, 4U, 4U});
+    EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
+        16000U, std::move(no_classifier)}), std::invalid_argument);
+
+    std::vector<Stage> zero_window;
+    zero_window.push_back({"zero", std::make_unique<ConstantClassifier>(), 0U, 0U});
+    EXPECT_THROW((audition::ProgressiveSourceClassificationRuntime{
+        16000U, std::move(zero_window)}), std::invalid_argument);
+}
+
+TEST(ProgressiveSourceClassificationRuntime, EmptyPushLeavesEveryStageWaiting) {
+    std::vector<audition::ProgressiveClassificationStage> stages;
+    stages.push_back({"quick", std::make_unique<ConstantClassifier>(), 4U, 4U});
+    stages.push_back({"long", std::make_unique<ConstantClassifier>(), 8U, 8U});
+    audition::ProgressiveSourceClassificationRuntime runtime{
+        16000U, std::move(stages)};
+    const float placeholder = 0.5F;
+    runtime.push(90U, nullptr, 8U);
+    runtime.push(90U, &placeholder, 0U);
+    const auto state = runtime.status(90U);
+    EXPECT_FALSE(state.result.has_value());
+    EXPECT_FALSE(state.selected_stage.has_value());
+    ASSERT_EQ(state.stages.size(), 2U);
+    for (const auto& stage : state.stages) {
+        EXPECT_EQ(stage.status.state,
+                  audition::SourceClassificationState::WaitingForAudio);
+        EXPECT_EQ(stage.status.received_samples, 0U);
+    }
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+}
+
+TEST(ProgressiveSourceClassificationRuntime, CompletedEventsRetainStageProvenance) {
+    std::vector<audition::ProgressiveClassificationStage> stages;
+    stages.push_back({"quick", std::make_unique<WindowNamedClassifier>("q", 4U),
+                      4U, 4U});
+    stages.push_back({"refined", std::make_unique<WindowNamedClassifier>("r", 8U),
+                      8U, 8U});
+    audition::ProgressiveSourceClassificationRuntime runtime{
+        16000U, std::move(stages)};
+    const float audio[4] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(92U, audio, 4U);
+    bool quick_done = false;
+    for (int i = 0; i < 1000; ++i) {
+        if (runtime.status(92U).stages[0].status.completed_windows == 1U) {
+            quick_done = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(quick_done);
+    runtime.push(92U, audio, 4U);
+    bool all_done = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto s = runtime.status(92U);
+        if (s.stages[0].status.completed_windows == 2U &&
+            s.stages[1].status.completed_windows == 1U) {
+            all_done = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(all_done);
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 3U);
+    EXPECT_EQ(events[0].stage, "quick");
+    EXPECT_EQ(events[1].stage, "quick");
+    EXPECT_EQ(events[2].stage, "refined");
+    EXPECT_EQ(events[0].window.end_sample, 4U);
+    EXPECT_EQ(events[1].window.end_sample, 8U);
+    EXPECT_EQ(events[2].window.end_sample, 8U);
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+}
+
+TEST(ProgressiveSourceClassificationRuntime, ForgetClearsAllCompletedStages) {
+    std::vector<audition::ProgressiveClassificationStage> stages;
+    stages.push_back({"quick", std::make_unique<ConstantClassifier>(), 4U, 4U});
+    stages.push_back({"refined", std::make_unique<ConstantClassifier>(), 4U, 4U});
+    audition::ProgressiveSourceClassificationRuntime runtime{
+        16000U, std::move(stages)};
+    const float audio[4] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(95U, audio, 4U);
+    bool all_done = false;
+    for (int i = 0; i < 1000; ++i) {
+        const auto state = runtime.status(95U);
+        if (state.stages[0].status.completed_windows == 1U &&
+            state.stages[1].status.completed_windows == 1U) {
+            all_done = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(all_done);
+    runtime.forget(95U);
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+    const auto state = runtime.status(95U);
+    EXPECT_FALSE(state.selected_stage.has_value());
+    for (const auto& stage : state.stages) {
+        EXPECT_EQ(stage.status.state,
+                  audition::SourceClassificationState::WaitingForAudio);
+    }
+}
