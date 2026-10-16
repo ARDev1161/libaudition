@@ -102,6 +102,101 @@ def main():
     result = module.evaluate(interrupted, source, 10)[0]
     assert result["adjacent_hop_id_switches"] == 0
     assert result["id_changes_after_gap"] == 1
+    # Ground-truth quantitative acceptance covers overlapping sources and
+    # otherwise silent hops, not just median DOA of whichever tracks exist.
+    from types import SimpleNamespace
+    def gates(**overrides):
+        defaults = dict(max_median_error_deg=10.0, max_p90_error_deg=20.0,
+                        min_track_coverage=1.0, max_adjacent_id_switches=0,
+                        min_simultaneous_track_coverage=1.0,
+                        max_silent_false_positive_fraction=0.0)
+        defaults.update(overrides)
+        return SimpleNamespace(**defaults)
+
+    two_sources = [
+        {"source_id": "a", "start_s": 0.0, "end_s": 0.048, "azimuth_deg": 0},
+        {"source_id": "b", "start_s": 0.016, "end_s": 0.048, "azimuth_deg": 90},
+    ]
+    def trace(hop, ident, x=1.0, y=0.0):
+        return {"hop": str(hop), "kind": "track", "id": str(ident),
+                "x": str(x), "y": str(y), "z": "0"}
+    clean = ([trace(i, 10) for i in range(6)] +
+             [trace(i, 20, 0, 1) for i in range(2, 6)])
+    metrics, quality = module.evaluate(clean, two_sources, 8, 30, with_summary=True)
+    assert len(metrics) == 2
+    assert all(m["track_coverage"] == 1 for m in metrics)
+    assert all(m["p90_track_error_deg"] == 0 for m in metrics)
+    assert quality["active_simultaneous_hops"] == 4
+    assert quality["simultaneous_track_coverage"] == 1
+    assert quality["silent_hops"] == 2
+    assert quality["silent_false_positive_hop_fraction"] == 0
+    module.enforce_thresholds(metrics, quality, gates())
+
+    def fails(segments, summary, options):
+        try:
+            module.enforce_thresholds(segments, summary, options)
+        except ValueError:
+            return
+        raise AssertionError("Invalid quality result unexpectedly passed acceptance")
+
+    noisy = clean + [trace(6, 99)]
+    metrics, quality = module.evaluate(noisy, two_sources, 8, 30, with_summary=True)
+    assert quality["silent_hops_with_tracks"] == 1
+    assert quality["silent_false_positive_hop_fraction"] == 0.5
+    fails(metrics, quality, gates())
+    module.enforce_thresholds(
+        metrics, quality, gates(max_silent_false_positive_fraction=0.5))
+
+    switched = [dict(row) for row in clean]
+    for row in switched:
+        if row["id"] == "10" and row["hop"] == "5":
+            row["id"] = "30"
+    metrics, quality = module.evaluate(switched, two_sources, 8, 30, with_summary=True)
+    assert quality["adjacent_hop_id_switches"] == 1
+    fails(metrics, quality, gates())
+    module.enforce_thresholds(metrics, quality, gates(max_adjacent_id_switches=1))
+
+    # A 60-degree outlier leaves the median at zero; P90 must catch it.
+    outlier = [dict(row) for row in clean]
+    outlier[0] = trace(0, 10, 0.5, 0.8660254037844386)
+    metrics, quality = module.evaluate(outlier, two_sources, 8, 180, with_summary=True)
+    assert metrics[0]["median_track_error_deg"] == 0
+    assert 59 < metrics[0]["p90_track_error_deg"] < 61
+    fails(metrics, quality, gates())
+    module.enforce_thresholds(metrics, quality, gates(max_p90_error_deg=65))
+
+    # Angle gates reject wrong-direction matches instead of counting a track
+    # as coverage merely because a track exists at that hop.
+    metrics, quality = module.evaluate(outlier, two_sources, 8, 30, with_summary=True)
+    assert metrics[0]["track_coverage"] == 5 / 6
+    fails(metrics, quality, gates())
+    module.enforce_thresholds(metrics, quality, gates(min_track_coverage=0.8))
+
+    # Missing applicable evidence must fail closed, not vacuously pass.
+    metrics, quality = module.evaluate(clean[:6], two_sources[:1], 6,
+                                       with_summary=True)
+    assert quality["simultaneous_track_coverage"] is None
+    assert quality["silent_false_positive_hop_fraction"] is None
+    fails(metrics, quality, gates(min_simultaneous_track_coverage=0.5))
+    fails(metrics, quality, gates(min_simultaneous_track_coverage=None))
+
+    for coords in [(0, 0, 0), (2, 0, 0), (float("nan"), 0, 0)]:
+        invalid_row = [trace(0, 1, coords[0], coords[1])]
+        invalid_row[0]["z"] = str(coords[2])
+        try:
+            module.evaluate(invalid_row, two_sources[:1], 8)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Non-unit/nonfinite trace direction accepted")
+
+    # One predicted source can satisfy only one of two ground-truth sources.
+    single = [trace(i, 10) for i in range(6)]
+    metrics, quality = module.evaluate(single, two_sources, 8, 30,
+                                       with_summary=True)
+    assert quality["simultaneous_track_coverage"] == 0
+    fails(metrics, quality, gates(min_track_coverage=0.0))
+
     # Corpus importer: exact WAV bytes, checksum, manifest, duplicate rejection.
     import wave
     importer_source = Path(__file__).with_name("import_respeaker_recording.py")

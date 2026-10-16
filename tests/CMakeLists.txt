@@ -190,23 +190,62 @@ if(TARGET audition::backend_odas)
     endforeach()
 endif()
 
-# Real microphone captures are opt-in: no recordings are downloaded or
-# represented as measured ground truth by synthetic CI fixtures.
+# Ground-truth microphone captures are opt-in. Never label synthesized audio
+# as measured hardware evidence; an explicit, independently annotated corpus
+# and calibrated quantitative acceptance limits are mandatory.
 set(LIBAUDITION_RESPEAKER_CORPUS_MANIFEST "" CACHE FILEPATH
-    "JSON manifest of independently annotated six-channel ReSpeaker recordings")
+    "Real spatial WAV corpus with independent directions and optional array geometry (legacy variable name)")
+set(LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG "" CACHE STRING
+    "Required measured median DOA error limit in degrees")
+set(LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE "" CACHE STRING
+    "Required measured per-source track coverage fraction")
+set(LIBAUDITION_REAL_CORPUS_MAX_P90_ERROR_DEG "" CACHE STRING
+    "Optional P90 DOA error limit in degrees")
+set(LIBAUDITION_REAL_CORPUS_MAX_ASSOCIATION_ERROR_DEG "" CACHE STRING
+    "Optional maximum angle accepted by matching (degrees)")
+set(LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES "" CACHE STRING
+    "Optional maximum adjacent-hop track ID switches per recording")
+set(LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE "" CACHE STRING
+    "Optional minimum fully associated simultaneous-source hop fraction")
+set(LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION "" CACHE STRING
+    "Optional maximum fraction of annotated silent hops with a track")
 if(TARGET audition::backend_odas AND LIBAUDITION_RESPEAKER_CORPUS_MANIFEST)
     if(NOT EXISTS "${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}")
-        message(FATAL_ERROR "ReSpeaker corpus manifest not found: ${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}")
+        message(FATAL_ERROR "Real spatial corpus manifest not found: ${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}")
     endif()
+    if("${LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG}" STREQUAL "" OR
+       "${LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE}" STREQUAL "")
+        message(FATAL_ERROR
+            "Real spatial corpus requires explicitly calibrated acceptance gates: "
+            "LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG and "
+            "LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE")
+    endif()
+    set(_real_spatial_gates
+        --max-median-error-deg "${LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG}"
+        --min-track-coverage "${LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE}")
+    foreach(_gate IN ITEMS
+            MAX_P90_ERROR_DEG
+            MAX_ASSOCIATION_ERROR_DEG
+            MAX_ADJACENT_ID_SWITCHES
+            MIN_SIMULTANEOUS_TRACK_COVERAGE
+            MAX_SILENT_FALSE_POSITIVE_FRACTION)
+        if(NOT "${LIBAUDITION_REAL_CORPUS_${_gate}}" STREQUAL "")
+            string(TOLOWER "${_gate}" _arg)
+            string(REPLACE "_" "-" _arg "${_arg}")
+            list(APPEND _real_spatial_gates
+                "--${_arg}" "${LIBAUDITION_REAL_CORPUS_${_gate}}")
+        endif()
+    endforeach()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME audio_real_respeaker_corpus COMMAND
         ${Python3_EXECUTABLE}
         "${CMAKE_CURRENT_SOURCE_DIR}/integration/validate_respeaker_corpus.py"
         --runner "$<TARGET_FILE:audition_offline_integration>"
         --manifest "${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}"
-        --results "${CMAKE_CURRENT_BINARY_DIR}/real_respeaker_results")
+        --results "${CMAKE_CURRENT_BINARY_DIR}/real_respeaker_results"
+        ${_real_spatial_gates})
     set_tests_properties(audio_real_respeaker_corpus PROPERTIES
-        LABELS "audio-integration;real-hardware-recording;odas"
+        LABELS "audio-integration;real-hardware-recording;odas;quality-gate"
         TIMEOUT 600)
 endif()
 
