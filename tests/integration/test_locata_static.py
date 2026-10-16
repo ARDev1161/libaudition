@@ -109,8 +109,16 @@ class LocataStaticConverterTests(unittest.TestCase):
         write_table(p, self.sample_rows(array=False))
         expected = take_static_poses(p, self.start, self.start + .064, "source")
         self.assertEqual(len(expected), 5)
-        with self.assertRaisesRegex(ValueError, "do not cover"):
+        # There are no pose observations anywhere near this time window.
+        # The converter must fail before interpreting a missing trajectory.
+        with self.assertRaisesRegex(ValueError, "Too few LOCATA poses"):
             take_static_poses(p, self.start + 20, self.start + 21, "source")
+
+        # Samples are available at the beginning of this long interval,
+        # but cannot cover its end. This must fail the separate temporal
+        # coverage check rather than pass because >=2 poses were found.
+        with self.assertRaisesRegex(ValueError, "do not cover"):
+            take_static_poses(p, self.start, self.start + 10, "source")
 
     def test_end_to_end_manifest_uses_measured_optitrack_direction(self):
         # Synthetic metadata/audio are used only to test the converter
