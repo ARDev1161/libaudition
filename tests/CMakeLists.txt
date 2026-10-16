@@ -55,6 +55,11 @@ add_test(NAME audio_respeaker_manifest_selftest COMMAND
     "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_respeaker_validator.py")
 set_tests_properties(audio_respeaker_manifest_selftest PROPERTIES
     LABELS "audio-integration;corpus-validation;python" TIMEOUT 30)
+add_test(NAME audio_locata_converter_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_locata_static.py")
+set_tests_properties(audio_locata_converter_selftest PROPERTIES
+    LABELS "audio-integration;locata;corpus-validation;python" TIMEOUT 30)
 # CI must never silently pass a missing CTest selector, or directly invoke
 # test executables / validation scripts outside CTest.
 add_test(NAME ci_ctest_entrypoints_selftest COMMAND

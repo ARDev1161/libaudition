@@ -197,6 +197,35 @@ def main():
     assert quality["simultaneous_track_coverage"] == 0
     fails(metrics, quality, gates(min_track_coverage=0.0))
 
+    # LOCATA ground truth is genuinely 3D: elevation must not disappear when
+    # a legacy horizontal azimuth-only trace is scored.
+    full_3d = sample()
+    full_3d["recordings"][0]["intervals"] = [
+        {"source_id": "high", "start_s": 0, "end_s": 0.08,
+         "direction_xyz": [0.6, 0.0, 0.8]}]
+    check_manifest(full_3d, True)
+    vertical = [{"hop": str(i), "kind": "track", "id": "19",
+                 "x": "0.6", "y": "0", "z": "0.8"} for i in range(10)]
+    elevated = module.evaluate(vertical, full_3d["recordings"][0]["intervals"],
+                               10, max_association_error_deg=20)[0]
+    assert elevated["track_coverage"] == 1
+    assert abs(elevated["median_track_error_deg"]) < 1e-5
+    horizontal = [{"hop": str(i), "kind": "track", "id": "19",
+                   "x": "1", "y": "0", "z": "0"} for i in range(10)]
+    misses = module.evaluate(horizontal, full_3d["recordings"][0]["intervals"],
+                             10, max_association_error_deg=20)[0]
+    assert misses["track_coverage"] == 0
+    for vector in ([0, 0, 0], [1, 1, 0], [float("nan"), 0, 1]):
+        invalid_3d = sample()
+        invalid_3d["recordings"][0]["intervals"] = [
+            {"start_s": 0, "end_s": 0.08, "direction_xyz": vector}]
+        check_manifest(invalid_3d, False)
+    conflicting_3d = sample()
+    conflicting_3d["recordings"][0]["intervals"] = [
+        {"start_s": 0, "end_s": 0.08,
+         "azimuth_deg": 0, "direction_xyz": [1, 0, 0]}]
+    check_manifest(conflicting_3d, False)
+
     # Corpus importer: exact WAV bytes, checksum, manifest, duplicate rejection.
     import wave
     import hashlib

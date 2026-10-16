@@ -191,3 +191,74 @@ checksum, it can be retrieved once per CI run and scored via the existing
 `audio_real_respeaker_corpus` CTest registration. Until then, ordinary green CI
 validates the scoring logic and synthetic ODAS integration, **not** measured
 real-world localization accuracy.
+
+## Static LOCATA development recordings: verified ground-truth extraction
+
+The optional converter `tests/integration/prepare_locata_static.py` derives
+**full 3D** source bearings from LOCATA's original OptiTrack positions and
+array orientation instead of entering an estimated azimuth by hand. The
+reference direction for a static source is
+
+```text
+source_local = transpose(rotation_array_local_to_world) *
+               (source_world - array_origin_world)
+direction_xyz = normalize(source_local)
+microphone_local = transpose(rotation_array_local_to_world) *
+                   (microphone_world - array_origin_world)
+```
+
+This follows the array-local transform implemented in the official LOCATA
+`cevers/sap_locata_io` `get_truth.m` code.
+
+The source inputs must be present in the extracted **development** data:
+
+- `audio_array_$array.wav`
+- `audio_array_timestamps_$array.txt`
+- `position_array_$array.txt`
+- `position_source_$source.txt`
+
+Use a **Task 1** single, static loudspeaker recording to begin with; do not
+use a Task 2 multi-speaker interval unless all active sources have independent
+annotations and the evaluation can account for them. The source label is the
+suffix used by the source-position filename. The start/end times are relative
+to the first array-audio timestamp and must be selected from independently
+measured voice-active periods (LOCATA provides separate VAD annotations).
+**Do not** derive these speech intervals or bearings from ODAS output.
+
+```sh
+python3 tests/integration/prepare_locata_static.py \
+  --locata-recording /data/locata/dev/task1/recording1/benchmark2 \
+  --array benchmark2 --source SOURCE_NAME_FROM_FILENAME \
+  --start-s 0.512 --end-s 2.048 \
+  --id locata_task1_recording1_clip1 \
+  --corpus /data/libaudition-spatial-corpus
+```
+
+`ffmpeg` must be installed on the machine preparing the corpus. The converter
+reads the original synchronized 48 kHz (or original rate) WAV, extracts the
+explicit short segment, converts to 16 kHz PCM16 without channel remixing,
+keeps a whole number of 128-frame hops, and passes the result to the existing
+checksum-verifying corpus importer. A clip with non-hop-aligned duration,
+truncated audio, missing geometry or timing, non-orthogonal rotation, or moving
+source/array is rejected. Time-varying arrays and per-frame trajectory scoring
+are outside the scope of this static converter; do not interpret a green
+self-test as validating moving-robot LOCATA tasks.
+
+The manifest includes source/array identity, original time interval, SHA-256
+of the prepared WAV, a combined SHA-256 of original LOCATA input files, and
+the declared coordinate transform. The original microphone geometry is
+not assumed to be ReSpeaker.
+
+The `audio_locata_converter_selftest` CTest test uses generated *metadata*
+and mocked audio extraction to test time alignment, rejection of moving poses,
+rotation transforms, 3D ground-truth correctness and end-to-end manifest
+creation. It makes **no claim of real-array acoustic accuracy**. The actual
+real-recording evaluation still requires a separately prepared corpus with
+calibrated gates.
+
+The final LOCATA release is available via
+https://zenodo.org/records/3630471 (ODC-By-1.0; cite Evers et al.).
+The development ZIP is about 6.2 GB, so users should prepare, checksum-pin
+and store a small selected subset separately instead of downloading the full
+archive in every PR-run. This tool does not bundle recordings or bypass their
+attribution requirements.

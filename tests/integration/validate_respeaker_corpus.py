@@ -33,9 +33,16 @@ def check(condition, message):
         raise ValueError(message)
 
 
-def angular_error(row, azimuth):
-    a = math.radians(azimuth)
-    cosine = float(row["x"]) * math.cos(a) + float(row["y"]) * math.sin(a)
+def angular_error(row, reference):
+    # Float references are legacy horizontal azimuths. Unit 3D vectors
+    # retain LOCATA elevation without silently projecting to the XY plane.
+    if isinstance(reference, (int, float)):
+        a = math.radians(reference)
+        vector = (math.cos(a), math.sin(a), 0.0)
+    else:
+        vector = reference
+    cosine = sum(float(row[axis]) * expected for axis, expected
+                 in zip(("x", "y", "z"), vector))
     return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
 
 
@@ -78,14 +85,25 @@ def validate_manifest(path):
             static = "azimuth_deg" in interval
             moving = ("azimuth_start_deg" in interval or
                       "azimuth_end_deg" in interval)
-            check(static != moving, "Specify static OR moving azimuth")
-            keys = (("azimuth_deg",) if static else
-                    ("azimuth_start_deg", "azimuth_end_deg"))
-            for key in keys:
-                azimuth = interval.get(key)
-                check(isinstance(azimuth, (int, float)) and
-                      not isinstance(azimuth, bool) and math.isfinite(azimuth) and
-                      -180 <= azimuth <= 180, "Invalid azimuth: " + key)
+            full_3d = "direction_xyz" in interval
+            check(sum((static, moving, full_3d)) == 1,
+                  "Specify static azimuth, moving azimuth OR unit 3D direction")
+            if full_3d:
+                vector = interval["direction_xyz"]
+                check(isinstance(vector, list) and len(vector) == 3 and
+                      all(isinstance(v, (int, float)) and
+                          not isinstance(v, bool) and math.isfinite(v)
+                          for v in vector) and
+                      abs(sum(v * v for v in vector) - 1.0) <= 1e-4,
+                      "Invalid 3D unit direction")
+            else:
+                keys = (("azimuth_deg",) if static else
+                        ("azimuth_start_deg", "azimuth_end_deg"))
+                for key in keys:
+                    azimuth = interval.get(key)
+                    check(isinstance(azimuth, (int, float)) and
+                          not isinstance(azimuth, bool) and math.isfinite(azimuth) and
+                          -180 <= azimuth <= 180, "Invalid azimuth: " + key)
             check(math.floor(end * FS / HOP) > math.ceil(start * FS / HOP),
                   "Annotation must include at least one full hop")
     array = document.get("array")
@@ -109,7 +127,17 @@ def validate_manifest(path):
     return recordings
 
 
+def reference_direction(interval, time_s):
+    if "direction_xyz" in interval:
+        return tuple(interval["direction_xyz"])
+    az = math.radians(reference_azimuth(interval, time_s))
+    return (math.cos(az), math.sin(az), 0.0)
+
+
 def reference_azimuth(interval, time_s):
+    if "direction_xyz" in interval:
+        x, y, _ = interval["direction_xyz"]
+        return math.degrees(math.atan2(y, x))
     if "azimuth_deg" in interval:
         return float(interval["azimuth_deg"])
     fraction = (time_s - interval["start_s"]) / (
@@ -189,7 +217,7 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
     last_seen_hop = {}
     for hop in range(total_hops):
         time_s = (hop + 0.5) * HOP / FS
-        active = [(index, reference_azimuth(interval, time_s))
+        active = [(index, reference_direction(interval, time_s))
                   for index, interval in enumerate(intervals)
                   if interval["start_s"] <= time_s < interval["end_s"]]
         data = observed.get(hop, [])

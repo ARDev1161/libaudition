@@ -84,6 +84,11 @@ def import_recording(wav, annotation, destination, array=None):
     record = {"id": name, "wav": output.name,
               "sha256": sha.hexdigest(),
               "intervals": metadata["intervals"]}
+    if "provenance" in metadata:
+        provenance = metadata["provenance"]
+        if not isinstance(provenance, dict):
+            raise ValueError("Recording provenance must be an object")
+        record["provenance"] = provenance
     # Preserve array geometry when appending to an existing corpus.
     prospective = {**corpus,
                    "recordings": corpus["recordings"] + [record]}
