@@ -1129,3 +1129,129 @@ TEST(SourceClassificationRuntime, CompletedMailboxDropsOldestAtCapacity) {
     }
     EXPECT_TRUE(runtime.takeCompleted().empty());
 }
+
+
+TEST(SourceClassificationRuntime, InvalidPcmQuarantinePurgesOlderUnreadResults) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ConstantClassifier>(), 16000U, 4U, 2U};
+    const float good[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(701U, good, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 701U, 1U));
+    runtime.push(702U, good, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 702U, 1U));
+
+    const float invalid = std::numeric_limits<float>::quiet_NaN();
+    runtime.push(701U, &invalid, 1U);
+    const auto state = runtime.status(701U);
+    EXPECT_EQ(state.state, audition::SourceClassificationState::Error);
+    EXPECT_EQ(state.error, "Nonfinite source audio sample");
+    EXPECT_FALSE(state.result.has_value());
+    EXPECT_FALSE(state.result_end_sample.has_value());
+
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].source_id, 702U);
+    EXPECT_EQ(events[0].start_sample, 0U);
+    EXPECT_EQ(events[0].end_sample, 4U);
+}
+
+TEST(SourceClassificationRuntime, ModelExceptionPurgesOlderUnreadResults) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<FailOnNegativeClassifier>(), 16000U, 4U, 2U};
+    const float good[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    const float bad[] = {-0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(711U, good, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 711U, 1U));
+    runtime.push(712U, good, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 712U, 1U));
+    runtime.push(711U, bad, 4U);
+
+    bool failed = false;
+    for (int retry = 0; retry < 1000; ++retry) {
+        if (runtime.status(711U).state ==
+            audition::SourceClassificationState::Error) {
+            failed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(failed);
+    const auto failed_state = runtime.status(711U);
+    EXPECT_EQ(failed_state.error, "Invalid separated source");
+    EXPECT_FALSE(failed_state.result.has_value());
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].source_id, 712U);
+}
+
+namespace {
+class ThrowsUnknownExceptionClassifier final : public audition::IAudioClassifier {
+public:
+    audition::BackendInfo backendInfo() const override { return {"throw-unknown", "1"}; }
+    audition::ClassifierCapabilities capabilities() const override { return {}; }
+    audition::ClassificationResult classify(audition::AudioView audio) const override {
+        if (audio.data()[0] < 0.F) throw 42;
+        audition::ClassificationResult result{};
+        result.classes.push_back({"good", audition::Probability::one()});
+        return result;
+    }
+};
+}  // namespace
+
+TEST(SourceClassificationRuntime, UnknownExceptionPurgesOldEventsAndWorkerRecovers) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<ThrowsUnknownExceptionClassifier>(), 16000U, 4U, 2U};
+    const float good[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    const float bad[] = {-0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(721U, good, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 721U, 1U));
+    runtime.push(721U, bad, 4U);
+
+    bool failed = false;
+    for (int retry = 0; retry < 1000; ++retry) {
+        if (runtime.status(721U).state ==
+            audition::SourceClassificationState::Error) {
+            failed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(failed);
+    EXPECT_EQ(runtime.status(721U).error, "Unknown classification exception");
+    EXPECT_TRUE(runtime.takeCompleted().empty());
+
+    runtime.push(722U, good, 4U);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 722U, 1U));
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].source_id, 722U);
+}
+
+TEST(SourceClassificationRuntime, BadPcmCancelsQueuedWindowWithoutAffectingInflightPeer) {
+    std::atomic<bool> started{false};
+    std::atomic<bool> release{false};
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<GatedWindowClassifier>(started, release),
+        16000U, 4U, 2U};
+    const float good[] = {0.1F, 0.2F, 0.3F, 0.4F};
+    runtime.push(731U, good, 4U);
+    for (int retry = 0; retry < 1000 && !started.load(); ++retry)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    const bool began = started.load();
+    runtime.push(732U, good, 4U);
+    const auto queued = runtime.status(732U);
+    EXPECT_EQ(queued.state, audition::SourceClassificationState::Queued);
+    const float invalid = std::numeric_limits<float>::infinity();
+    runtime.push(732U, &invalid, 1U);
+    release.store(true);
+    ASSERT_TRUE(began);
+    ASSERT_TRUE(waitForClassifiedWindows(runtime, 731U, 1U));
+    EXPECT_EQ(runtime.status(732U).state,
+              audition::SourceClassificationState::Error);
+    EXPECT_EQ(runtime.status(732U).error, "Nonfinite source audio sample");
+    EXPECT_TRUE(runtime.status(732U).result_end_sample == std::nullopt);
+    const auto events = runtime.takeCompleted();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].source_id, 731U);
+    EXPECT_EQ(runtime.status(732U).completed_windows, 0U);
+}
