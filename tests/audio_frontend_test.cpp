@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 TEST(AudioFrontend, RoutesAndCalibratesChannels) {
     audition::dsp::AudioFrontendConfig config{};
@@ -152,4 +153,124 @@ TEST(AudioFrontend, RoutesPlanarOutputAndHandlesZeroFrameInput) {
     EXPECT_FLOAT_EQ(out.samples()[2], 1.F);
     EXPECT_FLOAT_EQ(out.samples()[3], 2.F);
     EXPECT_EQ(out.sequenceNumber(), 20U);
+}
+
+
+TEST(AudioFrontend, DuplicateRoutesApplyIndependentGains) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.routes = {{0U, {1.0, 0.0, 0.0}},
+                     {0U, {2.0, 0.0, 0.0}}};
+    audition::dsp::AudioFrontend frontend{config};
+    audition::AudioBuffer input{{1.F, 2.F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}, 11U};
+    const auto result = frontend.process(input.view());
+    EXPECT_EQ(result.samples(), (std::vector<float>{1.F, 2.F, 2.F, 4.F}));
+    EXPECT_EQ(result.format().channel_count, 2U);
+    EXPECT_EQ(result.sequenceNumber(), 11U);
+}
+
+TEST(AudioFrontend, NegativeGainAndDcOffsetDoNotInventClipping) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.routes = {{0U, {-2.0, 1.0, 0.0}}};
+    audition::dsp::AudioFrontend frontend{config};
+    audition::AudioBuffer input{{3.F, 5.F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto result = frontend.process(input.view());
+    EXPECT_EQ(result.samples(), (std::vector<float>{-4.F, -8.F}));
+}
+
+TEST(AudioFrontend, FractionalDelayInterpolatesAcrossChunkBoundary) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.routes = {{0U, {1.0, 0.0, 0.5}}};
+    audition::dsp::AudioFrontend frontend{config};
+    audition::AudioBuffer initial{{2.F, 4.F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto first = frontend.process(initial.view());
+    EXPECT_EQ(first.samples(), (std::vector<float>{1.F, 3.F}));
+    audition::AudioBuffer subsequent{{6.F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto second = frontend.process(subsequent.view());
+    EXPECT_EQ(second.samples(), (std::vector<float>{5.F}));
+}
+
+TEST(AudioFrontend, EmptyBlockDoesNotEraseDelayedHistory) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.routes = {{0U, {1.0, 0.0, 1.0}}};
+    audition::dsp::AudioFrontend frontend{config};
+    const audition::AudioFormat format{
+        16000U, 1U, audition::AudioLayout::Interleaved};
+    audition::AudioBuffer initial{{1.F, 2.F}, format, audition::Timestamp{}};
+    EXPECT_EQ(frontend.process(initial.view()).samples(),
+              (std::vector<float>{0.F, 1.F}));
+    audition::AudioBuffer empty{{}, format, audition::Timestamp{}};
+    EXPECT_TRUE(frontend.process(empty.view()).samples().empty());
+    audition::AudioBuffer next{{3.F}, format, audition::Timestamp{}};
+    EXPECT_EQ(frontend.process(next.view()).samples(),
+              (std::vector<float>{2.F}));
+}
+
+TEST(AudioFrontend, MultiroutePlanarOutputDoesNotMixChannels) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.output_layout = audition::AudioLayout::Planar;
+    config.routes = {{1U, {}}, {1U, {}}, {0U, {}}};
+    audition::dsp::AudioFrontend frontend{config};
+    audition::AudioBuffer input{{1.F, 10.F, 2.F, 20.F},
+        {16000U, 2U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto result = frontend.process(input.view());
+    EXPECT_EQ(result.samples(),
+              (std::vector<float>{10.F, 20.F, 10.F, 20.F, 1.F, 2.F}));
+    EXPECT_EQ(result.format().channel_count, 3U);
+    EXPECT_EQ(result.format().layout, audition::AudioLayout::Planar);
+}
+
+TEST(AudioFrontend, InvalidFirstInputDoesNotLockFormat) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.routes = {{1U, {}}};
+    audition::dsp::AudioFrontend frontend{config};
+    audition::AudioBuffer mono{{3.F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    EXPECT_THROW(static_cast<void>(frontend.process(mono.view())), audition::Error);
+    audition::AudioBuffer stereo{{3.F, 4.F},
+        {48000U, 2U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto output = frontend.process(stereo.view());
+    ASSERT_EQ(output.samples().size(), 1U);
+    EXPECT_FLOAT_EQ(output.samples()[0], 4.F);
+    EXPECT_EQ(output.format().sample_rate_hz, 48000U);
+}
+
+TEST(AudioFrontend, TwoRoutesFromSameChannelKeepSeparateDelayStates) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.routes = {{0U, {1.0, 0.0, 0.0}},
+                     {0U, {1.0, 0.0, 1.0}}};
+    audition::dsp::AudioFrontend frontend{config};
+    audition::AudioBuffer input{{1.F, 2.F, 3.F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto result = frontend.process(input.view());
+    EXPECT_EQ(result.samples(),
+              (std::vector<float>{1.F, 0.F, 2.F, 1.F, 3.F, 2.F}));
+}
+
+TEST(AudioFrontend, ResetClearsFractionalHistoryWithoutChangingRouting) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.routes = {{0U, {1.0, 0.0, 0.5}}};
+    audition::dsp::AudioFrontend frontend{config};
+    audition::AudioBuffer first{{2.F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    EXPECT_EQ(frontend.process(first.view()).samples(), (std::vector<float>{1.F}));
+    frontend.reset();
+    audition::AudioBuffer second{{6.F},
+        {48000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto output = frontend.process(second.view());
+    EXPECT_EQ(output.samples(), (std::vector<float>{3.F}));
+    EXPECT_EQ(output.format().sample_rate_hz, 48000U);
+}
+
+TEST(AudioFrontend, PassthroughRouteRetainsSampleBeyondFullScale) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.routes = {{0U, {1.0, 0.0, 0.0}}};
+    audition::dsp::AudioFrontend frontend{config};
+    audition::AudioBuffer input{{-1.5F, 1.5F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    EXPECT_EQ(frontend.process(input.view()).samples(),
+              (std::vector<float>{-1.5F, 1.5F}));
 }

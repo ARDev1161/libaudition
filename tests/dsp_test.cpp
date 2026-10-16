@@ -90,3 +90,72 @@ TEST(Dsp, MixesPlanarThreeChannelAudioAndKeepsTiming) {
     EXPECT_EQ(mono.format().layout, audition::AudioLayout::Interleaved);
     EXPECT_EQ(mono.sequenceNumber(), 9U);
 }
+
+
+TEST(Dsp, MonoMixPreservesCaptureMetadataAndInputSamples) {
+    const audition::Timestamp ts{100, {audition::ClockDomain::Simulation, 8U}};
+    audition::AudioBuffer audio{{0.25F, -0.75F},
+        {48000U, 1U, audition::AudioLayout::Interleaved}, ts, 42U};
+    const auto mono = audition::dsp::mixToMono(audio.view());
+    EXPECT_EQ(mono.samples(), audio.samples());
+    EXPECT_EQ(mono.captureTime().clock(), ts.clock());
+    EXPECT_EQ(mono.captureTime().nanoseconds(), ts.nanoseconds());
+    EXPECT_EQ(mono.sequenceNumber(), 42U);
+}
+
+TEST(Dsp, OppositeChannelsCancelWhenMixedWithoutClipping) {
+    audition::AudioBuffer audio{{2.F, -2.F, -0.5F, 0.5F},
+        {16000U, 2U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto mono = audition::dsp::mixToMono(audio.view());
+    EXPECT_EQ(mono.samples(), (std::vector<float>{0.F, 0.F}));
+    EXPECT_EQ(audition::dsp::peakAbsolute(audio.view()), 2.0);
+    EXPECT_EQ(audition::dsp::peakAbsolute(mono.view()), 0.0);
+}
+
+TEST(Dsp, IdenticalPlanarConversionReturnsIndependentSamples) {
+    audition::AudioBuffer audio{{1.F, 2.F, 3.F, 4.F},
+        {16000U, 2U, audition::AudioLayout::Planar}, audition::Timestamp{}};
+    auto copy = audition::dsp::convertLayout(audio.view(), audition::AudioLayout::Planar);
+    ASSERT_EQ(copy.samples(), audio.samples());
+    copy.mutableSamples()[0] = -10.F;
+    EXPECT_FLOAT_EQ(audio.samples()[0], 1.F);
+    EXPECT_FLOAT_EQ(copy.samples()[0], -10.F);
+}
+
+TEST(Dsp, InterleavedAndPlanarHaveIdenticalPerChannelRms) {
+    audition::AudioBuffer interleaved{{1.F, 2.F, 3.F, 4.F, 5.F, 6.F},
+        {16000U, 3U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto planar = audition::dsp::convertLayout(
+        interleaved.view(), audition::AudioLayout::Planar);
+    EXPECT_DOUBLE_EQ(audition::dsp::rms(interleaved.view()),
+                     audition::dsp::rms(planar.view()));
+    for (std::size_t i = 0U; i < 3U; ++i) {
+        EXPECT_DOUBLE_EQ(audition::dsp::channelRms(interleaved.view(), i),
+                         audition::dsp::channelRms(planar.view(), i));
+    }
+}
+
+TEST(Dsp, ClippingRatioIncludesExactThresholdEquality) {
+    audition::AudioBuffer audio{{-0.5F, 0.5F, 0.0F, 0.49F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    EXPECT_DOUBLE_EQ(audition::dsp::clippingRatio(audio.view(), 0.5), 0.5);
+    EXPECT_DOUBLE_EQ(audition::dsp::clippingRatio(audio.view(), 0.0), 1.0);
+    EXPECT_DOUBLE_EQ(audition::dsp::clippingRatio(audio.view(), 1.0), 0.0);
+}
+
+TEST(Dsp, MultiChannelMixIsMeanNotSum) {
+    audition::AudioBuffer audio{{1.F, 1.F, 1.F, -3.F, 0.F, 3.F},
+        {16000U, 3U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    const auto mono = audition::dsp::mixToMono(audio.view());
+    ASSERT_EQ(mono.samples().size(), 2U);
+    EXPECT_NEAR(mono.samples()[0], 1.0, 1e-6);
+    EXPECT_NEAR(mono.samples()[1], 0.0, 1e-6);
+}
+
+TEST(Dsp, SingleChannelRmsEqualsAggregateRms) {
+    audition::AudioBuffer audio{{-0.25F, 0.F, 0.5F, 1.F},
+        {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
+    EXPECT_DOUBLE_EQ(audition::dsp::rms(audio.view()),
+                     audition::dsp::channelRms(audio.view(), 0U));
+    EXPECT_EQ(audition::dsp::peakAbsolute(audio.view()), 1.0);
+}
