@@ -659,3 +659,180 @@ TEST(AcousticEventAssembler, CancelIsIdempotentAndDoesNotDisturbConcurrentEvent)
     EXPECT_EQ(result.source_id, patch.source_id);
     EXPECT_EQ(assembler.activeCount(), 0U);
 }
+
+
+TEST(AcousticEventAssembler, EmptyEventCanFinishAtStartTimestamp) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(42));
+    const auto event = assembler.finish(id, ts(42));
+    EXPECT_EQ(event.event_id, id);
+    EXPECT_EQ(event.start_time.nanoseconds(), 42);
+    EXPECT_EQ(event.end_time.nanoseconds(), 42);
+    EXPECT_FALSE(event.track_id.has_value());
+    EXPECT_FALSE(event.source_id.has_value());
+    EXPECT_FALSE(assembler.find(id).has_value());
+}
+
+TEST(AcousticEventAssembler, EventIdsRemainMonotonicAcrossResetAndCancel) {
+    audition::AcousticEventAssembler assembler;
+    const auto first = assembler.begin(ts(0));
+    assembler.cancel(first);
+    const auto second = assembler.begin(ts(0));
+    assembler.reset();
+    const auto third = assembler.begin(ts(0));
+    EXPECT_LT(first.value(), second.value());
+    EXPECT_LT(second.value(), third.value());
+    EXPECT_EQ(assembler.activeCount(), 1U);
+}
+
+TEST(AcousticEventAssembler, FailedCapacityAllocationDoesNotSkipEventId) {
+    audition::AcousticEventAssembler assembler{{1U}};
+    const auto first = assembler.begin(ts(0));
+    EXPECT_THROW(static_cast<void>(assembler.begin(ts(1))), audition::Error);
+    assembler.cancel(first);
+    const auto next = assembler.begin(ts(2));
+    EXPECT_EQ(next.value(), first.value() + 1U);
+}
+
+TEST(AcousticEventAssembler, MultipleEventClocksAreIndependent) {
+    audition::AcousticEventAssembler assembler;
+    const auto first = assembler.begin(ts(0, 1U));
+    const auto second = assembler.begin(ts(100, 2U));
+    audition::AcousticEventPatch patch{};
+    patch.timestamp = ts(30, 1U);
+    patch.track_id = audition::SpatialTrackId{3U};
+    EXPECT_NO_THROW(assembler.update(first, patch));
+    patch.timestamp = ts(120, 2U);
+    patch.track_id = audition::SpatialTrackId{4U};
+    EXPECT_NO_THROW(assembler.update(second, patch));
+    EXPECT_EQ(assembler.finish(first, ts(40, 1U)).end_time.nanoseconds(), 40);
+    EXPECT_EQ(assembler.finish(second, ts(130, 2U)).end_time.nanoseconds(), 130);
+}
+
+TEST(AcousticEventAssembler, RepeatedEqualTimestampPatchesPreserveExistingFields) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(10));
+    audition::AcousticEventPatch identity{};
+    identity.timestamp = ts(20);
+    identity.track_id = audition::SpatialTrackId{1U};
+    identity.source_id = audition::AcousticSourceId{11U};
+    assembler.update(id, identity);
+    audition::AcousticEventPatch classification{};
+    classification.timestamp = ts(20);
+    audition::ClassificationResult result{};
+    result.classes.push_back({"alarm", audition::Probability::from(0.8)});
+    classification.classification = result;
+    assembler.update(id, classification);
+    const auto snapshot = assembler.find(id);
+    ASSERT_TRUE(snapshot.has_value());
+    EXPECT_EQ(snapshot->end_time.nanoseconds(), 20);
+    ASSERT_TRUE(snapshot->track_id.has_value());
+    EXPECT_EQ(snapshot->track_id->value(), 1U);
+    ASSERT_TRUE(snapshot->classification.has_value());
+    EXPECT_EQ(snapshot->classification->classes.front().label, "alarm");
+}
+
+TEST(AcousticEventAssembler, RejectsNonFiniteAndNegativeDirectionVariance) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch patch{};
+    patch.timestamp = ts(1);
+    patch.direction = audition::DirectionEstimate{};
+    for (const double invalid : {-1.0, std::numeric_limits<double>::infinity(),
+                                 std::numeric_limits<double>::quiet_NaN()}) {
+        patch.direction->angular_variance_rad2 = invalid;
+        EXPECT_THROW(assembler.update(id, patch), audition::Error);
+        EXPECT_EQ(assembler.find(id)->end_time.nanoseconds(), 0);
+    }
+    patch.direction->angular_variance_rad2 = 0.0;
+    EXPECT_NO_THROW(assembler.update(id, patch));
+    EXPECT_EQ(assembler.find(id)->end_time.nanoseconds(), 1);
+}
+
+TEST(AcousticEventAssembler, RejectsEachNonFinitePositionCoordinate) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch patch{};
+    patch.timestamp = ts(10);
+    const double bad = std::numeric_limits<double>::quiet_NaN();
+    for (int axis = 0; axis < 3; ++axis) {
+        patch.position = position(1.0, 2.0, 3.0);
+        if (axis == 0) patch.position->mean_m.x = bad;
+        if (axis == 1) patch.position->mean_m.y = bad;
+        if (axis == 2) patch.position->mean_m.z = bad;
+        EXPECT_THROW(assembler.update(id, patch), audition::Error);
+    }
+    EXPECT_EQ(assembler.find(id)->end_time.nanoseconds(), 0);
+    patch.position = position(1.0, 2.0, 3.0);
+    EXPECT_NO_THROW(assembler.update(id, patch));
+}
+
+TEST(AcousticEventAssembler, RejectsNonFinitePositionCovarianceWithoutCommit) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    audition::AcousticEventPatch patch{};
+    patch.timestamp = ts(10);
+    patch.track_id = audition::SpatialTrackId{5U};
+    patch.position = position(1.0, 2.0, 3.0);
+    patch.position->covariance_m2[4] =
+        std::numeric_limits<double>::infinity();
+    EXPECT_THROW(assembler.update(id, patch), audition::Error);
+    const auto before = assembler.find(id);
+    ASSERT_TRUE(before.has_value());
+    EXPECT_FALSE(before->track_id.has_value());
+    EXPECT_FALSE(before->position.has_value());
+    EXPECT_EQ(before->end_time.nanoseconds(), 0);
+    patch.position->covariance_m2[4] = 1.0;
+    EXPECT_NO_THROW(assembler.update(id, patch));
+    EXPECT_EQ(assembler.find(id)->track_id->value(), 5U);
+}
+
+TEST(AcousticEventAssembler, PatchFromTrackRejectsInvalidLifecycles) {
+    auto missing_id = trackAt(0U, 0, 10);
+    EXPECT_THROW(static_cast<void>(
+        audition::AcousticEventAssembler::patchFromTrack(missing_id)), audition::Error);
+    auto clock_change = trackAt(7U, 0, 10);
+    clock_change.last_seen = ts(10, 3U);
+    EXPECT_THROW(static_cast<void>(
+        audition::AcousticEventAssembler::patchFromTrack(clock_change)), audition::Error);
+    auto backwards = trackAt(7U, 10, 9);
+    EXPECT_THROW(static_cast<void>(
+        audition::AcousticEventAssembler::patchFromTrack(backwards)), audition::Error);
+    auto bad_source = trackAt(7U, 0, 10, 0U);
+    EXPECT_THROW(static_cast<void>(
+        audition::AcousticEventAssembler::patchFromTrack(bad_source)), audition::Error);
+}
+
+TEST(AcousticEventAssembler, FailedTrackSnapshotValidationDoesNotChangeEvent) {
+    audition::AcousticEventAssembler assembler;
+    const auto id = assembler.begin(ts(0));
+    auto valid = trackAt(9U, 0, 1, 10U);
+    valid.position = position(1.0, 2.0, 3.0);
+    assembler.updateFromTrack(id, valid);
+    auto invalid = trackAt(9U, 0, 2, 10U);
+    invalid.range = audition::RangeEstimate{
+        {-1.0, 1.0}, audition::Probability::one(),
+        audition::RangeEstimate::Method::LevelPrior};
+    EXPECT_THROW(assembler.updateFromTrack(id, invalid), audition::Error);
+    const auto stored = assembler.find(id);
+    ASSERT_TRUE(stored.has_value());
+    EXPECT_EQ(stored->end_time.nanoseconds(), 1);
+    ASSERT_TRUE(stored->position.has_value());
+    EXPECT_DOUBLE_EQ(stored->position->mean_m.x, 1.0);
+}
+
+TEST(AcousticEventAssembler, ActiveEventsReturnsValueSnapshotsNotLiveReferences) {
+    audition::AcousticEventAssembler assembler;
+    const auto first = assembler.begin(ts(0));
+    const auto second = assembler.begin(ts(0));
+    auto snapshot = assembler.activeEvents();
+    ASSERT_EQ(snapshot.size(), 2U);
+    EXPECT_EQ(snapshot[0].event_id, first);
+    EXPECT_EQ(snapshot[1].event_id, second);
+    snapshot[0].source_id = audition::AcousticSourceId{888U};
+    EXPECT_FALSE(assembler.find(first)->source_id.has_value());
+    assembler.cancel(first);
+    EXPECT_EQ(snapshot.size(), 2U);
+    ASSERT_EQ(assembler.activeEvents().size(), 1U);
+    EXPECT_EQ(assembler.activeEvents().front().event_id, second);
+}
