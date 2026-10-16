@@ -47,6 +47,36 @@ class CiCTestEntrypointTests(unittest.TestCase):
                      "voxconverse_shard_aggregation_selftest"):
             self.assertIn(name, workflow)
 
+    def test_real_spatial_quality_requires_pinned_data_and_ctest(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        cmake = TEST_CMAKE.read_text(encoding="utf-8")
+        self.assertIn("  real-spatial-corpus:", workflow)
+        self.assertIn("vars.LIBAUDITION_REAL_CORPUS_URL", workflow)
+        self.assertIn("vars.LIBAUDITION_REAL_CORPUS_SHA256", workflow)
+        self.assertIn("stage_real_spatial_corpus.py", workflow)
+        self.assertIn("--sha256", workflow)
+        self.assertIn(
+            "ctest --no-tests=error --test-dir build-real-odas "
+            "-R '^audio_real_respeaker_corpus        cmake = TEST_CMAKE.read_text(encoding="utf-8")
+        for name in (
+            "speech_real_speaker_diarization_rttm_syntax",
+            "speech_real_speaker_diarization_benchmark_rttm_syntax",
+        ):
+            self.assertIn(f"add_test(NAME {name}", cmake)
+        self.assertIn("FIXTURES_SETUP speech_diarization_report", cmake)
+        self.assertIn("FIXTURES_SETUP speech_diarization_benchmark_report", cmake)
+        self.assertIn("FIXTURES_REQUIRED speech_diarization_report", cmake)
+        self.assertIn("FIXTURES_REQUIRED speech_diarization_benchmark_report", cmake)
+
+
+if __name__ == "__main__":
+    unittest.main()
+", workflow)
+        self.assertIn("add_test(NAME audio_real_spatial_bundle_selftest", cmake)
+        self.assertIn("add_test(NAME audio_real_respeaker_corpus", cmake)
+        self.assertIn("LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG", cmake)
+        self.assertIn("LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE", cmake)
+
     def test_real_diarization_rttm_checks_have_ctest_fixtures(self):
         cmake = TEST_CMAKE.read_text(encoding="utf-8")
         for name in (

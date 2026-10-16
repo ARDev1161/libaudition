@@ -262,3 +262,65 @@ The development ZIP is about 6.2 GB, so users should prepare, checksum-pin
 and store a small selected subset separately instead of downloading the full
 archive in every PR-run. This tool does not bundle recordings or bypass their
 attribution requirements.
+
+## Automatic real-corpus CI (conditional on pinned data)
+
+A separate `real-spatial-corpus` job in the main GitHub Actions CI runs
+on each PR/push once its repository variables are configured. It stays
+**skipped, not passed**, when no real dataset is configured. If any required
+variable is missing or the archive, ground truth, or quality thresholds are
+invalid, the job fails closed. This is deliberately separate from always-on
+synthetic spatial tests.
+
+First prepare and curate a **small** (no more than 256 MiB compressed)
+static-geometry real corpus. The ZIP must have a flat root containing
+`corpus.json` and exactly the WAV files named in the manifest; no
+additional files, symlinks or nested directories. Use the LOCATA static
+converter described above or another independently measured source. Every
+recording must include a nonempty `provenance.dataset` string, independently
+measured geometry, annotated active intervals and SHA-256 for the original
+prepared WAV bytes. The archive checksum pins the entire dataset version,
+not the validity of its acoustic reference labels.
+
+Example for a vetted, separately stored prepared corpus:
+
+```sh
+cd /data/libaudition-spatial-corpus
+zip -X -9 /tmp/libaudition-real-array-v1.zip corpus.json ./*.wav
+sha256sum /tmp/libaudition-real-array-v1.zip
+python3 /path/to/libaudition/tests/integration/stage_real_spatial_corpus.py \
+  --archive /tmp/libaudition-real-array-v1.zip \
+  --sha256 ACTUAL_64_CHARACTER_LOWERCASE_SHA256 \
+  --output /tmp/verified-real-array
+```
+
+Publish the exact ZIP at a stable HTTPS address (e.g., a dataset provider
+or an appropriate release asset, **subject to the dataset license**), then
+configure GitHub **Settings → Secrets and variables → Actions → Variables**:
+
+| Variable | Requirement |
+| --- | --- |
+| `LIBAUDITION_REAL_CORPUS_URL` | HTTPS URL to the immutable small ZIP |
+| `LIBAUDITION_REAL_CORPUS_SHA256` | SHA-256 of the whole compressed ZIP |
+| `LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG` | Mandatory calibrated median DOA error limit |
+| `LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE` | Mandatory calibrated minimum per-source coverage |
+| `LIBAUDITION_REAL_CORPUS_MAX_P90_ERROR_DEG` | Optional P90 angular error limit |
+| `LIBAUDITION_REAL_CORPUS_MAX_ASSOCIATION_ERROR_DEG` | Optional matching angle limit |
+| `LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES` | Optional maximum track-ID switches |
+| `LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE` | Optional overlapping-source recall |
+| `LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION` | Optional silent-hop false-positive limit |
+
+Calibrate thresholds from an independently measured baseline, do not select
+permissive constants solely to make CI green. The workflow stages the archive
+after checking both the archive and each WAV checksum, rejects unsafe ZIP
+entries, validates the manifest and array channels, builds the actual ODAS
+offline runner, and runs the `audio_real_respeaker_corpus` test **through
+CTest**. It then uploads per-recording and aggregate quality reports.
+If a requested metric is inapplicable because the corpus contains no silence
+or no overlapping sources, the scorer fails rather than silently passing it.
+
+The always-on `audio_real_spatial_bundle_selftest` tests the staging and
+fail-closed integrity behavior against locally generated fake WAV bytes. It
+does **not** mean that real LOCATA audio has been downloaded or evaluated.
+The real-data job will remain skipped until the dataset URL/checksum and
+calibrated gates have actually been supplied.

@@ -60,6 +60,13 @@ add_test(NAME audio_locata_converter_selftest COMMAND
     "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_locata_static.py")
 set_tests_properties(audio_locata_converter_selftest PROPERTIES
     LABELS "audio-integration;locata;corpus-validation;python" TIMEOUT 30)
+# The real-corpus fetcher is independently tested with a tiny, labelled
+# synthetic archive. These checks validate integrity, not acoustic accuracy.
+add_test(NAME audio_real_spatial_bundle_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_real_spatial_bundle.py")
+set_tests_properties(audio_real_spatial_bundle_selftest PROPERTIES
+    LABELS "audio-integration;corpus-validation;archive-security;python" TIMEOUT 30)
 # CI must never silently pass a missing CTest selector, or directly invoke
 # test executables / validation scripts outside CTest.
 add_test(NAME ci_ctest_entrypoints_selftest COMMAND
