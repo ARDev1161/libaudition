@@ -382,3 +382,166 @@ TEST(SoundLevelRangePrior, MissingHypothesesYieldNoScalarObservation) {
     input.sound_level = level(60.0);
     EXPECT_FALSE(estimator.estimateObservation(input).has_value());
 }
+
+
+TEST(SoundLevelRangePrior, PreservesExplicitModelOptions) {
+    audition::SoundLevelRangePriorOptions options{};
+    options.path_loss_exponent = 3.5;
+    options.propagation_variance_db2 = 1.25;
+    audition::SoundLevelRangePriorEstimator estimator{options};
+    EXPECT_DOUBLE_EQ(estimator.options().path_loss_exponent, 3.5);
+    EXPECT_DOUBLE_EQ(estimator.options().propagation_variance_db2, 1.25);
+}
+
+TEST(SoundLevelRangePrior, ReferenceDistanceScalesPredictedDistance) {
+    audition::SoundLevelRangePriorEstimator estimator;
+    audition::SourceLevelPrior priors[] = {
+        prior("machine", 80.0, 0.0, 2.5)
+    };
+    audition::RangeEstimationInput input{};
+    input.sound_level = level(60.0);
+    input.source_level_priors = priors;
+    const auto result = estimator.estimate(input);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NEAR(result->distance_m.mean, 25.0, 1.0e-10);
+    EXPECT_NEAR(result->distance_m.variance, 0.0, 1.0e-9);
+}
+
+TEST(SoundLevelRangePrior, HigherMeasuredLevelYieldsShorterDistance) {
+    audition::SoundLevelRangePriorEstimator estimator;
+    audition::SourceLevelPrior priors[] = {
+        prior("machine", 80.0)
+    };
+    audition::RangeEstimationInput input{};
+    input.sound_level = level(100.0);
+    input.source_level_priors = priors;
+    const auto close = estimator.estimate(input);
+    ASSERT_TRUE(close.has_value());
+    EXPECT_NEAR(close->distance_m.mean, 0.1, 1.0e-12);
+    EXPECT_GE(close->distance_m.variance, 0.0);
+}
+
+TEST(SoundLevelRangePrior, EqualAWeightedLevelsYieldReferenceDistance) {
+    audition::SoundLevelRangePriorEstimator estimator;
+    audition::SourceLevelPrior priors[] = {
+        prior("speech", 70.0, 0.0, 3.0, 1.0,
+              audition::SoundLevelWeighting::A)
+    };
+    audition::RangeEstimationInput input{};
+    input.sound_level = level(70.0, 0.0, audition::SoundLevelWeighting::A);
+    input.source_level_priors = priors;
+    const auto result = estimator.estimate(input);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NEAR(result->distance_m.mean, 3.0, 1.0e-12);
+    EXPECT_DOUBLE_EQ(result->confidence.value(), 0.0);
+}
+
+TEST(SoundLevelRangePrior, RejectsNonfiniteMeasuredDbMoments) {
+    audition::SoundLevelRangePriorEstimator estimator;
+    audition::SourceLevelPrior priors[] = {prior("machine", 80.0)};
+    audition::RangeEstimationInput input{};
+    input.source_level_priors = priors;
+    for (const double bad : {
+             std::numeric_limits<double>::quiet_NaN(),
+             std::numeric_limits<double>::infinity(),
+             -std::numeric_limits<double>::infinity()}) {
+        input.sound_level = level(bad);
+        EXPECT_THROW(static_cast<void>(estimator.estimate(input)),
+                     audition::Error);
+        input.sound_level = level(60.0, bad);
+        EXPECT_THROW(static_cast<void>(estimator.estimate(input)),
+                     audition::Error);
+    }
+}
+
+TEST(SoundLevelRangePrior, RejectsNonfiniteSourceLevelMoments) {
+    audition::SoundLevelRangePriorEstimator estimator;
+    audition::SourceLevelPrior priors[] = {prior("machine", 80.0)};
+    audition::RangeEstimationInput input{};
+    input.sound_level = level(60.0);
+    input.source_level_priors = priors;
+    for (const double bad : {
+             std::numeric_limits<double>::quiet_NaN(),
+             std::numeric_limits<double>::infinity(),
+             -std::numeric_limits<double>::infinity()}) {
+        priors[0] = prior("machine", bad);
+        EXPECT_THROW(static_cast<void>(estimator.estimate(input)),
+                     audition::Error);
+        priors[0] = prior("machine", 80.0, bad);
+        EXPECT_THROW(static_cast<void>(estimator.estimate(input)),
+                     audition::Error);
+    }
+}
+
+TEST(SoundLevelRangePrior, ValidatesZeroWeightPriorsInsteadOfIgnoringMalformedData) {
+    audition::SoundLevelRangePriorEstimator estimator;
+    audition::SourceLevelPrior priors[] = {
+        prior("valid", 80.0),
+        prior("invalid", 80.0, 0.0, 0.0, 0.0)
+    };
+    audition::RangeEstimationInput input{};
+    input.sound_level = level(60.0);
+    input.source_level_priors = priors;
+    EXPECT_THROW(static_cast<void>(estimator.estimate(input)), audition::Error);
+    priors[1] = prior("ignored", 100.0, 0.0, 1.0, 0.0);
+    const auto estimate = estimator.estimate(input);
+    ASSERT_TRUE(estimate.has_value());
+    EXPECT_NEAR(estimate->distance_m.mean, 10.0, 1.0e-12);
+}
+
+TEST(SoundLevelRangePrior, RejectsOverflowOfTotalMixtureWeight) {
+    audition::SoundLevelRangePriorEstimator estimator;
+    audition::SourceLevelPrior priors[] = {
+        prior("a", 60.0, 0.0, 1.0, 1.0e308),
+        prior("b", 60.0, 0.0, 1.0, 1.0e308)
+    };
+    audition::RangeEstimationInput input{};
+    input.sound_level = level(60.0);
+    input.source_level_priors = priors;
+    EXPECT_THROW(static_cast<void>(estimator.estimate(input)), audition::Error);
+}
+
+TEST(SoundLevelRangePrior, NormalizedMixtureInvariantUnderWeightScaling) {
+    audition::SoundLevelRangePriorEstimator estimator;
+    audition::SourceLevelPrior priors[] = {
+        prior("a", 80.0, 0.0, 1.0, 1.0),
+        prior("b", 60.0, 0.0, 1.0, 3.0)
+    };
+    audition::RangeEstimationInput input{};
+    input.sound_level = level(60.0);
+    input.source_level_priors = priors;
+    const auto original = estimator.estimate(input);
+    ASSERT_TRUE(original.has_value());
+    priors[0].weight = 10.0;
+    priors[1].weight = 30.0;
+    const auto scaled = estimator.estimate(input);
+    ASSERT_TRUE(scaled.has_value());
+    EXPECT_NEAR(original->distance_m.mean, scaled->distance_m.mean, 1.0e-12);
+    EXPECT_NEAR(original->distance_m.variance, scaled->distance_m.variance,
+                1.0e-10);
+}
+
+TEST(SoundLevelRangePrior, ScalarObservationPreservesUncertaintyAndSensorPose) {
+    audition::SoundLevelRangePriorOptions options{};
+    options.propagation_variance_db2 = 4.0;
+    audition::SoundLevelRangePriorEstimator estimator{options};
+    audition::SourceLevelPrior priors[] = {prior("machine", 80.0, 2.0)};
+    audition::RangeEstimationInput input{};
+    auto measured = level(60.0, 1.0);
+    measured.timestamp = ts(9876);
+    measured.sensor_pose.position = {-1.0, -2.0, 3.0};
+    input.sound_level = measured;
+    input.source_level_priors = priors;
+    const auto scalar = estimator.estimateObservation(input);
+    const auto direct = estimator.estimate(input);
+    ASSERT_TRUE(scalar.has_value());
+    ASSERT_TRUE(direct.has_value());
+    EXPECT_EQ(scalar->timestamp.nanoseconds(), 9876);
+    EXPECT_DOUBLE_EQ(scalar->sensor_pose.position.x, -1.0);
+    EXPECT_DOUBLE_EQ(scalar->sensor_pose.position.y, -2.0);
+    EXPECT_DOUBLE_EQ(scalar->sensor_pose.position.z, 3.0);
+    EXPECT_DOUBLE_EQ(scalar->distance_m.mean, direct->distance_m.mean);
+    EXPECT_DOUBLE_EQ(scalar->distance_m.variance, direct->distance_m.variance);
+    EXPECT_GT(scalar->distance_m.variance, 0.0);
+    EXPECT_EQ(scalar->method, audition::RangeEstimate::Method::LevelPrior);
+}
