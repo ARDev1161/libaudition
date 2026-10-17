@@ -57,3 +57,19 @@ Still to implement before declaring the full TMP-02/TMP-03 done:
 
 These tests are deterministic contract tests, not evidence of real-world
 change-detection or source-association accuracy.
+
+## TMP-03: spatial-temporal compatibility gate
+
+`SpatialTemporalGate` is a deterministic, pairwise *eligibility test* for two
+position observations already transformed by the caller into **one metric frame**.
+It validates matching `ClockIdentity`, a configured maximum elapsed interval,
+and three-dimensional Euclidean distance. It does not assign, merge, or relabel
+persistent source IDs and does not infer whether two observations arise from
+the same physical source. Matching labels alone cannot establish identity.
+
+Elapsed nanoseconds are returned as an unsigned 64-bit quantity so extreme
+signed timestamp differences do not overflow. The result does not claim that
+raw coordinates are comparable without prior sensor-frame transformation.
+Potential follow-ups include uncertainty-aware Mahalanobis gating, batch
+assignment and ambiguous-candidate handling. The deterministic tests cover
+boundary equality, time/space rejection, clock mismatch and integer extremes.
