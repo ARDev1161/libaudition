@@ -183,6 +183,16 @@ Release-hardening requirements:
 - Optional backend jobs continue to build, test, install, and compile downstream consumers.
 - README/specification/changelog/release checklist are synchronized with the acoustic-only v0.5 boundary.
 
+## v0.6 — temporal acoustic perception (in progress)
+
+- `TemporalAcousticEventDetector`: per-persistent-source, per-class temporal
+  hysteresis over classifier observations; explicit bounded state, gap handling,
+  clock/ordering checks, and start/end transitions.
+- Caller composes transitions with `AcousticEventAssembler`; classifier and
+  backend choice remain external to the detector.
+- Follow-ups: acoustic novelty against source prototypes, sequence recognition,
+  sustained sound-scene representation, and independently calibrated metrics.
+
 ## 1.0
 
 - Stabilize API/ABI policy after real ROS 2 and standalone deployments.

@@ -28,6 +28,7 @@ CORE = {
     "source identity resolution": r"^SourceIdentityResolver\.",
     "spatial / identity coordination": r"^SpatialIdentityCoordinator\.",
     "acoustic event assembly": r"^AcousticEventAssembler\.",
+    "temporal acoustic event detection": r"^TemporalAcousticEventDetector\.",
     "end-to-end acoustic pipeline scenario": r"^AcousticPipelineScenario\.",
     "source range prior": r"^SoundLevelRangePrior\.",
     "SPL calibration": r"^SplCalibration\.",
@@ -112,7 +113,7 @@ core/error.cpp core/time.cpp core/audio_buffer.cpp
 io/wav_io.cpp io/recording_timeline_json.cpp
 spatial/level_range_prior.cpp spatial/spl_calibration.cpp spatial/temporal_smoother.cpp
 model/in_memory_model_registry.cpp logging/logging.cpp
-pipeline/acoustic_event_assembler.cpp pipeline/spatial_identity.cpp
+pipeline/acoustic_event_assembler.cpp pipeline/temporal_acoustic_event_detector.cpp pipeline/spatial_identity.cpp
 pipeline/vocabulary.cpp pipeline/source_classification_runtime.cpp
 pipeline/progressive_source_classification_runtime.cpp pipeline/per_source_speech_runtime.cpp
 memory/in_memory_registries.cpp memory/sound_prototype_matcher.cpp memory/source_identity_resolver.cpp
