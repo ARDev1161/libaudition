@@ -53,7 +53,7 @@ TEST(TemporalScalarAnalyzer, RejectsClocksAndTimeRegression) {
     EXPECT_THROW(static_cast<void>(analyzer.observe(obs(1, 9, 2))), std::invalid_argument);
     auto wrong = obs(1, 11, 2);
     wrong.time = timeAt(11, 2);
-    EXPECT_THROW(analyzer.observe(wrong), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(analyzer.observe(wrong)), std::invalid_argument);
     EXPECT_DOUBLE_EQ(analyzer.observe(obs(1, 11, 1)).smoothed, 1);
 }
 
