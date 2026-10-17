@@ -33,9 +33,9 @@ TEST(TemporalScalarAnalyzer, EmaAndPositiveNegativeCusum) {
 
 TEST(TemporalScalarAnalyzer, TracksSourcesAndFeaturesSeparately) {
     audition::temporal::TemporalScalarAnalyzer analyzer;
-    analyzer.observe(obs(1, 1, 1, "speech"));
-    analyzer.observe(obs(2, 1, 3, "speech"));
-    analyzer.observe(obs(1, 1, 5, "alarm"));
+    (void)analyzer.observe(obs(1, 1, 1, "speech"));
+    (void)analyzer.observe(obs(2, 1, 3, "speech"));
+    (void)analyzer.observe(obs(1, 1, 5, "alarm"));
     EXPECT_EQ(analyzer.sourceCount(), 2u);
     auto result = analyzer.observe(obs(1, 2, 1, "speech"));
     EXPECT_DOUBLE_EQ(result.smoothed, 1);
@@ -48,7 +48,7 @@ TEST(TemporalScalarAnalyzer, TracksSourcesAndFeaturesSeparately) {
 
 TEST(TemporalScalarAnalyzer, RejectsClocksAndTimeRegression) {
     audition::temporal::TemporalScalarAnalyzer analyzer;
-    analyzer.observe(obs(1, 10, 1));
+    (void)analyzer.observe(obs(1, 10, 1));
     EXPECT_THROW(analyzer.observe(obs(1, 10, 2)), std::invalid_argument);
     EXPECT_THROW(analyzer.observe(obs(1, 9, 2)), std::invalid_argument);
     auto wrong = obs(1, 11, 2);
@@ -62,7 +62,7 @@ TEST(TemporalScalarAnalyzer, BadInputAndCapacityDoNotConsumeState) {
     options.max_sources = 1;
     options.max_features_per_source = 1;
     audition::temporal::TemporalScalarAnalyzer analyzer(options);
-    analyzer.observe(obs(1, 1, 0));
+    (void)analyzer.observe(obs(1, 1, 0));
     EXPECT_THROW(analyzer.observe(obs(2, 2, 0)), std::length_error);
     EXPECT_THROW(analyzer.observe(obs(1, 2, 0, "other")), std::length_error);
     EXPECT_THROW(analyzer.observe(obs(1, 2, std::numeric_limits<double>::quiet_NaN())),
