@@ -54,6 +54,34 @@ implementation is under `backends/<name>/src/`. See
 [algorithm_test_matrix.md](algorithm_test_matrix.md) for full evidence and
 known gaps. No test may claim accuracy merely because its suite is registered.
 
+## Representative streaming regressions
+
+The streaming test batch after CI #1203 specifically asserts **observable
+behavior**, not merely execution:
+
+- `AudioFrontend.ChunkPartitioningPreservesCalibratedMultichannelSamples`:
+  3-input-channel routing with delays and gains, interleaved/planar inputs
+  and outputs, short and empty chunks; canonical PCM equals a monolithic pass.
+- `AudioFrontend.ResetMatchesFreshInstanceAfterFragmentedHistory`:
+  resetting after partial delay history must behave like a fresh instance.
+- `SourceClassificationRuntime.InterleavedTrackChunksPreserveWindowSamplesAndOffsets`:
+  two interleaved sources with different push partitions produce exact
+  overlapping sample windows and independent PCM offsets.
+- `PerSourceSpeechRuntime.HomogeneousVadChunksPreservePreAndPostRollSegmentation`:
+  speech/pre-roll/post-roll lengths agree for different partitions of
+  **homogeneous** VAD decisions. Do not claim arbitrary VAD chunk invariance:
+  the VAD model itself is explicitly chunk-based.
+- `PerSourceSpeechRuntime.PartialPostRollDiscardedOnResetWithoutGhostSegment`:
+  reset during post-roll cancels the unfinished old segment and creates
+  a new source generation.
+- `SamplerateBackend.RepeatedFlushNeverReplaysTailAndResetStartsNewClock`
+  and `SamplerateBackend.StreamingOutputClockIgnoresLaterInputTimestampJitter`:
+  no repeated flush tail, proper reset of stream time/layout, output continuity
+  across capture timestamp jitter.
+
+These are deterministic contracts. They do not establish WER, ERLE,
+room acoustics or real-device reliability.
+
 ## Fast local development commands
 
 ~~~sh

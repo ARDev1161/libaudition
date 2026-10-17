@@ -900,3 +900,71 @@ TEST(PerSourceSpeechRuntime, BoundedAsrQueueDropsOverflowAndRecovers) {
     ASSERT_EQ(recovered.size(), 1U);
     EXPECT_EQ(recovered.front().track_id, 303U);
 }
+
+
+TEST(PerSourceSpeechRuntime, HomogeneousVadChunksPreservePreAndPostRollSegmentation) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples = 6U;
+    opts.pre_roll_samples = 3U;
+    opts.post_roll_samples = 5U;
+    opts.max_segment_samples = 64U;
+    const auto run = [&](const std::vector<std::size_t>& pre,
+                         const std::vector<std::size_t>& voice,
+                         const std::vector<std::size_t>& trailing) {
+        PerSourceSpeechRuntime runtime{vad, std::make_shared<MockAsr>(), opts};
+        const auto send = [&](float sample, const std::vector<std::size_t>& sizes) {
+            for (const auto length : sizes) {
+                const std::vector<float> audio(length, sample);
+                runtime.push(415U, chunk(audio));
+            }
+        };
+        send(0.F, pre);
+        send(0.5F, voice);
+        send(0.F, trailing);
+        auto results = awaitSpeech(runtime, 1U);
+        EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+        EXPECT_EQ(runtime.statistics().dropped_segments, 0U);
+        EXPECT_TRUE(runtime.takeResults().empty());
+        return results;
+    };
+    const auto monolithic = run({3U}, {6U}, {8U});
+    const auto fragmented = run({1U, 2U}, {1U, 2U, 3U}, {2U, 1U, 2U, 3U});
+    ASSERT_EQ(monolithic.size(), 1U);
+    ASSERT_EQ(fragmented.size(), 1U);
+    EXPECT_EQ(monolithic[0].transcript.text, "415:14");
+    EXPECT_EQ(fragmented[0].transcript.text, monolithic[0].transcript.text);
+    EXPECT_EQ(fragmented[0].start_time.nanoseconds(),
+              monolithic[0].start_time.nanoseconds());
+    EXPECT_EQ(fragmented[0].end_time.nanoseconds(),
+              monolithic[0].end_time.nanoseconds());
+}
+
+TEST(PerSourceSpeechRuntime, PartialPostRollDiscardedOnResetWithoutGhostSegment) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples = 4U;
+    opts.pre_roll_samples = 0U;
+    opts.post_roll_samples = 5U;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<MockAsr>(), opts};
+    const std::vector<float> voice(4U, 0.5F), quiet2(2U, 0.F),
+                             quiet3(3U, 0.F);
+    runtime.push(71U, chunk(voice));
+    runtime.push(71U, chunk(quiet2));
+    const auto before = runtime.activeGeneration(71U);
+    ASSERT_TRUE(before.has_value());
+    EXPECT_TRUE(runtime.takeResults().empty());
+    runtime.reset();
+    EXPECT_FALSE(runtime.trackStatus(71U).exists);
+    runtime.push(71U, chunk(voice));
+    const auto after = runtime.activeGeneration(71U);
+    ASSERT_TRUE(after.has_value());
+    EXPECT_NE(*before, *after);
+    runtime.push(71U, chunk(quiet2));
+    runtime.push(71U, chunk(quiet3));
+    const auto results = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results[0].transcript.text, "71:9");
+    EXPECT_EQ(results[0].generation, *after);
+    EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+}

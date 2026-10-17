@@ -3,6 +3,9 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <algorithm>
+#include <cstddef>
+#include <utility>
 #include <limits>
 #include <vector>
 
@@ -273,4 +276,119 @@ TEST(AudioFrontend, PassthroughRouteRetainsSampleBeyondFullScale) {
         {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}};
     EXPECT_EQ(frontend.process(input.view()).samples(),
               (std::vector<float>{-1.5F, 1.5F}));
+}
+
+
+namespace {
+// Feed the same 3-channel capture in arbitrary interleaved/planar chunks and
+// gather the routed output in canonical frame-major order for comparison.
+std::vector<float> runFrontendChunks(
+    audition::dsp::AudioFrontend& frontend,
+    const std::vector<float>& interleaved_pcm,
+    audition::AudioLayout input_layout,
+    const std::vector<std::size_t>& chunks) {
+    constexpr std::size_t kChannels = 3U;
+    const auto total_frames = interleaved_pcm.size() / kChannels;
+    std::vector<float> collected;
+    std::size_t offset = 0U;
+    std::uint64_t sequence = 1U;
+    for (const auto count : chunks) {
+        EXPECT_LE(offset + count, total_frames);
+        if (offset + count > total_frames) break;
+        std::vector<float> pcm(count * kChannels);
+        for (std::size_t frame = 0; frame < count; ++frame) {
+            for (std::size_t channel = 0; channel < kChannels; ++channel) {
+                const auto index = input_layout == audition::AudioLayout::Interleaved
+                    ? frame * kChannels + channel
+                    : channel * count + frame;
+                pcm[index] = interleaved_pcm[(offset + frame) * kChannels + channel];
+            }
+        }
+        const audition::AudioBuffer block{
+            std::move(pcm),
+            {16000U, static_cast<std::uint32_t>(kChannels), input_layout},
+            audition::Timestamp{}, sequence};
+        const auto output = frontend.process(block.view());
+        EXPECT_EQ(output.frameCount(), count);
+        EXPECT_EQ(output.sequenceNumber(), sequence);
+        EXPECT_EQ(output.format().channel_count, frontend.config().routes.size());
+        EXPECT_EQ(output.format().layout, frontend.config().output_layout);
+        for (std::size_t frame = 0; frame < count; ++frame)
+            for (std::size_t channel = 0; channel < output.format().channel_count;
+                 ++channel)
+                collected.push_back(output.view().channel(channel)[frame]);
+        ++sequence;
+        offset += count;
+    }
+    EXPECT_EQ(offset, total_frames);
+    return collected;
+}
+
+audition::dsp::AudioFrontendConfig chunkInvariantFrontendConfig(
+    audition::AudioLayout output_layout) {
+    audition::dsp::AudioFrontendConfig config{};
+    config.output_layout = output_layout;
+    config.routes = {
+        {2U, {0.75, 0.125, 0.0}},
+        {0U, {-1.25, -0.0625, 1.25}},
+        {1U, {1.0, 0.0, 5.5}},
+    };
+    return config;
+}
+} // namespace
+
+TEST(AudioFrontend, ChunkPartitioningPreservesCalibratedMultichannelSamples) {
+    std::vector<float> pcm;
+    constexpr std::size_t kFrames = 37U;
+    for (std::size_t frame = 0; frame < kFrames; ++frame)
+        for (std::size_t channel = 0; channel < 3U; ++channel)
+            pcm.push_back(static_cast<float>(
+                static_cast<int>((frame * 3U + channel * 7U) % 23U) - 11) / 16.F);
+
+    // Includes blocks shorter than delay history, boundaries at fractional
+    // delays, a zero-frame block and both input and output layouts.
+    for (const auto input_layout : {audition::AudioLayout::Interleaved,
+                                    audition::AudioLayout::Planar}) {
+        for (const auto output_layout : {audition::AudioLayout::Interleaved,
+                                         audition::AudioLayout::Planar}) {
+            const auto config = chunkInvariantFrontendConfig(output_layout);
+            audition::dsp::AudioFrontend monolithic{config};
+            const auto expected = runFrontendChunks(
+                monolithic, pcm, input_layout, {kFrames});
+            for (const auto& partition : {
+                    std::vector<std::size_t>{1U, 2U, 3U, 5U, 8U, 13U, 5U},
+                    std::vector<std::size_t>{0U, 1U, 1U, 1U, 1U, 1U, 1U,
+                                             1U, 1U, 1U, 1U, 27U}}) {
+                audition::dsp::AudioFrontend fragmented{config};
+                const auto actual = runFrontendChunks(
+                    fragmented, pcm, input_layout, partition);
+                ASSERT_EQ(actual.size(), expected.size());
+                for (std::size_t i = 0; i < actual.size(); ++i)
+                    EXPECT_NEAR(actual[i], expected[i], 1.0e-6) << "sample " << i;
+            }
+        }
+    }
+}
+
+TEST(AudioFrontend, ResetMatchesFreshInstanceAfterFragmentedHistory) {
+    const auto config = chunkInvariantFrontendConfig(audition::AudioLayout::Planar);
+    audition::dsp::AudioFrontend reused{config};
+    audition::dsp::AudioFrontend fresh{config};
+    const std::vector<float> prior = {0.F, 1.F, 2.F, 3.F, 4.F, 5.F,
+                                      6.F, 7.F, 8.F, 9.F, 10.F, 11.F};
+    static_cast<void>(runFrontendChunks(
+        reused, prior, audition::AudioLayout::Interleaved, {1U, 1U, 2U}));
+    reused.reset();
+
+    const std::vector<float> new_pcm = {
+        10.F, -10.F, 0.F, 11.F, -11.F, 1.F,
+        12.F, -12.F, 2.F, 13.F, -13.F, 3.F,
+        14.F, -14.F, 4.F, 15.F, -15.F, 5.F};
+    const auto expected = runFrontendChunks(
+        fresh, new_pcm, audition::AudioLayout::Planar, {6U});
+    const auto actual = runFrontendChunks(
+        reused, new_pcm, audition::AudioLayout::Planar, {1U, 2U, 0U, 3U});
+    ASSERT_EQ(expected.size(), actual.size());
+    for (std::size_t i = 0; i < expected.size(); ++i)
+        EXPECT_NEAR(actual[i], expected[i], 1.0e-6) << "sample " << i;
 }

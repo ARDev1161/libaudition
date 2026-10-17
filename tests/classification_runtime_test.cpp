@@ -1255,3 +1255,82 @@ TEST(SourceClassificationRuntime, BadPcmCancelsQueuedWindowWithoutAffectingInfli
     EXPECT_EQ(events[0].source_id, 731U);
     EXPECT_EQ(runtime.status(732U).completed_windows, 0U);
 }
+
+
+namespace {
+class FirstLastSampleClassifier final : public audition::IAudioClassifier {
+public:
+    audition::BackendInfo backendInfo() const override { return {"window-signature", "1"}; }
+    audition::ClassifierCapabilities capabilities() const override { return {}; }
+    audition::ClassificationResult classify(audition::AudioView audio) const override {
+        audition::ClassificationResult result{};
+        const auto first = audio.data()[0];
+        const auto last = audio.data()[audio.sampleCount() - 1U];
+        result.classes.push_back({
+            std::to_string(first) + "|" + std::to_string(last),
+            audition::Probability::one()});
+        return result;
+    }
+};
+}
+
+TEST(SourceClassificationRuntime, InterleavedTrackChunksPreserveWindowSamplesAndOffsets) {
+    audition::SourceClassificationRuntime runtime{
+        std::make_unique<FirstLastSampleClassifier>(), 16000U, 9U, 3U, 4U};
+    // Two independent sources share a single worker. Keep the first window
+    // completed before pushing overlap windows to avoid intended coalescing.
+    const auto pushRange = [&](std::uint64_t id, int first, std::size_t count) {
+        std::vector<float> audio;
+        for (std::size_t i = 0; i < count; ++i)
+            audio.push_back(static_cast<float>(first + static_cast<int>(i)));
+        runtime.push(id, audio.data(), audio.size());
+    };
+    const auto waitForEnd = [&](std::uint64_t id, std::uint64_t end) {
+        for (int retry = 0; retry < 1000; ++retry) {
+            if (runtime.status(id).result_end_sample == end) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        return false;
+    };
+    pushRange(501U, 1, 2U);
+    pushRange(502U, 101, 1U);
+    pushRange(501U, 3, 3U);
+    pushRange(502U, 102, 4U);
+    pushRange(501U, 6, 4U);
+    pushRange(502U, 106, 4U);
+    ASSERT_TRUE(waitForEnd(501U, 9U));
+    ASSERT_TRUE(waitForEnd(502U, 9U));
+    const auto first = runtime.takeCompleted();
+    ASSERT_EQ(first.size(), 2U);
+    for (const auto& event : first) {
+        EXPECT_EQ(event.start_sample, 0U);
+        EXPECT_EQ(event.end_sample, 9U);
+        ASSERT_EQ(event.result.classes.size(), 1U);
+        EXPECT_EQ(event.result.classes[0].label,
+                  event.source_id == 501U
+                      ? std::to_string(1.F) + "|" + std::to_string(9.F)
+                      : std::to_string(101.F) + "|" + std::to_string(109.F));
+    }
+    // Four extra samples yield an overlapped window [4, 13) regardless of
+    // push boundaries and of interleaving between the two sources.
+    pushRange(502U, 110, 1U);
+    pushRange(501U, 10, 2U);
+    pushRange(502U, 111, 3U);
+    pushRange(501U, 12, 2U);
+    ASSERT_TRUE(waitForEnd(501U, 13U));
+    ASSERT_TRUE(waitForEnd(502U, 13U));
+    const auto second = runtime.takeCompleted();
+    ASSERT_EQ(second.size(), 2U);
+    for (const auto& event : second) {
+        EXPECT_EQ(event.start_sample, 4U);
+        EXPECT_EQ(event.end_sample, 13U);
+        ASSERT_EQ(event.result.classes.size(), 1U);
+        EXPECT_EQ(event.result.classes[0].label,
+                  event.source_id == 501U
+                      ? std::to_string(5.F) + "|" + std::to_string(13.F)
+                      : std::to_string(105.F) + "|" + std::to_string(113.F));
+        EXPECT_EQ(runtime.status(event.source_id).received_samples, 13U);
+    }
+    EXPECT_EQ(runtime.status(501U).dropped_windows, 0U);
+    EXPECT_EQ(runtime.status(502U).dropped_windows, 0U);
+}
