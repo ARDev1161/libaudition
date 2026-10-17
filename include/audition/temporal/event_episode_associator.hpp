@@ -66,9 +66,11 @@ public:
         std::vector<AssociationChange> result;
         const bool expired = next.seen && next.active &&
             options_.max_gap.nanoseconds() > 0 &&
-            (static_cast<long double>(o.time.nanoseconds()) -
-             static_cast<long double>(next.last_observation.nanoseconds())) >
-                options_.max_gap.nanoseconds();
+            // Signed timestamps may span the int64 range; compare elapsed time
+            // using unsigned subtraction after strict timestamp ordering.
+            (static_cast<std::uint64_t>(o.time.nanoseconds()) -
+             static_cast<std::uint64_t>(next.last_observation.nanoseconds())) >
+                static_cast<std::uint64_t>(options_.max_gap.nanoseconds());
         if (expired) {
             result.push_back({AssociationChangeKind::Ended, o.source, o.label,
                               next.episode, next.first, next.last_supported});
