@@ -1,0 +1,48 @@
+# Temporal analysis foundation (TMP-02 / TMP-03, initial slice)
+
+This branch is stacked on `feat/temporal-acoustic-events` (PR #57), not on `main`.
+
+## TMP-02: scalar temporal evidence
+
+`audition::temporal::TemporalScalarAnalyzer` consumes timestamped scalar
+observations. It maintains a bounded, independent EMA and two-sided CUSUM for
+each persistent `AcousticSourceId` and feature name. The first sample initializes
+the baseline; subsequent samples can produce positive/negative change alarms.
+An alarm resets its respective cumulative statistic. CUSUM alarms are change
+evidence, **not** a classifier label, calibrated confidence, or measured physical
+event onset.
+
+The caller decides which signals have stable scalar semantics (e.g. log-energy,
+a calibrated continuous score). A CLAP candidate-relative score must not be
+compared across changing candidate sets. No resampling, inference, threads,
+automatic calibration, or hidden source association.
+
+Samples must have finite values, stable clock identity, and strictly
+increasing timestamps per source/feature. Resource limits throw rather than
+silently evicting state. `forget(source)` and `reset()` are explicit.
+
+## TMP-03: interval relations
+
+`audition::temporal::relate(EventInterval, EventInterval)` implements the
+13 mutually exclusive Allen interval relations for two bounded intervals on
+the same clock. These are **observed-evidence intervals**, not guaranteed
+physical start/end times. Clock mismatches and reversed bounds throw.
+
+This is relation classification, not yet event association/tracking.
+
+## Validation
+
+GoogleTest cases are registered through the existing CTest discovery:
+`TemporalScalarAnalyzer.*` and `TemporalIntervalRelations.*`.
+Tests cover change alarms, state isolation, bounds, clocks, invalid samples,
+all 13 interval relationships and zero-length equality.
+
+Still to implement before declaring the full TMP-02/TMP-03 done:
+- time-based hangover/segmentation and Page-Hinkley with calibrated fixtures;
+- event association/gating using persistent source identity, duplicate handling,
+  unmatched event lifecycle and track-ID recycling;
+- scenario and stress tests; measured timing/memory gates;
+- audit matrix entry and package consumer verification.
+
+These tests are deterministic contract tests, not evidence of real-world
+change-detection or source-association accuracy.
