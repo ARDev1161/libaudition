@@ -21,6 +21,11 @@ Samples must have finite values, stable clock identity, and strictly
 increasing timestamps per source/feature. Resource limits throw rather than
 silently evicting state. `forget(source)` and `reset()` are explicit.
 
+### Additional TMP-02 algorithms
+
+- `PageHinkleyDetector`: independent, bounded per-source/feature cumulative mean-shift test with configurable allowance, minimum observation count and threshold. A triggered alarm restarts its baseline; it is evidence of distribution change, not a semantic event.
+- `TimedActivitySegmenter`: minimum positive duration, negative-evidence hangover, configurable maximum observation gap, stable occurrence IDs, explicit retire and forget. Reported bounds are timestamps of supporting observations. It is not the classifier hysteresis replacement.
+
 ## TMP-03: interval relations
 
 `audition::temporal::relate(EventInterval, EventInterval)` implements the
@@ -34,11 +39,12 @@ This is relation classification, not yet event association/tracking.
 
 GoogleTest cases are registered through the existing CTest discovery:
 `TemporalScalarAnalyzer.*` and `TemporalIntervalRelations.*`.
-Tests cover change alarms, state isolation, bounds, clocks, invalid samples,
-all 13 interval relationships and zero-length equality.
+Tests cover EMA/CUSUM, Page-Hinkley shifts, source isolation, capacity, clocks,
+invalid samples, all 13 interval relationships, timed segmentation,
+and discontinuities.
 
 Still to implement before declaring the full TMP-02/TMP-03 done:
-- time-based hangover/segmentation and Page-Hinkley with calibrated fixtures;
+- quantitative time-based segmentation and Page-Hinkley calibration on independent fixtures;
 - event association/gating using persistent source identity, duplicate handling,
   unmatched event lifecycle and track-ID recycling;
 - scenario and stress tests; measured timing/memory gates;
