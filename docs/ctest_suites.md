@@ -1,5 +1,8 @@
 # CTest suites: local machines and GitHub Actions
 
+For the short maintainer test-family map, ownership and onboarding checklist,
+see [test_maintenance_map.md](test_maintenance_map.md).
+
 CTest is the test runner. GitHub Actions provisions compilers, optional
 libraries, models and datasets, runs CMake, then invokes CTest. Model
 exporters, downloads and installation are **preparation**, not tests.

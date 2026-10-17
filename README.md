@@ -22,6 +22,13 @@ real-time policy, threading, recording policy, robot behavior, and middleware.
 See [`docs/specification.md`](docs/specification.md) and
 [`docs/architecture.md`](docs/architecture.md).
 
+## Tests and maintenance
+
+Start with the [test-family maintenance map](docs/test_maintenance_map.md) to
+find existing CTest suites and know what each group proves. For full commands
+see [CTest suites](docs/ctest_suites.md); for evidence by algorithm see
+[coverage matrix](docs/algorithm_test_matrix.md).
+
 ## Build
 
 ```bash

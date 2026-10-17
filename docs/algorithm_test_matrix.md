@@ -1,5 +1,8 @@
 # Algorithm test coverage contract
 
+For test owners and new algorithm work, consult the
+[test maintenance map](test_maintenance_map.md).
+
 This matrix states which algorithms have executable CTest checks and which
 claims **cannot** be made from those checks. The mandatory
 `algorithm_coverage_contract` test verifies discovery against the configured
