@@ -26,11 +26,11 @@ struct EventInterval {
     }
     const auto as = a.start.nanoseconds(), ae = a.end.nanoseconds();
     const auto bs = b.start.nanoseconds(), be = b.end.nanoseconds();
+    if (as == bs && ae == be) return IntervalRelation::Equal;
     if (ae < bs) return IntervalRelation::Before;
     if (ae == bs) return IntervalRelation::Meets;
     if (as > be) return IntervalRelation::After;
     if (as == be) return IntervalRelation::MetBy;
-    if (as == bs && ae == be) return IntervalRelation::Equal;
     if (as == bs) return ae < be ? IntervalRelation::Starts : IntervalRelation::StartedBy;
     if (ae == be) return as > bs ? IntervalRelation::Finishes : IntervalRelation::FinishedBy;
     if (as < bs && ae < be) return IntervalRelation::Overlaps;
