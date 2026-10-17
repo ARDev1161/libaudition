@@ -33,7 +33,11 @@ silently evicting state. `forget(source)` and `reset()` are explicit.
 the same clock. These are **observed-evidence intervals**, not guaranteed
 physical start/end times. Clock mismatches and reversed bounds throw.
 
-This is relation classification, not yet event association/tracking.
+### Event episode association (initial TMP-03)
+
+`EventEpisodeAssociator` groups ongoing binary activity of the **same already-resolved** persistent `AcousticSourceId` and class into episodes. Each episode has an instance-unique ID; end transitions retain the last *active observation* timestamp. Optional observation-gap expiry ends an old episode and begins a new one if evidence resumes. Retire ends all active labels in deterministic label order. Forget/reset discard state but never recycle episode IDs within the object lifetime. Strict clock/order and bounded source/class budgets apply.
+
+**Important limitation:** this is temporal episode continuity, not probabilistic multi-target data association. Upstream spatial/identity resolution must establish the persistent source ID. We never equate matching class labels or recycled ODAS track numbers with physical source identity; multi-hypothesis gating and spatial assignment remain follow-ups.
 
 ## Validation
 
@@ -41,12 +45,13 @@ GoogleTest cases are registered through the existing CTest discovery:
 `TemporalScalarAnalyzer.*` and `TemporalIntervalRelations.*`.
 Tests cover EMA/CUSUM, Page-Hinkley shifts, source isolation, capacity, clocks,
 invalid samples, all 13 interval relationships, timed segmentation,
-and discontinuities.
+discontinuities, episode continuity, label/source isolation,
+recycled IDs and explicit retirement.
 
 Still to implement before declaring the full TMP-02/TMP-03 done:
 - quantitative time-based segmentation and Page-Hinkley calibration on independent fixtures;
-- event association/gating using persistent source identity, duplicate handling,
-  unmatched event lifecycle and track-ID recycling;
+- probabilistic event association/gating with ambiguous sources, duplicate candidates,
+  unmatched event lifecycle and spatial track-ID recycling;
 - scenario and stress tests; measured timing/memory gates;
 - audit matrix entry and package consumer verification.
 
