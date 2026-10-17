@@ -82,6 +82,26 @@ behavior**, not merely execution:
 These are deterministic contracts. They do not establish WER, ERLE,
 room acoustics or real-device reliability.
 
+## Cross-component synthetic acoustic scenarios
+
+`AcousticPipelineScenario.RoutedPcmClassificationAndSpeechPreserveSourceBinding`
+connects the actual multi-channel frontend, independent classification worker,
+per-source VAD/ASR runtime, persistent spatial identity resolver and event
+assembler. Two synthetic PCM sources are intentionally distinct: speech on one
+channel and machinery on the other. A subsequent tracker handoff must preserve
+the first source's classification and transcript without contaminating the
+second event. VAD, ASR and classification **models are controlled fakes**,
+not genuine acoustic-accuracy evidence.
+
+`AcousticPipelineScenario.MalformedSourcePcmCannotPolluteOtherEventAndCanRecover`
+checks that nonfinite source PCM quarantines only one classifier source; the
+healthy source still produces a labelled event. Conflicting event source
+annotations must be rejected transactionally. Forgetting the bad source epoch
+must permit fresh classification without resurrecting stale output.
+
+The test file is `tests/acoustic_pipeline_scenario_test.cpp`. Both cases are
+ordinary GoogleTest-discovered CTest tests and need no model download.
+
 ## Fast local development commands
 
 ~~~sh
