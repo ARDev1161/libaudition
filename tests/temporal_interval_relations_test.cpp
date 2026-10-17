@@ -34,8 +34,8 @@ TEST(TemporalIntervalRelations, AllThirteenAllenRelations) {
 }
 
 TEST(TemporalIntervalRelations, InvalidClocksAndReversedBoundsRejected) {
-    EXPECT_THROW(audition::temporal::relate(span(2,1),span(3,4)),std::invalid_argument);
-    EXPECT_THROW(audition::temporal::relate(span(1,2,1),span(1,2,2)),std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(audition::temporal::relate(span(2,1),span(3,4))),std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(audition::temporal::relate(span(1,2,1),span(1,2,2))),std::invalid_argument);
     EXPECT_EQ(audition::temporal::relate(span(5,5),span(5,5)),
               audition::temporal::IntervalRelation::Equal);
 }
