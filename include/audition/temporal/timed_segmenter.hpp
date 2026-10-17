@@ -2,6 +2,7 @@
 #include <audition/core/id.hpp>
 #include <audition/core/time.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <stdexcept>
 #include <vector>
