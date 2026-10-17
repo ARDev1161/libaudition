@@ -1,0 +1,212 @@
+name: VoxConverse v0.3 full diarization benchmark
+
+on:
+  # Explicit heavy benchmark: no re-run on every unrelated PR synchronize.
+  # The branch push trigger only reacts to changes in the benchmark runner.
+  push:
+    branches:
+      - ci/unified-ctest-entrypoints
+    paths:
+      - tests/integration/benchmark_voxconverse.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  voxconverse-full-split:
+    name: VoxConverse DER (${{ matrix.split }} shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        split: [dev, test]
+        shard: [0, 1, 2, 3]
+    steps:
+      - name: Checkout libaudition
+        uses: actions/checkout@v4
+
+      - name: Install model build and audio processing tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake ffmpeg
+          df -h .
+
+      - name: Configure real Sherpa-ONNX backend
+        run: >-
+          cmake -S . -B build-voxconverse -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SHERPA=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=OFF
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+
+      - name: Build real speaker diarizer only
+        run: cmake --build build-voxconverse --target sherpa_real_speaker_diarization --parallel 2
+
+      - name: Verify offline corpus archive matching and DER scorer
+        run: |
+          ctest --no-tests=error --test-dir build-voxconverse \
+            -R '^speech_(voxconverse_full_split_preflight_selftest|diarization_scoring_selftest|diarization_corpus_scoring_selftest|voxconverse_shard_aggregation_selftest)$' \
+            --output-on-failure
+
+      - name: Download SHA-256 pinned Pyannote and speaker embedding models
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/voxconverse-models"
+          base="https://github.com/k2-fsa/sherpa-onnx/releases/download"
+          tarball="$RUNNER_TEMP/voxconverse-models/segmentation.tar.bz2"
+          embedding="$RUNNER_TEMP/voxconverse-models/embedding.onnx"
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 40 \
+            -o "$tarball" \
+            "$base/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 40 \
+            -o "$embedding" \
+            "$base/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+          echo '24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488  '"$tarball" | sha256sum --check
+          echo '1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b  '"$embedding" | sha256sum --check
+          python3 - "$tarball" "$RUNNER_TEMP/voxconverse-models" <<'PY'
+          from pathlib import Path
+          import sys
+          import tarfile
+          archive, target = map(Path, sys.argv[1:3])
+          with tarfile.open(archive, "r:bz2") as package:
+              package.extractall(target, filter="data")
+          model = target / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"
+          if not model.is_file() or not model.stat().st_size:
+              raise SystemExit("Missing real Pyannote ONNX after extraction")
+          PY
+
+      - name: Download exact v0.3 RTTMs and complete original Oxford WAV archive
+        env:
+          VOXCONVERSE_SPLIT: ${{ matrix.split }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/voxconverse-inputs"
+          reference="$RUNNER_TEMP/voxconverse-inputs/voxconverse-v0.3.zip"
+          audio="$RUNNER_TEMP/voxconverse-inputs/voxconverse-$VOXCONVERSE_SPLIT-audio.zip"
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 40 \
+            -o "$reference" \
+            "https://codeload.github.com/joonson/voxconverse/zip/24bf60be297701cd7e4ef18550c6d390c1b87365"
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 40 \
+            -o "$audio" \
+            "https://www.robots.ox.ac.uk/~vgg/data/voxconverse/data/voxconverse_""$VOXCONVERSE_SPLIT""_wav.zip"
+          # SHA-256 captured from both successful downloads in full corpus
+          # CI #1/#2. Fail closed if Oxford/GitHub changes the input bytes.
+          echo 'c340d2cd9da2f19eff8a3adc55b0818ec45cd0770ef72c6926c4de6efe9e9a1d  '"$reference" | sha256sum --check
+          case "$VOXCONVERSE_SPLIT" in
+            dev) audio_sha=e83a68b5df3bc945a3cf4544102038792ae79972753c585769e58ea677c523a8 ;;
+            test) audio_sha=472ebf1eaeb1dcb5c311b07a8b5c31bcedcccbf98f386d90a88cde2452da8c68 ;;
+            *) echo "Unknown split: $VOXCONVERSE_SPLIT" >&2; exit 1 ;;
+          esac
+          echo "$audio_sha  $audio" | sha256sum --check
+          sha256sum "$reference" "$audio"
+          df -h .
+
+      - name: Run deterministic real-model shard (never claim full DER)
+        env:
+          VOXCONVERSE_SPLIT: ${{ matrix.split }}
+          VOXCONVERSE_SHARD: ${{ matrix.shard }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$VOXCONVERSE_SPLIT" in
+            dev) audio_sha=e83a68b5df3bc945a3cf4544102038792ae79972753c585769e58ea677c523a8 ;;
+            test) audio_sha=472ebf1eaeb1dcb5c311b07a8b5c31bcedcccbf98f386d90a88cde2452da8c68 ;;
+            *) echo "Invalid split" >&2; exit 1 ;;
+          esac
+          python3 -u tests/integration/benchmark_voxconverse.py \
+            --split "$VOXCONVERSE_SPLIT" \
+            --shard-count 4 --shard-index "$VOXCONVERSE_SHARD" \
+            --audio-zip "$RUNNER_TEMP/voxconverse-inputs/voxconverse-$VOXCONVERSE_SPLIT-audio.zip" \
+            --reference-zip "$RUNNER_TEMP/voxconverse-inputs/voxconverse-v0.3.zip" \
+            --expected-reference-sha256 c340d2cd9da2f19eff8a3adc55b0818ec45cd0770ef72c6926c4de6efe9e9a1d \
+            --expected-audio-sha256 "$audio_sha" \
+            --diarizer "$PWD/build-voxconverse/tests/sherpa_real_speaker_diarization" \
+            --segmentation-model "$RUNNER_TEMP/voxconverse-models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx" \
+            --embedding-model "$RUNNER_TEMP/voxconverse-models/embedding.onnx" \
+            --output-dir "$PWD/voxconverse-results/$VOXCONVERSE_SPLIT/shard-$VOXCONVERSE_SHARD"
+          # Shard DER is only diagnostic. Full-split DER is produced by the
+          # fail-closed aggregation job after all four shards have succeeded.
+          cat "voxconverse-results/$VOXCONVERSE_SPLIT/shard-$VOXCONVERSE_SHARD/progress.json" | head -c 450
+
+      - name: Upload shard RTTM predictions, reference labels and input hashes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxconverse-v0.3-${{ matrix.split }}-shard-${{ matrix.shard }}-der
+          path: |
+            voxconverse-results/${{ matrix.split }}/shard-${{ matrix.shard }}/shard-der.json
+            voxconverse-results/${{ matrix.split }}/shard-${{ matrix.shard }}/provenance.json
+            voxconverse-results/${{ matrix.split }}/shard-${{ matrix.shard }}/progress.json
+            voxconverse-results/${{ matrix.split }}/shard-${{ matrix.shard }}/reference/*.rttm
+            voxconverse-results/${{ matrix.split }}/shard-${{ matrix.shard }}/predicted/*.rttm
+            voxconverse-results/${{ matrix.split }}/shard-${{ matrix.shard }}/predicted/*.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+
+  voxconverse-aggregate:
+    name: Verified full DER (${{ matrix.split }})
+    needs: voxconverse-full-split
+    if: success()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        split: [dev, test]
+    steps:
+      - name: Checkout scoring code
+        uses: actions/checkout@v4
+
+      - name: Download all model-backed shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: voxconverse-v0.3-${{ matrix.split }}-shard-*-der
+          path: voxconverse-shards
+          merge-multiple: false
+
+      - name: Fail closed on incomplete corpus and compute aggregate DER
+        env:
+          VOXCONVERSE_SPLIT: ${{ matrix.split }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Shard aggregation selftest already runs through CTest in the 8 upstream jobs.
+          python3 tests/integration/aggregate_voxconverse_shards.py \
+            --split "$VOXCONVERSE_SPLIT" --shards 4 \
+            --input-dir voxconverse-shards \
+            --output-dir "voxconverse-aggregate/$VOXCONVERSE_SPLIT"
+          python3 - "voxconverse-aggregate/$VOXCONVERSE_SPLIT/der.json" "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          total = report["totals"]
+          with Path(sys.argv[2]).open("a", encoding="utf-8") as out:
+              out.write(f"## VoxConverse v0.3: {report['split']} ({report['recordings']} clips)\n\n")
+              out.write(f"**Complete split DER: {100 * report['corpus_der']:.3f}%** "
+                        f"(0-second collar; overlap included).\n\n")
+              out.write(f"Miss: {total['missed_speaker_seconds']:.3f} s; "
+                        f"FA: {total['false_alarm_speaker_seconds']:.3f} s; "
+                        f"confusion: {total['confusion_speaker_seconds']:.3f} s.\n")
+          PY
+
+      - name: Upload verified full-split DER and reference/predicted RTTMs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxconverse-v0.3-${{ matrix.split }}-VERIFIED-DER
+          path: |
+            voxconverse-aggregate/${{ matrix.split }}/der.json
+            voxconverse-aggregate/${{ matrix.split }}/reference/*.rttm
+            voxconverse-aggregate/${{ matrix.split }}/predicted/*.rttm
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,5 +1,6 @@
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Concurrent REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Concurrent REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Multimedia QUIET)
 
 add_executable(libaudition_qt_demo
     main.cpp
@@ -11,6 +12,7 @@ add_executable(libaudition_qt_demo
     live_audio_tagging_worker.cpp
     live_audio_tagging_worker.hpp
     source_track_lifecycle.hpp
+    source_wav_recorder.hpp
     acoustic_sphere_widget.cpp
     acoustic_sphere_widget.hpp
     demo_window.hpp
@@ -26,11 +28,11 @@ add_executable(libaudition_qt_demo
     sherpa_extended_workbench.hpp
     sherpa_speaker_workbench.cpp
     sherpa_speaker_workbench.hpp
-    wav_io.cpp
     wav_io.hpp)
 
 target_link_libraries(libaudition_qt_demo PRIVATE
     audition::core
+    audition::io
     audition::interfaces
     audition::dsp
     audition::spatial
@@ -56,6 +58,20 @@ if(LIBAUDITION_WITH_YAMNET AND LIBAUDITION_DEMO_FETCH_YAMNET_MODEL)
     target_compile_definitions(libaudition_qt_demo PRIVATE
         LIBAUDITION_DEMO_YAMNET_MODEL="${LIBAUDITION_DEMO_YAMNET_MODEL}"
         LIBAUDITION_DEMO_YAMNET_LABELS="${LIBAUDITION_DEMO_YAMNET_LABELS}")
+endif()
+
+if(LIBAUDITION_WITH_SHERPA AND LIBAUDITION_DEMO_FETCH_SPEECH_MODELS)
+    target_compile_definitions(libaudition_qt_demo PRIVATE
+        LIBAUDITION_DEMO_SILERO_VAD_MODEL="${LIBAUDITION_DEMO_SILERO_VAD_MODEL}"
+        LIBAUDITION_DEMO_SENSEVOICE_MODEL="${LIBAUDITION_DEMO_SENSEVOICE_MODEL}"
+        LIBAUDITION_DEMO_SENSEVOICE_TOKENS="${LIBAUDITION_DEMO_SENSEVOICE_TOKENS}")
+endif()
+
+if(TARGET Qt${QT_VERSION_MAJOR}::Multimedia)
+    target_link_libraries(libaudition_qt_demo PRIVATE Qt${QT_VERSION_MAJOR}::Multimedia)
+    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_DEMO_HAS_MULTIMEDIA=1)
+else()
+    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_DEMO_HAS_MULTIMEDIA=0)
 endif()
 
 libaudition_configure_target(libaudition_qt_demo)
@@ -127,4 +143,76 @@ endif()
 if(LIBAUDITION_WITH_CLAP AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(libaudition_qt_demo PRIVATE
         -Wno-error=maybe-uninitialized)
+endif()
+
+# Headless application checks are first-class CTest cases, reusable by local
+# developers and CI. Register them even when GTest is disabled (Qt-only builds).
+# Keep model-weight dependent tests out of this basic suite.
+if(BUILD_TESTING)
+    function(libaudition_add_qt_check name argument)
+        add_test(NAME "qt_${name}"
+            COMMAND $<TARGET_FILE:libaudition_qt_demo> "${argument}")
+        set_tests_properties("qt_${name}" PROPERTIES
+            LABELS "qt;qt-smoke"
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+            TIMEOUT 120)
+    endfunction()
+
+    libaudition_add_qt_check(self_test --self-test)
+    libaudition_add_qt_check(playback_lifecycle --model-self-test=playback-lifecycle)
+    libaudition_add_qt_check(source_track_lifecycle --model-self-test=source-track-lifecycle)
+    if(LIBAUDITION_WITH_SHERPA)
+        libaudition_add_qt_check(live_source_tagging_errors --model-self-test=live-source-tagging-errors)
+    endif()
+    if(LIBAUDITION_WITH_ODAS)
+        libaudition_add_qt_check(odas_errors --model-self-test=odas-errors)
+        if(ALSA_FOUND)
+            libaudition_add_qt_check(alsa_errors --model-self-test=alsa-errors)
+        endif()
+    endif()
+    if(LIBAUDITION_WITH_LIBSAMPLERATE)
+        libaudition_add_qt_check(samplerate --model-self-test=samplerate)
+    endif()
+    if(LIBAUDITION_WITH_WEBRTC_AEC3)
+        libaudition_add_qt_check(aec3 --model-self-test=aec3)
+    endif()
+    if(LIBAUDITION_WITH_SHERPA)
+        libaudition_add_qt_check(sherpa_errors --model-self-test=sherpa-errors)
+    endif()
+    if(LIBAUDITION_WITH_WORLD)
+        libaudition_add_qt_check(world --model-self-test=world)
+    endif()
+    if(LIBAUDITION_WITH_GTSAM)
+        libaudition_add_qt_check(gtsam --model-self-test=gtsam)
+    endif()
+endif()
+
+# The model-backed checks require independently downloaded real weights.
+# Enable explicitly on CI jobs/local machines that provision those fixtures.
+option(LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS
+    "Register Qt integration tests that require external real model assets" OFF)
+if(BUILD_TESTING AND LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
+    function(libaudition_add_qt_real_check name)
+        add_test(NAME "qt_real_${name}"
+            COMMAND $<TARGET_FILE:libaudition_qt_demo>
+                    "--model-self-test=${name}")
+        set_tests_properties("qt_real_${name}" PROPERTIES
+            LABELS "qt;real-model"
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+            TIMEOUT 240)
+    endfunction()
+    if(LIBAUDITION_WITH_SHERPA)
+        libaudition_add_qt_real_check(silero)
+        libaudition_add_qt_real_check(whisper-real)
+        libaudition_add_qt_real_check(speaker-real)
+        if(LIBAUDITION_SHERPA_ENABLE_TTS)
+            libaudition_add_qt_real_check(piper-real)
+        endif()
+    endif()
+    if(LIBAUDITION_WITH_CLAP)
+        libaudition_add_qt_real_check(clap)
+    endif()
+    if(LIBAUDITION_WITH_AASIST)
+        libaudition_add_qt_real_check(aasist)
+    endif()
 endif()

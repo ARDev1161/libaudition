@@ -325,7 +325,11 @@ void AcousticSphereWidget::mouseMoveEvent(QMouseEvent* event) {
                   QString(" (model probability %1)").arg(
                       track.classification_probability, 0, 'f', 2);
             QToolTip::showText(
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                event->globalPosition().toPoint(),
+#else
                 event->globalPos(),
+#endif
                 QString("Track #%1\nAzimuth: %2°\nElevation: %3°\nActivity: %4\nClassification: %5")
                     .arg(static_cast<qulonglong>(track.id))
                     .arg(azimuth, 0, 'f', 1)

@@ -19,6 +19,7 @@ option(LIBAUDITION_WITH_CLAP "Build the CLAP ONNX audio-embedding backend" OFF)
 option(LIBAUDITION_WITH_YAMNET "Build the YAMNet ONNX AudioSet classifier" ${LIBAUDITION_BUILD_QT_DEMO})
 option(LIBAUDITION_WITH_EFFICIENTAT "Build experimental EfficientAT log-mel ONNX adapter" OFF)
 option(LIBAUDITION_DEMO_FETCH_YAMNET_MODEL "Download the demo YAMNet model and labels at configure time" ${LIBAUDITION_BUILD_QT_DEMO})
+option(LIBAUDITION_DEMO_FETCH_SPEECH_MODELS "Download Silero VAD and SenseVoice INT8 for the Qt demo at configure time" ${LIBAUDITION_BUILD_QT_DEMO})
 option(LIBAUDITION_WITH_AASIST "Build the AASIST ONNX authenticity backend" OFF)
 option(LIBAUDITION_WITH_WORLD "Build the WORLD voice-traits backend" OFF)
 option(LIBAUDITION_WITH_GTSAM "Build the GTSAM spatial-fusion backend" OFF)
@@ -129,6 +130,9 @@ if(LIBAUDITION_BUILD_QT_DEMO)
     if(LIBAUDITION_WITH_YAMNET AND LIBAUDITION_DEMO_FETCH_YAMNET_MODEL)
         include(cmake/FetchDemoYamnet.cmake)
     endif()
+    if(LIBAUDITION_WITH_SHERPA AND LIBAUDITION_DEMO_FETCH_SPEECH_MODELS)
+        include(cmake/FetchDemoSpeechModels.cmake)
+    endif()
     add_subdirectory(demo/qt)
 endif()
 
@@ -136,6 +140,38 @@ if(LIBAUDITION_BUILD_TESTS)
     enable_testing()
     libaudition_find_or_fetch_gtest()
     add_subdirectory(tests)
+endif()
+
+# Installed package smoke can run in a minimal build with GTest disabled.
+# CI installs into the configured prefix, then runs this CTest case.
+option(LIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE
+    "Register independent consumer test for the installed CMake package" OFF)
+set(LIBAUDITION_PACKAGE_SMOKE_PREFIX "${CMAKE_BINARY_DIR}/install-default"
+    CACHE PATH "libaudition install prefix to validate with the CTest consumer")
+if(BUILD_TESTING AND LIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME installed_package_cpp17_consumer
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/verify_installed_package.py"
+            --prefix "${LIBAUDITION_PACKAGE_SMOKE_PREFIX}"
+            --cmake "${CMAKE_COMMAND}"
+            --generator "${CMAKE_GENERATOR}"
+            --version "${PROJECT_VERSION}")
+    set_tests_properties(installed_package_cpp17_consumer PROPERTIES
+        LABELS "installed-package;package-consumer" TIMEOUT 180)
+    if(LIBAUDITION_WITH_SHERPA)
+        add_test(NAME installed_package_sherpa_cpp17_consumer
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/verify_installed_package.py"
+                --prefix "${LIBAUDITION_PACKAGE_SMOKE_PREFIX}"
+                --cmake "${CMAKE_COMMAND}"
+                --generator "${CMAKE_GENERATOR}"
+                --version "${PROJECT_VERSION}"
+                --backend sherpa)
+        set_tests_properties(installed_package_sherpa_cpp17_consumer PROPERTIES
+            LABELS "installed-package;package-consumer;sherpa"
+            TIMEOUT 180)
+    endif()
 endif()
 
 if(LIBAUDITION_BUILD_DOCS)

@@ -1,10 +1,23 @@
 #include "alsa_live_capture.hpp"
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
+#include <audition/recording/source_wav_recorder.hpp>
+#include <audition/recording/source_recording_session.hpp>
+#include <audition/dsp/streaming_level_meter.hpp>
+#include <audition/pipeline/source_track_lifecycle.hpp>
+#include <audition/audio/recording_timeline_json.hpp>
+#include <filesystem>
+#include <chrono>
 #include "odas_respeaker_profile.hpp"
+#if LIBAUDITION_DEMO_HAS_SHERPA
+#include <audition/backends/sherpa/vad.hpp>
+#include <audition/backends/sherpa/offline_asr.hpp>
+#include <audition/speech/per_source_speech_runtime.hpp>
+#endif
 
 #if LIBAUDITION_DEMO_HAS_ALSA
 #include <audition/backends/odas.hpp>
+#include <audition/backends/odas/source_elevation_prior.hpp>
 #include <alsa/asoundlib.h>
 #endif
 
@@ -15,7 +28,9 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <set>
+#include <tuple>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -226,11 +241,14 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 audition::MicrophoneGeometry{{xyz[0], xyz[1], xyz[2]}});
         }
         if (config.respeaker_angular_profile) {
-            applyReSpeakerUsb4MicAngularProfile(options);
+            audition::applyReSpeakerUsb4MicAngularProfile(options);
+        }
+        if (config.near_plane_sources) {
+            audition::applyOdasNearPlaneSourcePrior(options);
         }
         // Source-specific classification needs actual SSS mono audio. Avoid
         // the extra DSP cost when no classifier model is configured.
-        options.sss.enabled = config.classify_sources;
+        options.sss.enabled = true; // source WAV recording is available independently
         audition::OdasSpatialEngine engine{options};
         std::unique_ptr<LiveAudioTaggingWorker> classifier;
         if (config.classify_sources) {
@@ -249,7 +267,84 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                        5U},
                                    config.tagging_efficientat_model});
         }
-        SourceTrackLifecycle source_lifecycle;
+#if LIBAUDITION_DEMO_HAS_SHERPA
+        std::unique_ptr<audition::SherpaVad> speech_vad;
+        std::unique_ptr<audition::PerSourceSpeechRuntime> speech_runtime;
+        std::map<std::uint64_t, std::string> transcripts;
+        if (config.transcribe_sources) {
+            audition::SherpaVadOptions vad_options{};
+            vad_options.sample_rate_hz = config.sample_rate_hz;
+            vad_options.model = audition::SherpaSileroVadModel{
+                config.speech_vad_model_path};
+            speech_vad = std::make_unique<audition::SherpaVad>(std::move(vad_options));
+            // Keep the options on the heap: older GCC -O3 builds can
+            // spuriously report an uninitialized moved-from std::map when a
+            // large default-constructed options aggregate lives on the stack.
+            auto asr_options = std::make_unique<audition::SherpaOfflineAsrOptions>();
+            asr_options->features.sample_rate_hz = config.sample_rate_hz;
+            asr_options->tokens = config.speech_asr_tokens_path;
+            asr_options->model = audition::SherpaOfflineSenseVoiceModel{
+                config.speech_asr_model_path};
+            auto asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(*asr_options));
+            audition::PerSourceSpeechOptions pipeline_options{};
+            pipeline_options.sample_rate_hz = config.sample_rate_hz;
+            speech_runtime = std::make_unique<audition::PerSourceSpeechRuntime>(
+                *speech_vad, std::move(asr), pipeline_options);
+        }
+#else
+        if (config.transcribe_sources) {
+            throw std::runtime_error{"Per-source ASR requires the sherpa-onnx backend"};
+        }
+#endif
+        audition::pipeline::SourceTrackLifecycle source_lifecycle;
+        const auto session_stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        audition::recording::SourceWavRecorder recorder{
+            std::filesystem::temp_directory_path() / "libaudition-recordings" /
+                ("session-" + std::to_string(session_stamp)), config.sample_rate_hz};
+        audition::recording::SourceRecordingSession recordings;
+        const auto drainClassification = [&]() {
+            if (!classifier) return;
+            for (const auto& [sourceId, event] : classifier->takeCompleted()) {
+                recordings.addSound(sourceId,
+                    event.window_start_sample, event.window_end_sample,
+                    event.label,
+                    config.tagging_yamnet_model ? "YAMNet" :
+                    config.tagging_efficientat_model ? "EfficientAT" : "Sherpa",
+                    event.probability, event.stage);
+            }
+        };
+        const auto retireSource = [&](std::uint64_t trackId) {
+            if (classifier) classifier->forget(trackId);
+            recorder.retire(trackId);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            std::optional<std::uint64_t> generation;
+            if (speech_runtime) {
+                generation = speech_runtime->retire(trackId);
+                transcripts.erase(trackId);
+            }
+            recordings.retire(trackId, generation);
+#else
+            recordings.retire(trackId, std::nullopt);
+#endif
+        };
+#if LIBAUDITION_DEMO_HAS_SHERPA
+        const auto drainAsr = [&]() {
+            if (!speech_runtime) return;
+            auto batch = speech_runtime->drainReady();
+            for (auto& result : batch.results) {
+                recordings.addSpeech(result);
+                const auto active = speech_runtime->activeGeneration(result.track_id);
+                if (active && *active == result.generation &&
+                    recordings.active(result.track_id)) {
+                    transcripts[result.track_id] = std::move(result.transcript.text);
+                }
+            }
+            for (const auto generation : batch.ready_retired_generations) {
+                recordings.completeGeneration(generation);
+                speech_runtime->releaseRetired(generation);
+            }
+        };
+#endif
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -258,12 +353,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::uint64_t hops = 0;
         std::uint64_t xruns = 0;
         std::size_t filled = 0;
-        // Aggregate per-channel PCM levels between UI snapshots (~50 ms).
-        // Raw hardware channels include the USB reference channels as well
-        // as the four actual microphone channels.
-        std::vector<double> sumSquares(channelCount, 0.0);
-        std::vector<double> maxAbs(channelCount, 0.0);
-        std::size_t measuredFrames = 0;
+        std::vector<audition::dsp::StreamingLevelMeter> channelMeters(channelCount);
+        std::map<std::uint64_t, audition::dsp::StreamingLevelMeter> sssMeters;
+
         const std::uint64_t visualStride = std::max<std::uint64_t>(
             1U, static_cast<std::uint64_t>(
                 std::round(static_cast<double>(config.sample_rate_hz) /
@@ -286,16 +378,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             if (result == -EPIPE || result == -ESTRPIPE) {
                 ++xruns;
                 filled = 0;
-                std::fill(sumSquares.begin(), sumSquares.end(), 0.0);
-                std::fill(maxAbs.begin(), maxAbs.end(), 0.0);
-                measuredFrames = 0;
+                for (auto& meter : channelMeters) meter.reset();
+                sssMeters.clear();
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
-                if (classifier) {
-                    source_lifecycle.clear([&](std::uint64_t id) {
-                        classifier->forget(id);
-                    });
-                }
+                drainClassification();
+                source_lifecycle.clear([&](std::uint64_t id) {
+                    retireSource(id);
+                });
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                drainAsr();
+#endif
                 continue;
             }
             if (result < 0) {
@@ -317,11 +410,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 const float sample = static_cast<float>(native[i]) / 32768.0F;
                 samples.push_back(sample);
                 const auto channel = i % channelCount;
-                const double level = static_cast<double>(sample);
-                sumSquares[channel] += level * level;
-                maxAbs[channel] = std::max(maxAbs[channel], std::abs(level));
+                channelMeters[channel].push(sample);
             }
-            measuredFrames += hop;
             const auto timestamp = audition::Timestamp{
                 static_cast<std::int64_t>(
                     (static_cast<double>(hops) *
@@ -335,7 +425,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 timestamp, hops};
             const auto resultFrame = engine.process(block.view());
             ++hops;
-            if (classifier) {
+            { // Recording is independent of classifier and ASR toggles.
                 std::set<std::uint64_t> present;
                 for (const auto& track : resultFrame.tracks) {
                     present.insert(track.track_id.value());
@@ -343,13 +433,44 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 for (const auto& separated : resultFrame.separated_frames) {
                     present.insert(separated.track_id.value());
                 }
+                drainClassification();
                 source_lifecycle.update(std::move(present), [&](std::uint64_t id) {
-                    classifier->forget(id);
+                    retireSource(id);
                 });
                 for (const auto& separated : resultFrame.separated_frames) {
-                    classifier->push(separated.track_id.value(),
-                                     separated.audio.samples(), hops);
+                    sssMeters[separated.track_id.value()].push(
+                        separated.audio.samples().data(),
+                        separated.audio.samples().size());
+                    const auto sourceId = separated.track_id.value();
+                    const auto recorded = recorder.append(sourceId, separated.audio.samples());
+                    if (recorded.recording_id != 0) {
+                        if (!recordings.active(sourceId)) {
+                            if (auto entry = recorder.activeEntry(sourceId))
+                                recordings.begin(sourceId, entry->recording_id,
+                                    entry->path, config.sample_rate_hz,
+                                    separated.audio.captureTime());
+                        }
+                        if (recorded.lost_samples != 0)
+                            recordings.addGap(sourceId, recorded.start_sample +
+                                recorded.accepted_samples, recorded.lost_samples);
+                    }
+                    if (classifier) {
+                        classifier->push(separated.track_id.value(),
+                                         separated.audio.samples(), hops);
+                    }
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                    if (speech_runtime) {
+                        speech_runtime->push(separated.track_id.value(),
+                                             separated.audio.view());
+                        if (const auto gen = speech_runtime->activeGeneration(sourceId))
+                            recordings.bindAsr(sourceId, *gen);
+                    }
+#endif
                 }
+                drainClassification();
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                drainAsr();
+#endif
             }
             if (hops % visualStride != 0U) {
                 continue;
@@ -364,6 +485,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                               static_cast<float>(xyz.y),
                               static_cast<float>(xyz.z)},
                     t.activity.value()};
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                if (const auto spoken = transcripts.find(t.track_id.value());
+                    spoken != transcripts.end()) {
+                    track.transcript = spoken->second;
+                }
+#endif
                 if (classifier) {
                     const auto tag = classifier->result(t.track_id.value(), hops);
                     if (tag.has_value()) {
@@ -384,6 +511,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                                          track.classification_label;
                         }
                         track.classification_probability = tag->probability;
+
                     }
                 }
                 tracks.push_back(std::move(track));
@@ -401,28 +529,93 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             std::vector<double> peakDbfs;
             rmsDbfs.reserve(channelCount);
             peakDbfs.reserve(channelCount);
-            for (std::size_t ch = 0; ch < channelCount; ++ch) {
-                const double rms = std::sqrt(
-                    sumSquares[ch] / static_cast<double>(measuredFrames));
-                rmsDbfs.push_back(20.0 * std::log10(std::max(rms, 1.0e-9)));
-                peakDbfs.push_back(20.0 * std::log10(std::max(maxAbs[ch], 1.0e-9)));
+            for (auto& meter : channelMeters) {
+                const auto snapshot = meter.snapshotAndReset();
+                rmsDbfs.push_back(snapshot.rms_dbfs);
+                peakDbfs.push_back(snapshot.peak_dbfs);
             }
-            std::fill(sumSquares.begin(), sumSquares.end(), 0.0);
-            std::fill(maxAbs.begin(), maxAbs.end(), 0.0);
-            measuredFrames = 0;
+            std::vector<LiveCaptureSnapshot::SourceLevel> sssLevels;
+            sssLevels.reserve(sssMeters.size());
+            for (auto& [trackId, meter] : sssMeters) {
+                const auto level = meter.snapshotAndReset();
+                if (level.sample_count == 0) continue;
+                sssLevels.push_back({trackId,
+                    level.rms_dbfs, level.peak_dbfs, level.sample_count});
+            }
+            sssMeters.clear();
             std::lock_guard<std::mutex> lock{mutex_};
             latest_.tracks = std::move(tracks);
+            latest_.recordings.clear();
+            for (const auto& item : recorder.entries()) {
+                latest_.recordings.push_back({item.recording_id, item.track_id, item.path,
+                                               item.samples, item.active, item.lost_samples, item.error});
+            }
             latest_.potentials = std::move(proposals);
             latest_.channel_rms_dbfs = std::move(rmsDbfs);
             latest_.channel_peak_dbfs = std::move(peakDbfs);
+            latest_.sss_levels = std::move(sssLevels);
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             latest_.classification_error = classifier ? classifier->error() : "";
             latest_.classifier_status = classifier && !resultFrame.tracks.empty()
                 ? classifier->status(resultFrame.tracks.front().track_id.value())
                 : (classifier ? "Waiting for ODAS tracks" : "Disabled");
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            latest_.speech_status = "Disabled";
+            if (speech_runtime) {
+                const auto stats = speech_runtime->statistics();
+                latest_.speech_status = "ASR completed=" +
+                    std::to_string(stats.completed_segments) +
+                    " queued=" + std::to_string(stats.pending_segments) +
+                    " dropped=" + std::to_string(stats.dropped_segments);
+                if (!resultFrame.tracks.empty()) {
+                    const auto id = resultFrame.tracks.front().track_id.value();
+                    const auto source = speech_runtime->trackStatus(id);
+                    if (source.error) {
+                        latest_.speech_status += " | Track " + std::to_string(id) +
+                            " VAD error: " + *source.error;
+                    } else if (source.exists) {
+                        latest_.speech_status += source.speech_active
+                            ? " | VAD: speech" : " | VAD: silence";
+                        latest_.speech_status += " buffered=" +
+                            std::to_string(source.buffered_samples);
+                    }
+                }
+                if (stats.last_error)
+                    latest_.speech_status += " | Error: " + *stats.last_error;
+            }
+#else
+            latest_.speech_status = "Requires Sherpa";
+#endif
+            latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped());
+            if (recordings.persistenceError())
+                latest_.speech_status += " | JSON error: " + *recordings.persistenceError();
+            for (const auto& item : recorder.entries()) {
+                if (!item.error.empty()) {
+                    latest_.speech_status += " | WAV error: " + item.error;
+                    break;
+                }
+            }
             ++latest_.generation;
         }
+        drainClassification();
+        source_lifecycle.clear([&](std::uint64_t id) { retireSource(id); });
+#if LIBAUDITION_DEMO_HAS_SHERPA
+        if (speech_runtime) {
+            // The ASR worker is asynchronous; avoid blocking live capture.
+            // At stop, allow bounded time for final inference results.
+            const auto deadline = std::chrono::steady_clock::now() +
+                                  std::chrono::seconds{10};
+            while (recordings.pendingRetirements() != 0 &&
+                   std::chrono::steady_clock::now() < deadline) {
+                drainAsr();
+                if (recordings.pendingRetirements() != 0)
+                    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+            }
+            drainAsr();
+        }
+#endif
+        recordings.flushAll();
     } catch (const std::exception& error) {
         std::lock_guard<std::mutex> lock{mutex_};
         if (!stop_requested_.load()) {

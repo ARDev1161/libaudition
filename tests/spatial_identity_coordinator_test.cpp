@@ -444,3 +444,217 @@ TEST(SpatialIdentityCoordinator, EventConflictDoesNotPartiallySetTrackId) {
         *event.source_id,
         audition::AcousticSourceId{999U});
 }
+
+
+TEST(SpatialIdentityCoordinator, InvalidTrackIdFailsBeforeFusionOrResolver) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    auto track = trackAt(0U, 0, 10);
+    audition::PositionObservation positions[] = {
+        {ts(5), position(1.0, 2.0, 3.0)}
+    };
+    EXPECT_THROW(static_cast<void>(
+        coordinator.observe(track, {{}, {}, positions})), audition::Error);
+    EXPECT_EQ(fusion.calls, 0U);
+    EXPECT_EQ(resolver.observe_calls, 0U);
+    EXPECT_FALSE(track.source_id.has_value());
+}
+
+TEST(SpatialIdentityCoordinator, InvalidTrackLifecycleFailsBeforeBackends) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    auto mismatched = trackAt(17U, 0, 10);
+    mismatched.first_seen = ts(0, 1U);
+    EXPECT_THROW(static_cast<void>(coordinator.observe(mismatched)),
+                 audition::Error);
+    auto backwards = trackAt(18U, 11, 10);
+    EXPECT_THROW(static_cast<void>(coordinator.observe(backwards)),
+                 audition::Error);
+    EXPECT_EQ(fusion.calls, 0U);
+    EXPECT_EQ(resolver.observe_calls, 0U);
+}
+
+TEST(SpatialIdentityCoordinator, InvalidResolverSourceIdDoesNotMutateTrack) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    resolver.decision.source_id = audition::AcousticSourceId{0U};
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    fusion.result = position(9.0, 9.0, 9.0);
+    audition::PositionObservation positions[] = {
+        {ts(5), position(1.0, 2.0, 3.0)}
+    };
+    auto track = trackAt(19U, 0, 10);
+    track.position = position(3.0, 4.0, 5.0);
+    EXPECT_THROW(static_cast<void>(
+        coordinator.observe(track, {{}, {}, positions})), audition::Error);
+    ASSERT_TRUE(track.position.has_value());
+    EXPECT_DOUBLE_EQ(track.position->mean_m.x, 3.0);
+    EXPECT_FALSE(track.source_id.has_value());
+    EXPECT_FALSE(coordinator.activeSource(track.track_id).has_value());
+    EXPECT_EQ(resolver.observe_calls, 1U);
+}
+
+TEST(SpatialIdentityCoordinator, AcceptsFusionObservationsAtTrackTimestamp) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    audition::BearingObservation bearings[1]{};
+    bearings[0].timestamp = ts(10);
+    audition::ScalarRangeObservation ranges[1]{};
+    ranges[0].timestamp = ts(10);
+    audition::PositionObservation positions[] = {
+        {ts(10), position(2.0, 3.0, 4.0)}
+    };
+    auto track = trackAt(20U, 0, 10);
+    EXPECT_NO_THROW(static_cast<void>(
+        coordinator.observe(track, {bearings, ranges, positions})));
+    EXPECT_EQ(fusion.calls, 1U);
+    EXPECT_EQ(fusion.last_bearing_count, 1U);
+    EXPECT_EQ(fusion.last_range_count, 1U);
+    EXPECT_EQ(fusion.last_position_count, 1U);
+    EXPECT_EQ(resolver.observe_calls, 1U);
+}
+
+TEST(SpatialIdentityCoordinator, RejectsFutureBearingBeforeCallingFusion) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    audition::BearingObservation bearings[1]{};
+    bearings[0].timestamp = ts(11);
+    auto track = trackAt(21U, 0, 10);
+    EXPECT_THROW(static_cast<void>(
+        coordinator.observe(track, {bearings, {}, {}})), audition::Error);
+    EXPECT_EQ(fusion.calls, 0U);
+    EXPECT_EQ(resolver.observe_calls, 0U);
+}
+
+TEST(SpatialIdentityCoordinator, RejectsRangeClockMismatchBeforeCallingFusion) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    audition::ScalarRangeObservation ranges[1]{};
+    ranges[0].timestamp = ts(5, 99U);
+    auto track = trackAt(22U, 0, 10);
+    EXPECT_THROW(static_cast<void>(
+        coordinator.observe(track, {{}, ranges, {}})), audition::Error);
+    EXPECT_EQ(fusion.calls, 0U);
+    EXPECT_EQ(resolver.observe_calls, 0U);
+}
+
+TEST(SpatialIdentityCoordinator, RejectsFutureRangeBeforeCallingFusion) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    audition::ScalarRangeObservation ranges[1]{};
+    ranges[0].timestamp = ts(11);
+    auto track = trackAt(23U, 0, 10);
+    EXPECT_THROW(static_cast<void>(
+        coordinator.observe(track, {{}, ranges, {}})), audition::Error);
+    EXPECT_EQ(fusion.calls, 0U);
+    EXPECT_EQ(resolver.observe_calls, 0U);
+}
+
+TEST(SpatialIdentityCoordinator, RejectsBearingClockMismatchBeforeCallingFusion) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    audition::BearingObservation bearings[1]{};
+    bearings[0].timestamp = ts(5, 99U);
+    auto track = trackAt(24U, 0, 10);
+    EXPECT_THROW(static_cast<void>(
+        coordinator.observe(track, {bearings, {}, {}})), audition::Error);
+    EXPECT_EQ(fusion.calls, 0U);
+    EXPECT_EQ(resolver.observe_calls, 0U);
+}
+
+TEST(SpatialIdentityCoordinator, BatchTrackConflictIsTransactional) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    auto observed = trackAt(25U, 0, 10);
+    static_cast<void>(coordinator.observe(observed));
+    audition::SpatialProcessingResult batch{};
+    batch.tracks.push_back(trackAt(25U, 0, 10));
+    batch.tracks.push_back(trackAt(25U, 0, 10));
+    batch.tracks[1].source_id = audition::AcousticSourceId{900U};
+    EXPECT_THROW(static_cast<void>(coordinator.propagate(batch)), audition::Error);
+    EXPECT_FALSE(batch.tracks[0].source_id.has_value());
+    ASSERT_TRUE(batch.tracks[1].source_id.has_value());
+    EXPECT_EQ(*batch.tracks[1].source_id, audition::AcousticSourceId{900U});
+}
+
+TEST(SpatialIdentityCoordinator, PreannotatedMatchingResultsAreIdempotent) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    auto observed = trackAt(26U, 0, 10);
+    static_cast<void>(coordinator.observe(observed));
+    audition::SpatialProcessingResult batch{};
+    auto track = trackAt(26U, 0, 10);
+    track.source_id = audition::AcousticSourceId{42U};
+    batch.tracks.push_back(track);
+    audition::TrackedAudioFrame frame{};
+    frame.track_id = track.track_id;
+    frame.source_id = audition::AcousticSourceId{42U};
+    batch.separated_frames.push_back(frame);
+    EXPECT_EQ(coordinator.propagate(batch), 0U);
+    EXPECT_TRUE(coordinator.propagate(frame));
+    EXPECT_EQ(*frame.source_id, audition::AcousticSourceId{42U});
+}
+
+TEST(SpatialIdentityCoordinator, UnknownStandaloneFrameIsUnchanged) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    audition::TrackedAudioFrame frame{};
+    frame.track_id = audition::SpatialTrackId{12345U};
+    frame.source_id = audition::AcousticSourceId{7U};
+    EXPECT_FALSE(coordinator.propagate(frame));
+    ASSERT_TRUE(frame.source_id.has_value());
+    EXPECT_EQ(*frame.source_id, audition::AcousticSourceId{7U});
+}
+
+TEST(SpatialIdentityCoordinator, InvalidEndTrackPreservesExistingBinding) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    auto observed = trackAt(27U, 0, 10);
+    static_cast<void>(coordinator.observe(observed));
+    EXPECT_THROW(coordinator.endTrack(audition::SpatialTrackId{0U}, ts(11)),
+                 audition::Error);
+    EXPECT_EQ(resolver.end_calls, 0U);
+    ASSERT_TRUE(coordinator.activeSource(observed.track_id).has_value());
+    EXPECT_EQ(*coordinator.activeSource(observed.track_id),
+              audition::AcousticSourceId{42U});
+}
+
+TEST(SpatialIdentityCoordinator, InvalidEventTrackOrSourceIsTransactional) {
+    auto track = trackAt(0U, 0, 10);
+    track.source_id = audition::AcousticSourceId{42U};
+    audition::AcousticEvent event{};
+    EXPECT_THROW(audition::SpatialIdentityCoordinator::attachToEvent(event, track),
+                 audition::Error);
+    EXPECT_FALSE(event.track_id.has_value());
+    EXPECT_FALSE(event.source_id.has_value());
+
+    track = trackAt(28U, 0, 10);
+    track.source_id = audition::AcousticSourceId{0U};
+    EXPECT_THROW(audition::SpatialIdentityCoordinator::attachToEvent(event, track),
+                 audition::Error);
+    EXPECT_FALSE(event.track_id.has_value());
+    EXPECT_FALSE(event.source_id.has_value());
+}
+
+TEST(SpatialIdentityCoordinator, EmptyFusionWithoutPositionKeepsItAbsent) {
+    FakeFusion fusion;
+    CapturingResolver resolver;
+    audition::SpatialIdentityCoordinator coordinator{fusion, resolver};
+    auto track = trackAt(29U, 0, 10);
+    static_cast<void>(coordinator.observe(track));
+    EXPECT_FALSE(track.position.has_value());
+    ASSERT_TRUE(resolver.last_observation.has_value());
+    EXPECT_FALSE(resolver.last_observation->position.has_value());
+    EXPECT_EQ(fusion.calls, 0U);
+}

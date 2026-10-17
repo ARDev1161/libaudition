@@ -1,4 +1,5 @@
 #include "live_audio_tagging_worker.hpp"
+#include <audition/classify/progressive_window_policy.hpp>
 
 #if LIBAUDITION_DEMO_HAS_SHERPA
 #include <audition/backends/sherpa/audio_tagger.hpp>
@@ -100,15 +101,15 @@ LiveAudioTaggingWorker::LiveAudioTaggingWorker(LiveTaggingOptions options)
             const auto refined_samples = options.refined_window_samples != 0U
                 ? options.refined_window_samples
                 : static_cast<std::size_t>(options.sample_rate_hz) * 5U;
-            const auto quick_hop = options.fast_hop_samples != 0U
-                ? options.fast_hop_samples : std::max<std::size_t>(1U, fast_samples / 2U);
-            const auto refined_hop = options.refined_hop_samples != 0U
-                ? options.refined_hop_samples : static_cast<std::size_t>(options.sample_rate_hz);
+            const auto policy = audition::makeFastRefinedWindowPolicy(
+                options.sample_rate_hz, fast_samples, refined_samples,
+                options.fast_hop_samples, options.refined_hop_samples);
             std::vector<audition::ProgressiveClassificationStage> stages;
-            stages.push_back({"quick", std::move(classifier), fast_samples, quick_hop});
+            stages.push_back({"quick", std::move(classifier),
+                              policy.fast_window, policy.fast_hop});
             stages.push_back({"refined",
                 std::make_unique<audition::YamnetAudioTagger>(std::move(refined_options)),
-                refined_samples, refined_hop});
+                policy.refined_window, policy.refined_hop});
             progressive_ = std::make_unique<audition::ProgressiveSourceClassificationRuntime>(
                 options.sample_rate_hz, std::move(stages), 16U);
             return;
@@ -149,14 +150,22 @@ std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
     std::uint64_t track_id, std::uint64_t /*processed_hops*/) const {
     std::optional<audition::ClassificationResult> prediction;
     std::string stage;
+    std::optional<std::uint64_t> windowEnd;
+    std::uint64_t windowSize = 0;
     if (progressive_) {
         const auto state = progressive_->status(track_id);
         prediction = state.result;
         if (state.selected_stage.has_value()) {
             stage = state.stages[*state.selected_stage].name;
+            const auto& chosen = state.stages[*state.selected_stage].status;
+            windowEnd = chosen.result_end_sample;
+            windowSize = static_cast<std::uint64_t>(chosen.required_samples);
         }
     } else if (runtime_) {
-        prediction = runtime_->status(track_id).result;
+        const auto status = runtime_->status(track_id);
+        prediction = status.result;
+        windowEnd = status.result_end_sample;
+        windowSize = static_cast<std::uint64_t>(status.required_samples);
     }
     if (!prediction.has_value() || prediction->classes.empty()) {
         return std::nullopt;
@@ -170,6 +179,11 @@ std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
     auto filtered = audition::selectVocabulary(*prediction, selection_, supported);
     LiveTrackClassification response{};
     response.stage = stage;
+    if (windowEnd && *windowEnd >= windowSize) {
+        response.window_start_sample = *windowEnd - windowSize;
+        response.window_end_sample = *windowEnd;
+        response.has_window = true;
+    }
     response.unsupported_labels = std::move(filtered.unsupported_labels);
     std::ostringstream summary;
     for (std::size_t i = 0; i < filtered.classes.size(); ++i) {
@@ -183,6 +197,43 @@ std::optional<LiveTrackClassification> LiveAudioTaggingWorker::result(
     }
     response.top_classes = summary.str();
     return response;
+}
+
+std::vector<std::pair<std::uint64_t, LiveTrackClassification>>
+LiveAudioTaggingWorker::takeCompleted() {
+    std::vector<std::pair<std::uint64_t, LiveTrackClassification>> out;
+    const auto append = [&](std::uint64_t id, const std::string& stage,
+                            std::uint64_t start, std::uint64_t end,
+                            const audition::ClassificationResult& classified) {
+        if (classified.classes.empty()) return;
+        std::vector<std::string> supported;
+        supported.reserve(classified.classes.size());
+        for (const auto& label : classified.classes)
+            supported.push_back(label.label);
+        auto filtered = audition::selectVocabulary(classified, selection_, supported);
+        if (filtered.classes.empty()) return;
+        LiveTrackClassification event{};
+        event.label = filtered.classes.front().label;
+        event.probability = filtered.classes.front().probability.value();
+        event.stage = stage;
+        event.has_window = true;
+        event.window_start_sample = start;
+        event.window_end_sample = end;
+        out.emplace_back(id, std::move(event));
+    };
+    if (progressive_) {
+        for (const auto& completed : progressive_->takeCompleted()) {
+            append(completed.window.source_id, completed.stage,
+                completed.window.start_sample, completed.window.end_sample,
+                completed.window.result);
+        }
+    } else if (runtime_) {
+        for (const auto& completed : runtime_->takeCompleted()) {
+            append(completed.source_id, {}, completed.start_sample,
+                completed.end_sample, completed.result);
+        }
+    }
+    return out;
 }
 
 std::string LiveAudioTaggingWorker::error() const {

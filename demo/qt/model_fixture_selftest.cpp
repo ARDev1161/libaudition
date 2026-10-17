@@ -1,4 +1,5 @@
 #include "model_fixture_selftest.hpp"
+#include "acoustic_scene_page.hpp"
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
 #include "wav_io.hpp"
@@ -7,6 +8,12 @@
 
 #include <QByteArray>
 #include <QComboBox>
+#include <QCheckBox>
+#include <QDialog>
+#include <QPointer>
+#include <QSlider>
+#include <QCoreApplication>
+#include <QEvent>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFormLayout>
@@ -765,6 +772,52 @@ QString testSpeakerReal(QMainWindow& window, const QTemporaryDir& dir) {
 #endif
 }
 
+QString testPlaybackLifecycle(const QTemporaryDir& dir) {
+#if LIBAUDITION_DEMO_HAS_MULTIMEDIA
+    const auto wav = createFixture(dir, 16000U, 32000U);
+    const auto path = QString::fromStdString(wav.string());
+    for (int i = 0; i < 40; ++i) {
+        QPointer<QDialog> dialog{createRecordingPlaybackDialog(
+            nullptr, static_cast<std::uint64_t>(i + 1), path, 32000U)};
+        if (!dialog || !dialog->isVisible())
+            throw std::runtime_error{"Playback dialog did not open"};
+        auto* normalize = dialog->findChild<QCheckBox*>("recordingPlaybackNormalize");
+        auto* progress = dialog->findChild<QSlider*>("recordingPlaybackProgress");
+        if (!normalize || !progress || !normalize->isChecked())
+            throw std::runtime_error{"Playback controls missing"};
+        // Alternate rapid shutdown during normalization with playback,
+        // timeline seek and toggling between original and processed WAVs.
+        if (i % 3 == 0) {
+            normalize->setChecked(false);
+            normalize->setChecked(true);
+        }
+        if (i % 3 == 1) {
+            QEventLoop wait;
+            QTimer::singleShot(120, &wait, &QEventLoop::quit);
+            wait.exec();
+            if (dialog) {
+                progress->setValue(250);
+                normalize->setChecked(false);
+                normalize->setChecked(true);
+            }
+        }
+        if (dialog) dialog->close();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        if (dialog)
+            throw std::runtime_error{"Playback dialog not destroyed after close"};
+    }
+    // Existing QtConcurrent work may outlive the dialog; let it drain and
+    // prove post-close callbacks/temporary-file cleanup do not crash.
+    QEventLoop drain;
+    QTimer::singleShot(250, &drain, &QEventLoop::quit);
+    drain.exec();
+    return "qt-model-self-test=ok backend=playback-lifecycle cycles=40";
+#else
+    static_cast<void>(dir);
+    return "qt-model-self-test=skipped backend=playback-lifecycle multimedia-disabled";
+#endif
+}
+
 QString testSourceTrackLifecycle() {
     demo::SourceTrackLifecycle lifecycle;
     std::vector<std::uint64_t> retired;
@@ -844,6 +897,8 @@ bool runQtModelFixtureSelfTest(
             result = testOdasErrors(window);
         } else if (which == "alsa-errors") {
             result = testAlsaCaptureErrors(window);
+        } else if (which == "playback-lifecycle") {
+            result = testPlaybackLifecycle(dir);
         } else if (which == "source-track-lifecycle") {
             result = testSourceTrackLifecycle();
         } else if (which == "live-source-tagging-errors") {
