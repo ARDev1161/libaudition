@@ -95,6 +95,7 @@ add_executable(libaudition_tests
     temporal_interval_relations_test.cpp
     temporal_page_hinkley_test.cpp
     temporal_timed_segmenter_test.cpp
+    temporal_event_episode_associator_test.cpp
     acoustic_pipeline_scenario_test.cpp
     level_range_prior_test.cpp
     spl_calibration_test.cpp
