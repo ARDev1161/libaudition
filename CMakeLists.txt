@@ -142,6 +142,38 @@ if(LIBAUDITION_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# Installed package smoke can run in a minimal build with GTest disabled.
+# CI installs into the configured prefix, then runs this CTest case.
+option(LIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE
+    "Register independent consumer test for the installed CMake package" OFF)
+set(LIBAUDITION_PACKAGE_SMOKE_PREFIX "${CMAKE_BINARY_DIR}/install-default"
+    CACHE PATH "libaudition install prefix to validate with the CTest consumer")
+if(BUILD_TESTING AND LIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME installed_package_cpp17_consumer
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/verify_installed_package.py"
+            --prefix "${LIBAUDITION_PACKAGE_SMOKE_PREFIX}"
+            --cmake "${CMAKE_COMMAND}"
+            --generator "${CMAKE_GENERATOR}"
+            --version "${PROJECT_VERSION}")
+    set_tests_properties(installed_package_cpp17_consumer PROPERTIES
+        LABELS "installed-package;package-consumer" TIMEOUT 180)
+    if(LIBAUDITION_WITH_SHERPA)
+        add_test(NAME installed_package_sherpa_cpp17_consumer
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/verify_installed_package.py"
+                --prefix "${LIBAUDITION_PACKAGE_SMOKE_PREFIX}"
+                --cmake "${CMAKE_COMMAND}"
+                --generator "${CMAKE_GENERATOR}"
+                --version "${PROJECT_VERSION}"
+                --backend sherpa)
+        set_tests_properties(installed_package_sherpa_cpp17_consumer PROPERTIES
+            LABELS "installed-package;package-consumer;sherpa"
+            TIMEOUT 180)
+    endif()
+endif()
+
 if(LIBAUDITION_BUILD_DOCS)
     find_package(Doxygen REQUIRED)
     set(DOXYGEN_IN "${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in")

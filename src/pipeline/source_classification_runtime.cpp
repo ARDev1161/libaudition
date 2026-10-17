@@ -8,6 +8,21 @@
 #include <audition/audio/audio_buffer.hpp>
 
 namespace audition {
+namespace {
+
+// Drop only the retired source epoch. Unrelated sources may already have
+// completed events waiting for an asynchronous consumer.
+void purgeCompletedEpoch(
+    std::deque<CompletedSourceClassification>& completed,
+    std::uint64_t source_id, std::uint64_t generation) {
+    completed.erase(std::remove_if(completed.begin(), completed.end(),
+        [source_id, generation](const CompletedSourceClassification& event) {
+            return event.source_id == source_id &&
+                   event.generation == generation;
+        }), completed.end());
+}
+
+}  // namespace
 
 SourceClassificationRuntime::SourceClassificationRuntime(
     std::unique_ptr<IAudioClassifier> classifier,
@@ -57,6 +72,10 @@ void SourceClassificationRuntime::push(
                     return job.source_id == evicted_id &&
                            job.generation == evicted_generation;
                 }), pending_.end());
+            // Eviction ends the source epoch, just like forget(). A delayed
+            // GUI/ROS consumer must not receive completed predictions from
+            // an epoch that the runtime has already retired.
+            purgeCompletedEpoch(completed_, evicted_id, evicted_generation);
             buffers_.erase(victim);
         }
         Buffer fresh{};
@@ -74,6 +93,7 @@ void SourceClassificationRuntime::push(
                 [source_id, generation=it->second.generation](const Job& job) {
                     return job.source_id == source_id && job.generation == generation;
                 }), pending_.end());
+            purgeCompletedEpoch(completed_, source_id, it->second.generation);
             it->second.result.reset();
             it->second.result_end_sample.reset();
             return;
@@ -232,6 +252,7 @@ void SourceClassificationRuntime::run() noexcept {
                     [source=job.source_id, generation=job.generation](const Job& queued) {
                         return queued.source_id == source && queued.generation == generation;
                     }), pending_.end());
+                purgeCompletedEpoch(completed_, job.source_id, job.generation);
             }
             active_source_.reset();
         } catch (...) {
@@ -246,6 +267,7 @@ void SourceClassificationRuntime::run() noexcept {
                     [source=job.source_id, generation=job.generation](const Job& queued) {
                         return queued.source_id == source && queued.generation == generation;
                     }), pending_.end());
+                purgeCompletedEpoch(completed_, job.source_id, job.generation);
             }
             active_source_.reset();
         }
