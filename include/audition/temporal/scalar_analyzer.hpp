@@ -3,6 +3,7 @@
 #include <audition/core/id.hpp>
 #include <audition/core/time.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <map>
@@ -92,14 +93,14 @@ public:
             const double down = std::max(0.0, state.down - residual - options_.drift);
             result.positive_change = up >= options_.threshold;
             result.negative_change = down >= options_.threshold;
-            state.up = result.positive_change ? 0.0 : up;
-            state.down = result.negative_change ? 0.0 : down;
-            state.mean += options_.alpha * residual;
-            if (!std::isfinite(state.mean)) {
+            const double next_mean = state.mean + options_.alpha * residual;
+            if (!std::isfinite(next_mean)) {
                 // Finite input alone does not guarantee finite intermediate sums.
-                // This path cannot change the preexisting state beyond this point.
                 throw std::overflow_error("scalar smoothing overflow");
             }
+            state.mean = next_mean;
+            state.up = result.positive_change ? 0.0 : up;
+            state.down = result.negative_change ? 0.0 : down;
         }
         state.last = sample.time;
         result.smoothed = state.mean;
