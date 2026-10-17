@@ -47,6 +47,7 @@ class CiCTestEntrypointTests(unittest.TestCase):
                      "voxconverse_shard_aggregation_selftest"):
             self.assertIn(name, workflow)
 
+
     def test_real_spatial_quality_requires_pinned_data_and_ctest(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         cmake = TEST_CMAKE.read_text(encoding="utf-8")
@@ -57,43 +58,14 @@ class CiCTestEntrypointTests(unittest.TestCase):
         self.assertIn("--sha256", workflow)
         self.assertIn(
             "ctest --no-tests=error --test-dir build-real-odas "
-            "-R '^audio_real_respeaker_corpus        cmake = TEST_CMAKE.read_text(encoding="utf-8")
-        for name in (
-            "speech_real_speaker_diarization_rttm_syntax",
-            "speech_real_speaker_diarization_benchmark_rttm_syntax",
-        ):
-            self.assertIn(f"add_test(NAME {name}", cmake)
-        self.assertIn("FIXTURES_SETUP speech_diarization_report", cmake)
-        self.assertIn("FIXTURES_SETUP speech_diarization_benchmark_report", cmake)
-        self.assertIn("FIXTURES_REQUIRED speech_diarization_report", cmake)
-        self.assertIn("FIXTURES_REQUIRED speech_diarization_benchmark_report", cmake)
-
-
-if __name__ == "__main__":
-    unittest.main()
-", workflow)
+            "-R '^audio_real_respeaker_corpus$' --output-on-failure",
+            workflow)
         self.assertIn("add_test(NAME audio_real_spatial_bundle_selftest", cmake)
         self.assertIn("add_test(NAME audio_real_respeaker_corpus", cmake)
         self.assertIn("LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG", cmake)
         self.assertIn("LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE", cmake)
-        # Catch accidental workflow duplication/corruption on insertion:
-        # a regex containing '
-    def test_real_diarization_rttm_checks_have_ctest_fixtures(self):
-        cmake = TEST_CMAKE.read_text(encoding="utf-8")
-        for name in (
-            "speech_real_speaker_diarization_rttm_syntax",
-            "speech_real_speaker_diarization_benchmark_rttm_syntax",
-        ):
-            self.assertIn(f"add_test(NAME {name}", cmake)
-        self.assertIn("FIXTURES_SETUP speech_diarization_report", cmake)
-        self.assertIn("FIXTURES_SETUP speech_diarization_benchmark_report", cmake)
-        self.assertIn("FIXTURES_REQUIRED speech_diarization_report", cmake)
-        self.assertIn("FIXTURES_REQUIRED speech_diarization_benchmark_report", cmake)
 
-
-if __name__ == "__main__":
-    unittest.main()
- must never splice another job into its step.
+        # The optional corpus job must be isolated from its neighbors.
         self.assertEqual(workflow.count("  real-spatial-corpus:\n"), 1)
         self.assertEqual(workflow.count("  odas-backend:\n"), 1)
         self.assertEqual(workflow.count("  gtsam-backend:\n"), 1)
@@ -103,23 +75,7 @@ if __name__ == "__main__":
         self.assertEqual(real_job.count("    runs-on: ubuntu-latest"), 1)
         self.assertIn(
             "run: ctest --no-tests=error --test-dir build-real-odas "
-            "-R '^audio_real_respeaker_corpus
-    def test_real_diarization_rttm_checks_have_ctest_fixtures(self):
-        cmake = TEST_CMAKE.read_text(encoding="utf-8")
-        for name in (
-            "speech_real_speaker_diarization_rttm_syntax",
-            "speech_real_speaker_diarization_benchmark_rttm_syntax",
-        ):
-            self.assertIn(f"add_test(NAME {name}", cmake)
-        self.assertIn("FIXTURES_SETUP speech_diarization_report", cmake)
-        self.assertIn("FIXTURES_SETUP speech_diarization_benchmark_report", cmake)
-        self.assertIn("FIXTURES_REQUIRED speech_diarization_report", cmake)
-        self.assertIn("FIXTURES_REQUIRED speech_diarization_benchmark_report", cmake)
-
-
-if __name__ == "__main__":
-    unittest.main()
- --output-on-failure",
+            "-R '^audio_real_respeaker_corpus$' --output-on-failure",
             real_job)
         self.assertIn("name: libaudition-real-spatial-quality", real_job)
         self.assertTrue(real_job.endswith("\n\n"))
