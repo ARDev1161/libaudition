@@ -49,8 +49,8 @@ TEST(TemporalScalarAnalyzer, TracksSourcesAndFeaturesSeparately) {
 TEST(TemporalScalarAnalyzer, RejectsClocksAndTimeRegression) {
     audition::temporal::TemporalScalarAnalyzer analyzer;
     (void)analyzer.observe(obs(1, 10, 1));
-    EXPECT_THROW(analyzer.observe(obs(1, 10, 2)), std::invalid_argument);
-    EXPECT_THROW(analyzer.observe(obs(1, 9, 2)), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(analyzer.observe(obs(1, 10, 2))), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(analyzer.observe(obs(1, 9, 2))), std::invalid_argument);
     auto wrong = obs(1, 11, 2);
     wrong.time = timeAt(11, 2);
     EXPECT_THROW(analyzer.observe(wrong), std::invalid_argument);
@@ -63,12 +63,12 @@ TEST(TemporalScalarAnalyzer, BadInputAndCapacityDoNotConsumeState) {
     options.max_features_per_source = 1;
     audition::temporal::TemporalScalarAnalyzer analyzer(options);
     (void)analyzer.observe(obs(1, 1, 0));
-    EXPECT_THROW(analyzer.observe(obs(2, 2, 0)), std::length_error);
-    EXPECT_THROW(analyzer.observe(obs(1, 2, 0, "other")), std::length_error);
-    EXPECT_THROW(analyzer.observe(obs(1, 2, std::numeric_limits<double>::quiet_NaN())),
+    EXPECT_THROW(static_cast<void>(analyzer.observe(obs(2, 2, 0))), std::length_error);
+    EXPECT_THROW(static_cast<void>(analyzer.observe(obs(1, 2, 0, "other"))), std::length_error);
+    EXPECT_THROW(static_cast<void>(analyzer.observe(obs(1, 2, std::numeric_limits<double>::quiet_NaN()))),
                  std::invalid_argument);
     EXPECT_EQ(analyzer.sourceCount(), 1u);
-    EXPECT_NO_THROW(analyzer.observe(obs(1, 2, 0)));
+    EXPECT_NO_THROW(static_cast<void>(analyzer.observe(obs(1, 2, 0))));
 }
 
 TEST(TemporalScalarAnalyzer, InvalidConfigurationRejected) {
