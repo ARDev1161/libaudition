@@ -1,6 +1,7 @@
 #pragma once
 #include <audition/core/time.hpp>
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
 
 namespace audition::temporal {
@@ -20,7 +21,7 @@ struct SpatialGateOptions {
 struct SpatialGateResult {
     bool compatible{false};
     double distance_m{0};
-    Duration elapsed{0};
+    std::uint64_t elapsed_nanoseconds{0};
 };
 
 class SpatialTemporalGate final {
@@ -50,9 +51,8 @@ public:
         // that far apart cannot pass a nonnegative int64 max_elapsed.
         const auto max = static_cast<std::uint64_t>(options_.max_elapsed.nanoseconds());
         if (elapsed > max)
-            return {false, distance, options_.max_elapsed};
-        return {distance <= options_.max_distance_m, distance,
-                Duration{static_cast<std::int64_t>(elapsed)}};
+            return {false, distance, elapsed};
+        return {distance <= options_.max_distance_m, distance, elapsed};
     }
 private:
     SpatialGateOptions options_{};
