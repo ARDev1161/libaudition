@@ -93,6 +93,7 @@ add_executable(libaudition_tests
     temporal_acoustic_event_detector_test.cpp
     temporal_scalar_analyzer_test.cpp
     temporal_interval_relations_test.cpp
+    temporal_page_hinkley_test.cpp
     acoustic_pipeline_scenario_test.cpp
     level_range_prior_test.cpp
     spl_calibration_test.cpp
