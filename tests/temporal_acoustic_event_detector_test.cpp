@@ -166,10 +166,10 @@ TEST(TemporalAcousticEventDetector, DuplicateAndEmptyLabelsFailWithoutConsumingT
     const auto id = source(1U);
     auto started = detector.observe(id, at(10), scores({{"a", 0.8}}));
     ASSERT_EQ(started.size(), 1U);
-    EXPECT_THROW(detector.observe(id, at(11),
-                 scores({{"a", 0.9}, {"a", 0.8}})), audition::Error);
-    EXPECT_THROW(detector.observe(id, at(11),
-                 scores({{"", 0.9}})), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.observe(id, at(11),
+                 scores({{"a", 0.9}, {"a", 0.8}}))), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.observe(id, at(11),
+                 scores({{"", 0.9}}))), audition::Error);
     const auto valid = detector.observe(id, at(11), scores({{"a", 0.9}}));
     EXPECT_TRUE(valid.empty());
     const auto active = detector.activeEvents();
@@ -182,10 +182,10 @@ TEST(TemporalAcousticEventDetector, TimeOrderingAndClockIsolationFailClosed) {
     const auto id = source(55U);
     const auto started = detector.observe(id, at(10), scores({{"a", 0.8}}));
     ASSERT_EQ(started.size(), 1U);
-    EXPECT_THROW(detector.observe(id, at(10), scores({})), audition::Error);
-    EXPECT_THROW(detector.observe(id, at(9), scores({})), audition::Error);
-    EXPECT_THROW(detector.observe(id, at(11, 99U), scores({})), audition::Error);
-    EXPECT_THROW(detector.retire(id, at(11, 99U)), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.observe(id, at(10), scores({}))), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.observe(id, at(9), scores({}))), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.observe(id, at(11, 99U), scores({}))), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.retire(id, at(11, 99U))), audition::Error);
     EXPECT_EQ(detector.activeEvents().size(), 1U);
     auto finished = detector.retire(id, at(11));
     ASSERT_EQ(finished.size(), 1U);
@@ -198,8 +198,8 @@ TEST(TemporalAcousticEventDetector, LabelCapacityIsTransactional) {
     audition::TemporalAcousticEventDetector detector{opts};
     auto first = detector.observe(source(3U), at(1), scores({{"a", 0.8}}));
     ASSERT_EQ(first.size(), 1U);
-    EXPECT_THROW(detector.observe(source(3U), at(2),
-                 scores({{"a", 0.9}, {"b", 0.8}})), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.observe(source(3U), at(2),
+                 scores({{"a", 0.9}, {"b", 0.8}}))), audition::Error);
     auto active = detector.activeEvents();
     ASSERT_EQ(active.size(), 1U);
     EXPECT_EQ(active[0].last_supported_time.nanoseconds(), 1);
@@ -215,8 +215,8 @@ TEST(TemporalAcousticEventDetector, SourceCapacityIsExplicitAndRecoverable) {
     opts.max_sources = 1U;
     audition::TemporalAcousticEventDetector detector{opts};
     EXPECT_TRUE(detector.observe(source(7U), at(1), scores({})).empty());
-    EXPECT_THROW(detector.observe(source(8U), at(1),
-                 scores({{"x", 0.9}})), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.observe(source(8U), at(1),
+                 scores({{"x", 0.9}}))), audition::Error);
     EXPECT_EQ(detector.sourceCount(), 1U);
     detector.forget(source(7U));
     const auto event = detector.observe(source(8U), at(1), scores({{"x", 0.9}}));
@@ -254,8 +254,8 @@ TEST(TemporalAcousticEventDetector, ResetDropsActiveWithoutReusingOccurrence) {
 
 TEST(TemporalAcousticEventDetector, InvalidOptionsAndSourceIdsFailFast) {
     audition::TemporalAcousticEventDetector detector{};
-    EXPECT_THROW(detector.observe(source(0U), at(1), scores({})), audition::Error);
-    EXPECT_THROW(detector.retire(source(0U), at(1)), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.observe(source(0U), at(1), scores({}))), audition::Error);
+    EXPECT_THROW(static_cast<void>(detector.retire(source(0U), at(1))), audition::Error);
     auto invalid = immediate();
     invalid.stop_threshold = audition::Probability::from(0.9);
     EXPECT_THROW(static_cast<void>(audition::TemporalAcousticEventDetector{invalid}),
