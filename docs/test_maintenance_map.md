@@ -21,9 +21,9 @@ regressions. For complete instructions see [CTest suites](ctest_suites.md),
   runtime, model weights, audio and geometry.
 
 The standard GCC coverage job instruments **src/** only; it does not measure
-optional adapter code, Qt or external dependencies. On successful CI #1202
+optional adapter code, Qt or external dependencies. On successful CI #1205
 (2026-10-17), the core covered 2840/2909 lines (**97.6%**) and
-2621/3731 branches (**70.2%**). The 70% planning milestone is met, not a
+2622/3731 branches (**70.3%**). The 70% planning milestone is met, not a
 claim of complete model/hardware validation.
 
 ## Test-family index
@@ -102,6 +102,24 @@ must permit fresh classification without resurrecting stale output.
 The test file is `tests/acoustic_pipeline_scenario_test.cpp`. Both cases are
 ordinary GoogleTest-discovered CTest tests and need no model download.
 
+## AEC3 final targeted numerical contracts
+
+`WebRtcAec3Backend.SupportsThreeRatesAndPlanarMultichannelCapture` tests
+16/32/48-kHz 10-ms frames with two planar microphone channels, one mono
+playback reference, finite normalized samples and preserved metadata.
+`ReferenceWithoutCaptureDoesNotCreateAudibleNearEnd` verifies RMS < 0.01
+for microphone silence with nonzero playback; `NearEndWithoutPlaybackRemainsDetectable`
+verifies RMS > 0.015 for near-end input with zero playback.
+`RejectsInvalidRatesFramesAndDelaysThenProcessesValidAudio` checks invalid
+formats and delay handling followed by recovery on valid audio.
+
+These gates guard **numeric safety and obvious near-end loss** under controlled
+synthetic conditions. They are not ERLE/echo-removal or double-talk performance
+claims: an accepted ERLE threshold needs independently measured echo-path
+references and a reproducible baseline. All four cases are ordinary CTest
+GoogleTest discoveries in the optional `aec3-backend` job. Validation must be
+confirmed by the corresponding completed CI run.
+
 ## Fast local development commands
 
 ~~~sh
@@ -170,7 +188,7 @@ does not establish that every backend or accelerator was exercised.**
 
 ## Limited transition budget before expanding the algorithm base
 
-With 70.2% core branches already reached, cap additional standalone
+With 70.3% core branches already reached, cap additional standalone
 testing work to **approximately 3–5 CI runs**. At 10 minutes each that is
 **30–50 minutes of CI execution**, excluding implementation/debugging time.
 
@@ -184,3 +202,17 @@ These are planning estimates, not guarantees. Move heavy data collection,
 real-model statistics, accelerator runners, and soak tests into ongoing tracks
 alongside **new algorithm development**, not as blockers. New algorithms
 follow the above checklist from their first implementation.
+
+### Transition decision (after CI #1205)
+
+- Documentation and case navigation: completed in CI #1203.
+- Streaming/chunk partition, reset and producer isolation: completed in CI #1204.
+- Two-source PCM → classification/VAD/ASR → persistent event and recovery:
+  completed in CI #1205.
+- Optional AEC3 numeric/regression batch: **awaiting its CI validation**.
+
+**Stop condition:** once the final AEC3 batch passes its actual configured
+CTest job, stop library-wide coverage-only work and move to new algorithms.
+Real-room corpora, long soak, accelerator benchmarking and statistical ML
+accuracy remain independent optional validation tracks. They should not
+reopen this transition milestone.
