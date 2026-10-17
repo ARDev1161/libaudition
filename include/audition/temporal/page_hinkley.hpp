@@ -1,6 +1,7 @@
 #pragma once
 #include <audition/core/id.hpp>
 #include <audition/core/time.hpp>
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <map>
