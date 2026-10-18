@@ -90,3 +90,22 @@ rejected before committing a new frame.
 ### Variable-length suffix alignment
 
 `StreamingPatternOptions::min_candidate_frames` and `max_candidate_frames` optionally define an inclusive range of trailing observation lengths evaluated against each registered feature template. Zero means use the template length (the backward-compatible default). The matcher selects the lowest normalized reachable DTW cost in the configured range, then applies the source/label cooldown. Candidate lengths are bounded by `max_frames`; candidates shorter than a template can align repeated features but **cannot recover arbitrary deleted information**. The configured warping radius may make unequal lengths unreachable. Regression tests cover shortened plateau patterns, nonmatching deleted features, and default fixed-length behavior.
+
+### Streaming recovery and computational bounds
+
+`StreamingPatternMatcher` retains at most `max_frames` feature frames
+per persistent source. Each accepted frame is compared against every
+registered template and each permitted trailing candidate length, using
+two-row banded DTW. With `T` templates, `L` candidate lengths, template
+length `W`, candidate length `C` and feature dimension `D`, a conservative
+per-frame arithmetic bound is O(T * L * W * C * D); time and storage are
+bounded by the configured caps, but no wall-clock latency guarantee is
+asserted. The current matcher allocates temporary candidate vectors; memory
+allocations and latency should be benchmarked before realtime deployment.
+
+`StreamingPatternMatcher.MissingMiddleFrameWithoutEquivalentPlateauDoesNotMatch`
+demonstrates that an arbitrary deleted discriminating frame does **not**
+become an exact match. Additional scenarios test recovery on a subsequent
+complete occurrence, rollover after 100 unrelated frames, independent
+template cooldown and rejection of candidate bounds exceeding history.
+These tests measure deterministic behavior, not physical dropped-frame rates.
