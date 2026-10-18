@@ -99,3 +99,16 @@ unmatched observations, and malformed matrices.
 Remaining follow-up: full-covariance correlated fusion, confidence calibration,
 multiple-hypothesis uncertainty, source lifecycle integration, scenario replay,
 and real-corpus identity-switch quality gates.
+
+## Cross-component scenario regressions
+
+`TemporalAssociationScenario.*` uses the actual covariance gate, Hungarian
+matcher and episode associator together. Four synthetic cases exercise
+globally optimal crossing assignments, unmatched disappearing tracks, a distant
+new observation, and correct episode lifecycle under external track-ID
+recycling. The identity resolver remains authoritative: the scenario explicitly
+provides distinct persistent source IDs rather than claiming that the
+associator discovers them.
+
+These are deterministic synthetic contract checks. Neither real-source ID
+switch rate nor location accuracy has been measured by these tests.
