@@ -89,6 +89,7 @@ public:
         // template label. Build each length at most once per accepted frame.
         // Preserve the local next state until every DTW comparison succeeds.
         std::map<std::size_t,std::vector<std::vector<double>>> suffix_cache;
+        DtwWorkspace workspace;
         for(const auto& entry:templates_) {
             const auto& reference=entry.second;
             if (reference.front().size()!=frame.size()) continue;
@@ -107,7 +108,7 @@ public:
                         next.history.end());
                     cached=suffix_cache.emplace(length,std::move(suffix)).first;
                 }
-                const auto match=dtw_.compare(reference,cached->second);
+                const auto match=dtw_.compare(reference,cached->second,workspace);
                 if (match.reachable && match.normalized_cost<best_cost)
                     best_cost=match.normalized_cost;
             }
