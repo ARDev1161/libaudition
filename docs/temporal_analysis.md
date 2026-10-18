@@ -112,3 +112,16 @@ associator discovers them.
 
 These are deterministic synthetic contract checks. Neither real-source ID
 switch rate nor location accuracy has been measured by these tests.
+
+## Numerical robustness audit (follow-up)
+
+The elapsed-time calculations in `TimedActivitySegmenter` compare ordered signed
+timestamps using unsigned nanosecond differences, avoiding signed overflow at
+the extrema of the 64-bit clock representation. Regression cases cover an
+unconfirmed onset and an active episode across the full signed clock range.
+
+`TemporalScalarAnalyzer` now computes the complete EMA/CUSUM update in
+temporary state and rejects any non-finite intermediate arithmetic before
+mutating source/feature history. A failed observation therefore does not
+consume its timestamp; a corrected observation at the same timestamp can be
+accepted. Regression tests exercise this using finite `double` extrema.
