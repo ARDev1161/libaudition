@@ -289,3 +289,26 @@ TEST(StreamingPatternMatcher, ReusedSuffixBuffersDoNotLeakPriorSourceFrames) {
         EXPECT_TRUE(matcher.push(source(2),{100}).empty());
     }
 }
+
+TEST(StreamingPatternMatcher, FullHistoryRecyclesFramesWithoutMixingSources) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_frames=3;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("one",{{1},{2},{3}});
+    matcher.registerTemplate("two",{{7},{8},{9}});
+    for (int cycle=0;cycle<25;++cycle) {
+        EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+        EXPECT_TRUE(matcher.push(source(2),{7}).empty());
+        EXPECT_TRUE(matcher.push(source(1),{2}).empty());
+        EXPECT_TRUE(matcher.push(source(2),{8}).empty());
+        const auto a=matcher.push(source(1),{3});
+        ASSERT_EQ(a.size(),1u);
+        EXPECT_EQ(a.front().label,"one");
+        const auto b=matcher.push(source(2),{9});
+        ASSERT_EQ(b.size(),1u);
+        EXPECT_EQ(b.front().label,"two");
+        EXPECT_TRUE(matcher.push(source(1),{100}).empty());
+        EXPECT_TRUE(matcher.push(source(2),{100}).empty());
+    }
+}
