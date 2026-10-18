@@ -37,3 +37,21 @@ match label, nor assert a calibrated probability.
 CTest / GoogleTest: `DynamicTimeWarping.*` checks exact alignment, temporal
 stretch, unreachable narrow bands, invalid input, arithmetic overflow and
 frame capacities. Motif discovery and learned feature calibration remain open.
+
+## Offline acoustic motif discovery
+
+`AcousticMotifFinder` scans fixed-length feature windows and compares
+non-overlapping candidate pairs with the bounded DTW engine. It reports the
+lowest normalized DTW cost only if it meets an explicit caller-selected
+threshold. Window length, scanning stride, maximum frames/dimensions and DTW
+warping radius are configurable. The implementation does not produce semantic
+class labels and does not treat overlapping windows as independent matches.
+
+Complexity is quadratic in the number of candidate windows, multiplied by
+the bounded DTW window-alignment cost. This initial algorithm targets bounded
+short recordings rather than long continuous streams.
+
+CTest: `AcousticMotifFinder.*` exercises repeated and unrelated motifs,
+insufficient history, malformed feature frames, capacity and configuration
+validation. Real annotated repeat detection, cross-source matching, false
+positive rates and streaming motif indexing are not yet measured.
