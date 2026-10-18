@@ -137,3 +137,7 @@ The CTest microbenchmark now reports worst observed `push()` duration in additio
 The allocation probe has a CTest `PASS_REGULAR_EXPRESSION` contract requiring the metric marker, guarding against silent no-op execution. Successful test stdout may still be hidden in the default non-verbose CTest log; use `ctest -V -R '^temporal_streaming_allocation_probe$'` to inspect numerical results locally or in a dedicated verbose CI step. No absolute allocation reduction is claimed yet.
 
 The probe remains registered in CTest. To view its numeric diagnostics, run `ctest --test-dir build/ci -V -R temporal_streaming_allocation_probe`; ordinary CI output may hide successful test stdout. No allocation budget is enforced.
+
+### DTW scratch reuse
+
+`StreamingPatternMatcher` retains a single `DtwWorkspace` across sequential `push()` calls rather than allocating a new scratch object for every frame. The instance already owns mutable per-source state and remains **not thread-safe**: synchronize concurrent access or use one matcher per processing thread. DTW arithmetic failures still occur before accepted history/cooldown is committed. The allocation impact should be measured with the standalone probe; it has not yet been quantified.
