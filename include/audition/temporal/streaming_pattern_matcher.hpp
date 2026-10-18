@@ -90,7 +90,6 @@ public:
         const std::size_t available=std::min(options_.max_frames,retained+1);
         std::vector<StreamingPatternMatch> matches;
         std::map<std::size_t,std::vector<std::vector<double>>> suffix_cache;
-        DtwWorkspace workspace;
         for(const auto& entry:templates_) {
             const auto& reference=entry.second;
             if (reference.front().size()!=frame.size()) continue;
@@ -114,7 +113,7 @@ public:
                     suffix.push_back(frame);
                     cached=suffix_cache.emplace(length,std::move(suffix)).first;
                 }
-                const auto match=dtw_.compare(reference,cached->second,workspace);
+                const auto match=dtw_.compare(reference,cached->second,workspace_);
                 if (match.reachable && match.normalized_cost<best_cost)
                     best_cost=match.normalized_cost;
             }
@@ -165,6 +164,8 @@ private:
     };
     StreamingPatternOptions options_;
     DynamicTimeWarping dtw_;
+    // Scratch reused across pushes; like source state, this matcher is not thread-safe.
+    DtwWorkspace workspace_;
     std::map<std::string,std::vector<std::vector<double>>> templates_;
     std::map<AcousticSourceId,State> states_;
 };
