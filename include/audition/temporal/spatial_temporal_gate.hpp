@@ -42,7 +42,8 @@ public:
         // Avoid signed overflow even for endpoints of the int64 timestamp range.
         const auto a = static_cast<std::uint64_t>(lhs.time.nanoseconds());
         const auto b = static_cast<std::uint64_t>(rhs.time.nanoseconds());
-        const auto elapsed = a >= b ? a - b : b - a;
+        const auto elapsed = lhs.time.nanoseconds() >= rhs.time.nanoseconds()
+                                 ? a - b : b - a;
         // Use hypot to avoid overflow of the individual squared components.
         const double distance = std::hypot(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z);
         if (!std::isfinite(distance))
