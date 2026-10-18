@@ -24,6 +24,14 @@ struct DtwResult {
     bool reachable{false};
 };
 
+// Caller-owned scratch buffers; reuse across comparisons to avoid repeated
+// DP-row allocations. Do not share a workspace across concurrent calls.
+struct DtwWorkspace {
+    struct Cell { double cost; std::size_t steps; };
+    std::vector<Cell> previous{};
+    std::vector<Cell> current{};
+};
+
 class DynamicTimeWarping final {
 public:
     explicit DynamicTimeWarping(DtwOptions options = {}) : options_(options) {
@@ -34,6 +42,14 @@ public:
     [[nodiscard]] DtwResult compare(
         const std::vector<std::vector<double>>& a,
         const std::vector<std::vector<double>>& b) const {
+        DtwWorkspace workspace;
+        return compare(a,b,workspace);
+    }
+
+    [[nodiscard]] DtwResult compare(
+        const std::vector<std::vector<double>>& a,
+        const std::vector<std::vector<double>>& b,
+        DtwWorkspace& workspace) const {
         if (a.empty() || b.empty())
             throw std::invalid_argument("DTW sequences must be nonempty");
         if (a.size() > options_.max_frames || b.size() > options_.max_frames)
@@ -53,9 +69,12 @@ public:
         validate(a);
         validate(b);
         const double inf=std::numeric_limits<double>::infinity();
-        struct Cell {double cost;std::size_t steps;};
-        std::vector<Cell> previous(b.size()+1,{inf,0});
-        std::vector<Cell> current(b.size()+1,{inf,0});
+        using Cell = DtwWorkspace::Cell;
+        auto& previous=workspace.previous;
+        auto& current=workspace.current;
+        previous.resize(b.size()+1);
+        current.resize(b.size()+1);
+        std::fill(previous.begin(),previous.end(),Cell{inf,0});
         previous[0]={0,0};
         for (std::size_t i=1;i<=a.size();++i) {
             std::fill(current.begin(),current.end(),Cell{inf,0});
