@@ -1,8 +1,11 @@
 #include <audition/temporal/page_hinkley.hpp>
+#include <audition/temporal/hungarian_event_matcher.hpp>
 #include <audition/temporal/timed_segmenter.hpp>
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <limits>
+#include <optional>
+#include <vector>
 #include <stdexcept>
 
 namespace {
@@ -41,4 +44,23 @@ TEST(TemporalNumericBoundaries, PageHinkleyOverflowIsTransactional) {
     EXPECT_EQ(next.observations, 2u);
     EXPECT_FALSE(next.upward_change);
     EXPECT_FALSE(next.downward_change);
+}
+
+TEST(TemporalNumericBoundaries, HungarianHugeUnmatchedTotalsAreRejected) {
+    audition::temporal::BatchAssignmentOptions options{};
+    options.unmatched_penalty = std::numeric_limits<double>::max();
+    audition::temporal::HungarianEventMatcher matcher{options};
+    const std::vector<std::vector<std::optional<double>>> no_tracks(2);
+    EXPECT_THROW(static_cast<void>(matcher.match(no_tracks, 0)), std::overflow_error);
+}
+
+TEST(TemporalNumericBoundaries, PageHinkleySameTimestampAfterOverflowCanRecover) {
+    audition::temporal::PageHinkleyDetector detector;
+    const audition::AcousticSourceId id{18};
+    const double huge = std::numeric_limits<double>::max();
+    (void)detector.observe(id, "level", ts(20), -huge);
+    EXPECT_THROW(static_cast<void>(detector.observe(id, "level", ts(21), huge)),
+                 std::overflow_error);
+    const auto recovered = detector.observe(id, "level", ts(21), -huge);
+    EXPECT_EQ(recovered.observations, 2u);
 }
