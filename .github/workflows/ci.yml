@@ -29,7 +29,7 @@ jobs:
         run: ctest --no-tests=error --preset ci
       - name: Streaming DTW allocation diagnostics
         if: matrix.os == 'ubuntu-latest'
-        run: ctest --test-dir build/ci --no-tests=error -V -R '^temporal_streaming_allocation_probe
+        run: ctest --test-dir build/ci --no-tests=error -V -R temporal_streaming_allocation_probe
 
   cpp-coverage:
     runs-on: ubuntu-latest
