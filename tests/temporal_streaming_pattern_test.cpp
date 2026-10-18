@@ -236,3 +236,29 @@ TEST(StreamingPatternMatcher, UnmatchedFramesPreserveExistingCooldown) {
     EXPECT_TRUE(matcher.push(source(1),{9}).empty());
     EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
 }
+
+TEST(StreamingPatternMatcher, ReusedDtwScratchKeepsSourcesIndependent) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_frames=5;
+    options.min_candidate_frames=2;
+    options.max_candidate_frames=4;
+    options.warping_radius=2;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("a",{{1},{2},{3}});
+    matcher.registerTemplate("b",{{7},{8},{9}});
+    for (int repetition=0;repetition<12;++repetition) {
+        matcher.forget(source(1));
+        matcher.forget(source(2));
+        EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+        EXPECT_TRUE(matcher.push(source(2),{7}).empty());
+        EXPECT_TRUE(matcher.push(source(1),{2}).empty());
+        EXPECT_TRUE(matcher.push(source(2),{8}).empty());
+        const auto first=matcher.push(source(1),{3});
+        ASSERT_EQ(first.size(),1u);
+        EXPECT_EQ(first.front().label,"a");
+        const auto second=matcher.push(source(2),{9});
+        ASSERT_EQ(second.size(),1u);
+        EXPECT_EQ(second.front().label,"b");
+    }
+}
