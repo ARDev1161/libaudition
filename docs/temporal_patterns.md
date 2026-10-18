@@ -121,3 +121,7 @@ Candidate suffix frames are now materialized at most once for each distinct cand
 ### Virtual suffix evaluation
 
 Streaming matching now evaluates each candidate suffix as the existing source history followed by the prospective incoming frame. Previous history is not cloned per `push()`. DTW computations and cooldown-map preparation complete before the new frame is committed. Candidate suffixes and temporary DTW rows still allocate; this is not an allocation-free real-time guarantee. The failure-regression test confirms an arithmetic DTW exception leaves the prior feature sequence and frame index unchanged.
+
+### Streaming throughput smoke measurement
+
+`StreamingPatternBenchmark.MultisourceMultitemplateThroughputSmoke` executes a deterministic 10-source, 8-template, 100-frame-per-source load (1000 `push()` calls), reports total elapsed microseconds, mean time per push and emitted match count through CTest logs. It is intentionally an informational microbenchmark without a runner-dependent latency threshold; it does not measure heap allocation counts, worst-case latency, real-time scheduling or production hardware. Those require dedicated profiling and explicit environments.
