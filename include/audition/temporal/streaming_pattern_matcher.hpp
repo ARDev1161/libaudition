@@ -85,6 +85,10 @@ public:
             throw std::overflow_error("streaming pattern frame counter overflow");
         ++next.frames_seen;
         std::vector<StreamingPatternMatch> matches;
+        // Candidate suffixes depend on the observation length, not on the
+        // template label. Build each length at most once per accepted frame.
+        // Preserve the local next state until every DTW comparison succeeds.
+        std::map<std::size_t,std::vector<std::vector<double>>> suffix_cache;
         for(const auto& entry:templates_) {
             const auto& reference=entry.second;
             if (reference.front().size()!=frame.size()) continue;
@@ -96,10 +100,14 @@ public:
             double best_cost=std::numeric_limits<double>::infinity();
             for (std::size_t length=min_length;
                  length<=max_length && length<=next.history.size();++length) {
-                std::vector<std::vector<double>> candidate(
-                    next.history.end()-static_cast<std::ptrdiff_t>(length),
-                    next.history.end());
-                const auto match=dtw_.compare(reference,candidate);
+                auto cached=suffix_cache.find(length);
+                if (cached==suffix_cache.end()) {
+                    std::vector<std::vector<double>> suffix(
+                        next.history.end()-static_cast<std::ptrdiff_t>(length),
+                        next.history.end());
+                    cached=suffix_cache.emplace(length,std::move(suffix)).first;
+                }
+                const auto match=dtw_.compare(reference,cached->second);
                 if (match.reachable && match.normalized_cost<best_cost)
                     best_cost=match.normalized_cost;
             }
