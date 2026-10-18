@@ -34,6 +34,10 @@ public:
             o.max_gap.nanoseconds() < 0 || o.max_sources == 0)
             throw std::invalid_argument("invalid segmentation options");
     }
+    [[nodiscard]] static std::uint64_t elapsed(Timestamp later, Timestamp earlier) noexcept {
+        return static_cast<std::uint64_t>(later.nanoseconds()) -
+               static_cast<std::uint64_t>(earlier.nanoseconds());
+    }
     [[nodiscard]] std::vector<SegmentTransition> observe(
         AcousticSourceId id, Timestamp time, bool active) {
         if (!id.valid()) throw std::invalid_argument("invalid acoustic source");
@@ -47,13 +51,13 @@ public:
         std::vector<SegmentTransition> changes;
         State next = it == states_.end() ? State{} : it->second;
         if (next.seen && next.started && options_.max_gap.nanoseconds() > 0 &&
-            time.nanoseconds() - next.last.nanoseconds() > options_.max_gap.nanoseconds()) {
+            elapsed(time, next.last) > static_cast<std::uint64_t>(options_.max_gap.nanoseconds())) {
             changes.push_back({id, SegmentTransitionKind::Ended, next.occurrence,
                                next.start, next.last_active});
             next = State{};
         }
         if (next.seen && !next.started && options_.max_gap.nanoseconds() > 0 &&
-            time.nanoseconds() - next.last.nanoseconds() > options_.max_gap.nanoseconds())
+            elapsed(time, next.last) > static_cast<std::uint64_t>(options_.max_gap.nanoseconds()))
             next = State{};
         if (active) {
             if (!next.candidate) {
@@ -62,7 +66,7 @@ public:
             }
             next.last_active = time;
             if (!next.started &&
-                time.nanoseconds() - next.start.nanoseconds() >= options_.min_on.nanoseconds()) {
+                elapsed(time, next.start) >= static_cast<std::uint64_t>(options_.min_on.nanoseconds())) {
                 if (next_id_ == 0) throw std::overflow_error("segment occurrence exhausted");
                 next.occurrence = next_id_;
                 next.started = true;
@@ -72,8 +76,8 @@ public:
         } else if (next.candidate) {
             if (!next.started) {
                 next = State{};
-            } else if (time.nanoseconds() - next.last_active.nanoseconds() >=
-                       options_.hangover.nanoseconds()) {
+            } else if (elapsed(time, next.last_active) >=
+                       static_cast<std::uint64_t>(options_.hangover.nanoseconds())) {
                 changes.push_back({id, SegmentTransitionKind::Ended, next.occurrence,
                                    next.start, next.last_active});
                 next = State{};
