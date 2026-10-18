@@ -1,6 +1,7 @@
 #include <audition/temporal/timed_segmenter.hpp>
 #include <gtest/gtest.h>
 #include <stdexcept>
+#include <limits>
 namespace {
 audition::Timestamp t(int n, unsigned c=1) {
     return {n,{audition::ClockDomain::Simulation,c}};
@@ -60,4 +61,32 @@ TEST(TimedActivitySegmenter, InvalidClockAndCapacityTransactional) {
     EXPECT_THROW(static_cast<void>(s.observe(id(),t(2,2),true)),std::invalid_argument);
     EXPECT_THROW(static_cast<void>(s.observe(id(),t(1),false)),std::invalid_argument);
     EXPECT_TRUE(s.observe(id(),t(2),true).empty());
+}
+
+TEST(TimedActivitySegmenter, FullRangeTimeDifferenceDoesNotOverflow) {
+    audition::temporal::TimedSegmentOptions o{};
+    o.max_gap = audition::Duration{3};
+    o.min_on = audition::Duration{2};
+    audition::temporal::TimedActivitySegmenter s(o);
+    const auto low=std::numeric_limits<std::int64_t>::min();
+    const auto high=std::numeric_limits<std::int64_t>::max();
+    auto first=s.observe(id(),audition::Timestamp{low,{audition::ClockDomain::Simulation,1}},true);
+    EXPECT_TRUE(first.empty());
+    auto resumed=s.observe(id(),audition::Timestamp{high,{audition::ClockDomain::Simulation,1}},true);
+    EXPECT_TRUE(resumed.empty()); // gap resets unconfirmed candidate
+    auto continued=s.retire(id());
+    EXPECT_TRUE(continued.empty());
+}
+TEST(TimedActivitySegmenter, FullRangeGapClosesConfirmedOccurrence) {
+    audition::temporal::TimedSegmentOptions o{};
+    o.max_gap=audition::Duration{3};
+    audition::temporal::TimedActivitySegmenter s(o);
+    const auto low=std::numeric_limits<std::int64_t>::min();
+    const auto high=std::numeric_limits<std::int64_t>::max();
+    auto first=s.observe(id(),audition::Timestamp{low,{audition::ClockDomain::Simulation,1}},true);
+    ASSERT_EQ(first.size(),1u);
+    auto next=s.observe(id(),audition::Timestamp{high,{audition::ClockDomain::Simulation,1}},false);
+    ASSERT_EQ(next.size(),1u);
+    EXPECT_EQ(next.front().kind,audition::temporal::SegmentTransitionKind::Ended);
+    EXPECT_EQ(next.front().last_active.nanoseconds(),low);
 }
