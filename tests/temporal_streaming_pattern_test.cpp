@@ -222,3 +222,17 @@ TEST(StreamingPatternMatcher, FailedDtwArithmeticLeavesHistoryAndCooldownUnchang
     EXPECT_EQ(recovered.front().label,"sequence");
     EXPECT_EQ(recovered.front().ending_frame,2u);
 }
+
+TEST(StreamingPatternMatcher, UnmatchedFramesPreserveExistingCooldown) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.cooldown_frames=4;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("pulse",{{1}});
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    EXPECT_TRUE(matcher.push(source(1),{9}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{9}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{9}).empty());
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+}
