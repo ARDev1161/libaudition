@@ -145,3 +145,5 @@ The probe remains registered in CTest. To view its numeric diagnostics, run `cte
 ### Reusable suffix feature buffers
 
 Candidate suffix windows now retain their outer and per-frame vector capacity across sequential `push()` calls, keyed by candidate length. Each call invalidates cached content and refills only lengths requested by templates, preventing reuse of stale source frames when streams interleave. Buffer contents are scratch state (not committed source history), so failed DTW comparisons still leave source history and cooldown unmodified. This trades retained bounded scratch memory for fewer repeat allocations, but still copies feature values into DTW-compatible contiguous candidate vectors; allocation reductions are not yet benchmark-verified.
+
+The allocation probe additionally reports `max_cpp_new_per_push` and `zero_allocation_pushes` for the measured 1000 calls. Counts include any C++ allocation within each synchronous `push()` call; they are diagnostic rather than CI acceptance thresholds. For comparable baselines, use the same build configuration and runner, and inspect verbose CTest output.
