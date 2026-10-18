@@ -130,10 +130,12 @@ public:
         }
         // Build just the small cooldown map, not the large feature history.
         // Perform potentially throwing work before mutating the source.
-        auto emission=prior?prior->last_emission:
-            std::map<std::string,std::size_t>{};
-        for (const auto& match:matches)
-            emission[match.label]=ending_frame;
+        std::map<std::string,std::size_t> emission;
+        if (!matches.empty()) {
+            if (prior) emission=prior->last_emission;
+            for (const auto& match:matches)
+                emission[match.label]=ending_frame;
+        }
         if (!prior) {
             State next{};
             next.history.push_back(frame);
@@ -148,7 +150,7 @@ public:
             if(it->second.history.size()>options_.max_frames)
                 it->second.history.pop_front();
             it->second.frames_seen=ending_frame;
-            it->second.last_emission.swap(emission);
+            if (!matches.empty()) it->second.last_emission.swap(emission);
         }
         return matches;
     }
