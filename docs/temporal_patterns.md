@@ -113,3 +113,7 @@ These tests measure deterministic behavior, not physical dropped-frame rates.
 ### Suffix construction optimization
 
 Candidate suffix frames are now materialized at most once for each distinct candidate length during a `push()`, then shared across all registered templates with that length. This reduces redundant window copying when many templates are active, without changing DTW matching or transactional state updates. **The source state is still copied before evaluation**, and DTW still allocates its dynamic-programming rows per comparison; no allocation-free or real-time bound is claimed. `StreamingPatternMatcher.SharedSuffixCandidatesPreserveMultipleTemplateResults` checks outputs with multiple templates and variable windows.
+
+### Reusable DTW scratch buffers
+
+`DynamicTimeWarping::compare(a,b,DtwWorkspace&)` allows callers to retain the two dynamic-programming rows between comparisons. The original two-argument `compare` API remains unchanged and creates a local workspace. `StreamingPatternMatcher` shares one local workspace across template comparisons **within each push**, reducing repeated DP-row allocations but not eliminating candidate-window/state copying. Workspace use is not thread-safe when shared concurrently; use separate workspaces per thread/call. `DynamicTimeWarping.ReusedWorkspace*` verifies equivalence across differing lengths and recovery after rejected samples.
