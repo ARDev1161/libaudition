@@ -89,3 +89,37 @@ TEST(StreamingPatternMatcher, ForgetClearsCooldownAndHistory) {
     matcher.forget(source(1));
     EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
 }
+
+TEST(StreamingPatternMatcher, VariableWindowAcceptsDeletedFeatureFrame) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.min_candidate_frames=2;
+    options.max_candidate_frames=3;
+    options.warping_radius=2;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("beep",{{1},{2},{3}});
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_EQ(matcher.push(source(1),{3}).size(),0u);
+    // DTW does not magically interpolate the missing middle feature.
+    // Repeated feature plateau can be matched by a shorter observation.
+    matcher.registerTemplate("plateau",{{1},{1},{3}});
+    matcher.forget(source(1));
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    const auto matches=matcher.push(source(1),{3});
+    ASSERT_EQ(matches.size(),1u);
+    EXPECT_EQ(matches[0].label,"plateau");
+}
+
+TEST(StreamingPatternMatcher, FixedWindowDefaultDoesNotAcceptShortObservation) {
+    audition::temporal::StreamingPatternMatcher matcher;
+    matcher.registerTemplate("plateau",{{1},{1},{3}});
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{3}).empty());
+}
+
+TEST(StreamingPatternMatcher, VariableWindowRejectsInconsistentOptions) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.min_candidate_frames=5;
+    options.max_candidate_frames=3;
+    EXPECT_THROW(static_cast<void>(audition::temporal::StreamingPatternMatcher{options}),
+                 std::invalid_argument);
+}
