@@ -133,3 +133,5 @@ The CTest microbenchmark now reports worst observed `push()` duration in additio
 ### Isolated C++ allocation probe
 
 `temporal_streaming_allocation_probe` is a standalone CTest executable that counts calls to global C++ `operator new` and `new[]` after a warmup of 30 frames per source. The measured workload uses 10 sources, 8 templates, and 100 frames per source, reporting absolute allocation calls and per-push mean. Its overrides are isolated from the main GoogleTest binary. This is diagnostic only: it does not count direct `malloc`, allocator-specific internal allocations or bytes, and compiler/platform differences mean no fixed allocation threshold is imposed in CI.
+
+The allocation probe has a CTest `PASS_REGULAR_EXPRESSION` contract requiring the metric marker, guarding against silent no-op execution. Successful test stdout may still be hidden in the default non-verbose CTest log; use `ctest -V -R '^temporal_streaming_allocation_probe$'` to inspect numerical results locally or in a dedicated verbose CI step. No absolute allocation reduction is claimed yet.
