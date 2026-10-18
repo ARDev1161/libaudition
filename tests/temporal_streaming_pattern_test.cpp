@@ -203,3 +203,19 @@ TEST(StreamingPatternMatcher, SharedSuffixCandidatesPreserveMultipleTemplateResu
     ASSERT_EQ(shortened.size(),1u);
     EXPECT_EQ(shortened.front().label,"second");
 }
+
+TEST(StreamingPatternMatcher, FailedDtwArithmeticLeavesHistoryAndCooldownUnchanged) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_frames=3;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("sequence",{{1},{2}});
+    matcher.registerTemplate("large",{{1},{std::numeric_limits<double>::max()}});
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_THROW(static_cast<void>(matcher.push(source(1),{-std::numeric_limits<double>::max()})),
+                 std::overflow_error);
+    const auto recovered=matcher.push(source(1),{2});
+    ASSERT_EQ(recovered.size(),1u);
+    EXPECT_EQ(recovered.front().label,"sequence");
+    EXPECT_EQ(recovered.front().ending_frame,2u);
+}
