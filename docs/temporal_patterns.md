@@ -75,3 +75,14 @@ boundaries or timestamp-based silence gaps. It can emit the same label at
 successive frame positions; consumers must supply deduplication/cooldown
 policy. `StreamingPatternMatcher.*` CTest scenarios verify completion,
 source isolation, rollover/recovery, invalid frame rejection and capacity.
+
+### Per-source template alert cooldown
+
+`StreamingPatternOptions::cooldown_frames` suppresses repeat notifications from
+an identical template label for a specific persistent source within the
+configured number of subsequently accepted frames. The default `0` retains
+the original every-frame emission behavior. Cooldowns are independent across
+labels and sources, and `forget(source)` / `reset()` clear emission state.
+Cooldown is measured in feature frames, **not wall-clock time**, and does not
+repair missing observations. A wrap of the source-local frame counter is
+rejected before committing a new frame.
