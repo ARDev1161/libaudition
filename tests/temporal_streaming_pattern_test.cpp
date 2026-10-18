@@ -62,3 +62,29 @@ TEST(StreamingPatternMatcher, RejectsRaggedAndNonfiniteTemplates) {
     matcher.registerTemplate("beep",{{1},{2}});
     EXPECT_TRUE(matcher.push(source(1),{1}).empty());
 }
+
+TEST(StreamingPatternMatcher, CooldownSuppressesRepeatedAlertsPerSourceAndLabel) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.cooldown_frames=2;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("steady",{{1}});
+    matcher.registerTemplate("other",{{2}});
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    EXPECT_EQ(matcher.push(source(2),{1}).size(),1u);
+    EXPECT_EQ(matcher.push(source(1),{2}).size(),1u);
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+}
+
+TEST(StreamingPatternMatcher, ForgetClearsCooldownAndHistory) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.cooldown_frames=100;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("steady",{{1}});
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    matcher.forget(source(1));
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+}
