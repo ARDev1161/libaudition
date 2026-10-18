@@ -27,6 +27,1612 @@ jobs:
         run: cmake --build --preset ci --parallel
       - name: Test
         run: ctest --no-tests=error --preset ci
+      - name: Streaming DTW allocation diagnostics
+        if: matrix.os == 'ubuntu-latest'
+        run: ctest --test-dir build/ci --no-tests=error -V -R '^temporal_streaming_allocation_probe
+
+  cpp-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install coverage reporter
+        run: |
+          python3 -m venv "$RUNNER_TEMP/gcovr"
+          "$RUNNER_TEMP/gcovr/bin/pip" install "gcovr==8.4"
+      - name: Configure instrumented core and tests
+        run: >-
+          cmake -S . -B build-coverage -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_SHARED_LIBS=OFF
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+          -DCMAKE_CXX_FLAGS=--coverage
+          -DCMAKE_EXE_LINKER_FLAGS=--coverage
+      - name: Build instrumented targets
+        run: cmake --build build-coverage --parallel 2
+      - name: Run entire instrumented CTest suite
+        run: ctest --test-dir build-coverage --output-on-failure --parallel 2 --no-tests=error
+      - name: Report library-only C++ line and branch coverage
+        run: |
+          mkdir -p build-coverage/reports
+          "$RUNNER_TEMP/gcovr/bin/gcovr" build-coverage \
+            --root . --filter 'src/' --exclude-unreachable-branches \
+            --gcov-ignore-parse-errors negative_hits.warn_once_per_file \
+            --txt build-coverage/reports/coverage.txt \
+            --json-summary build-coverage/reports/coverage-summary.json \
+            --xml build-coverage/reports/cobertura.xml --xml-pretty \
+            --html-details build-coverage/reports/coverage.html \
+            --json build-coverage/reports/coverage.json
+          cat build-coverage/reports/coverage.txt
+          "$RUNNER_TEMP/gcovr/bin/gcovr" build-coverage \
+            --root . --filter 'src/' --exclude-unreachable-branches \
+            --gcov-ignore-parse-errors negative_hits.warn_once_per_file \
+            --txt-metric branch --txt build-coverage/reports/branches.txt
+          cat build-coverage/reports/branches.txt
+      - name: Audit uncovered C++ branches by source location
+        run: |
+          python3 tools/audit_gcovr_branches.py \
+            --report build-coverage/reports/coverage.json \
+            --source . \
+            --json-output build-coverage/reports/branch-audit.json \
+            --markdown-output build-coverage/reports/branch-audit.md \
+            --top 30
+          cat build-coverage/reports/branch-audit.md
+          cat build-coverage/reports/branch-audit.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Enforce and publish C++ core coverage thresholds
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("build-coverage/reports/coverage-summary.json").read_text())
+          thresholds = (("Lines", "line", 88.0), ("Branches", "branch", 55.0))
+          rows = ["### Instrumented C++ core coverage", "",
+                  "| Metric | Covered / total | Coverage | Minimum | Result |",
+                  "| --- | ---: | ---: | ---: | --- |"]
+          failures = []
+          for label, key, minimum in thresholds:
+              covered = report[f"{key}_covered"]
+              total = report[f"{key}_total"]
+              if total <= 0:
+                  raise SystemExit(f"No {key} coverage data available")
+              percent = 100.0 * covered / total
+              passed = percent >= minimum
+              rows.append(
+                  f"| {label} | {covered} / {total} | {percent:.1f}% | "
+                  f"{minimum:.0f}% | {'PASS' if passed else 'FAIL'} |")
+              if not passed:
+                  failures.append(f"{label}: {percent:.2f}% < {minimum:.0f}%")
+          rows.extend(["", "Scope: `src/` only; optional backends are excluded.",
+                       "Coverage quality gates measure execution, not algorithm accuracy."])
+          summary = "\n".join(rows) + "\n"
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write(summary)
+          if failures:
+              raise SystemExit("C++ core coverage regression: " + "; ".join(failures))
+          PY
+      - name: Upload C++ coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: libaudition-cpp-core-coverage
+          path: build-coverage/reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  minimal-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Ninja
+        run: ninja --version
+      - name: Configure without optional dependencies
+        run: cmake --preset minimal
+      - name: Build
+        run: cmake --build --preset minimal --parallel
+
+
+  efficientat-real-weights:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install exporter dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/efficientat-real"
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install onnx onnxruntime numpy
+          "$RUNNER_TEMP/efficientat-real/bin/pip" install torchaudio --index-url https://download.pytorch.org/whl/cpu
+      - name: Configure real EfficientAT backend test
+        run: >-
+          cmake -S . -B build-efficientat-real -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_EFFICIENTAT=ON
+          -DLIBAUDITION_WITH_YAMNET=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_REGISTER_MODEL_TOOL_TESTS=ON
+          -DPython3_EXECUTABLE=$RUNNER_TEMP/efficientat-real/bin/python
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build C++ real-model smoke tool
+        run: cmake --build build-efficientat-real --target libaudition_tests efficientat_real_model_smoke efficientat_frontend_dump efficientat_wav_benchmark yamnet_wav_benchmark yamnet_pcm16_probe yamnet_progressive_smoke yamnet_progressive_multisource real_yamnet_wav_replay --parallel
+      - name: Audit all configured algorithm CTest registrations
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^algorithm_coverage_contract$' --output-on-failure
+      - name: Upload CTest algorithm coverage inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: efficientat-algorithm-ctest-contract
+          path: build-efficientat-real/ctest-algorithm-coverage.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Fetch original EfficientAT source
+        run: |
+          git clone --depth 1 https://github.com/fschmid56/EfficientAT.git "$RUNNER_TEMP/EfficientAT"
+          git -C "$RUNNER_TEMP/EfficientAT" rev-parse HEAD | tee "$RUNNER_TEMP/efficientat-upstream-sha.txt"
+      - name: Audit actual EfficientAT and YAMNet AudioSet vocabularies
+        run: |
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/yamnet_class_map.csv" \
+            --output "$RUNNER_TEMP/yamnet_class_map.csv"
+          ctest --no-tests=error --test-dir build-efficientat-real -R '^real_audioset_vocabulary_audit$' --output-on-failure
+      - name: Export genuine mn10_as and dymn10_as weights and compare ONNX logits
+        run: |
+          cd "$RUNNER_TEMP/EfficientAT"
+          export PYTHONPATH="$RUNNER_TEMP/EfficientAT"
+          "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model mn10_as --output "$RUNNER_TEMP/eat-real"
+          "$RUNNER_TEMP/efficientat-real/bin/python" "$GITHUB_WORKSPACE/tools/export_efficientat.py" --model dymn10_as --output "$RUNNER_TEMP/eat-real"
+      - name: CTest classifier smoke against genuine weights
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_efficientat_(mn10_as|dymn10_as)$' --output-on-failure
+      - name: Run model-tool validation suite via CTest
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          export PATH="$RUNNER_TEMP/efficientat-real/bin:$PATH"
+          ctest --no-tests=error --test-dir build-efficientat-real -L model-tools --output-on-failure --parallel 2
+      - name: Fetch pinned YAMNet ONNX demo model and labels
+        run: |
+          mkdir -p "$RUNNER_TEMP/yamnet"
+          for file in yamnet.onnx yamnet_class_map.csv; do
+            curl --fail --location --retry 3 --silent --show-error \
+              "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/$file" \
+              --output "$RUNNER_TEMP/yamnet/$file"
+          done
+      - name: Validate YAMNet C++/ONNX parity and malformed label maps through CTest
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_yamnet_(onnx_cpp_parity_(short|long)|label_rejection)$' --output-on-failure --parallel 2
+      - name: Real YAMNet quick/refined WAV replay (not raw mock PCM)
+        run: |
+          ctest --no-tests=error --test-dir build-efficientat-real -R '^real_yamnet_wav_replay_ctest$' --output-on-failure
+          cat "$RUNNER_TEMP/yamnet-real-wav-report.txt"
+      - name: Real-weight YAMNet fast-to-refined CTest integration
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_yamnet_progressive_smoke$' --output-on-failure
+      - name: Stream 5 and 10 ODAS-like sources through real YAMNet
+        run: ctest --no-tests=error --test-dir build-efficientat-real -L stress --output-on-failure --parallel 2
+      - name: Upload real YAMNet multi-source latency and drop reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: yamnet-progressive-multisource-stress
+          path: |
+            ${{ runner.temp }}/yamnet-stream-5.json
+            ${{ runner.temp }}/yamnet-stream-10.json
+          retention-days: 14
+      - name: Verify official YAMNet silence noise and sine wave behavior
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_yamnet_behavior$' --output-on-failure
+      - name: Generate deterministic WAV and run genuine classifier benchmarks via CTest
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_(efficientat_wav_benchmark_(mn10_as|dymn10_as)|yamnet_wav_benchmark)$' --output-on-failure --parallel 2
+      - name: Compare all three real models on shared AudioSet ontology via CTest
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_audioset_smoke_comparison$' --output-on-failure
+      - name: Install audio conversion tool for ESC-10 evaluation
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Run full attributed ESC-10 real-model acceptance suite via CTest
+        run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_esc10_' --output-on-failure --parallel 1
+      - name: Upload expanded ESC-10 YAMNet evaluation and licensing
+        uses: actions/upload-artifact@v4
+        with:
+          name: yamnet-esc10-80-evaluation
+          path: |
+            ${{ runner.temp }}/esc10-yamnet-extended/yamnet-esc10-80.json
+            ${{ runner.temp }}/esc10-yamnet-extended/manifest.csv
+            ${{ runner.temp }}/esc10-yamnet-extended/provenance.csv
+            ${{ runner.temp }}/esc10-yamnet-extended/ESC-50-LICENSE.txt
+          retention-days: 14
+      - name: Upload real-event comparison and source attribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: efficientat-yamnet-esc10-real-event-report
+          path: |
+            ${{ runner.temp }}/esc10-eval/three-model-real-events.json
+            ${{ runner.temp }}/yamnet-onnx-cpp-parity.json
+            ${{ runner.temp }}/yamnet-onnx-cpp-5s-parity.json
+            ${{ runner.temp }}/esc10-eval/yamnet-event-timeline.json
+            ${{ runner.temp }}/yamnet-behavior.json
+            ${{ runner.temp }}/esc10-eval/review-findings.json
+            ${{ runner.temp }}/esc10-eval/mn10-chainsaw-parity.json
+            ${{ runner.temp }}/esc10-eval/mn10-duration.json
+            ${{ runner.temp }}/esc10-eval/manifest.csv
+            ${{ runner.temp }}/esc10-eval/provenance.csv
+            ${{ runner.temp }}/esc10-eval/ESC-50-LICENSE.txt
+          retention-days: 14
+      - name: Upload three-model smoke comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: efficientat-yamnet-smoke-report
+          path: ${{ runner.temp }}/three-model-comparison.json
+          retention-days: 14
+
+  efficientat-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt Widgets
+        run: sudo apt-get update && sudo apt-get install -y qtbase5-dev
+      - name: Install reference model-test Python dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/efficientat-parity"
+          "$RUNNER_TEMP/efficientat-parity/bin/pip" install numpy onnx
+          "$RUNNER_TEMP/efficientat-parity/bin/pip" install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+      - name: Configure EfficientAT ONNX adapter
+        run: >-
+          cmake -S . -B build-efficientat -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_EFFICIENTAT=ON
+          -DLIBAUDITION_REGISTER_EFFICIENTAT_REFERENCE_TESTS=ON
+          -DPython3_EXECUTABLE=$RUNNER_TEMP/efficientat-parity/bin/python
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WITH_YAMNET=OFF
+          -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-efficientat --parallel
+      - name: Run all EfficientAT checks via CTest (incl. ONNX fixture and PyTorch parity)
+        env:
+          LIBAUDITION_EFFICIENTAT_FIXTURE_DIR: ${{ github.workspace }}/build-efficientat/fixture
+        run: ctest --test-dir build-efficientat --output-on-failure --parallel 2 --no-tests=error
+      - name: Install
+        run: cmake --install build-efficientat --prefix "$PWD/install-efficientat"
+
+  installed-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure dependency-free install
+        run: >-
+          cmake -S . -B build-install -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=OFF
+          -DLIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE=ON
+          -DLIBAUDITION_PACKAGE_SMOKE_PREFIX=$PWD/install-default
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_FETCH_DEPENDENCIES=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-install --parallel
+      - name: Install
+        run: cmake --install build-install --prefix "$PWD/install-default"
+      - name: Verify installed C++17 consumer through CTest
+        run: ctest --test-dir build-install -R '^installed_package_cpp17_consumer$' --output-on-failure --no-tests=error
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure ASan + UBSan
+        run: >-
+          cmake -S . -B build-sanitizers -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_SHARED_LIBS=OFF
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - name: Build
+        run: cmake --build build-sanitizers --parallel
+      - name: Test under sanitizers
+        run: ctest --no-tests=error --test-dir build-sanitizers --output-on-failure
+
+  qt-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets and Multimedia
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev qtmultimedia5-dev libqt5multimedia5-plugins gstreamer1.0-plugins-good
+      - name: Configure Qt playground
+        run: >-
+          cmake -S . -B build-qt-demo -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=OFF
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build Qt playground
+        run: cmake --build build-qt-demo --parallel
+      - name: Headless Qt playground self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --no-tests=error --test-dir build-qt-demo -R '^qt_self_test$' --output-on-failure
+          ctest --no-tests=error --test-dir build-qt-demo -R '^qt_playback_lifecycle$' --output-on-failure
+
+  qt6-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 6 Widgets and Multimedia
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build qt6-base-dev qt6-multimedia-dev
+      - name: Configure Qt 6 playground
+        run: >-
+          cmake -S . -B build-qt6-demo -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_WITH_YAMNET=OFF
+          -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF
+          -DLIBAUDITION_DEMO_FETCH_SPEECH_MODELS=OFF
+          -DLIBAUDITION_BUILD_TESTS=OFF
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build Qt 6 playground
+        run: cmake --build build-qt6-demo --parallel 2
+      - name: Headless Qt 6 playground self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --no-tests=error --test-dir build-qt6-demo -R '^qt_self_test$' --output-on-failure
+          ctest --no-tests=error --test-dir build-qt6-demo -R '^qt_playback_lifecycle$' --output-on-failure
+
+  qt6-gcc16-sherpa-arch:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install Arch toolchain, Qt 6 Multimedia and backend prerequisites
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel gcc git cmake ninja pkgconf curl python \
+            qt6-base qt6-multimedia alsa-lib fftw libconfig libpulse
+          g++ --version
+          pacman -Q gcc qt6-base qt6-multimedia
+          test "$(g++ -dumpfullversion | cut -d. -f1)" -ge 16
+      - uses: actions/checkout@v4
+      - name: Configure GCC 16 with Qt 6, Multimedia, ODAS, Sherpa and YAMNet
+        run: >-
+          cmake -S . -B build-arch-qt6 -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_CXX_COMPILER=g++
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_WITH_ODAS=ON
+          -DLIBAUDITION_WITH_SHERPA=ON
+          -DLIBAUDITION_WITH_YAMNET=ON
+          -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF
+          -DLIBAUDITION_DEMO_FETCH_SPEECH_MODELS=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Assert Qt 6 Multimedia and ALSA enabled
+        run: |
+          grep -Fq -- '-DLIBAUDITION_DEMO_HAS_MULTIMEDIA=1' build-arch-qt6/compile_commands.json
+          grep -Fq -- '-DLIBAUDITION_DEMO_HAS_ALSA=1' build-arch-qt6/compile_commands.json
+      - name: Build all targets with GCC 16 and Werror
+        run: cmake --build build-arch-qt6 --parallel 2
+      - name: Run all C++ tests
+        run: ctest --no-tests=error --test-dir build-arch-qt6 --output-on-failure --parallel 2
+      - name: Run Qt 6 integrated smoke and lifecycle fixtures
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --no-tests=error --test-dir build-arch-qt6 -R '^qt_self_test$' --output-on-failure
+          ctest --no-tests=error --test-dir build-arch-qt6 -R '^qt_source_track_lifecycle$' --output-on-failure
+          ctest --no-tests=error --test-dir build-arch-qt6 -R '^qt_playback_lifecycle$' --output-on-failure
+          ctest --no-tests=error --test-dir build-arch-qt6 -R '^qt_live_source_tagging_errors$' --output-on-failure
+
+  audio-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install audio backend build requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libfftw3-dev libasound2-dev libconfig-dev libpulse-dev python3
+      - name: Configure standalone ODAS integration suite
+        run: >-
+          cmake -S . -B build-audio-integration -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DLIBAUDITION_WITH_ODAS=ON
+          -DLIBAUDITION_WITH_YAMNET=OFF
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build real offline ODAS/SSS runner
+        run: cmake --build build-audio-integration --target audition_offline_integration --parallel 2
+      - name: Replay synthetic spatial WAV and validate ground truth
+        run: ctest --test-dir build-audio-integration -L audio-integration --output-on-failure --parallel 2 --no-tests=error
+      - name: Upload audio traces, ground truth and recordings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audio-integration-results
+          path: |
+            build-audio-integration/tests/spatial_audio_fixtures/ground_truth.json
+            build-audio-integration/tests/audio_integration_results/
+          if-no-files-found: warn
+          retention-days: 14
+
+  real-spatial-corpus:
+    # Runs only when a published, checksum-pinned real corpus is configured.
+    # Missing part of the configuration is a failure, never a fake green pass.
+    if: ${{ vars.LIBAUDITION_REAL_CORPUS_URL != '' || vars.LIBAUDITION_REAL_CORPUS_SHA256 != '' || vars.LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG != '' || vars.LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG: ${{ vars.LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG }}
+      LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE: ${{ vars.LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE }}
+      LIBAUDITION_REAL_CORPUS_MAX_P90_ERROR_DEG: ${{ vars.LIBAUDITION_REAL_CORPUS_MAX_P90_ERROR_DEG }}
+      LIBAUDITION_REAL_CORPUS_MAX_ASSOCIATION_ERROR_DEG: ${{ vars.LIBAUDITION_REAL_CORPUS_MAX_ASSOCIATION_ERROR_DEG }}
+      LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES: ${{ vars.LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES }}
+      LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE: ${{ vars.LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE }}
+      LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION: ${{ vars.LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install real ODAS test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libfftw3-dev libasound2-dev libconfig-dev libpulse-dev python3
+      - name: Download and verify immutable real spatial corpus
+        env:
+          CORPUS_URL: ${{ vars.LIBAUDITION_REAL_CORPUS_URL }}
+          CORPUS_SHA256: ${{ vars.LIBAUDITION_REAL_CORPUS_SHA256 }}
+        run: |
+          : "${CORPUS_URL:?Set LIBAUDITION_REAL_CORPUS_URL to a small HTTPS ZIP}"
+          : "${CORPUS_SHA256:?Set LIBAUDITION_REAL_CORPUS_SHA256 to the exact archive SHA-256}"
+          python3 tests/integration/stage_real_spatial_corpus.py \
+            --url "$CORPUS_URL" --sha256 "$CORPUS_SHA256" \
+            --output "$PWD/build-real-odas/corpus"
+      - name: Configure real recording quality gates through CMake/CTest
+        shell: bash
+        run: |
+          : "${LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG:?Set calibrated median DOA error gate}"
+          : "${LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE:?Set calibrated track coverage gate}"
+          args=()
+          for gate in MAX_P90_ERROR_DEG MAX_ASSOCIATION_ERROR_DEG MAX_ADJACENT_ID_SWITCHES MIN_SIMULTANEOUS_TRACK_COVERAGE MAX_SILENT_FALSE_POSITIVE_FRACTION; do
+            name="LIBAUDITION_REAL_CORPUS_${gate}"
+            if [[ -n "${!name:-}" ]]; then
+              args+=("-D${name}=${!name}")
+            fi
+          done
+          cmake -S . -B build-real-odas -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DLIBAUDITION_WITH_ODAS=ON \
+            -DLIBAUDITION_WITH_SPDLOG=OFF \
+            -DLIBAUDITION_BUILD_TESTS=ON \
+            -DLIBAUDITION_BUILD_EXAMPLES=OFF \
+            -DLIBAUDITION_BUILD_QT_DEMO=OFF \
+            -DLIBAUDITION_WARNINGS_AS_ERRORS=ON \
+            "-DLIBAUDITION_RESPEAKER_CORPUS_MANIFEST=$PWD/build-real-odas/corpus/corpus.json" \
+            "-DLIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG=$LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG" \
+            "-DLIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE=$LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE" \
+            "${args[@]}"
+      - name: Build actual ODAS offline evaluation runner
+        run: cmake --build build-real-odas --target audition_offline_integration --parallel 2
+      - name: Enforce independent real-recording DOA quality using CTest
+        run: ctest --no-tests=error --test-dir build-real-odas -R '^audio_real_respeaker_corpus$' --output-on-failure
+      - name: Upload real recording metrics and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: libaudition-real-spatial-quality
+          path: |
+            build-real-odas/tests/real_respeaker_results/report.json
+            build-real-odas/tests/real_respeaker_results/*/metrics.json
+            build-real-odas/tests/real_respeaker_results/*/runner.stderr.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+  odas-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ODAS build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libfftw3-dev libasound2-dev libconfig-dev libpulse-dev qtbase5-dev
+      - name: Use pinned CMake 4 for ODAS compatibility coverage
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cmake4"
+          "$RUNNER_TEMP/cmake4/bin/python" -m pip install "cmake==4.1.2"
+          echo "$RUNNER_TEMP/cmake4/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cmake4/bin/cmake" --version
+      - name: Configure with direct ODAS backend
+        run: >-
+          cmake -S . -B build-odas -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_ODAS=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-odas --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-odas -R '^qt_self_test$' --output-on-failure
+      - name: Qt async odas-errors smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-odas -R '^qt_odas_errors$' --output-on-failure
+      - name: Test ALSA live capture device-open failure and restart
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-odas -R '^qt_alsa_errors$' --output-on-failure
+      - name: Test
+        run: ctest --no-tests=error --test-dir build-odas --output-on-failure
+      - name: Install
+        run: cmake --install build-odas --prefix "$PWD/install-odas"
+      - name: Verify installed ODAS backend package
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-odas-consumer
+          cat > /tmp/libaudition-odas-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_odas_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_odas)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-odas-consumer/main.cpp <<'CPP'
+          #include <audition/backends/odas.hpp>
+          int main() {
+              audition::OdasOptions options{};
+              return options.sample_rate_hz == 16000U ? 0 : 1;
+          }
+          CPP
+          cmake -S /tmp/libaudition-odas-consumer -B /tmp/libaudition-odas-consumer/build -G Ninja             -DCMAKE_PREFIX_PATH="$PWD/install-odas"
+          cmake --build /tmp/libaudition-odas-consumer/build --parallel
+
+
+  samplerate-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev
+      - name: Configure libsamplerate backend
+        run: >-
+          cmake -S . -B build-samplerate -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_LIBSAMPLERATE=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-samplerate --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-samplerate -R '^qt_self_test$' --output-on-failure
+      - name: Qt async samplerate functional smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-samplerate -R '^qt_samplerate$' --output-on-failure
+      - name: Test
+        run: ctest --no-tests=error --test-dir build-samplerate --output-on-failure
+      - name: Install
+        run: cmake --install build-samplerate --prefix "$PWD/install-samplerate"
+      - name: Verify installed libsamplerate backend package
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-samplerate-consumer
+          cat > /tmp/libaudition-samplerate-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_samplerate_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_samplerate)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-samplerate-consumer/main.cpp <<'CPP'
+          #include <audition/backends/samplerate.hpp>
+          int main() {
+              audition::SamplerateResampler backend{};
+              return backend.backendInfo().name == "libsamplerate" ? 0 : 1;
+          }
+          CPP
+          cmake -S /tmp/libaudition-samplerate-consumer             -B /tmp/libaudition-samplerate-consumer/build -G Ninja             -DCMAKE_PREFIX_PATH="$PWD/install-samplerate"
+          cmake --build /tmp/libaudition-samplerate-consumer/build --parallel
+
+  aec3-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev
+      - name: Configure WebRTC AEC3 backend
+        run: >-
+          cmake -S . -B build-aec3 -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_WEBRTC_AEC3=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-aec3 --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-aec3 -R '^qt_self_test$' --output-on-failure
+      - name: Qt async aec3 functional smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-aec3 -R '^qt_aec3$' --output-on-failure
+      - name: Test
+        run: ctest --no-tests=error --test-dir build-aec3 --output-on-failure
+      - name: Install
+        run: cmake --install build-aec3 --prefix "$PWD/install-aec3"
+      - name: Verify installed AEC3 backend package from C++17 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-aec3-consumer
+          cat > /tmp/libaudition-aec3-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_aec3_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_webrtc_aec3)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-aec3-consumer/main.cpp <<'CPP'
+          #include <audition/backends/webrtc_aec3.hpp>
+          int main() {
+              audition::WebRtcAec3EchoCanceller backend{};
+              return backend.backendInfo().name == "webrtc-aec3" ? 0 : 1;
+          }
+          CPP
+          cmake -S /tmp/libaudition-aec3-consumer             -B /tmp/libaudition-aec3-consumer/build -G Ninja             -DCMAKE_PREFIX_PATH="$PWD/install-aec3"
+          cmake --build /tmp/libaudition-aec3-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-aec3/lib:${LD_LIBRARY_PATH:-}"             /tmp/libaudition-aec3-consumer/build/consumer
+
+
+  qt-odas-sherpa-classifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install combined audio backend dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config qtbase5-dev libasound2-dev libfftw3-dev libconfig-dev libpulse-dev
+      - name: Configure ODAS SSS and Sherpa tagging together
+        run: >-
+          cmake -S . -B build-acoustic-live -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_ODAS=ON
+          -DLIBAUDITION_WITH_SHERPA=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=OFF
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build combined live classifier demo
+        run: cmake --build build-acoustic-live --parallel 2
+      - name: Combined Qt scene and model controls smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-acoustic-live -R '^qt_self_test$' --output-on-failure
+      - name: ODAS source retirement and ALSA reset fixture
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-acoustic-live -R '^qt_source_track_lifecycle$' --output-on-failure
+      - name: Source-tagging invalid-model error handling
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-acoustic-live -R '^qt_live_source_tagging_errors$' --output-on-failure
+
+  sherpa-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets and reproducible speech fixture tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev espeak-ng ffmpeg
+      - name: Configure sherpa-onnx speech backend
+        run: >-
+          cmake -S . -B build-sherpa -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SHERPA=ON
+          -DLIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE=ON
+          -DLIBAUDITION_PACKAGE_SMOKE_PREFIX=$PWD/install-sherpa
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-sherpa --parallel 2
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_self_test$' --output-on-failure
+      - name: Test asynchronous Sherpa GUI error and restart paths
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_sherpa_errors$' --output-on-failure
+      - name: Download pinned Silero VAD inference fixture
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-sherpa/silero_vad.onnx" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+          echo "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6  $PWD/build-sherpa/silero_vad.onnx" | sha256sum --check
+      - name: Test
+        env:
+          LIBAUDITION_TEST_SILERO_MODEL: ${{ github.workspace }}/build-sherpa/silero_vad.onnx
+        run: ctest --no-tests=error --test-dir build-sherpa -LE 'real-model|installed-package' --output-on-failure
+      - name: Test actual Silero VAD Qt workbench inference
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBAUDITION_TEST_SILERO_MODEL: ${{ github.workspace }}/build-sherpa/silero_vad.onnx
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_real_silero$' --output-on-failure
+      - name: Download pinned Whisper tiny.en INT8 and NeMo speaker model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-sherpa/whisper
+          # Fixed Hugging Face repository revision and file SHA-256 hashes.
+          whisper=https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny.en/resolve/d026532c022fa99fd789d6b32446a1df7b6bfc43
+          curl --fail --location --retry 3 \
+            --output build-sherpa/whisper/tiny.en-encoder.int8.onnx \
+            "$whisper/tiny.en-encoder.int8.onnx"
+          curl --fail --location --retry 3 \
+            --output build-sherpa/whisper/tiny.en-decoder.int8.onnx \
+            "$whisper/tiny.en-decoder.int8.onnx"
+          curl --fail --location --retry 3 \
+            --output build-sherpa/whisper/tiny.en-tokens.txt \
+            "$whisper/tiny.en-tokens.txt"
+          echo "0ce578b827c94a961aacb8fa14b02f096504b337e5c94be37c36238cbe3e8bc6  build-sherpa/whisper/tiny.en-encoder.int8.onnx" | sha256sum --check
+          echo "06c0e6ff6348d427e51839219d1c886c18cfdf411e629e33f5e1679bff9c1527  build-sherpa/whisper/tiny.en-decoder.int8.onnx" | sha256sum --check
+          test -s build-sherpa/whisper/tiny.en-tokens.txt
+          curl --fail --location --retry 3 \
+            --output build-sherpa/nemo_en_titanet_small.onnx \
+            https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/2b697b2/nemo_en_titanet_small.onnx
+          echo "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e  build-sherpa/nemo_en_titanet_small.onnx" | sha256sum --check
+      - name: Test actual Whisper tiny.en ONNX inference via Qt
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBAUDITION_TEST_WHISPER_ENCODER: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-encoder.int8.onnx
+          LIBAUDITION_TEST_WHISPER_DECODER: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-decoder.int8.onnx
+          LIBAUDITION_TEST_WHISPER_TOKENS: ${{ github.workspace }}/build-sherpa/whisper/tiny.en-tokens.txt
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_real_whisper-real$' --output-on-failure
+      - name: Verify genuine Whisper ONNX through per-source speech runtime
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^speech_real_whisper_two_sources$' --output-on-failure
+      - name: Test actual speaker embedding verification and identification via Qt
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBAUDITION_TEST_SPEAKER_MODEL: ${{ github.workspace }}/build-sherpa/nemo_en_titanet_small.onnx
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^qt_real_speaker-real$' --output-on-failure
+      - name: Download SHA-256 pinned SenseVoiceSmall INT8 ASR and tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-sherpa/sensevoice
+          base=https://huggingface.co/nocmt/SenseVoiceSmall-INT8-ONNX/resolve/main
+          curl --fail --location --retry 3 \
+            -o build-sherpa/sensevoice/model.int8.onnx \
+            "$base/model.int8.onnx"
+          curl --fail --location --retry 3 \
+            -o build-sherpa/sensevoice/tokens.txt \
+            "$base/tokens.txt"
+          echo 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51  build-sherpa/sensevoice/model.int8.onnx' | sha256sum -c -
+          echo 'f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc  build-sherpa/sensevoice/tokens.txt' | sha256sum -c -
+      - name: Synthesize speech fixture with a known transcript
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-sherpa/audio-fixtures
+          espeak-ng -v en-us -s 135 \
+            -w build-sherpa/audio-fixtures/utterance-source.wav \
+            'Hello robot. Please go forward and stop at the door.'
+          ffmpeg -hide_banner -loglevel error -y \
+            -i build-sherpa/audio-fixtures/utterance-source.wav \
+            -ac 1 -ar 16000 -c:a pcm_s16le \
+            build-sherpa/audio-fixtures/utterance.wav
+          test -s build-sherpa/audio-fixtures/utterance.wav
+      - name: Download versioned GigaSpeech KWS INT8 model and attributed WAV
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/kws-gigaspeech-3.3m-2024.tar.bz2"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$archive" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2
+          test "$(wc -c < "$archive")" -eq 17626723
+          checksums="$RUNNER_TEMP/kws-checksum.txt"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$checksums" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/checksum.txt
+          echo '284637b2b9fec1287aca10315dcc960710c6ec14224fb1dfa9fe427e77eb6c18  '"$checksums" | sha256sum --check
+          # Upstream checksum.txt is separately pinned above. Do not assume
+          # the filename is its last whitespace-delimited field, or that the
+          # digest precedes the filename (GNU/BSD/filename-first formats differ).
+          python3 - "$archive" "$checksums" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import re
+          import sys
+
+          archive, manifest = map(Path, sys.argv[1:3])
+          name = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"
+          lines = [line for line in manifest.read_text(encoding="utf-8").splitlines()
+                   if name in line]
+          if len(lines) != 1:
+              raise SystemExit(
+                  f"Expected exactly one KWS archive checksum entry, found {len(lines)}. "
+                  f"Verified release checksum contents: {manifest.read_text()!r}")
+          hashes = re.findall(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])", lines[0])
+          if len(hashes) != 1:
+              raise SystemExit(f"Cannot parse SHA-256 checksum line: {lines[0]!r}")
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if digest.lower() != hashes[0].lower():
+              raise SystemExit(f"KWS archive checksum mismatch: expected {hashes[0]}, got {digest}")
+          print(f"KWS upstream SHA-256 verified: {digest}", flush=True)
+          PY
+          sha256sum "$archive" | tee build-sherpa/kws-archive.sha256
+          python3 - "$archive" "$PWD/build-sherpa" <<'PY'
+          import pathlib
+          import sys
+          import tarfile
+          archive = pathlib.Path(sys.argv[1])
+          target = pathlib.Path(sys.argv[2])
+          with tarfile.open(archive, "r:bz2") as package:
+              package.extractall(target, filter="data")
+          PY
+          mv build-sherpa/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01 build-sherpa/kws-gigaspeech
+          test -s build-sherpa/kws-gigaspeech/test_wavs/test_keywords.txt
+          test -s build-sherpa/kws-gigaspeech/test_wavs/0.wav
+      - name: Check GigaSpeech KWS against labeled WAV and silence through CTest
+        run: ctest --test-dir build-sherpa -R '^speech_real_kws_gigaspeech$' --output-on-failure --no-tests=error
+      - name: Download checksum-verified small English Streaming Zipformer ASR
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/zipformer-asr-20m-mobile.tar.bz2"
+          manifest="$RUNNER_TEMP/asr-models-checksum.txt"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$archive" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17-mobile.tar.bz2
+          test "$(wc -c < "$archive")" -eq 107569151
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$manifest" \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/checksum.txt
+          echo '4e34edcb64434bcf533afaee9dcc14b5b2f9c277ed3a745f263e79a4464b28d0  '"$manifest" | sha256sum --check
+          python3 - "$archive" "$manifest" "$PWD/build-sherpa" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import re
+          import shutil
+          import sys
+          import tarfile
+
+          archive, manifest, destination = map(Path, sys.argv[1:4])
+          name = "sherpa-onnx-streaming-zipformer-en-20M-2023-02-17-mobile.tar.bz2"
+          lines = [s for s in manifest.read_text(encoding="utf-8").splitlines()
+                   if name in s]
+          if len(lines) != 1:
+              raise SystemExit(f"Expected exactly one Streaming ASR checksum entry, got {len(lines)}")
+          hashes = re.findall(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])", lines[0])
+          if len(hashes) != 1:
+              raise SystemExit(f"Invalid Streaming ASR checksum line: {lines[0]!r}")
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if digest.lower() != hashes[0].lower():
+              raise SystemExit("Streaming ASR archive SHA-256 mismatch")
+          print(f"Verified Streaming ASR archive SHA-256: {digest}", flush=True)
+          with tarfile.open(archive, "r:bz2") as package:
+              package.extractall(destination, filter="data")
+          dirs = [p for p in destination.glob(
+              "sherpa-onnx-streaming-zipformer-en-20M-2023-02-17*") if p.is_dir()]
+          if len(dirs) != 1:
+              raise SystemExit(f"Unexpected Streaming ASR extracted directories: {dirs!r}")
+          root = dirs[0]
+          for file in ("encoder-epoch-99-avg-1.int8.onnx",
+                       "decoder-epoch-99-avg-1.onnx",
+                       "joiner-epoch-99-avg-1.int8.onnx", "tokens.txt"):
+              if not (root / file).is_file() or (root / file).stat().st_size == 0:
+                  raise SystemExit(f"Missing required Streaming ASR weight: {file}")
+          shutil.move(str(root), str(destination / "streaming-asr-zipformer"))
+          PY
+          sha256sum "$archive" | tee build-sherpa/audio-fixtures/streaming-asr-model.sha256
+      - name: Verify real incremental Streaming ASR with finalization and reset
+        run: |
+          ctest --test-dir build-sherpa -R '^speech_real_streaming_asr_zipformer$' --output-on-failure --no-tests=error
+          cat build-sherpa/audio-fixtures/streaming-asr-report.txt
+      - name: Fetch SHA-256 verified multilingual Whisper Tiny and labeled language WAVs
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
+          weights="$RUNNER_TEMP/language-id-whisper-tiny.tar.bz2"
+          waves="$RUNNER_TEMP/language-id-test-wavs.tar.bz2"
+          manifest="$RUNNER_TEMP/language-id-checksum.txt"
+          curl --fail --location --retry 3 --silent --show-error \
+            -o "$weights" "$base/sherpa-onnx-whisper-tiny.tar.bz2"
+          curl --fail --location --retry 3 --silent --show-error \
+            -o "$waves" "$base/spoken-language-identification-test-wavs.tar.bz2"
+          curl --fail --location --retry 3 --silent --show-error \
+            -o "$manifest" "$base/checksum.txt"
+          echo '4e34edcb64434bcf533afaee9dcc14b5b2f9c277ed3a745f263e79a4464b28d0  '"$manifest" | sha256sum --check
+          python3 - "$weights" "$waves" "$manifest" "$PWD/build-sherpa" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import re
+          import shutil
+          import sys
+          import tarfile
+
+          weights, waves, manifest, root = map(Path, sys.argv[1:5])
+          expected = {
+              weights: ("sherpa-onnx-whisper-tiny.tar.bz2", 116204861),
+              waves: ("spoken-language-identification-test-wavs.tar.bz2", 3324009),
+          }
+          lines = manifest.read_text(encoding="utf-8").splitlines()
+          for archive, (name, size) in expected.items():
+              if archive.stat().st_size != size:
+                  raise SystemExit(f"Language-ID archive size mismatch for {name}")
+              matches = [line for line in lines if name in line]
+              if len(matches) != 1:
+                  raise SystemExit(f"Expected one SHA-256 manifest entry for {name}, got {len(matches)}")
+              hashes = re.findall(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])", matches[0])
+              if len(hashes) != 1:
+                  raise SystemExit(f"Cannot parse SHA-256 for {name}: {matches[0]!r}")
+              actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+              if actual.lower() != hashes[0].lower():
+                  raise SystemExit(f"Language-ID SHA-256 mismatch for {name}")
+              print(f"Validated {name} SHA-256: {actual}", flush=True)
+              with tarfile.open(archive, "r:bz2") as package:
+                  package.extractall(root, filter="data")
+          sources = {
+              root / "sherpa-onnx-whisper-tiny": root / "language-id-whisper-tiny",
+              root / "spoken-language-identification-test-wavs": root / "language-id-wavs",
+          }
+          for source, target in sources.items():
+              if not source.is_dir():
+                  raise SystemExit(f"Language-ID extracted folder missing: {source}")
+              shutil.move(str(source), str(target))
+          required = (
+              root / "language-id-whisper-tiny" / "tiny-encoder.int8.onnx",
+              root / "language-id-whisper-tiny" / "tiny-decoder.int8.onnx",
+              root / "language-id-wavs" / "en-english.wav",
+              root / "language-id-wavs" / "de-german.wav",
+          )
+          for path in required:
+              if not path.is_file() or not path.stat().st_size:
+                  raise SystemExit(f"Language-ID fixture missing: {path}")
+          PY
+          sha256sum "$weights" "$waves" | tee build-sherpa/audio-fixtures/language-id-assets.sha256
+      - name: Run real multilingual Whisper Language Identification CTest
+        run: |
+          ctest --test-dir build-sherpa -R '^speech_real_language_id_whisper$' --output-on-failure --no-tests=error
+          cat build-sherpa/audio-fixtures/language-id-report.txt
+      - name: Download upstream speaker segmentation and embedding reference fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://github.com/k2-fsa/sherpa-onnx/releases/download
+          archive="$RUNNER_TEMP/pyannote-segmentation-3-0.tar.bz2"
+          embedding="$PWD/build-sherpa/diarization-embedding.onnx"
+          wav="$PWD/build-sherpa/diarization-two-speakers.wav"
+          curl --fail --location --retry 3 --silent --show-error \
+            -o "$archive" "$base/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"
+          curl --fail --location --retry 3 --silent --show-error \
+            -o "$embedding" "$base/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+          curl --fail --location --retry 3 --silent --show-error \
+            -o "$wav" "$base/speaker-segmentation-models/1-two-speakers-en.wav"
+          # Immutable exact file hashes from the successful real-model CI #1032.
+          # Fail closed on upstream file replacement before model loading.
+          echo '24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488  '"$archive" | sha256sum --check
+          echo '1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b  '"$embedding" | sha256sum --check
+          echo 'f1c877dc01595e28be7147bf2fe38e5268147a868bf3fdb5c37b97f5940e21f3  '"$wav" | sha256sum --check
+          sha256sum "$archive" "$embedding" "$wav" | tee build-sherpa/audio-fixtures/diarization-assets.sha256
+          python3 - "$archive" "$PWD/build-sherpa" <<'PY'
+          from pathlib import Path
+          import shutil
+          import sys
+          import tarfile
+
+          archive, root = map(Path, sys.argv[1:3])
+          with tarfile.open(archive, "r:bz2") as package:
+              package.extractall(root, filter="data")
+          source = root / "sherpa-onnx-pyannote-segmentation-3-0"
+          if not (source / "model.onnx").is_file():
+              raise SystemExit("Missing Pyannote 3.0 segmentation ONNX after extraction")
+          shutil.move(str(source), str(root / "diarization-segmentation"))
+          PY
+      - name: Run two-speaker regression and unconstrained diarization benchmark smoke
+        run: |
+          ctest --no-tests=error --test-dir build-sherpa -R '^speech_real_speaker_diarization(_benchmark|_rttm_syntax|_benchmark_rttm_syntax)?$' --output-on-failure
+          cat build-sherpa/audio-fixtures/speaker-diarization-report.txt
+          # The benchmark smoke checks output schema, NOT DER; no independent RTTM ground truth.
+      - name: Fetch version-pinned independently annotated 10s speaker recording
+        shell: bash
+        run: |
+          set -euo pipefail
+          # FHS Brain Aging Program toolkit example has a separate human-labeled
+          # ground_truth_files RTTM; do NOT use its sample_files model prediction.
+          # Download bytes only at runtime, preserve public provenance.
+          upstream="https://raw.githubusercontent.com/Digital-Working-Group/speaker-diarization/9d9ebfcdc08cde1831be697ff5fb22269737a28d"
+          root="build-sherpa/audio-fixtures/diarization-reference"
+          mkdir -p "$root/reference" "$root/wav"
+          wav_archive="$RUNNER_TEMP/first_ten_Sample_HV_Clip.wav"
+          reference_original="$RUNNER_TEMP/first_ten_Sample_HV_Clip_ground_truth.rttm"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$wav_archive" \
+            "$upstream/sample_files/short_wav/first_ten_Sample_HV_Clip.wav"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$reference_original" \
+            "$upstream/ground_truth_files/first_ten_Sample_HV_Clip%20ground_truth.rttm"
+          # Git blob hashes from the pinned upstream tree; verify both exact assets.
+          test "$(git hash-object "$wav_archive")" = e40c1201ef51fcae123fd94c37ba1f837f0b6728
+          test "$(git hash-object "$reference_original")" = 4b19562e4ad6ed70d0bdbc6f0eb657809fb39107
+          git hash-object "$wav_archive" "$reference_original" \
+            | tee "$root/upstream-blob-hashes.txt"
+          # The upstream RTTM recording ID is 'waveform'. Normalize only the ID
+          # to the pinned WAV basename, never its human-labeled boundaries.
+          python3 - "$reference_original" "$root/reference/first_ten_Sample_HV_Clip.rttm" <<'PY'
+          from pathlib import Path
+          import sys
+          original, output = map(Path, sys.argv[1:3])
+          converted = []
+          for line in original.read_text(encoding="utf-8").splitlines():
+              if not line.strip():
+                  continue
+              fields = line.split()
+              if len(fields) != 10 or fields[0] != "SPEAKER" or fields[1] != "waveform":
+                  raise SystemExit(f"Unexpected independently labeled RTTM: {line!r}")
+              fields[1] = "first_ten_Sample_HV_Clip"
+              converted.append(" ".join(fields))
+          if len(converted) < 2:
+              raise SystemExit("Missing ground-truth speaker boundaries")
+          output.write_text("\n".join(converted) + "\n", encoding="utf-8")
+          PY
+          ffmpeg -hide_banner -loglevel error -y \
+            -i "$wav_archive" -ac 1 -ar 16000 -c:a pcm_s16le \
+            "$root/wav/first_ten_Sample_HV_Clip.wav"
+          test -s "$root/wav/first_ten_Sample_HV_Clip.wav"
+      - name: Compute independent real-model diarization DER diagnostic
+        run: |
+          ctest --no-tests=error --test-dir build-sherpa \
+            -R '^speech_real_speaker_diarization_reference_der$' \
+            --output-on-failure --no-tests=error
+          cat build-sherpa/audio-fixtures/diarization-reference/der.json
+      - name: Download official Sherpa GTCRN denoising ONNX
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            --output build-sherpa/gtcrn_simple.onnx \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx
+          echo 'e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534  build-sherpa/gtcrn_simple.onnx' | sha256sum --check
+          sha256sum build-sherpa/gtcrn_simple.onnx | tee build-sherpa/audio-fixtures/gtcrn-model.sha256
+      - name: Validate offline and streaming GTCRN ONNX enhancement via CTest
+        run: |
+          ctest --test-dir build-sherpa -R '^speech_real_gtcrn_denoising$' --output-on-failure --no-tests=error
+          cat build-sherpa/audio-fixtures/gtcrn-report.txt
+      - name: Real Silero VAD + SenseVoice ASR WAV replay and quality scoring
+        run: |
+          ctest --no-tests=error --test-dir build-sherpa -R '^speech_(real_silero_sensevoice_wav|real_sensevoice_quality|report_scoring_selftest)$' --output-on-failure
+          cat build-sherpa/audio-fixtures/real-speech-report.txt
+      - name: Upload model-audio diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-speech-model-integration
+          path: |
+            build-sherpa/audio-fixtures/real-speech-report.txt
+            build-sherpa/audio-fixtures/asr-quality.json
+            build-sherpa/audio-fixtures/gtcrn-report.txt
+            build-sherpa/audio-fixtures/gtcrn-model.sha256
+            build-sherpa/kws-archive.sha256
+            build-sherpa/audio-fixtures/streaming-asr-model.sha256
+            build-sherpa/audio-fixtures/streaming-asr-report.txt
+            build-sherpa/audio-fixtures/language-id-report.txt
+            build-sherpa/audio-fixtures/language-id-assets.sha256
+            build-sherpa/audio-fixtures/speaker-diarization-report.txt
+            build-sherpa/audio-fixtures/speaker-diarization-report.rttm
+            build-sherpa/audio-fixtures/diarization-benchmark.txt
+            build-sherpa/audio-fixtures/diarization-benchmark.rttm
+            build-sherpa/audio-fixtures/diarization-assets.sha256
+            build-sherpa/audio-fixtures/diarization-reference/der.json
+            build-sherpa/audio-fixtures/diarization-reference/reference/*.rttm
+            build-sherpa/audio-fixtures/diarization-reference/predicted/*.rttm
+            build-sherpa/audio-fixtures/diarization-reference/upstream-blob-hashes.txt
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Install
+        run: cmake --install build-sherpa --prefix "$PWD/install-sherpa"
+      - name: Verify installed Sherpa and core C++17 consumers through CTest
+        run: ctest --no-tests=error --test-dir build-sherpa -R '^installed_package_.*consumer$' --output-on-failure
+
+  sherpa-tts-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev
+      - name: Configure sherpa-onnx TTS backend
+        run: >-
+          cmake -S . -B build-sherpa-tts -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SHERPA=ON
+          -DLIBAUDITION_SHERPA_ENABLE_TTS=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-sherpa-tts --parallel 2
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -R '^qt_self_test$' --output-on-failure
+      - name: Test asynchronous Sherpa GUI error and restart paths
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -R '^qt_sherpa_errors$' --output-on-failure
+      - name: Test
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -LE real-model --output-on-failure
+      - name: Download pinned Piper Amy Low INT8 fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            --output build-sherpa-tts/piper-amy-low-int8.tar.bz2 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-low-int8.tar.bz2
+          echo "93070ac9fadf512e56c46bdd0c5d2ce96b424fdc4e683d560167410bd2c4df7d  build-sherpa-tts/piper-amy-low-int8.tar.bz2" | sha256sum --check
+          tar -xjf build-sherpa-tts/piper-amy-low-int8.tar.bz2 -C build-sherpa-tts
+          test -d build-sherpa-tts/vits-piper-en_US-amy-low-int8/espeak-ng-data
+          test -s build-sherpa-tts/vits-piper-en_US-amy-low-int8/tokens.txt
+      - name: Test actual Piper VITS synthesis and WAV export via Qt
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBAUDITION_TEST_PIPER_DIR: ${{ github.workspace }}/build-sherpa-tts/vits-piper-en_US-amy-low-int8
+        run: ctest --no-tests=error --test-dir build-sherpa-tts -R '^qt_real_piper-real$' --output-on-failure
+      - name: Install
+        run: cmake --install build-sherpa-tts --prefix "$PWD/install-sherpa-tts"
+      - name: Verify installed sherpa TTS package from C++17 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-sherpa-tts-consumer
+          cat > /tmp/libaudition-sherpa-tts-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_sherpa_tts_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_sherpa)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-sherpa-tts-consumer/main.cpp <<'CPP'
+          #include <audition/backends/sherpa.hpp>
+          #include <type_traits>
+
+          #if !defined(LIBAUDITION_SHERPA_TTS_ENABLED)
+          #error "Installed sherpa target must propagate TTS support"
+          #endif
+
+          int main() {
+              audition::SherpaTtsOptions options{};
+              auto& model = std::get<audition::SherpaTtsVitsModel>(options.model);
+              model.model = "voice.onnx";
+              model.tokens = "tokens.txt";
+              model.data_dir = "espeak-ng-data";
+              options.languages = {"en"};
+              audition::validateSherpaTtsOptions(options);
+              static_assert(std::is_base_of_v<audition::ISpeechSynthesizer,
+                                              audition::SherpaTts>);
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-sherpa-tts-consumer \
+            -B /tmp/libaudition-sherpa-tts-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-sherpa-tts"
+          cmake --build /tmp/libaudition-sherpa-tts-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-sherpa-tts/lib:${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-sherpa-tts-consumer/build/consumer
+
+  clap-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev
+      - name: Configure CLAP ONNX backend
+        run: >-
+          cmake -S . -B build-clap -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_CLAP=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-clap --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-clap -R '^qt_self_test$' --output-on-failure
+      - name: Download pinned CLAP inference fixtures
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-clap/clap_audio.onnx" \
+            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_audio.onnx?download=true"
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-clap/clap_text.onnx" \
+            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_text.onnx?download=true"
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-clap/tokenizer.json" \
+            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/tokenizer.json?download=true"
+          echo "3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332  $PWD/build-clap/clap_audio.onnx" | sha256sum --check
+          echo "c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf  $PWD/build-clap/clap_text.onnx" | sha256sum --check
+          echo "4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a  $PWD/build-clap/tokenizer.json" | sha256sum --check
+      - name: Generate tokenizer parity vectors
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check --no-input "tokenizers==0.22.1"
+          python3 - <<'PY'
+          from pathlib import Path
+          from tokenizers import Tokenizer
+
+          root = Path("build-clap")
+          tokenizer = Tokenizer.from_file(str(root / "tokenizer.json"))
+          tokenizer.enable_truncation(max_length=77)
+          tokenizer.enable_padding(length=77, pad_id=1, pad_token="<pad>")
+
+          prompts = [
+              "warm analog pad",
+              "glass breaking",
+              "door knock",
+              "speech",
+              "a loud alarm ringing",
+          ]
+
+          with (root / "tokenizer_golden.tsv").open("w", encoding="utf-8") as out:
+              for prompt in prompts:
+                  encoded = tokenizer.encode(prompt)
+                  out.write(
+                      prompt
+                      + "\t"
+                      + ",".join(str(value) for value in encoded.ids)
+                      + "\t"
+                      + ",".join(str(value) for value in encoded.attention_mask)
+                      + "\n"
+                  )
+          PY
+      - name: Test
+        env:
+          LIBAUDITION_TEST_CLAP_AUDIO_MODEL: ${{ github.workspace }}/build-clap/clap_audio.onnx
+          LIBAUDITION_TEST_CLAP_TEXT_MODEL: ${{ github.workspace }}/build-clap/clap_text.onnx
+          LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
+          LIBAUDITION_TEST_CLAP_TOKENIZER_GOLDEN: ${{ github.workspace }}/build-clap/tokenizer_golden.tsv
+        run: ctest --no-tests=error --test-dir build-clap -LE real-model --output-on-failure
+      - name: Test actual CLAP Qt workbench inference
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBAUDITION_TEST_CLAP_AUDIO_MODEL: ${{ github.workspace }}/build-clap/clap_audio.onnx
+          LIBAUDITION_TEST_CLAP_TEXT_MODEL: ${{ github.workspace }}/build-clap/clap_text.onnx
+          LIBAUDITION_TEST_CLAP_TOKENIZER: ${{ github.workspace }}/build-clap/tokenizer.json
+        run: ctest --no-tests=error --test-dir build-clap -R '^qt_real_clap$' --output-on-failure
+      - name: Install
+        run: cmake --install build-clap --prefix "$PWD/install-clap"
+      - name: Verify installed CLAP package from C++17 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-clap-consumer
+          cat > /tmp/libaudition-clap-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_clap_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_clap)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-clap-consumer/main.cpp <<'CPP'
+          #include <audition/backends/clap.hpp>
+          #include <type_traits>
+          int main() {
+              audition::ClapOnnxAudioOptions audio{};
+              audio.model = "clap_audio.onnx";
+              audition::validateClapOnnxAudioOptions(audio);
+
+              audition::ClapOnnxTextOptions text{};
+              text.model = "clap_text.onnx";
+              text.tokenizer = "tokenizer.json";
+              audition::validateClapOnnxTextOptions(text);
+
+              audition::ClapOpenVocabularyOptions classifier{};
+              classifier.audio = audio;
+              classifier.text = text;
+              audition::validateClapOpenVocabularyOptions(classifier);
+
+              static_assert(std::is_base_of_v<audition::IAudioEmbedder,
+                                              audition::ClapAudioEmbedder>);
+              static_assert(std::is_base_of_v<audition::IOpenVocabularyAudioClassifier,
+                                              audition::ClapOpenVocabularyClassifier>);
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-clap-consumer \
+            -B /tmp/libaudition-clap-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-clap"
+          cmake --build /tmp/libaudition-clap-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-clap/lib:${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-clap-consumer/build/consumer
+
+
+  aasist-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev
+      - name: Configure AASIST ONNX backend
+        run: >-
+          cmake -S . -B build-aasist -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_AASIST=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-aasist --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-aasist -R '^qt_self_test$' --output-on-failure
+      - name: Download pinned AASIST inference fixture
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 \
+            --output "$PWD/build-aasist/aasist.onnx" \
+            "https://huggingface.co/SpeechAntiSpoofingBenchmarks/AASIST/resolve/16774d458d86d2a021ae31646c1bf66a5331b53e/aasist.onnx?download=true"
+          echo "130e536266b7c537f9a13029e1612a9f392fd1cc827783683b6d1c062a3db5e1  $PWD/build-aasist/aasist.onnx" | sha256sum --check
+      - name: Test
+        env:
+          LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
+        run: ctest --no-tests=error --test-dir build-aasist -LE real-model --output-on-failure
+      - name: Test actual AASIST Qt workbench inference
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBAUDITION_TEST_AASIST_MODEL: ${{ github.workspace }}/build-aasist/aasist.onnx
+        run: ctest --no-tests=error --test-dir build-aasist -R '^qt_real_aasist$' --output-on-failure
+      - name: Install
+        run: cmake --install build-aasist --prefix "$PWD/install-aasist"
+      - name: Verify installed AASIST package from C++17 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-aasist-consumer
+          cat > /tmp/libaudition-aasist-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_aasist_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_aasist)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-aasist-consumer/main.cpp <<'CPP'
+          #include <audition/backends/aasist.hpp>
+          #include <type_traits>
+
+          int main() {
+              audition::AasistOnnxOptions options{};
+              options.model = "aasist.onnx";
+              audition::validateAasistOnnxOptions(options);
+              static_assert(
+                  std::is_base_of_v<
+                      audition::IAudioAuthenticityDetector,
+                      audition::AasistAuthenticityDetector>);
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-aasist-consumer \
+            -B /tmp/libaudition-aasist-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-aasist"
+          cmake --build /tmp/libaudition-aasist-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-aasist/lib:${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-aasist-consumer/build/consumer
+
+
+  world-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev
+      - name: Configure WORLD voice backend
+        run: >-
+          cmake -S . -B build-world -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_WORLD=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-world --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-world -R '^qt_self_test$' --output-on-failure
+      - name: Qt async world smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-world -R '^qt_world$' --output-on-failure
+      - name: Test
+        run: ctest --no-tests=error --test-dir build-world --output-on-failure
+      - name: Install
+        run: cmake --install build-world --prefix "$PWD/install-world"
+      - name: Verify installed WORLD package from C++17 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-world-consumer
+          cat > /tmp/libaudition-world-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_world_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_world)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-world-consumer/main.cpp <<'CPP'
+          #include <audition/backends/world.hpp>
+          #include <type_traits>
+
+          int main() {
+              audition::WorldVoiceTraitsOptions traits{};
+              audition::validateWorldVoiceTraitsOptions(traits);
+
+              audition::WorldAcousticAnalysisOptions acoustic{};
+              audition::validateWorldAcousticAnalysisOptions(acoustic);
+
+              static_assert(
+                  std::is_base_of_v<
+                      audition::IVoiceTraitsEstimator,
+                      audition::WorldVoiceTraitsEstimator>);
+              static_assert(
+                  std::is_base_of_v<
+                      audition::IVoiceAcousticAnalyzer,
+                      audition::WorldAcousticAnalyzer>);
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-world-consumer \
+            -B /tmp/libaudition-world-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-world"
+          cmake --build /tmp/libaudition-world-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-world/lib:${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-world-consumer/build/consumer
+
+
+  gtsam-backend:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTSAM 4.2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common ninja-build libtbb-dev qtbase5-dev
+          sudo add-apt-repository -y ppa:borglab/gtsam-release-4.2
+          sudo apt-get update
+          # Launchpad intermittently returns HTTP 503 for the pinned PPA
+          # packages. Retry transient download errors, but never skip or
+          # silently pass a failed GTSAM installation.
+          sudo apt-get -o Acquire::Retries=5 \
+            -o Acquire::https::Timeout=45 \
+            install -y libgtsam-dev
+      - name: Configure GTSAM spatial fusion backend
+        run: >-
+          cmake -S . -B build-gtsam -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_GTSAM=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=ON
+          -DLIBAUDITION_BUILD_QT_DEMO=ON
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build-gtsam --parallel
+      - name: Headless Qt workbench self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-gtsam -R '^qt_self_test$' --output-on-failure
+      - name: Qt async gtsam functional smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-gtsam -R '^qt_gtsam$' --output-on-failure
+      - name: Test
+        run: ctest --no-tests=error --test-dir build-gtsam --output-on-failure
+      - name: Install
+        run: cmake --install build-gtsam --prefix "$PWD/install-gtsam"
+      - name: Verify installed GTSAM backend package
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-gtsam-consumer
+          cat > /tmp/libaudition-gtsam-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_gtsam_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_gtsam)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-gtsam-consumer/main.cpp <<'CPP'
+          #include <audition/backends/gtsam.hpp>
+          #include <type_traits>
+
+          int main() {
+              static_assert(std::is_base_of_v<
+                  audition::ISpatialFusion,
+                  audition::GtsamSpatialFusion>);
+              const audition::GtsamSpatialFusion fusion{};
+              return fusion.backendInfo().name == "gtsam" ? 0 : 1;
+          }
+          CPP
+          cmake -S /tmp/libaudition-gtsam-consumer \
+            -B /tmp/libaudition-gtsam-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-gtsam"
+          cmake --build /tmp/libaudition-gtsam-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-gtsam/lib:\${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-gtsam-consumer/build/consumer
+
 
 
   cpp-coverage:
