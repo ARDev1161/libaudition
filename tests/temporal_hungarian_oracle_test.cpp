@@ -67,7 +67,9 @@ void verifyAssignment(const CostMatrix& matrix, std::size_t tracks,
 }
 
 TEST(HungarianEventMatcherOracle, ExhaustiveSmallMatrixPatterns) {
-    audition::temporal::HungarianEventMatcher matcher;
+    audition::temporal::BatchAssignmentOptions options{};
+    options.unmatched_penalty = 5.0;
+    audition::temporal::HungarianEventMatcher matcher{options};
     // All 3^(2*2) possible matrices with forbidden / free / expensive edges.
     // The reference recursion checks that a globally optimal match is chosen.
     for (std::size_t code = 0; code < 81; ++code) {
