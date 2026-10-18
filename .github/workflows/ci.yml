@@ -27,6 +27,9 @@ jobs:
         run: cmake --build --preset ci --parallel
       - name: Test
         run: ctest --no-tests=error --preset ci
+      - name: Report streaming DTW allocations
+        if: matrix.os == 'ubuntu-latest'
+        run: ctest --test-dir build/ci --no-tests=error --verbose -R temporal_streaming_allocation_probe
 
   cpp-coverage:
     runs-on: ubuntu-latest
