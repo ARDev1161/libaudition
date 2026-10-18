@@ -1,6 +1,7 @@
 #include <audition/temporal/streaming_pattern_matcher.hpp>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -29,12 +30,15 @@ TEST(StreamingPatternBenchmark, MultisourceMultitemplateThroughputSmoke) {
     constexpr std::size_t sources=10;
     constexpr std::size_t frames=100;
     std::size_t total_matches=0;
+    std::chrono::steady_clock::duration worst_push{};
     const auto start=std::chrono::steady_clock::now();
     for (std::size_t frame=0;frame<frames;++frame) {
         for (std::size_t source=1;source<=sources;++source) {
+            const auto push_start=std::chrono::steady_clock::now();
             const auto matches=matcher.push(audition::AcousticSourceId{
                 static_cast<std::uint64_t>(source)},
                 {static_cast<double>(source%8),static_cast<double>(frame%8)});
+            worst_push=std::max(worst_push,std::chrono::steady_clock::now()-push_start);
             total_matches+=matches.size();
         }
     }
@@ -46,6 +50,7 @@ TEST(StreamingPatternBenchmark, MultisourceMultitemplateThroughputSmoke) {
              <<" push_calls="<<sources*frames
              <<" total_us="<<elapsed
              <<" mean_us_per_push="<<static_cast<double>(elapsed)/(sources*frames)
+             <<" worst_push_us="<<std::chrono::duration<double,std::micro>(worst_push).count()
              <<" matches="<<total_matches<<"\n";
     // Performance is informational: noisy hosted CI runners must not gate
     // correctness with a machine-dependent latency threshold.
