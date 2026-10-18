@@ -22,3 +22,18 @@ bounds and history truncation.
 This is the first TMP-04 slice. Still open: DTW sequence similarity,
 motif discovery, missing-pulse robustness, multiple competing periods,
 independently annotated acoustic corpora, calibration and runtime benchmarks.
+
+## Dynamic time warping (DTW)
+
+`DynamicTimeWarping` aligns two nonempty sequences of equal-dimensional
+finite feature frames. It uses squared Euclidean frame distance and a
+Sakoe–Chiba band (`warping_radius`) with bounded frames and dimensions.
+Only two DP rows are retained: memory is O(minimum configured frame capacity)
+for the provided second sequence rather than a full alignment matrix.
+The API returns cumulative cost, cost divided by selected path length,
+path length and explicit `reachable` status. It does not assign a semantic
+match label, nor assert a calibrated probability.
+
+CTest / GoogleTest: `DynamicTimeWarping.*` checks exact alignment, temporal
+stretch, unreachable narrow bands, invalid input, arithmetic overflow and
+frame capacities. Motif discovery and learned feature calibration remain open.
