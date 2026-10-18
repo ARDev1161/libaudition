@@ -129,3 +129,7 @@ Streaming matching now evaluates each candidate suffix as the existing source hi
 ### Streaming scaling observations
 
 The CTest microbenchmark now reports worst observed `push()` duration in addition to average throughput. `StreamingPatternBenchmark.TemplateAndSourceScalingMeasurements` prints a deterministic 3×3 sweep of 1/5/10 sources and 1/4/8 templates, with 40 frames per source. CI timings are descriptive measurements only, not latency assertions. No heap-allocation counts or real-time deadline certification is implied.
+
+### Isolated C++ allocation probe
+
+`temporal_streaming_allocation_probe` is a standalone CTest executable that counts calls to global C++ `operator new` and `new[]` after a warmup of 30 frames per source. The measured workload uses 10 sources, 8 templates, and 100 frames per source, reporting absolute allocation calls and per-push mean. Its overrides are isolated from the main GoogleTest binary. This is diagnostic only: it does not count direct `malloc`, allocator-specific internal allocations or bytes, and compiler/platform differences mean no fixed allocation threshold is imposed in CI.
