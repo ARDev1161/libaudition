@@ -55,3 +55,7 @@ CTest: `AcousticMotifFinder.*` exercises repeated and unrelated motifs,
 insufficient history, malformed feature frames, capacity and configuration
 validation. Real annotated repeat detection, cross-source matching, false
 positive rates and streaming motif indexing are not yet measured.
+
+### Multiple disjoint motifs
+
+`AcousticMotifFinder::findMultiple(frames, max_matches)` enumerates valid non-overlapping DTW motif pairs, orders them by normalized cost with deterministic tie breaking, and greedily selects up to `max_matches` pairs with no frame-window overlap across selected matches. The result cap bounds output size; input frame/window capacities still bound computation. Greedy disjoint selection is **not** a proof of globally optimal motif-set coverage. `AcousticMotifFinder.Multiple*` CTest cases cover independent repetitions, overlap exclusion and result-cap validation.
