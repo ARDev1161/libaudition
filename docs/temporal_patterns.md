@@ -125,3 +125,7 @@ Streaming matching now evaluates each candidate suffix as the existing source hi
 ### Streaming throughput smoke measurement
 
 `StreamingPatternBenchmark.MultisourceMultitemplateThroughputSmoke` executes a deterministic 10-source, 8-template, 100-frame-per-source load (1000 `push()` calls), reports total elapsed microseconds, mean time per push and emitted match count through CTest logs. It is intentionally an informational microbenchmark without a runner-dependent latency threshold; it does not measure heap allocation counts, worst-case latency, real-time scheduling or production hardware. Those require dedicated profiling and explicit environments.
+
+### Streaming scaling observations
+
+The CTest microbenchmark now reports worst observed `push()` duration in addition to average throughput. `StreamingPatternBenchmark.TemplateAndSourceScalingMeasurements` prints a deterministic 3×3 sweep of 1/5/10 sources and 1/4/8 templates, with 40 frames per source. CI timings are descriptive measurements only, not latency assertions. No heap-allocation counts or real-time deadline certification is implied.
