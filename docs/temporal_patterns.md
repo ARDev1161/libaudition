@@ -141,3 +141,7 @@ The probe remains registered in CTest. To view its numeric diagnostics, run `cte
 ### DTW scratch reuse
 
 `StreamingPatternMatcher` retains a single `DtwWorkspace` across sequential `push()` calls rather than allocating a new scratch object for every frame. The instance already owns mutable per-source state and remains **not thread-safe**: synchronize concurrent access or use one matcher per processing thread. DTW arithmetic failures still occur before accepted history/cooldown is committed. The allocation impact should be measured with the standalone probe; it has not yet been quantified.
+
+### Reusable suffix feature buffers
+
+Candidate suffix windows now retain their outer and per-frame vector capacity across sequential `push()` calls, keyed by candidate length. Each call invalidates cached content and refills only lengths requested by templates, preventing reuse of stale source frames when streams interleave. Buffer contents are scratch state (not committed source history), so failed DTW comparisons still leave source history and cooldown unmodified. This trades retained bounded scratch memory for fewer repeat allocations, but still copies feature values into DTW-compatible contiguous candidate vectors; allocation reductions are not yet benchmark-verified.
