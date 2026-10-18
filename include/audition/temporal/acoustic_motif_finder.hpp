@@ -38,6 +38,75 @@ public:
             throw std::invalid_argument("invalid motif options");
     }
 
+    // Select up to max_matches disjoint motif pairs, in ascending DTW cost.
+    // Each selected window is exclusive: neither it nor any overlapping
+    // candidate window may participate in a later selected match.
+    [[nodiscard]] std::vector<MotifMatch> findMultiple(
+        const std::vector<std::vector<double>>& frames,
+        std::size_t max_matches) const {
+        if (!max_matches) throw std::invalid_argument("motif result capacity must be positive");
+        if (frames.size()>options_.max_frames)
+            throw std::length_error("motif frame capacity exceeded");
+        if (frames.empty()) return {};
+        const auto dimensions=frames.front().size();
+        if (!dimensions || dimensions>options_.max_dimensions)
+            throw std::invalid_argument("invalid motif feature dimension");
+        for (const auto& frame:frames) {
+            if (frame.size()!=dimensions)
+                throw std::invalid_argument("inconsistent motif feature dimension");
+            for (double value:frame)
+                if (!std::isfinite(value))
+                    throw std::invalid_argument("nonfinite motif feature");
+        }
+        if (frames.size()/options_.window_frames<2) return {};
+        std::vector<MotifMatch> candidates;
+        for (std::size_t a=0;a<=frames.size()-options_.window_frames;) {
+            const std::vector<std::vector<double>> left(
+                frames.begin()+static_cast<std::ptrdiff_t>(a),
+                frames.begin()+static_cast<std::ptrdiff_t>(a+options_.window_frames));
+            for (std::size_t b=a+options_.window_frames;
+                 b<=frames.size()-options_.window_frames;) {
+                const std::vector<std::vector<double>> right(
+                    frames.begin()+static_cast<std::ptrdiff_t>(b),
+                    frames.begin()+static_cast<std::ptrdiff_t>(b+options_.window_frames));
+                const auto aligned=dtw_.compare(left,right);
+                if (aligned.reachable &&
+                    aligned.normalized_cost<=options_.max_normalized_cost)
+                    candidates.push_back({a,b,aligned.normalized_cost,true});
+                if (options_.stride>frames.size()-options_.window_frames-b) break;
+                b+=options_.stride;
+            }
+            if (options_.stride>frames.size()-options_.window_frames-a) break;
+            a+=options_.stride;
+        }
+        std::sort(candidates.begin(),candidates.end(),[](const auto& x,const auto& y) {
+            if (x.normalized_cost!=y.normalized_cost)
+                return x.normalized_cost<y.normalized_cost;
+            if (x.first_start!=y.first_start) return x.first_start<y.first_start;
+            return x.second_start<y.second_start;
+        });
+        std::vector<MotifMatch> selected;
+        const auto overlaps=[this](std::size_t a,std::size_t b) {
+            return a<b ? b-a<options_.window_frames : a-b<options_.window_frames;
+        };
+        for (const auto& candidate:candidates) {
+            bool conflict=false;
+            for (const auto& match:selected)
+                if (overlaps(candidate.first_start,match.first_start) ||
+                    overlaps(candidate.first_start,match.second_start) ||
+                    overlaps(candidate.second_start,match.first_start) ||
+                    overlaps(candidate.second_start,match.second_start)) {
+                    conflict=true;
+                    break;
+                }
+            if (!conflict) {
+                selected.push_back(candidate);
+                if (selected.size()==max_matches) break;
+            }
+        }
+        return selected;
+    }
+
     [[nodiscard]] MotifMatch find(const std::vector<std::vector<double>>& frames) const {
         if (frames.size()>options_.max_frames)
             throw std::length_error("motif frame capacity exceeded");
