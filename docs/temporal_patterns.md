@@ -117,3 +117,7 @@ Candidate suffix frames are now materialized at most once for each distinct cand
 ### Reusable DTW scratch buffers
 
 `DynamicTimeWarping::compare(a,b,DtwWorkspace&)` allows callers to retain the two dynamic-programming rows between comparisons. The original two-argument `compare` API remains unchanged and creates a local workspace. `StreamingPatternMatcher` shares one local workspace across template comparisons **within each push**, reducing repeated DP-row allocations but not eliminating candidate-window/state copying. Workspace use is not thread-safe when shared concurrently; use separate workspaces per thread/call. `DynamicTimeWarping.ReusedWorkspace*` verifies equivalence across differing lengths and recovery after rejected samples.
+
+### Virtual suffix evaluation
+
+Streaming matching now evaluates each candidate suffix as the existing source history followed by the prospective incoming frame. Previous history is not cloned per `push()`. DTW computations and cooldown-map preparation complete before the new frame is committed. Candidate suffixes and temporary DTW rows still allocate; this is not an allocation-free real-time guarantee. The failure-regression test confirms an arithmetic DTW exception leaves the prior feature sequence and frame index unchanged.
