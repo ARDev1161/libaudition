@@ -965,3 +965,15 @@ add_test(NAME algorithm_coverage_contract
 set_tests_properties(algorithm_coverage_contract PROPERTIES
     LABELS "coverage-audit;ci-contract"
     TIMEOUT 60)
+
+# Standalone allocation probe: global operator new overrides must not leak
+# into the GoogleTest executable or other backends.
+add_executable(temporal_streaming_allocation_probe
+    temporal_streaming_allocation_probe.cpp)
+target_compile_features(temporal_streaming_allocation_probe PRIVATE cxx_std_17)
+target_include_directories(temporal_streaming_allocation_probe PRIVATE
+    "${PROJECT_SOURCE_DIR}/include")
+add_test(NAME temporal_streaming_allocation_probe
+    COMMAND temporal_streaming_allocation_probe)
+set_tests_properties(temporal_streaming_allocation_probe PROPERTIES
+    LABELS "temporal;benchmark;allocation" TIMEOUT 90)
