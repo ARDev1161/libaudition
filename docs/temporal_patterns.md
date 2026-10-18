@@ -136,4 +136,4 @@ The CTest microbenchmark now reports worst observed `push()` duration in additio
 
 The allocation probe has a CTest `PASS_REGULAR_EXPRESSION` contract requiring the metric marker, guarding against silent no-op execution. Successful test stdout may still be hidden in the default non-verbose CTest log; use `ctest -V -R '^temporal_streaming_allocation_probe$'` to inspect numerical results locally or in a dedicated verbose CI step. No absolute allocation reduction is claimed yet.
 
-The Ubuntu `build-test` CI job now reruns the isolated allocation probe with `ctest -V` after the full suite to expose `cpp_new_calls` and `new_calls_per_push` in the GitHub Actions log. These diagnostic counts are informational and do not gate a target allocation budget.
+The probe remains registered in CTest. To view its numeric diagnostics, run `ctest --test-dir build/ci -V -R temporal_streaming_allocation_probe`; ordinary CI output may hide successful test stdout. No allocation budget is enforced.
