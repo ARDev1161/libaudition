@@ -75,6 +75,7 @@ TEST(StreamingPatternMatcher, CooldownSuppressesRepeatedAlertsPerSourceAndLabel)
     EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
     EXPECT_EQ(matcher.push(source(2),{1}).size(),1u);
     EXPECT_EQ(matcher.push(source(1),{2}).size(),1u);
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
     EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
 }
 
