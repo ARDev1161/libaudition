@@ -78,16 +78,17 @@ public:
         if (it!=states_.end() && !it->second.history.empty() &&
             it->second.history.back().size()!=frame.size())
             throw std::invalid_argument("streaming frame dimension changed");
-        State next=it==states_.end()?State{}:it->second;
-        next.history.push_back(frame);
-        if(next.history.size()>options_.max_frames) next.history.pop_front();
-        if (next.frames_seen==std::numeric_limits<std::size_t>::max())
+        // Evaluate against a virtual history ending in the incoming frame.
+        // Existing source history is read-only until all comparisons succeed.
+        // Only the new feature frame is copied into candidate suffixes.
+        const State* prior=it==states_.end()?nullptr:&it->second;
+        const std::size_t seen=prior?prior->frames_seen:0;
+        if (seen==std::numeric_limits<std::size_t>::max())
             throw std::overflow_error("streaming pattern frame counter overflow");
-        ++next.frames_seen;
+        const std::size_t ending_frame=seen+1;
+        const std::size_t retained=prior?prior->history.size():0;
+        const std::size_t available=std::min(options_.max_frames,retained+1);
         std::vector<StreamingPatternMatch> matches;
-        // Candidate suffixes depend on the observation length, not on the
-        // template label. Build each length at most once per accepted frame.
-        // Preserve the local next state until every DTW comparison succeeds.
         std::map<std::size_t,std::vector<std::vector<double>>> suffix_cache;
         DtwWorkspace workspace;
         for(const auto& entry:templates_) {
@@ -100,12 +101,17 @@ public:
             if (min_length>max_length) continue;
             double best_cost=std::numeric_limits<double>::infinity();
             for (std::size_t length=min_length;
-                 length<=max_length && length<=next.history.size();++length) {
+                 length<=max_length && length<=available;++length) {
                 auto cached=suffix_cache.find(length);
                 if (cached==suffix_cache.end()) {
-                    std::vector<std::vector<double>> suffix(
-                        next.history.end()-static_cast<std::ptrdiff_t>(length),
-                        next.history.end());
+                    std::vector<std::vector<double>> suffix;
+                    suffix.reserve(length);
+                    if (length>1 && prior) {
+                        auto first=prior->history.end()-
+                            static_cast<std::ptrdiff_t>(length-1);
+                        suffix.insert(suffix.end(),first,prior->history.end());
+                    }
+                    suffix.push_back(frame);
                     cached=suffix_cache.emplace(length,std::move(suffix)).first;
                 }
                 const auto match=dtw_.compare(reference,cached->second,workspace);
@@ -113,17 +119,37 @@ public:
                     best_cost=match.normalized_cost;
             }
             if (best_cost<=options_.max_normalized_cost) {
-                const auto last=next.last_emission.find(entry.first);
-                const bool suppressed=options_.cooldown_frames>0 &&
-                    last!=next.last_emission.end() &&
-                    next.frames_seen-last->second<=options_.cooldown_frames;
-                if (!suppressed) {
-                    matches.push_back({entry.first,best_cost,next.frames_seen});
-                    next.last_emission[entry.first]=next.frames_seen;
-                }
+                const auto last=prior?prior->last_emission.find(entry.first):
+                    std::map<std::string,std::size_t>::const_iterator{};
+                const bool suppressed=options_.cooldown_frames>0 && prior &&
+                    last!=prior->last_emission.end() &&
+                    ending_frame-last->second<=options_.cooldown_frames;
+                if (!suppressed)
+                    matches.push_back({entry.first,best_cost,ending_frame});
             }
         }
-        states_[source]=std::move(next);
+        // Build just the small cooldown map, not the large feature history.
+        // Perform potentially throwing work before mutating the source.
+        auto emission=prior?prior->last_emission:
+            std::map<std::string,std::size_t>{};
+        for (const auto& match:matches)
+            emission[match.label]=ending_frame;
+        if (!prior) {
+            State next{};
+            next.history.push_back(frame);
+            next.frames_seen=ending_frame;
+            next.last_emission=std::move(emission);
+            states_.emplace(source,std::move(next));
+        } else {
+            // Copy the incoming frame before touching the deque. No DTW
+            // computation or validation may fail after this point.
+            auto accepted=frame;
+            it->second.history.push_back(std::move(accepted));
+            if(it->second.history.size()>options_.max_frames)
+                it->second.history.pop_front();
+            it->second.frames_seen=ending_frame;
+            it->second.last_emission.swap(emission);
+        }
         return matches;
     }
 
