@@ -59,3 +59,19 @@ positive rates and streaming motif indexing are not yet measured.
 ### Multiple disjoint motifs
 
 `AcousticMotifFinder::findMultiple(frames, max_matches)` enumerates valid non-overlapping DTW motif pairs, orders them by normalized cost with deterministic tie breaking, and greedily selects up to `max_matches` pairs with no frame-window overlap across selected matches. The result cap bounds output size; input frame/window capacities still bound computation. Greedy disjoint selection is **not** a proof of globally optimal motif-set coverage. `AcousticMotifFinder.Multiple*` CTest cases cover independent repetitions, overlap exclusion and result-cap validation.
+
+## Streaming template recognition
+
+`StreamingPatternMatcher` stores a bounded rolling feature history per
+persistent acoustic source, matches the last complete window against
+registered templates using DTW, and returns matching labels, costs and
+source-local frame indices. It never combines frames from different sources.
+Templates are validated on registration; malformed incoming frames are
+rejected before history commit. `forget(source)` clears a source's history.
+
+This is an intentionally simple **fixed-length trailing-window** matcher:
+it cannot yet handle deletion of an entire event, variable-length candidate
+boundaries or timestamp-based silence gaps. It can emit the same label at
+successive frame positions; consumers must supply deduplication/cooldown
+policy. `StreamingPatternMatcher.*` CTest scenarios verify completion,
+source isolation, rollover/recovery, invalid frame rejection and capacity.
