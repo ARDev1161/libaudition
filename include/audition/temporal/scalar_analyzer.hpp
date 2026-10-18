@@ -80,30 +80,37 @@ public:
             }
         }
 
-        auto& state = states_[sample.source_id][sample.feature];
+        State next{};
+        if (source != states_.end()) {
+            const auto existing = source->second.find(sample.feature);
+            if (existing != source->second.end()) next = existing->second;
+        }
         ScalarEvidence result{};
         result.input = sample;
-        if (!state.initialized) {
-            state.mean = sample.value;
-            state.initialized = true;
+        if (!next.initialized) {
+            next.mean = sample.value;
+            next.initialized = true;
         } else {
-            // CUSUM against the previous smoothed baseline (not the updated one).
-            const double residual = sample.value - state.mean;
-            const double up = std::max(0.0, state.up + residual - options_.drift);
-            const double down = std::max(0.0, state.down - residual - options_.drift);
+            // The entire numerical update is computed locally and committed
+            // only after checking all finite intermediate values.
+            const double residual = sample.value - next.mean;
+            const double up_raw = next.up + residual - options_.drift;
+            const double down_raw = next.down - residual - options_.drift;
+            const double next_mean = next.mean + options_.alpha * residual;
+            if (!std::isfinite(residual) || !std::isfinite(up_raw) ||
+                !std::isfinite(down_raw) || !std::isfinite(next_mean))
+                throw std::overflow_error("scalar temporal arithmetic overflow");
+            const double up = std::max(0.0, up_raw);
+            const double down = std::max(0.0, down_raw);
             result.positive_change = up >= options_.threshold;
             result.negative_change = down >= options_.threshold;
-            const double next_mean = state.mean + options_.alpha * residual;
-            if (!std::isfinite(next_mean)) {
-                // Finite input alone does not guarantee finite intermediate sums.
-                throw std::overflow_error("scalar smoothing overflow");
-            }
-            state.mean = next_mean;
-            state.up = result.positive_change ? 0.0 : up;
-            state.down = result.negative_change ? 0.0 : down;
+            next.mean = next_mean;
+            next.up = result.positive_change ? 0.0 : up;
+            next.down = result.negative_change ? 0.0 : down;
         }
-        state.last = sample.time;
-        result.smoothed = state.mean;
+        next.last = sample.time;
+        result.smoothed = next.mean;
+        states_[sample.source_id][sample.feature] = next;
         return result;
     }
 
