@@ -76,9 +76,13 @@ public:
         next.down = down;
         next.min_up = std::min(next.min_up, up);
         next.max_down = std::max(next.max_down, down);
+        const double upward_span = up - next.min_up;
+        const double downward_span = next.max_down - down;
+        if (!std::isfinite(upward_span) || !std::isfinite(downward_span))
+            throw std::overflow_error("Page-Hinkley cumulative span overflow");
         const bool ready = count >= options_.min_observations;
-        const bool rise = ready && up - next.min_up >= options_.threshold;
-        const bool fall = ready && next.max_down - down >= options_.threshold;
+        const bool rise = ready && upward_span >= options_.threshold;
+        const bool fall = ready && downward_span >= options_.threshold;
         if (rise || fall) {
             next.up = next.down = next.min_up = next.max_down = 0;
             next.mean = value;
