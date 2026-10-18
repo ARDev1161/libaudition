@@ -214,6 +214,9 @@ TEST(StreamingPatternMatcher, FailedDtwArithmeticLeavesHistoryAndCooldownUnchang
     EXPECT_TRUE(matcher.push(source(1),{1}).empty());
     EXPECT_THROW(static_cast<void>(matcher.push(source(1),{-std::numeric_limits<double>::max()})),
                  std::overflow_error);
+    // Remove the deliberately overflowing template before retrying. Otherwise
+    // the matcher correctly raises another overflow on the recovery frame.
+    matcher.registerTemplate("large",{{8},{9}});
     const auto recovered=matcher.push(source(1),{2});
     ASSERT_EQ(recovered.size(),1u);
     EXPECT_EQ(recovered.front().label,"sequence");
