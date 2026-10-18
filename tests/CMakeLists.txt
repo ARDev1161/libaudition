@@ -105,6 +105,7 @@ add_executable(libaudition_tests
     temporal_recurrence_test.cpp
     temporal_dtw_test.cpp
     temporal_motif_test.cpp
+    temporal_streaming_pattern_test.cpp
     acoustic_pipeline_scenario_test.cpp
     level_range_prior_test.cpp
     spl_calibration_test.cpp
