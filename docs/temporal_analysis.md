@@ -125,3 +125,17 @@ temporary state and rejects any non-finite intermediate arithmetic before
 mutating source/feature history. A failed observation therefore does not
 consume its timestamp; a corrected observation at the same timestamp can be
 accepted. Regression tests exercise this using finite `double` extrema.
+
+## Independent assignment oracle and numerical regressions
+
+`HungarianEventMatcherOracle.*` uses brute-force enumeration of unmatched or
+one-to-one matches as an independent reference, covering every two-by-two
+matrix from a three-value edge alphabet (81 cases), plus 1600 seeded random
+rectangular cases (1–4 observations, 0–4 tracks), forbidden edges, ties,
+and cost-boundary behavior. It also checks no track is assigned twice,
+unmatched track indices, and a recomputed total objective.
+
+`MahalanobisStability.*` checks an explicit positive variance floor, full
+signed timestamp span, variance-sum overflow, and extreme coordinate
+differences. These are finite-data numerical safety tests; statistical
+calibration and measured tracking quality still require annotated corpora.
