@@ -86,3 +86,7 @@ labels and sources, and `forget(source)` / `reset()` clear emission state.
 Cooldown is measured in feature frames, **not wall-clock time**, and does not
 repair missing observations. A wrap of the source-local frame counter is
 rejected before committing a new frame.
+
+### Variable-length suffix alignment
+
+`StreamingPatternOptions::min_candidate_frames` and `max_candidate_frames` optionally define an inclusive range of trailing observation lengths evaluated against each registered feature template. Zero means use the template length (the backward-compatible default). The matcher selects the lowest normalized reachable DTW cost in the configured range, then applies the source/label cooldown. Candidate lengths are bounded by `max_frames`; candidates shorter than a template can align repeated features but **cannot recover arbitrary deleted information**. The configured warping radius may make unequal lengths unreachable. Regression tests cover shortened plateau patterns, nonmatching deleted features, and default fixed-length behavior.
