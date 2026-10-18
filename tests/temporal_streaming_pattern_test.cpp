@@ -123,3 +123,63 @@ TEST(StreamingPatternMatcher, VariableWindowRejectsInconsistentOptions) {
     EXPECT_THROW(static_cast<void>(audition::temporal::StreamingPatternMatcher{options}),
                  std::invalid_argument);
 }
+
+TEST(StreamingPatternMatcher, MissingMiddleFrameWithoutEquivalentPlateauDoesNotMatch) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.min_candidate_frames=2;
+    options.max_candidate_frames=3;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("three_step",{{1},{2},{3}});
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{3}).empty());
+    // A complete later occurrence still recovers.
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{2}).empty());
+    const auto restored=matcher.push(source(1),{3});
+    ASSERT_EQ(restored.size(),1u);
+    EXPECT_EQ(restored.front().label,"three_step");
+    EXPECT_EQ(restored.front().ending_frame,5u);
+}
+
+TEST(StreamingPatternMatcher, RollingHistoryBoundAndSourceRestart) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_frames=3;
+    options.min_candidate_frames=2;
+    options.max_candidate_frames=3;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("cycle",{{4},{5},{6}});
+    for (int i=0;i<100;++i)
+        EXPECT_TRUE(matcher.push(source(1),{100}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{4}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{5}).empty());
+    const auto found=matcher.push(source(1),{6});
+    ASSERT_EQ(found.size(),1u);
+    EXPECT_EQ(found.front().ending_frame,103u);
+    matcher.forget(source(1));
+    EXPECT_TRUE(matcher.push(source(1),{6}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{4}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{5}).empty());
+    EXPECT_EQ(matcher.push(source(1),{6}).size(),1u);
+}
+
+TEST(StreamingPatternMatcher, CandidateWindowCannotExceedConfiguredHistory) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_frames=3;
+    options.max_candidate_frames=4;
+    EXPECT_THROW(static_cast<void>(audition::temporal::StreamingPatternMatcher{options}),
+                 std::invalid_argument);
+}
+
+TEST(StreamingPatternMatcher, MultipleTemplatesRetainIndependentCooldown) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.cooldown_frames=10;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("one",{{1}});
+    matcher.registerTemplate("two",{{2}});
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    EXPECT_EQ(matcher.push(source(1),{2}).size(),1u);
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{2}).empty());
+}
