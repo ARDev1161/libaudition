@@ -79,3 +79,11 @@ TEST(TemporalScalarAnalyzer, InvalidConfigurationRejected) {
     o.threshold = -1;
     EXPECT_THROW(audition::temporal::TemporalScalarAnalyzer{o}, std::invalid_argument);
 }
+
+TEST(TemporalScalarAnalyzer, ArithmeticOverflowDoesNotConsumeTimestampOrState) {
+    audition::temporal::TemporalScalarAnalyzer analyzer;
+    const double max=std::numeric_limits<double>::max();
+    EXPECT_DOUBLE_EQ(analyzer.observe(obs(1,1,max)).smoothed,max);
+    EXPECT_THROW(static_cast<void>(analyzer.observe(obs(1,2,-max))),std::overflow_error);
+    EXPECT_DOUBLE_EQ(analyzer.observe(obs(1,2,max)).smoothed,max);
+}
