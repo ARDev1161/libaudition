@@ -114,5 +114,6 @@ TEST(HungarianEventMatcherOracle, CapacityAndValidation) {
     EXPECT_THROW(static_cast<void>(matcher.match({{std::nullopt}}, 2)), std::length_error);
     EXPECT_THROW(static_cast<void>(matcher.match({{std::numeric_limits<double>::quiet_NaN()}}, 1)),
                  std::invalid_argument);
-    verifyAssignment({{std::nullopt}}, 1, 10.0, matcher.match({{std::nullopt}}, 1));
+    const CostMatrix forbidden{{std::nullopt}};
+    verifyAssignment(forbidden, 1, 10.0, matcher.match(forbidden, 1));
 }
