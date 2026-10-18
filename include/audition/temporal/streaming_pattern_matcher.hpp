@@ -110,7 +110,8 @@ public:
                         auto first=prior->history.end()-
                             static_cast<std::ptrdiff_t>(length-1);
                         for (std::size_t k=0;k<length-1;++k)
-                            cached.frames[k].assign(first[k].begin(),first[k].end());
+                            cached.frames[k].assign(first[static_cast<std::ptrdiff_t>(k)].begin(),
+                                                    first[static_cast<std::ptrdiff_t>(k)].end());
                     }
                     cached.frames[length-1].assign(frame.begin(),frame.end());
                     cached.valid=true;
