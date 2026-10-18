@@ -100,6 +100,7 @@ add_executable(libaudition_tests
     temporal_uncertain_assignment_test.cpp
     temporal_association_scenario_test.cpp
     temporal_hungarian_oracle_test.cpp
+    temporal_mahalanobis_stability_test.cpp
     acoustic_pipeline_scenario_test.cpp
     level_range_prior_test.cpp
     spl_calibration_test.cpp
