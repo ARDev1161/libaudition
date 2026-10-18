@@ -139,3 +139,7 @@ unmatched track indices, and a recomputed total objective.
 signed timestamp span, variance-sum overflow, and extreme coordinate
 differences. These are finite-data numerical safety tests; statistical
 calibration and measured tracking quality still require annotated corpora.
+
+## Overflow audit follow-up
+
+Page-Hinkley cumulative peak-to-trough spans are checked for finite arithmetic before state commit, in addition to mean and accumulator checks. The Hungarian matcher rejects a nonfinite final total assignment cost rather than returning a misleading finite-looking matching summary. CI verification of these changes is pending.
