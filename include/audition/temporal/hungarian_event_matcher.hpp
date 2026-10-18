@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -51,12 +52,12 @@ public:
             return result;
         }
         // n real rows, m+n columns (one unmatched dummy per row).
-        // Hungarian shortest augmenting paths with forbidden edges assigned
-        // a finite barrier strictly worse than all feasible dummy assignments.
+        // Hungarian shortest augmenting paths. Forbidden edges use infinity:
+        // a finite sentinel can be reached through reduced-cost updates and
+        // produce suboptimal or invalid assignments.
         const std::size_t cols=m+n;
-        const double barrier=options_.unmatched_penalty*static_cast<double>(n+1)+1.0;
-        if (!std::isfinite(barrier)) throw std::overflow_error("assignment cost scale overflow");
-        std::vector<std::vector<double>> matrix(n+1,std::vector<double>(cols+1,barrier));
+        const double infinity=std::numeric_limits<double>::infinity();
+        std::vector<std::vector<double>> matrix(n+1,std::vector<double>(cols+1,infinity));
         for(std::size_t i=0;i<n;++i) {
             for(std::size_t j=0;j<m;++j)
                 if(costs[i][j] && *costs[i][j]<=options_.unmatched_penalty)
@@ -68,22 +69,25 @@ public:
         for(std::size_t i=1;i<=n;++i) {
             p[0]=i;
             std::size_t j0=0;
-            std::vector<double> minv(cols+1,barrier);
+            std::vector<double> minv(cols+1,infinity);
             std::vector<bool> used(cols+1);
             do {
                 used[j0]=true;
                 const auto i0=p[j0];
-                double delta=barrier;
+                double delta=infinity;
                 std::size_t j1=0;
                 for(std::size_t j=1;j<=cols;++j) if(!used[j]) {
-                    const double cur=matrix[i0][j]-u[i0]-v[j];
-                    if(cur<minv[j]) {minv[j]=cur;way[j]=j0;}
+                    if (std::isfinite(matrix[i0][j])) {
+                        const double cur=matrix[i0][j]-u[i0]-v[j];
+                        if (!std::isfinite(cur)) throw std::overflow_error("assignment reduced cost overflow");
+                        if(cur<minv[j]) {minv[j]=cur;way[j]=j0;}
+                    }
                     if(minv[j]<delta) {delta=minv[j];j1=j;}
                 }
                 if(!j1 || !std::isfinite(delta)) throw std::overflow_error("assignment solver failed");
                 for(std::size_t j=0;j<=cols;++j)
                     if(used[j]) {u[p[j]]+=delta;v[j]-=delta;}
-                    else minv[j]-=delta;
+                    else if (std::isfinite(minv[j])) minv[j]-=delta;
                 j0=j1;
             } while(p[j0]);
             do {
