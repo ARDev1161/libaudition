@@ -262,3 +262,30 @@ TEST(StreamingPatternMatcher, ReusedDtwScratchKeepsSourcesIndependent) {
         EXPECT_EQ(second.front().label,"b");
     }
 }
+
+TEST(StreamingPatternMatcher, ReusedSuffixBuffersDoNotLeakPriorSourceFrames) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_frames=5;
+    options.min_candidate_frames=2;
+    options.max_candidate_frames=4;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("left",{{1},{2},{3}});
+    matcher.registerTemplate("right",{{7},{8},{9}});
+    for (int iteration=0;iteration<20;++iteration) {
+        matcher.forget(source(1));
+        matcher.forget(source(2));
+        EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+        EXPECT_TRUE(matcher.push(source(2),{7}).empty());
+        EXPECT_TRUE(matcher.push(source(1),{2}).empty());
+        EXPECT_TRUE(matcher.push(source(2),{8}).empty());
+        const auto left=matcher.push(source(1),{3});
+        ASSERT_EQ(left.size(),1u);
+        EXPECT_EQ(left[0].label,"left");
+        const auto right=matcher.push(source(2),{9});
+        ASSERT_EQ(right.size(),1u);
+        EXPECT_EQ(right[0].label,"right");
+        EXPECT_TRUE(matcher.push(source(1),{100}).empty());
+        EXPECT_TRUE(matcher.push(source(2),{100}).empty());
+    }
+}
