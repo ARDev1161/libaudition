@@ -105,6 +105,8 @@ public:
                 result.total_cost+=*costs[i][j-1];
             } else result.total_cost+=options_.unmatched_penalty;
         }
+        if (!std::isfinite(result.total_cost))
+            throw std::overflow_error("assignment total cost overflow");
         for(std::size_t j=0;j<m;++j) if(!assigned[j]) result.unmatched_tracks.push_back(j);
         return result;
     }
