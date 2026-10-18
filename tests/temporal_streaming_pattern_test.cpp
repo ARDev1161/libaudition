@@ -183,3 +183,23 @@ TEST(StreamingPatternMatcher, MultipleTemplatesRetainIndependentCooldown) {
     EXPECT_TRUE(matcher.push(source(1),{1}).empty());
     EXPECT_TRUE(matcher.push(source(1),{2}).empty());
 }
+
+TEST(StreamingPatternMatcher, SharedSuffixCandidatesPreserveMultipleTemplateResults) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.min_candidate_frames=2;
+    options.max_candidate_frames=3;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("first",{{1},{2},{3}});
+    matcher.registerTemplate("second",{{1},{1},{3}});
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{2}).empty());
+    const auto matches=matcher.push(source(1),{3});
+    ASSERT_EQ(matches.size(),1u);
+    EXPECT_EQ(matches.front().label,"first");
+    matcher.forget(source(1));
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    const auto shortened=matcher.push(source(1),{3});
+    ASSERT_EQ(shortened.size(),1u);
+    EXPECT_EQ(shortened.front().label,"second");
+}
