@@ -25,6 +25,8 @@ struct StreamingPatternOptions {
     std::size_t max_dimensions{64};
     std::size_t warping_radius{4};
     double max_normalized_cost{0.1};
+    std::size_t min_candidate_frames{0}; // 0 = exact template length
+    std::size_t max_candidate_frames{0}; // 0 = exact template length
     std::size_t cooldown_frames{0}; // 0 preserves emission on every matching frame
 };
 struct StreamingPatternMatch {
@@ -38,7 +40,12 @@ public:
     explicit StreamingPatternMatcher(StreamingPatternOptions options={})
         : options_(options),dtw_({options.max_frames,options.max_dimensions,options.warping_radius}) {
         if (!options.max_sources || !options.max_templates || !options.max_frames ||
-            !options.max_dimensions || !std::isfinite(options.max_normalized_cost) ||
+            !options.max_dimensions ||
+            (options.min_candidate_frames && options.min_candidate_frames>options.max_frames) ||
+            (options.max_candidate_frames && options.max_candidate_frames>options.max_frames) ||
+            (options.min_candidate_frames && options.max_candidate_frames &&
+             options.min_candidate_frames>options.max_candidate_frames) ||
+            !std::isfinite(options.max_normalized_cost) ||
             options.max_normalized_cost<0)
             throw std::invalid_argument("invalid streaming pattern options");
     }
@@ -80,19 +87,29 @@ public:
         std::vector<StreamingPatternMatch> matches;
         for(const auto& entry:templates_) {
             const auto& reference=entry.second;
-            if(reference.front().size()!=frame.size() || reference.size()>next.history.size())
-                continue;
-            std::vector<std::vector<double>> candidate(
-                next.history.end()-static_cast<std::ptrdiff_t>(reference.size()),
-                next.history.end());
-            const auto match=dtw_.compare(reference,candidate);
-            if(match.reachable && match.normalized_cost<=options_.max_normalized_cost) {
+            if (reference.front().size()!=frame.size()) continue;
+            const auto min_length=options_.min_candidate_frames ?
+                options_.min_candidate_frames : reference.size();
+            const auto max_length=options_.max_candidate_frames ?
+                options_.max_candidate_frames : reference.size();
+            if (min_length>max_length) continue;
+            double best_cost=std::numeric_limits<double>::infinity();
+            for (std::size_t length=min_length;
+                 length<=max_length && length<=next.history.size();++length) {
+                std::vector<std::vector<double>> candidate(
+                    next.history.end()-static_cast<std::ptrdiff_t>(length),
+                    next.history.end());
+                const auto match=dtw_.compare(reference,candidate);
+                if (match.reachable && match.normalized_cost<best_cost)
+                    best_cost=match.normalized_cost;
+            }
+            if (best_cost<=options_.max_normalized_cost) {
                 const auto last=next.last_emission.find(entry.first);
                 const bool suppressed=options_.cooldown_frames>0 &&
                     last!=next.last_emission.end() &&
                     next.frames_seen-last->second<=options_.cooldown_frames;
                 if (!suppressed) {
-                    matches.push_back({entry.first,match.normalized_cost,next.frames_seen});
+                    matches.push_back({entry.first,best_cost,next.frames_seen});
                     next.last_emission[entry.first]=next.frames_seen;
                 }
             }
