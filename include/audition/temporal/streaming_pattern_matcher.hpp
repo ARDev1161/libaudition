@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <deque>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <stdexcept>
@@ -147,11 +148,19 @@ public:
         } else {
             // Copy the incoming frame before touching the deque. No DTW
             // computation or validation may fail after this point.
-            auto accepted=frame;
-            it->second.history.push_back(std::move(accepted));
-            if(it->second.history.size()>options_.max_frames)
-                it->second.history.pop_front();
-            it->second.frames_seen=ending_frame;
+            // Keep a reusable staging vector. A failed copy leaves the
+            // committed history intact; all subsequent full-ring operations
+            // are noexcept vector swaps.
+            auto& state=it->second;
+            state.pending_frame.assign(frame.begin(),frame.end());
+            if (state.history.size()==options_.max_frames) {
+                state.history.front().swap(state.pending_frame);
+                std::rotate(state.history.begin(),
+                            std::next(state.history.begin()),state.history.end());
+            } else {
+                state.history.push_back(std::move(state.pending_frame));
+            }
+            state.frames_seen=ending_frame;
             if (!matches.empty()) it->second.last_emission.swap(emission);
         }
         return matches;
@@ -162,6 +171,7 @@ public:
 private:
     struct State {
         std::deque<std::vector<double>> history{};
+        std::vector<double> pending_frame{};
         std::size_t frames_seen{0};
         std::map<std::string,std::size_t> last_emission{};
     };
