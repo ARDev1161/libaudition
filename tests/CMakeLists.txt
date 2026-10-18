@@ -977,3 +977,7 @@ add_test(NAME temporal_streaming_allocation_probe
     COMMAND temporal_streaming_allocation_probe)
 set_tests_properties(temporal_streaming_allocation_probe PROPERTIES
     LABELS "temporal;benchmark;allocation" TIMEOUT 90)
+# Surface the probe's diagnostic metric in successful CTest runs so it
+# is visible in hosted CI logs without verbose output for the full suite.
+set_tests_properties(temporal_streaming_allocation_probe PROPERTIES
+    PASS_REGULAR_EXPRESSION "temporal-stream-allocations")
