@@ -73,3 +73,29 @@ raw coordinates are comparable without prior sensor-frame transformation.
 Potential follow-ups include uncertainty-aware Mahalanobis gating, batch
 assignment and ambiguous-candidate handling. The deterministic tests cover
 boundary equality, time/space rejection, clock mismatch and integer extremes.
+
+## TMP-03: uncertainty-aware gating and batch matching
+
+`DiagonalMahalanobisGate` computes the squared normalized displacement of
+two position estimates using the sum of independent **diagonal** covariance
+matrices. It checks clock compatibility, elapsed time, finite coordinates,
+nonnegative variances, and a configured squared-distance threshold. Inputs
+must already share a metric reference frame. The estimator explicitly does
+not support off-diagonal covariance, and the independence assumption must be
+justified by the caller. The default threshold is only an illustrative
+3-DOF chi-square gate, **not calibrated evidence** of source identity.
+
+`HungarianEventMatcher` implements bounded minimum-cost one-to-one assignment
+of observation rows to existing candidate tracks. Missing matrix entries
+forbid an edge; each observation can remain unmatched at a configurable
+penalty. Results include unmatched tracks and the total caller-defined cost.
+All costs must be finite and nonnegative. This matcher does not construct
+persistent IDs or independently decide the identity of an acoustic source.
+
+The new deterministic CTest cases check uncertainty sensitivity, wrong
+clocks, extreme timestamps, global non-greedy assignment, forbidden edges,
+unmatched observations, and malformed matrices.
+
+Remaining follow-up: full-covariance correlated fusion, confidence calibration,
+multiple-hypothesis uncertainty, source lifecycle integration, scenario replay,
+and real-corpus identity-switch quality gates.
