@@ -51,7 +51,7 @@ TEST(DynamicTimeWarping, ReusedWorkspaceMatchesStatelessAcrossDifferentLengths) 
     audition::temporal::DynamicTimeWarping dtw;
     audition::temporal::DtwWorkspace workspace;
     const Sequence a{{0},{1},{2}};
-    for (const Sequence b : {Sequence{{0},{0},{1},{2}},
+    for (const Sequence& b : {Sequence{{0},{0},{1},{2}},
                              Sequence{{0},{1},{2}},
                              Sequence{{9},{8}}}) {
         const auto expected=dtw.compare(a,b);
