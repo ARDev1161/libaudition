@@ -109,3 +109,7 @@ become an exact match. Additional scenarios test recovery on a subsequent
 complete occurrence, rollover after 100 unrelated frames, independent
 template cooldown and rejection of candidate bounds exceeding history.
 These tests measure deterministic behavior, not physical dropped-frame rates.
+
+### Suffix construction optimization
+
+Candidate suffix frames are now materialized at most once for each distinct candidate length during a `push()`, then shared across all registered templates with that length. This reduces redundant window copying when many templates are active, without changing DTW matching or transactional state updates. **The source state is still copied before evaluation**, and DTW still allocates its dynamic-programming rows per comparison; no allocation-free or real-time bound is claimed. `StreamingPatternMatcher.SharedSuffixCandidatesPreserveMultipleTemplateResults` checks outputs with multiple templates and variable windows.
