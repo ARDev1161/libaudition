@@ -55,3 +55,46 @@ TEST(StreamingPatternBenchmark, MultisourceMultitemplateThroughputSmoke) {
     // Performance is informational: noisy hosted CI runners must not gate
     // correctness with a machine-dependent latency threshold.
 }
+
+TEST(StreamingPatternBenchmark, TemplateAndSourceScalingMeasurements) {
+    for (const std::size_t source_count : {std::size_t{1},std::size_t{5},std::size_t{10}}) {
+        for (const std::size_t template_count : {std::size_t{1},std::size_t{4},std::size_t{8}}) {
+            audition::temporal::StreamingPatternOptions options{};
+            options.max_sources=source_count;
+            options.max_templates=template_count;
+            options.max_frames=24;
+            options.min_candidate_frames=6;
+            options.max_candidate_frames=10;
+            audition::temporal::StreamingPatternMatcher matcher{options};
+            for (std::size_t label=0;label<template_count;++label) {
+                std::vector<std::vector<double>> sample;
+                for (std::size_t k=0;k<8;++k)
+                    sample.push_back({static_cast<double>(label),static_cast<double>(k)});
+                matcher.registerTemplate("pattern_"+std::to_string(label),std::move(sample));
+            }
+            constexpr std::size_t frames_per_source=40;
+            std::chrono::steady_clock::duration worst_push{};
+            const auto start=std::chrono::steady_clock::now();
+            std::size_t matches=0;
+            for (std::size_t frame=0;frame<frames_per_source;++frame)
+                for (std::size_t source=1;source<=source_count;++source) {
+                    const auto begin=std::chrono::steady_clock::now();
+                    const auto result=matcher.push(
+                        audition::AcousticSourceId{static_cast<std::uint64_t>(source)},
+                        {static_cast<double>(source%8),static_cast<double>(frame%8)});
+                    worst_push=std::max(worst_push,std::chrono::steady_clock::now()-begin);
+                    matches+=result.size();
+                }
+            const auto elapsed=std::chrono::duration<double,std::micro>(
+                std::chrono::steady_clock::now()-start).count();
+            const auto calls=source_count*frames_per_source;
+            EXPECT_LE(matches,calls*template_count);
+            std::cout<<"[temporal-stream-scaling] sources="<<source_count
+                     <<" templates="<<template_count
+                     <<" calls="<<calls
+                     <<" mean_us="<<elapsed/static_cast<double>(calls)
+                     <<" worst_us="<<std::chrono::duration<double,std::micro>(worst_push).count()
+                     <<" matches="<<matches<<"\n";
+        }
+    }
+}
