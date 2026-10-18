@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <deque>
+#include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -24,6 +25,7 @@ struct StreamingPatternOptions {
     std::size_t max_dimensions{64};
     std::size_t warping_radius{4};
     double max_normalized_cost{0.1};
+    std::size_t cooldown_frames{0}; // 0 preserves emission on every matching frame
 };
 struct StreamingPatternMatch {
     std::string label{};
@@ -72,6 +74,8 @@ public:
         State next=it==states_.end()?State{}:it->second;
         next.history.push_back(frame);
         if(next.history.size()>options_.max_frames) next.history.pop_front();
+        if (next.frames_seen==std::numeric_limits<std::size_t>::max())
+            throw std::overflow_error("streaming pattern frame counter overflow");
         ++next.frames_seen;
         std::vector<StreamingPatternMatch> matches;
         for(const auto& entry:templates_) {
@@ -82,8 +86,16 @@ public:
                 next.history.end()-static_cast<std::ptrdiff_t>(reference.size()),
                 next.history.end());
             const auto match=dtw_.compare(reference,candidate);
-            if(match.reachable && match.normalized_cost<=options_.max_normalized_cost)
-                matches.push_back({entry.first,match.normalized_cost,next.frames_seen});
+            if(match.reachable && match.normalized_cost<=options_.max_normalized_cost) {
+                const auto last=next.last_emission.find(entry.first);
+                const bool suppressed=options_.cooldown_frames>0 &&
+                    last!=next.last_emission.end() &&
+                    next.frames_seen-last->second<=options_.cooldown_frames;
+                if (!suppressed) {
+                    matches.push_back({entry.first,match.normalized_cost,next.frames_seen});
+                    next.last_emission[entry.first]=next.frames_seen;
+                }
+            }
         }
         states_[source]=std::move(next);
         return matches;
@@ -95,6 +107,7 @@ private:
     struct State {
         std::deque<std::vector<double>> history{};
         std::size_t frames_seen{0};
+        std::map<std::string,std::size_t> last_emission{};
     };
     StreamingPatternOptions options_;
     DynamicTimeWarping dtw_;
