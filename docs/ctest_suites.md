@@ -112,6 +112,14 @@ and the frontend dump before the PyTorch comparison.
 
 ### Independent installed-package check
 
+The hosted `installed-package` CI matrix installs and runs an independent
+CMake consumer on Linux and macOS, with both static and shared builds
+(`BUILD_SHARED_LIBS=OFF/ON`). The consumer requires ISO C++17 and disables
+compiler-specific C++ extensions. Each matrix cell builds the library, installs
+its exported targets, and compiles/executes the consumer from a separate
+temporary directory. A green matrix does not establish Windows, ARM cross-build,
+or accelerator support.
+
 ```sh
 cmake -S . -B build-install -G Ninja \
   -DLIBAUDITION_BUILD_TESTS=OFF \

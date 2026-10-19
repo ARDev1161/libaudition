@@ -81,6 +81,19 @@ order only with user approval, retarget surviving PRs, and run full CI
 on the final combined candidate. Preserve provenance of all optional
 real-model tests; green workflow jobs do not imply calibrated quality.
 
+## Feature-branch evidence snapshot (2026-10-19)
+
+- [CI #1411](https://github.com/ARDev1161/libaudition/actions/runs/39326320775)
+  on `f979c76b5ce47db7015970b2b7a2dcfda99bb050` completed with
+  22 successful jobs and one skipped `real-spatial-corpus` job.
+- The installed-package test on that commit ran on Ubuntu only. A new
+  four-cell Linux/macOS x static/shared installed-consumer matrix is being
+  introduced; do not mark its additional cells verified until the new CI
+  finishes successfully.
+- These checks concern a stacked feature branch, not a final integrated
+  release candidate. Neither physical hardware metrics nor independently
+  annotated real-acoustic accuracy has been established by this evidence.
+
 ## Mandatory gates (P0)
 
 | Gate | Verification | Current evidence / action |

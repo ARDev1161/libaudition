@@ -300,7 +300,13 @@ jobs:
         run: cmake --install build-efficientat --prefix "$PWD/install-efficientat"
 
   installed-package:
-    runs-on: ubuntu-latest
+    name: installed-package (${{ matrix.os }}, shared=${{ matrix.shared }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        shared: ["OFF", "ON"]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure dependency-free install
@@ -311,6 +317,7 @@ jobs:
           -DLIBAUDITION_BUILD_TESTS=OFF
           -DLIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE=ON
           -DLIBAUDITION_PACKAGE_SMOKE_PREFIX=$PWD/install-default
+          -DBUILD_SHARED_LIBS=${{ matrix.shared }}
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_FETCH_DEPENDENCIES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
@@ -318,7 +325,7 @@ jobs:
         run: cmake --build build-install --parallel
       - name: Install
         run: cmake --install build-install --prefix "$PWD/install-default"
-      - name: Verify installed C++17 consumer through CTest
+      - name: Verify independent installed C++17 consumer through CTest
         run: ctest --test-dir build-install -R '^installed_package_cpp17_consumer$' --output-on-failure --no-tests=error
 
   sanitizers:
