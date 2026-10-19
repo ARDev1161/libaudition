@@ -250,6 +250,12 @@ WAV/timeline sidecar persists without the unfinished final transcript,
 and live diagnostics increment `retire_capacity_drops`. This is an
 explicitly reported overload fallback, **not** lossless ASR retirement.
 
+Persisting a recording after this fallback now removes its obsolete
+`generation → recording` bindings, even if `bindAsr()` ran before the
+failed retirement. `SourceRecordingSession::boundAsrGenerations()` exposes
+binding pressure for diagnostics. Repeated fallback sidecar cycles must
+return that count to zero.
+
 The Qt capture adapter delays the retired recording's final JSON write until
 that generation has drained; ALSA xrun retirement uses the same mechanism.
 On capture shutdown it allows up to 10 seconds for outstanding ASR results

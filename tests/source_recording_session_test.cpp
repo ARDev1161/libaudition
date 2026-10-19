@@ -63,6 +63,22 @@ int main() {
     assert(next.speech().empty());
     assert(next.gaps().empty());
     assert(records.activeRecordings() == 0U);
+    assert(records.boundAsrGenerations() == 0U);
+
+    // Repeat the exact fallback path used when the speech retirement
+    // table is saturated: the recording already has an ASR binding but
+    // cannot be retired with a generation. The binding must not survive.
+    for (std::uint64_t i = 0; i < 48U; ++i) {
+        const auto path = root / ("fallback-" + std::to_string(i) + ".wav");
+        const auto track_id = 400U + i;
+        records.begin(track_id, 4000U + i, path, 16000U, origin);
+        records.bindAsr(track_id, 200U);
+        assert(records.boundAsrGenerations() == 1U);
+        records.retire(track_id, std::nullopt);
+        assert(records.boundAsrGenerations() == 0U);
+        assert(records.activeRecordings() == 0U);
+        assert(fs::exists(fs::path{path.string() + ".json"}));
+    }
     auto meter = audition::dsp::StreamingLevelMeter{};
     meter.push(0.5f);
     meter.push(-0.5f);

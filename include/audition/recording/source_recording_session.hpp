@@ -3,6 +3,7 @@
 #include <audition/audio/recording_timeline_json.hpp>
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -133,6 +134,8 @@ public:
         return n;
     }
     std::size_t activeRecordings() const noexcept { return active_.size(); }
+    // Active and retired generation bindings still held in this session.
+    std::size_t boundAsrGenerations() const noexcept { return generations_.size(); }
 
 private:
     static std::optional<std::uint64_t> offset(Timestamp timestamp,
@@ -161,6 +164,13 @@ private:
         // Bound session metadata even when disk is unwritable; report error.
         persist(it->second);
         recordings_.erase(it);
+        // An ASR generation may have been bound before a fallback retire
+        // without generation (speech retirement table at capacity). Remove
+        // every binding for this now-persisted recording to avoid leakage.
+        for (auto gen = generations_.begin(); gen != generations_.end();) {
+            if (gen->second == id) gen = generations_.erase(gen);
+            else ++gen;
+        }
         for (auto seen = seen_windows_.begin(); seen != seen_windows_.end();) {
             if (std::get<0>(*seen) == id) seen = seen_windows_.erase(seen);
             else ++seen;
