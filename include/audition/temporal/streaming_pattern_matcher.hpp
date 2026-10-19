@@ -122,19 +122,22 @@ public:
                     best_cost=match.normalized_cost;
             }
             if (best_cost<=options_.max_normalized_cost) {
-                const auto last=prior?prior->last_emission.find(entry.first):
-                    std::map<std::string,std::size_t>::const_iterator{};
-                const bool suppressed=options_.cooldown_frames>0 && prior &&
-                    last!=prior->last_emission.end() &&
-                    ending_frame-last->second<=options_.cooldown_frames;
+                bool suppressed=false;
+                if (options_.cooldown_frames>0 && prior) {
+                    const auto last=prior->last_emission.find(entry.first);
+                    suppressed=last!=prior->last_emission.end() &&
+                        ending_frame-last->second<=options_.cooldown_frames;
+                }
                 if (!suppressed)
                     matches.push_back({entry.first,best_cost,ending_frame});
             }
         }
-        // Build just the small cooldown map, not the large feature history.
-        // Perform potentially throwing work before mutating the source.
+        // No cooldown means emission is stateless: avoid cloning or updating
+        // the cooldown map on every match. When enabled, stage all potentially
+        // throwing map updates before committing accepted source history.
         std::map<std::string,std::size_t> emission;
-        if (!matches.empty()) {
+        const bool record_cooldown=options_.cooldown_frames>0 && !matches.empty();
+        if (record_cooldown) {
             if (prior) emission=prior->last_emission;
             for (const auto& match:matches)
                 emission[match.label]=ending_frame;
@@ -161,7 +164,7 @@ public:
                 state.history.push_back(std::move(state.pending_frame));
             }
             state.frames_seen=ending_frame;
-            if (!matches.empty()) it->second.last_emission.swap(emission);
+            if (record_cooldown) state.last_emission.swap(emission);
         }
         return matches;
     }
