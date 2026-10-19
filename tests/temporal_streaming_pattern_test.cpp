@@ -387,3 +387,71 @@ TEST(StreamingPatternMatcher, ReusableResultsPreserveHistoryAfterInvalidFrame) {
     matcher.pushInto(source(1),{100},output);
     EXPECT_TRUE(output.empty());
 }
+
+TEST(StreamingPatternMatcher, ReplacingTemplateClearsOnlyItsCooldownAcrossSources) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.cooldown_frames=20;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("tone",{{1}});
+    matcher.registerTemplate("other",{{7}});
+    ASSERT_EQ(matcher.push(source(1),{1}).size(),1u);
+    ASSERT_EQ(matcher.push(source(2),{1}).size(),1u);
+    ASSERT_EQ(matcher.push(source(1),{7}).size(),1u);
+
+    matcher.registerTemplate("tone",{{2}});
+    const auto first=matcher.push(source(1),{2});
+    ASSERT_EQ(first.size(),1u);
+    EXPECT_EQ(first.front().label,"tone");
+    EXPECT_EQ(first.front().ending_frame,3u);
+    const auto second=matcher.push(source(2),{2});
+    ASSERT_EQ(second.size(),1u);
+    EXPECT_EQ(second.front().label,"tone");
+    EXPECT_EQ(second.front().ending_frame,2u);
+
+    EXPECT_TRUE(matcher.push(source(1),{7}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{2}).empty());
+}
+
+TEST(StreamingPatternMatcher, UnregisterTemplateReleasesCapacityAndCooldown) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_templates=2;
+    options.cooldown_frames=100;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("tone",{{1}});
+    matcher.registerTemplate("other",{{7}});
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_FALSE(matcher.unregisterTemplate("missing"));
+    EXPECT_TRUE(matcher.unregisterTemplate("tone"));
+    EXPECT_FALSE(matcher.unregisterTemplate("tone"));
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    matcher.registerTemplate("tone",{{1}});
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    EXPECT_THROW(matcher.registerTemplate("excess",{{3}}),std::length_error);
+    EXPECT_TRUE(matcher.unregisterTemplate("other"));
+    matcher.registerTemplate("excess",{{3}});
+    const auto found=matcher.push(source(1),{3});
+    ASSERT_EQ(found.size(),1u);
+    EXPECT_EQ(found.front().label,"excess");
+}
+
+TEST(StreamingPatternMatcher, InvalidTemplateReplacementRetainsSuppressionAndHistory) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.cooldown_frames=2;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("tone",{{1}});
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    EXPECT_THROW(matcher.registerTemplate("tone",{{1},{1,2}}),std::invalid_argument);
+    EXPECT_THROW(matcher.registerTemplate("tone",{{std::numeric_limits<double>::infinity()}}),
+                 std::invalid_argument);
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    EXPECT_TRUE(matcher.push(source(1),{1}).empty());
+    const auto recovered=matcher.push(source(1),{1});
+    ASSERT_EQ(recovered.size(),1u);
+    EXPECT_EQ(recovered.front().label,"tone");
+    EXPECT_EQ(recovered.front().ending_frame,4u);
+}
