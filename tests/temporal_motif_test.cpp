@@ -164,3 +164,29 @@ TEST(AcousticMotifFinder, HugeWindowDoesNotOverflowShortInputCheck) {
     EXPECT_FALSE(finder.find(short_data).found);
     EXPECT_TRUE(finder.findMultiple(short_data,1).empty());
 }
+
+TEST(AcousticMotifFinder, ReusedWindowsPreserveMultidimensionalMatchesAcrossCalls) {
+    auto o=options();
+    o.max_frames=16;
+    o.max_dimensions=4;
+    o.window_frames=3;
+    o.max_normalized_cost=0;
+    audition::temporal::AcousticMotifFinder finder{o};
+    const Frames repeated{{1,10,100},{2,20,200},{3,30,300},
+                          {80,81,82},{1,10,100},{2,20,200},{3,30,300}};
+    const Frames unrelated{{1,2,3},{2,3,4},{3,4,5},
+                           {90,91,92},{80,81,82},{70,71,72}};
+    for (int iteration=0;iteration<20;++iteration) {
+        const auto best=finder.find(repeated);
+        ASSERT_TRUE(best.found);
+        EXPECT_EQ(best.first_start,0u);
+        EXPECT_EQ(best.second_start,4u);
+        EXPECT_DOUBLE_EQ(best.normalized_cost,0);
+        const auto matches=finder.findMultiple(repeated,3);
+        ASSERT_EQ(matches.size(),1u);
+        EXPECT_EQ(matches.front().first_start,0u);
+        EXPECT_EQ(matches.front().second_start,4u);
+        EXPECT_FALSE(finder.find(unrelated).found);
+        EXPECT_TRUE(finder.findMultiple(unrelated,2).empty());
+    }
+}
