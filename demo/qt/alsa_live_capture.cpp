@@ -624,6 +624,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 " sound=" + std::to_string(annotation_drops.sound) +
                 " gaps=" + std::to_string(annotation_drops.gaps);
             latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped()) +
+                " | WAV admissions denied=" + std::to_string(recorder.admissionDrops()) +
+                " | WAV outstanding=" + std::to_string(recorder.outstandingRecordings()) +
                 " | WAV history pruned=" + std::to_string(recorder.historyEvicted());
             if (recordings.persistenceError())
                 latest_.speech_status += " | JSON error: " + *recordings.persistenceError();

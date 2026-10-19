@@ -333,3 +333,14 @@ on disk. `historyEvicted()` reports the number pruned. Failed-file
 bookkeeping is cleared at Close, preventing indefinite accumulation
 after repeated disk errors. This cap does not bound disk usage or the
 number of simultaneously live sources.
+
+### Bounded outstanding WAV recordings
+
+The sixth `SourceWavRecorder` constructor argument limits the number of
+active, queued-for-close and worker-open recording IDs (default **64**).
+This also bounds outstanding Close commands: rejecting a new track returns
+`AppendReport.recording_id == 0` and increments `admissionDrops()`, but
+existing tracks continue to accept audio. Slots are released only after the
+worker processes Close, including a failed file; WAVs already written are
+not deleted. `outstandingRecordings()` and Qt diagnostics expose pressure.
+A zero outstanding limit disables recording. This does not set a disk quota.

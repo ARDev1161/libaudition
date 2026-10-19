@@ -137,6 +137,63 @@ int main() {
         assert(recorder.historyEvicted()==4U);
         for(const auto& entry:recent) assert(!entry.error.empty());
     }
+
+    {
+        // The admission limit includes active and queued-for-close
+        // sources, and a completed Close reopens capacity.
+        audition::recording::SourceWavRecorder recorder(
+            path / "admission",16000,4096,256,2,3);
+        const std::vector<float> audio(8U,0.3F);
+        for(std::uint64_t id=1;id<=3;++id) {
+            const auto accepted=recorder.append(id,audio);
+            assert(accepted.recording_id==id);
+            assert(accepted.accepted_samples==audio.size());
+        }
+        assert(recorder.outstandingRecordings()==3U);
+        const auto denied=recorder.append(4U,audio);
+        assert(denied.recording_id==0U);
+        assert(recorder.admissionDrops()==1U);
+        assert(!recorder.activeEntry(4U).has_value());
+        assert(recorder.append(1U,audio).recording_id==1U);
+        recorder.retire(1U);
+        const auto maybe_admitted=recorder.append(4U,audio);
+        if (maybe_admitted.recording_id==0U) {
+            bool released=false;
+            for (int spin=0;spin<2000;++spin) {
+                if (recorder.outstandingRecordings()<3U) {
+                    released=true;
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            }
+            assert(released);
+            assert(recorder.append(4U,audio).recording_id!=0U);
+        }
+        recorder.closeAll();
+        assert(recorder.outstandingRecordings()==0U);
+        assert(recorder.entries().size()<=2U);
+    }
+    {
+        // I/O error must not consume admission capacity permanently.
+        const auto dir=path/"admission-errors";
+        audition::recording::SourceWavRecorder recorder(
+            dir,16000,4096,256,3,1);
+        fs::create_directories(dir/"track_51_1.wav");
+        assert(recorder.append(51U,std::vector<float>(8U,0.2F)).recording_id==1U);
+        recorder.retire(51U);
+        bool released=false;
+        for (int spin=0;spin<2000;++spin) {
+            if (recorder.outstandingRecordings()==0U) {
+                released=true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        assert(released);
+        assert(recorder.append(52U,std::vector<float>(8U,0.2F)).recording_id==2U);
+        recorder.closeAll();
+        assert(recorder.outstandingRecordings()==0U);
+    }
     std::error_code ec;
     fs::remove_all(path, ec);
 }
