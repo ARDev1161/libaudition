@@ -1,5 +1,11 @@
 #include <audition/temporal/streaming_pattern_matcher.hpp>
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <cstdint>
+#include <deque>
+#include <map>
+#include <string>
+#include <vector>
 #include <limits>
 #include <stdexcept>
 
@@ -454,4 +460,91 @@ TEST(StreamingPatternMatcher, InvalidTemplateReplacementRetainsSuppressionAndHis
     ASSERT_EQ(recovered.size(),1u);
     EXPECT_EQ(recovered.front().label,"tone");
     EXPECT_EQ(recovered.front().ending_frame,4u);
+}
+
+TEST(StreamingPatternMatcher, IndependentExactSuffixOracleAcrossSourceLifecycle) {
+    // Independent oracle: at warping_radius=0 and zero cost threshold, the
+    // only admissible DTW path aligns every feature with the same-index value.
+    // This intentionally does not call DTW or read matcher internals.
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_sources=3;
+    options.max_templates=4;
+    options.max_frames=4;
+    options.max_dimensions=1;
+    options.warping_radius=0;
+    options.max_normalized_cost=0;
+    options.cooldown_frames=3;
+    audition::temporal::StreamingPatternMatcher returning{options};
+    audition::temporal::StreamingPatternMatcher reusable{options};
+    const std::map<std::string,std::vector<int>> patterns{
+        {"a",{1,2}}, {"b",{2,2}}, {"c",{3}}, {"d",{0,1,2}}
+    };
+    for (const auto& pattern:patterns) {
+        std::vector<std::vector<double>> frames;
+        for (const int value:pattern.second)
+            frames.push_back({static_cast<double>(value)});
+        returning.registerTemplate(pattern.first,frames);
+        reusable.registerTemplate(pattern.first,frames);
+    }
+
+    std::map<unsigned,std::deque<int>> history;
+    std::map<unsigned,std::size_t> frame_counts;
+    std::map<unsigned,std::map<std::string,std::size_t>> last_emission;
+    std::vector<audition::temporal::StreamingPatternMatch> reused;
+    reused.reserve(options.max_templates);
+    std::uint32_t generator=0xc001d00du;
+    const auto next=[&generator]() {
+        generator=generator*1664525u+1013904223u;
+        return generator;
+    };
+
+    std::size_t total_expected=0;
+    for (std::size_t step=0;step<2400;++step) {
+        const unsigned id=1u+((next()>>16u)%3u);
+        if (step==1200) {
+            returning.reset();
+            reusable.reset();
+            history.clear();
+            frame_counts.clear();
+            last_emission.clear();
+        } else if (step!=0 && step%137==0) {
+            returning.forget(source(id));
+            reusable.forget(source(id));
+            history.erase(id);
+            frame_counts.erase(id);
+            last_emission.erase(id);
+        }
+        const int value=static_cast<int>((next()>>17u)%4u);
+        auto& window=history[id];
+        window.push_back(value);
+        if (window.size()>options.max_frames) window.pop_front();
+        const auto ending=++frame_counts[id];
+        std::vector<std::string> expected;
+        for (const auto& pattern:patterns) {
+            const auto& reference=pattern.second;
+            if (window.size()<reference.size() ||
+                !std::equal(reference.rbegin(),reference.rend(),window.rbegin()))
+                continue;
+            auto& previous=last_emission[id];
+            const auto last=previous.find(pattern.first);
+            if (last!=previous.end() &&
+                ending-last->second<=options.cooldown_frames) continue;
+            expected.push_back(pattern.first);
+            previous[pattern.first]=ending;
+        }
+        const auto actual=returning.push(source(id),{static_cast<double>(value)});
+        reusable.pushInto(source(id),{static_cast<double>(value)},reused);
+        ASSERT_EQ(actual.size(),expected.size()) << "step="<<step;
+        ASSERT_EQ(reused.size(),expected.size()) << "step="<<step;
+        for (std::size_t i=0;i<expected.size();++i) {
+            EXPECT_EQ(actual[i].label,expected[i]) << "step="<<step;
+            EXPECT_EQ(reused[i].label,expected[i]) << "step="<<step;
+            EXPECT_EQ(actual[i].ending_frame,ending) << "step="<<step;
+            EXPECT_EQ(reused[i].ending_frame,ending) << "step="<<step;
+            EXPECT_DOUBLE_EQ(actual[i].normalized_cost,0.0);
+            EXPECT_DOUBLE_EQ(reused[i].normalized_cost,0.0);
+        }
+        total_expected+=expected.size();
+    }
+    EXPECT_GT(total_expected,20u);
 }
