@@ -68,6 +68,21 @@ public:
     }
 
 private:
+    // The motif finder validates its entire immutable input once before the
+    // candidate loop. Rechecking each frame at every pair is quadratic
+    // redundant work. Keep this overload private: unvalidated callers must
+    // use compareWindows(), whose validation contract is unchanged.
+    friend class AcousticMotifFinder;
+    [[nodiscard]] DtwResult compareValidatedWindows(
+        const std::vector<std::vector<double>>& frames,
+        std::size_t first_start,
+        std::size_t second_start,
+        std::size_t window_frames,
+        DtwWorkspace& workspace) const {
+        return compareRanges(frames,first_start,window_frames,
+                             frames,second_start,window_frames,workspace,false);
+    }
+
     [[nodiscard]] DtwResult compareRanges(
         const std::vector<std::vector<double>>& a,
         std::size_t first_start,
@@ -75,7 +90,8 @@ private:
         const std::vector<std::vector<double>>& b,
         std::size_t second_start,
         std::size_t second_size,
-        DtwWorkspace& workspace) const {
+        DtwWorkspace& workspace,
+        bool validate_features=true) const {
         if (!first_size || !second_size)
             throw std::invalid_argument("DTW sequences must be nonempty");
         if (first_size>options_.max_frames || second_size>options_.max_frames)
@@ -99,8 +115,10 @@ private:
                         throw std::invalid_argument("nonfinite DTW feature");
             }
         };
-        validate(a,first_start,first_size);
-        validate(b,second_start,second_size);
+        if (validate_features) {
+            validate(a,first_start,first_size);
+            validate(b,second_start,second_size);
+        }
         const double inf=std::numeric_limits<double>::infinity();
         using Cell=DtwWorkspace::Cell;
         auto& previous=workspace.previous;
