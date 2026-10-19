@@ -112,8 +112,8 @@ public:
             it->second.history.back().size()!=frame.size())
             throw std::invalid_argument("streaming frame dimension changed");
         // Evaluate against a virtual history ending in the incoming frame.
-        // Existing source history is read-only until all comparisons succeed.
-        // Only the new feature frame is copied into candidate suffixes.
+        // No candidate feature copies; source history remains read-only
+        // until all comparisons and output assembly succeed.
         const State* prior=it==states_.end()?nullptr:&it->second;
         const std::size_t seen=prior?prior->frames_seen:0;
         if (seen==std::numeric_limits<std::size_t>::max())
@@ -123,7 +123,6 @@ public:
         const std::size_t available=std::min(options_.max_frames,retained+1);
         output.clear();
         auto& matches=output;
-        for (auto& candidate:suffix_cache_) candidate.second.valid=false;
         for(const auto& entry:templates_) {
             const auto& reference=entry.second;
             if (reference.front().size()!=frame.size()) continue;
@@ -135,22 +134,10 @@ public:
             double best_cost=std::numeric_limits<double>::infinity();
             for (std::size_t length=min_length;
                  length<=max_length && length<=available;++length) {
-                auto& cached=suffix_cache_[length];
-                if (!cached.valid) {
-                    // Refill reusable vectors instead of reconstructing the
-                    // candidate and its feature buffers on every push.
-                    cached.frames.resize(length);
-                    if (length>1 && prior) {
-                        auto first=prior->history.end()-
-                            static_cast<std::ptrdiff_t>(length-1);
-                        for (std::size_t k=0;k<length-1;++k)
-                            cached.frames[k].assign(first[static_cast<std::ptrdiff_t>(k)].begin(),
-                                                    first[static_cast<std::ptrdiff_t>(k)].end());
-                    }
-                    cached.frames[length-1].assign(frame.begin(),frame.end());
-                    cached.valid=true;
-                }
-                const auto match=dtw_.compare(reference,cached.frames,workspace_);
+                // Directly read the trailing source history and incoming
+                // frame: no suffix feature copies or cache retained.
+                const auto match=dtw_.compareValidatedSuffix(
+                    reference,prior ? prior->history : empty_history_,frame,length,workspace_);
                 if (match.reachable && match.normalized_cost<best_cost)
                     best_cost=match.normalized_cost;
             }
@@ -214,11 +201,8 @@ private:
     DynamicTimeWarping dtw_;
     // Scratch reused across pushes; like source state, this matcher is not thread-safe.
     DtwWorkspace workspace_;
-    struct CandidateScratch {
-        std::vector<std::vector<double>> frames{};
-        bool valid{false};
-    };
-    std::map<std::size_t,CandidateScratch> suffix_cache_;
+    // Empty input history for a newly observed source (before first commit).
+    const std::deque<std::vector<double>> empty_history_{};
     std::map<std::string,std::vector<std::vector<double>>> templates_;
     std::map<AcousticSourceId,State> states_;
 };
