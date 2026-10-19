@@ -137,7 +137,7 @@ public:
                 // Directly read the trailing source history and incoming
                 // frame: no suffix feature copies or cache retained.
                 const auto match=dtw_.compareValidatedSuffix(
-                    reference,prior ? prior->history : empty_history_,frame,length,workspace_);
+                    reference,prior ? &prior->history : nullptr,frame,length,workspace_);
                 if (match.reachable && match.normalized_cost<best_cost)
                     best_cost=match.normalized_cost;
             }
@@ -201,8 +201,6 @@ private:
     DynamicTimeWarping dtw_;
     // Scratch reused across pushes; like source state, this matcher is not thread-safe.
     DtwWorkspace workspace_;
-    // Empty input history for a newly observed source (before first commit).
-    const std::deque<std::vector<double>> empty_history_{};
     std::map<std::string,std::vector<std::vector<double>>> templates_;
     std::map<AcousticSourceId,State> states_;
 };
