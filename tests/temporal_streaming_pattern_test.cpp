@@ -8,6 +8,7 @@
 #include <vector>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 
 namespace {
 audition::AcousticSourceId source(unsigned value) {return audition::AcousticSourceId{value};}
@@ -619,4 +620,31 @@ TEST(StreamingPatternMatcher, VirtualSuffixMatchesIndependentCopiedWindowDtw) {
         checked_matches+=expected.size();
     }
     EXPECT_GT(checked_matches,50u);
+}
+
+TEST(StreamingPatternMatcher, CopyAssignmentKeepsIndependentBoundedSourceHistories) {
+    static_assert(std::is_copy_assignable<
+        audition::temporal::StreamingPatternMatcher>::value,
+        "virtual suffix scratch must not disable existing matcher assignment");
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_frames=2;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher original{options};
+    original.registerTemplate("pair",{{1},{2}});
+    EXPECT_TRUE(original.push(source(1),{1}).empty());
+
+    audition::temporal::StreamingPatternMatcher snapshot{options};
+    snapshot=original;
+    const auto first=original.push(source(1),{2});
+    const auto copied=snapshot.push(source(1),{2});
+    ASSERT_EQ(first.size(),1u);
+    ASSERT_EQ(copied.size(),1u);
+    EXPECT_EQ(first.front().ending_frame,copied.front().ending_frame);
+    original.forget(source(1));
+    EXPECT_TRUE(original.push(source(1),{2}).empty());
+    EXPECT_TRUE(snapshot.push(source(1),{2}).empty());
+    EXPECT_TRUE(snapshot.push(source(1),{1}).empty());
+    const auto recovered=snapshot.push(source(1),{2});
+    ASSERT_EQ(recovered.size(),1u);
+    EXPECT_EQ(recovered.front().label,"pair");
 }
