@@ -548,3 +548,75 @@ TEST(StreamingPatternMatcher, IndependentExactSuffixOracleAcrossSourceLifecycle)
     }
     EXPECT_GT(total_expected,20u);
 }
+
+TEST(StreamingPatternMatcher, VirtualSuffixMatchesIndependentCopiedWindowDtw) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_sources=3;
+    options.max_templates=3;
+    options.max_frames=6;
+    options.max_dimensions=2;
+    options.min_candidate_frames=2;
+    options.max_candidate_frames=5;
+    options.warping_radius=2;
+    options.max_normalized_cost=1.5;
+    options.cooldown_frames=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    audition::temporal::DynamicTimeWarping reference_dtw{
+        {options.max_frames,options.max_dimensions,options.warping_radius}};
+    using Sequence=std::vector<std::vector<double>>;
+    const std::map<std::string,Sequence> patterns{
+        {"alpha",{{0,0},{1,1},{2,0}}},
+        {"beta",{{2,1},{1,1}}},
+        {"gamma",{{3,2},{2,1},{1,0},{0,1}}}
+    };
+    for (const auto& pattern:patterns)
+        matcher.registerTemplate(pattern.first,pattern.second);
+    std::map<unsigned,std::deque<std::vector<double>>> histories;
+    std::uint32_t generator=0xa2e31f09u;
+    const auto next=[&generator]() {
+        generator=generator*1664525u+1013904223u;
+        return generator;
+    };
+
+    std::size_t checked_matches=0;
+    for (std::size_t step=0;step<1500;++step) {
+        const unsigned id=1u+((next()>>19u)%3u);
+        if (step>0 && step%97==0) {
+            matcher.forget(source(id));
+            histories.erase(id);
+        }
+        const std::vector<double> feature{
+            static_cast<double>((next()>>25u)%4u),
+            static_cast<double>((next()>>25u)%3u)
+        };
+        auto& history=histories[id];
+        history.push_back(feature);
+        if (history.size()>options.max_frames) history.pop_front();
+
+        std::vector<std::pair<std::string,double>> expected;
+        for (const auto& item:patterns) {
+            double best=std::numeric_limits<double>::infinity();
+            for (std::size_t count=options.min_candidate_frames;
+                 count<=options.max_candidate_frames && count<=history.size();
+                 ++count) {
+                Sequence suffix;
+                for (std::size_t k=history.size()-count;k<history.size();++k)
+                    suffix.push_back(history[k]);
+                const auto comparison=reference_dtw.compare(item.second,suffix);
+                if (comparison.reachable && comparison.normalized_cost<best)
+                    best=comparison.normalized_cost;
+            }
+            if (best<=options.max_normalized_cost)
+                expected.emplace_back(item.first,best);
+        }
+        const auto actual=matcher.push(source(id),feature);
+        ASSERT_EQ(actual.size(),expected.size()) << "step="<<step;
+        for (std::size_t i=0;i<expected.size();++i) {
+            EXPECT_EQ(actual[i].label,expected[i].first) << "step="<<step;
+            EXPECT_DOUBLE_EQ(actual[i].normalized_cost,expected[i].second)
+                << "step="<<step;
+        }
+        checked_matches+=expected.size();
+    }
+    EXPECT_GT(checked_matches,50u);
+}
