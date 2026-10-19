@@ -42,6 +42,8 @@ struct SpeechPcmIngressEvent {
 
 struct SpeechPcmIngressStatistics {
     std::size_t sources{0U};
+    // Union of active producers and source IDs waiting for Forget delivery.
+    std::size_t outstanding_source_slots{0U};
     std::size_t pending_chunks{0U};
     std::size_t pending_samples{0U};
     std::size_t pending_invalidations{0U};
@@ -86,7 +88,7 @@ public:
         std::lock_guard<std::mutex> lock{mutex_};
         if (closed_) return SpeechPcmAdmission::Closed;
         auto existing=sources_.find(source_id);
-        if (existing==sources_.end() && sources_.size()>=options_.max_sources) {
+        if (existing==sources_.end() && !hasSourceSlotLocked(source_id)) {
             ++rejected_;
             return SpeechPcmAdmission::RejectedSourceLimit;
         }
@@ -147,11 +149,22 @@ public:
 
     [[nodiscard]] SpeechPcmIngressStatistics statistics() const {
         std::lock_guard<std::mutex> lock{mutex_};
-        return {sources_.size(),pending_.size(),pending_samples_,
-                invalidations_.size(),accepted_,rejected_,invalidated_};
+        return {sources_.size(),outstandingSourceSlotsLocked(),
+                pending_.size(),pending_samples_,invalidations_.size(),
+                accepted_,rejected_,invalidated_};
     }
 
 private:
+    std::size_t outstandingSourceSlotsLocked() const {
+        std::size_t slots=sources_.size();
+        for (const auto& item:invalidations_)
+            if (!sources_.count(item.first)) ++slots;
+        return slots;
+    }
+    bool hasSourceSlotLocked(std::uint64_t id) const {
+        return invalidations_.count(id) ||
+               outstandingSourceSlotsLocked()<options_.max_sources;
+    }
     void discardQueuedLocked(std::uint64_t id) {
         for (auto it=pending_.begin();it!=pending_.end();) {
             if (it->source_id==id) {

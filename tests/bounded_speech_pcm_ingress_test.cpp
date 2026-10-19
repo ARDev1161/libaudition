@@ -106,10 +106,13 @@ TEST(BoundedSpeechPcmIngress, RejectionIsTransactionalAndCapacityRecovers) {
     EXPECT_EQ(ingress.push(2U,block(pcm)),SpeechPcmAdmission::RejectedSourceLimit);
     EXPECT_EQ(ingress.push(1U,block(pcm)),SpeechPcmAdmission::RejectedCapacity);
     ingress.forget(1U);
-    EXPECT_EQ(ingress.push(2U,block(pcm)),SpeechPcmAdmission::Accepted);
+    // A pending Forget reserves its source slot until the worker gets it.
+    EXPECT_EQ(ingress.push(2U,block(pcm)),SpeechPcmAdmission::RejectedSourceLimit);
+    EXPECT_EQ(ingress.statistics().outstanding_source_slots,1U);
     auto reset=ingress.tryPop();
     ASSERT_TRUE(reset.has_value());
     EXPECT_EQ(reset->kind,SpeechPcmIngressEvent::Kind::Forget);
+    EXPECT_EQ(ingress.push(2U,block(pcm)),SpeechPcmAdmission::Accepted);
     auto a=ingress.tryPop();
     ASSERT_TRUE(a.has_value());
     EXPECT_EQ(a->source_id,2U);
@@ -131,4 +134,25 @@ TEST(BoundedSpeechPcmIngress, BlockingConsumerWakesOnCloseAndDrains) {
     waiting.close();
     EXPECT_EQ(result.wait_for(std::chrono::seconds{2}),std::future_status::ready);
     EXPECT_FALSE(result.get().has_value());
+}
+
+TEST(BoundedSpeechPcmIngress, PendingForgetCannotAccumulateUnboundedDistinctIds) {
+    SpeechPcmIngressOptions options{};
+    options.max_sources=1U;
+    BoundedSpeechPcmIngress ingress{options};
+    const std::vector<float> audio(4U,0.25F);
+    for(std::uint64_t i=1U;i<=48U;++i) {
+        EXPECT_EQ(ingress.push(i,block(audio)),SpeechPcmAdmission::Accepted);
+        ingress.forget(i);
+        EXPECT_EQ(ingress.statistics().pending_invalidations,1U);
+        EXPECT_EQ(ingress.statistics().outstanding_source_slots,1U);
+        EXPECT_EQ(ingress.push(i+1000U,block(audio)),
+                  SpeechPcmAdmission::RejectedSourceLimit);
+        auto item=ingress.tryPop();
+        ASSERT_TRUE(item.has_value());
+        EXPECT_EQ(item->kind,SpeechPcmIngressEvent::Kind::Forget);
+        EXPECT_EQ(item->source_id,i);
+        EXPECT_FALSE(ingress.tryPop().has_value());
+        EXPECT_EQ(ingress.statistics().outstanding_source_slots,0U);
+    }
 }
