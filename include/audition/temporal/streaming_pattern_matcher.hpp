@@ -29,6 +29,8 @@ struct StreamingPatternOptions {
     std::size_t min_candidate_frames{0}; // 0 = exact template length
     std::size_t max_candidate_frames{0}; // 0 = exact template length
     std::size_t cooldown_frames{0}; // 0 preserves emission on every matching frame
+    // Bound stored template labels and copied alert labels (UTF-8 bytes).
+    std::size_t max_label_bytes{256};
 };
 struct StreamingPatternMatch {
     std::string label{};
@@ -41,6 +43,7 @@ public:
     explicit StreamingPatternMatcher(StreamingPatternOptions options={})
         : options_(options),dtw_({options.max_frames,options.max_dimensions,options.warping_radius}) {
         if (!options.max_sources || !options.max_templates || !options.max_frames ||
+            !options.max_label_bytes ||
             !options.max_dimensions ||
             (options.min_candidate_frames && options.min_candidate_frames>options.max_frames) ||
             (options.max_candidate_frames && options.max_candidate_frames>options.max_frames) ||
@@ -52,7 +55,8 @@ public:
     }
 
     void registerTemplate(std::string label,std::vector<std::vector<double>> frames) {
-        if (label.empty() || frames.empty() || frames.size()>options_.max_frames)
+        if (label.empty() || label.size()>options_.max_label_bytes ||
+            frames.empty() || frames.size()>options_.max_frames)
             throw std::invalid_argument("invalid pattern template");
         if (!templates_.count(label) && templates_.size()>=options_.max_templates)
             throw std::length_error("pattern template capacity");

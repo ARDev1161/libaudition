@@ -67,3 +67,22 @@ TEST(RecurrenceAnalyzer, BoundedHistoryAndCapacity) {
     EXPECT_THROW(static_cast<void>(analyzer.observe(src(2),"bell",t(1))),std::length_error);
     EXPECT_THROW(static_cast<void>(analyzer.observe(src(),"other",t(90))),std::length_error);
 }
+
+TEST(RecurrenceAnalyzer, BoundsEventLabelBytesWithoutConsumingState) {
+    audition::temporal::RecurrenceOptions opts{};
+    opts.max_sources=1;
+    opts.max_labels_per_source=1;
+    opts.max_label_bytes=4;
+    audition::temporal::RecurrenceAnalyzer analyzer{opts};
+    EXPECT_THROW(static_cast<void>(analyzer.observe(src(),"bells",t(1))),
+                 std::invalid_argument);
+    EXPECT_EQ(analyzer.sourceCount(),0u);
+    EXPECT_EQ(analyzer.observe(src(),"bell",t(10)).intervals,0u);
+    EXPECT_THROW(static_cast<void>(analyzer.observe(src(),"bells",t(11))),
+                 std::invalid_argument);
+    EXPECT_EQ(analyzer.observe(src(),"bell",t(20)).intervals,1u);
+    EXPECT_EQ(analyzer.sourceCount(),1u);
+    opts.max_label_bytes=0;
+    EXPECT_THROW(static_cast<void>(audition::temporal::RecurrenceAnalyzer{opts}),
+                 std::invalid_argument);
+}

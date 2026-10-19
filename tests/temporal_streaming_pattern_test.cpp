@@ -648,3 +648,20 @@ TEST(StreamingPatternMatcher, CopyAssignmentKeepsIndependentBoundedSourceHistori
     ASSERT_EQ(recovered.size(),1u);
     EXPECT_EQ(recovered.front().label,"pair");
 }
+
+TEST(StreamingPatternMatcher, BoundsTemplateLabelBytesWithoutReplacingState) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_templates=1;
+    options.max_label_bytes=4;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("tone",{{1}});
+    EXPECT_THROW(matcher.registerTemplate("tones",{{2}}),std::invalid_argument);
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    EXPECT_TRUE(matcher.push(source(1),{2}).empty());
+    EXPECT_THROW(matcher.registerTemplate("tones",{{1}}),std::invalid_argument);
+    EXPECT_EQ(matcher.push(source(1),{1}).size(),1u);
+    options.max_label_bytes=0;
+    EXPECT_THROW(static_cast<void>(audition::temporal::StreamingPatternMatcher{options}),
+                 std::invalid_argument);
+}

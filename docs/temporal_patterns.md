@@ -13,7 +13,9 @@ transcripts. Source identity resolution and clock assignment occur upstream.
 Input clocks must remain stable for each source/label and timestamps must
 increase strictly. Intervals exceeding signed `Duration` range are rejected
 without changing state. History, sources and labels are bounded, with explicit
-`forget()` and `reset()` lifecycle.
+`forget()` and `reset()` lifecycle. `RecurrenceOptions::max_label_bytes`
+(default 256) limits each event-label string in bytes; an oversized label
+is rejected before creating any source/label state.
 
 CTest / GoogleTest: `RecurrenceAnalyzer.*` covers stable and irregular
 sequences, isolation, clock regression, signed timestamp extremes, memory
@@ -73,7 +75,11 @@ persistent acoustic source, matches the last complete window against
 registered templates using DTW, and returns matching labels, costs and
 source-local frame indices. It never combines frames from different sources.
 Templates are validated on registration; malformed incoming frames are
-rejected before history commit. `forget(source)` clears a source's history.
+rejected before history commit. `StreamingPatternOptions::max_label_bytes`
+(default 256) bounds stored template labels and the label strings copied
+into match results; registration rejects oversized labels without changing
+existing templates or cooldown state. The limit counts bytes, not Unicode
+code points, and does not cap caller-owned input-string allocations. `forget(source)` clears a source's history.
 
 The default matcher uses a **fixed-length trailing window**, and an
 optional candidate-length range supports shorter or longer feature
@@ -124,10 +130,10 @@ two-row banded DTW. With `T` templates, `L` candidate lengths, template
 length `W`, candidate length `C` and feature dimension `D`, a conservative
 per-frame arithmetic bound is O(T * L * W * C * D); time and storage are
 bounded by the configured caps, but no wall-clock latency guarantee is
-asserted. The matcher reuses candidate suffix buffers across calls; retained scratch
-can grow with the number and sizes of candidate lengths. Memory allocations,
-peak retained bytes and latency must be benchmarked on target hardware before
-real-time deployment.
+asserted. The matcher evaluates suffixes as indexed views over retained history plus
+the incoming frame; it reuses two DTW rows rather than caching candidate
+suffix feature buffers. Memory allocations, peak retained bytes and latency
+must still be benchmarked on target hardware before real-time deployment.
 
 `StreamingPatternMatcher.MissingMiddleFrameWithoutEquivalentPlateauDoesNotMatch`
 demonstrates that an arbitrary deleted discriminating frame does **not**
@@ -138,9 +144,12 @@ These tests measure deterministic behavior, not physical dropped-frame rates.
 
 ### Suffix construction optimization
 
-Candidate suffix frames are now materialized at most once for each distinct candidate length during a `push()`, then shared across all registered templates with that length. This reduces redundant window copying when many templates are active, without changing DTW matching or transactional state updates. **Committed source history is not copied before evaluation**: candidate
-suffixes are filled from existing history plus the incoming frame, and DTW
-reuses scratch rows. No general allocation-free or real-time bound is claimed. `StreamingPatternMatcher.SharedSuffixCandidatesPreserveMultipleTemplateResults` checks outputs with multiple templates and variable windows.
+Earlier implementations materialized a candidate suffix per length. The
+current virtual-suffix path instead indexes the retained history and incoming
+frame directly, without allocating feature-window copies. **Committed source
+history is not copied before evaluation**; DTW reuses scratch rows. No general
+allocation-free or real-time bound is claimed. The shared-suffix regression
+and virtual-suffix oracle cover multiple templates and variable windows.
 
 ### Reusable DTW scratch buffers
 

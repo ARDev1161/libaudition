@@ -24,6 +24,8 @@ struct RecurrenceOptions {
     std::size_t min_intervals{3};
     // Relative median absolute deviation threshold; 0 requires exact spacing.
     double max_relative_jitter{0.20};
+    // Maximum event-label size in bytes, including UTF-8 multibyte data.
+    std::size_t max_label_bytes{256};
 };
 struct RecurrenceEstimate {
     std::size_t intervals{0};
@@ -37,7 +39,7 @@ public:
     explicit RecurrenceAnalyzer(RecurrenceOptions options = {}) : options_(options) {
         if (!options.max_sources || !options.max_labels_per_source ||
             options.max_onsets_per_label < 2 ||
-            !options.min_intervals ||
+            !options.min_intervals || !options.max_label_bytes ||
             options.min_intervals >= options.max_onsets_per_label ||
             !std::isfinite(options.max_relative_jitter) ||
             options.max_relative_jitter < 0)
@@ -47,7 +49,7 @@ public:
     [[nodiscard]] RecurrenceEstimate observe(AcousticSourceId source,
                                              const std::string& label,
                                              Timestamp onset) {
-        if (!source.valid() || label.empty())
+        if (!source.valid() || label.empty() || label.size()>options_.max_label_bytes)
             throw std::invalid_argument("invalid recurrence source/label");
         auto source_it = states_.find(source);
         if (source_it == states_.end() && states_.size() >= options_.max_sources)
