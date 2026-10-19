@@ -88,10 +88,11 @@ real-model tests; green workflow jobs do not imply calibrated quality.
   **25 successful jobs** and one skipped `real-spatial-corpus` job.
   Four independent installed C++17 consumers passed (Ubuntu/macOS x
   static/shared), along with sanitizers, Qt and optional backend jobs.
-- Subsequent source-aware PCM ingress and FIFO source-retirement changes
-  are new work; passing #1427 does **not** verify them. The Qt/ALSA
-  producer is not yet migrated to an application-owned VAD worker, and
-  PR #54/#55 API reconciliation remains an open integration decision.
+- Subsequent source-aware PCM ingress, FIFO source-retirement and
+  Qt/ALSA worker/sidecar integration are newer than #1427 and must pass
+  their own CI. The app now has an explicit VAD worker and source-epoch
+  acknowledgements. Hardware capture deadlines and PR #54/#55 contract
+  reconciliation remain open; passing #1427 cannot verify these changes.
 - These checks concern a stacked feature branch, **not** a final integrated
   release candidate. Neither physical hardware metrics nor independently
   annotated real-acoustic accuracy has been established by this evidence.

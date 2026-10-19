@@ -9,15 +9,16 @@ per source) and an `IAsrEngine` held by `std::shared_ptr<const ...>`.
 The caller supplies source-local mono samples through
 `push(track_id, AudioView)` at the configured sample rate (16 kHz by
 default). **`push()` runs VAD synchronously while holding the runtime
-mutex**; it is not a nonblocking capture-thread guarantee. For devices
-with strict audio callback deadlines, invoke it from an application-owned
-processing worker fed by a bounded input queue and explicitly reset on
-lost/discontinuous PCM. A reusable experimental transport,
-`BoundedSpeechPcmIngress`, now provides bounded source-aware PCM admission,
-overflow-triggered `Forget` events, FIFO draining and an application-owned
-worker boundary (see [ingress API](bounded_speech_pcm_ingress.md)).
-**The Qt/ALSA path is not yet migrated to this transport**, and it does not
-yet serialize retirement/final speech flush or prove audio deadlines. Active VAD frames are concatenated until the VAD
+mutex**; it is not a nonblocking capture-thread guarantee. For devices with strict audio callback deadlines, invoke it from a separate
+processing worker fed by a bounded PCM queue. The opt-in Qt/ALSA adapter now
+uses `AsyncSpeechIngressWorker` to execute VAD away from ALSA capture,
+while `BoundedSpeechPcmIngress` provides source-aware admission, overflow
+`Forget` controls and FIFO `Retire` controls. The capture thread
+serializes worker acknowledgements with WAV/JSON persistence using
+`SourceRecordingSession::retireDeferred()` and
+`acknowledgeRetired()` (see [worker API](async_speech_ingress_worker.md)).
+This is not a measured audio-deadline guarantee: capture still performs
+bounded PCM copying, other algorithms and shared-lock operations. Active VAD frames are concatenated until the VAD
 first becomes inactive. Completed
 speech with at least `min_speech_samples` is moved into the bounded job
 queue. The ASR worker transcribes complete segments off the capture thread.
@@ -78,10 +79,12 @@ independent **Transcribe separated sources (Silero + SenseVoice)** checkbox.
 Choose existing local Silero VAD ONNX, SenseVoice ONNX and matching
 SenseVoice `tokens.txt`. The Qt demo **does not download these models**.
 
-For each ODAS SSS mono frame, the adapter pushes 16-kHz audio keyed by the
-ODAS numeric track ID. A separate VAD session gates each source, then offline
-ASR runs on a bounded worker queue. Completed transcriptions appear in the
-`Transcript` column of that same source row. On an ALSA overrun, ODAS reset,
+For each ODAS SSS mono frame, the adapter enqueues bounded 16-kHz PCM
+keyed by ODAS numeric track ID. An application-owned worker executes
+source-local VAD sessions; the separate ASR worker transcribes completed
+segments. Acknowledgements are matched to the original WAV recording ID,
+even after the numeric track ID is reused. Completed transcriptions appear
+in the `Transcript` column of the active source row. On an ALSA overrun, ODAS reset,
 or source retirement, earlier unfinished audio/jobs and cached text are
 invalidated to avoid misattributing speech to a reused track ID.
 
@@ -90,8 +93,8 @@ YAMNet can be enabled simultaneously, or the per-source ASR path alone may
 activate ODAS SSS. No ROS, cameras, radar or robot decisions are added to
 libaudition. VAD/ASR models are supplied by the application.
 
-Caveats: the first integration has a single shared offline ASR worker,
-no incremental partial transcript UI, and does not automatically download
+Caveats: the first integration has one serialized VAD processing worker
+and one shared offline ASR worker, no incremental partial transcript UI, and does not automatically download
 any third-party ASR model. It does not yet validate speech accuracy on real
 ODAS-separated conversations or prove real-time performance on the RK3588.
 

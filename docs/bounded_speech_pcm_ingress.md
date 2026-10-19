@@ -44,10 +44,11 @@ next Audio event for a reused ID.
 **Integration status:** this is a foundational input transport only.
 Final ASR flushing, source-generation binding to recording sidecars, and
 downstream result draining remain responsibilities of an application-owned
-serialized speech worker. The existing Qt/ALSA demo
-has **not yet switched** to this ingress; it still invokes synchronous
-VAD on its input path. Consequently this commit does not yet close the
-v1.0 capture-thread integration gate. Never state that this queue alone
+serialized speech worker. The optional Qt/ALSA demo now uses `AsyncSpeechIngressWorker` to invoke
+VAD away from capture and serialize retirement generation acknowledgements
+back to the WAV owner. This addresses the missing application-owned VAD
+worker integration; physical hardware capture/latency soak and failure
+recovery are still unverified. Never state that this queue alone
 proves end-to-end capture deadline or lossless ASR behavior.
 
 The source admission cap includes distinct IDs with undelivered `Forget`
