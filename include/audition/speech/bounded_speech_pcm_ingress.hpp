@@ -184,6 +184,17 @@ public:
         cv_.notify_all();
     }
 
+    // Capture-thread identity for correlating asynchronous acknowledgements
+    // with a specific WAV, even when ODAS later reuses the numeric ID.
+    [[nodiscard]] std::optional<std::uint64_t> sourceEpoch(std::uint64_t id) const {
+        std::lock_guard<std::mutex> lock{mutex_};
+        const auto it=sources_.find(id);
+        if (it!=sources_.end()) return it->second;
+        const auto retiring=retiring_.find(id);
+        if (retiring!=retiring_.end()) return retiring->second;
+        return std::nullopt;
+    }
+
     [[nodiscard]] SpeechPcmIngressStatistics statistics() const {
         std::lock_guard<std::mutex> lock{mutex_};
         return {sources_.size(),outstandingSourceSlotsLocked(),
