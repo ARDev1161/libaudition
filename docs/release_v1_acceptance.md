@@ -81,16 +81,19 @@ order only with user approval, retarget surviving PRs, and run full CI
 on the final combined candidate. Preserve provenance of all optional
 real-model tests; green workflow jobs do not imply calibrated quality.
 
-## Feature-branch evidence snapshot (2026-10-19)
+## Feature-branch evidence snapshot (2026-10-20)
 
-- [CI #1411](https://github.com/ARDev1161/libaudition/actions/runs/39326320775)
-  on `f979c76b5ce47db7015970b2b7a2dcfda99bb050` completed with
-  22 successful jobs and one skipped `real-spatial-corpus` job.
-- The installed-package test on that commit ran on Ubuntu only. A new
-  four-cell Linux/macOS x static/shared installed-consumer matrix is being
-  introduced; do not mark its additional cells verified until the new CI
-  finishes successfully.
-- These checks concern a stacked feature branch, not a final integrated
+- [CI #1417](https://github.com/ARDev1161/libaudition/actions/runs/39334431439)
+  on `315e3a426c50befe33a17593764fa60d328af3af` completed with
+  **25 successful jobs** and one skipped `real-spatial-corpus` job.
+  All four independent installed C++17 package consumers passed:
+  Ubuntu/macOS x static/shared. This explicitly verifies installed dynamic
+  symbol exports and source-local VAD/ASR lifecycle in an external project.
+- CI #1420 on `1dcf2e9327fb7d8e4710b04c103deca49901c66b`
+  was **pending** when this entry was written. It adds strict VAD/ASR
+  sample-rate/channel/layout capability compatibility checks. Do not
+  mark this unverified change as passed on the strength of #1417.
+- These checks concern a stacked feature branch, **not** a final integrated
   release candidate. Neither physical hardware metrics nor independently
   annotated real-acoustic accuracy has been established by this evidence.
 
@@ -99,8 +102,8 @@ real-model tests; green workflow jobs do not imply calibrated quality.
 | Gate | Verification | Current evidence / action |
 | --- | --- | --- |
 | **Integration** | Required stacked PRs have an explicit merge sequence; combined head is compiled/tested, with no unresolved conflicts or outdated bases | OPEN: speech/classification and temporal work still appear in multiple draft/stacked PRs. Green feature-branch CI does not close this gate |
-| **Core behavior** | Default build and CTest on supported Linux and macOS configurations; deterministic numeric, invalid-input, lifecycle, overflow and multi-source tests; no ignored mandatory failures | Partial evidence: CI #1385 green on TMP-04 branch. Require a fresh integrated-head CI run after merges |
-| **C++17 install consumption** | Build/install using documented CMake options, then compile and link an **independent** installed-package consumer of `audition::core`, `audition::dsp`, `audition::spatial`, `audition::memory` and `audition::pipeline`; exercise umbrella header and temporal headers | Installed-package CTest job exists. Independent C++17 installed-package temporal consumer added on TMP-04 branch; require passing CI and rerun after integration |
+| **Core behavior** | Default build and CTest on supported Linux and macOS configurations; deterministic numeric, invalid-input, lifecycle, overflow and multi-source tests; no ignored mandatory failures | CI #1417 green on current TMP-04 **feature branch**, including sanitizers and model-backed jobs. Require a fresh unified-head CI run after integration |
+| **C++17 install consumption** | Build/install using documented CMake options, then compile and link an **independent** installed-package consumer of `audition::core`, `audition::dsp`, `audition::spatial`, `audition::memory` and `audition::pipeline`; exercise umbrella header and temporal headers | **FEATURE BRANCH VERIFIED:** #1417 passes Ubuntu/macOS static/shared, including public speech lifecycle and temporal algorithms. **STILL OPEN FOR v1.0:** rerun against the final combined candidate |
 | **Backend opt-in** | Every advertised enabled backend builds and executes appropriate contract/model-backed tests with pinned assets. Missing required model/WAV must fail rather than produce misleading PASS | Existing model-backed CI jobs and coverage matrix; audit the release's actually enabled backend matrix |
 | **Accuracy claims** | Every accuracy/quality number in release notes includes model, version, dataset provenance, reference annotations, metric definition and measured result | Open for broad real-room DOA/SSS, model generalization, WER, DER/JER, and anti-spoofing. **No global quality claim** until measured |
 | **Concurrency and bounded resources** | Verify no unbounded source/queue/label growth in documented core paths. Define caller-owned scratch and thread-safety contracts; reject malformed frames without corrupting committed source state | Unit/CTest work exists; TMP-04 includes bounded candidate/source histories and allocation probes. Review remaining adapters |
