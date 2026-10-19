@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <optional>
@@ -20,8 +21,29 @@ namespace audition::recording {
 // One producer owns this coordinator (the ALSA/ROS/CLI input loop).
 // No Qt, ODAS, ALSA or model dependency. Persistence is independent of
 // speech/classification decisions and of the capture backend.
+struct SourceRecordingOptions {
+    std::size_t max_recordings{64};
+    std::size_t max_speech_events{4096};
+    std::size_t max_sound_events{8192};
+    std::size_t max_gap_events{4096};
+    // Total retained speech and classifier text bytes per recording.
+    std::size_t max_annotation_text_bytes{1048576};
+};
+struct SourceRecordingDrops {
+    std::uint64_t speech{0};
+    std::uint64_t sound{0};
+    std::uint64_t gaps{0};
+};
 class SourceRecordingSession final {
 public:
+    SourceRecordingSession() = default;
+    explicit SourceRecordingSession(SourceRecordingOptions options)
+        : options_(options) {
+        if (!options_.max_recordings || !options_.max_speech_events ||
+            !options_.max_sound_events || !options_.max_gap_events ||
+            !options_.max_annotation_text_bytes)
+            throw std::invalid_argument("Recording annotation limits must be positive");
+    }
     struct State {
         std::uint64_t track_id{0};
         RecordingTimeline timeline;
@@ -29,6 +51,7 @@ public:
         Timestamp origin{};
         bool retired{false};
         bool awaiting_asr{false};
+        std::size_t annotation_text_bytes{0};
         State(std::uint64_t track, RecordingId id, std::uint32_t rate,
               std::filesystem::path path, Timestamp capture_origin)
             : track_id(track), timeline(id, rate), sidecar(std::move(path)),
@@ -41,6 +64,8 @@ public:
                Timestamp capture_origin) {
         if (!recording_id || active_.count(track_id))
             throw std::invalid_argument("Recording already active or invalid ID");
+        if (recordings_.size() >= options_.max_recordings)
+            throw std::length_error("Recording session capacity exceeded");
         const auto inserted = recordings_.emplace(
             std::piecewise_construct, std::forward_as_tuple(recording_id),
             std::forward_as_tuple(track_id, recording_id, sample_rate,
@@ -71,12 +96,21 @@ public:
         const auto recording = recordings_.find(gen->second);
         if (recording == recordings_.end()) return;
         if (result.transcript.text.empty()) return;
+        const auto& state = recording->second;
+        if (state.timeline.speech().size() >= options_.max_speech_events ||
+            !fitsTextBudget(state, {&result.transcript.text,
+                                    &result.transcript.language})) {
+            ++drops_.speech;
+            return;
+        }
         const auto begin = offset(result.start_time, recording->second);
         const auto end = offset(result.end_time, recording->second);
         if (!begin || !end) return;
         recording->second.timeline.add(TimelineSpeechEvent{
             gen->second, *begin, std::max(*begin, *end),
             result.transcript.text, result.transcript.language});
+        recording->second.annotation_text_bytes +=
+            result.transcript.text.size() + result.transcript.language.size();
     }
     void addSound(std::uint64_t track_id, std::uint64_t start,
                   std::uint64_t end, std::string label, std::string model,
@@ -85,9 +119,17 @@ public:
         if (!id || label.empty() || end < start) return;
         const auto key = std::make_tuple(*id, stage, end);
         if (seen_windows_.count(key)) return;
-        recordings_.at(*id).timeline.add(TimelineSoundEvent{
+        auto& state = recordings_.at(*id);
+        if (state.timeline.sounds().size() >= options_.max_sound_events ||
+            !fitsTextBudget(state, {&label, &model, &stage})) {
+            ++drops_.sound;
+            return;
+        }
+        const auto text_bytes = label.size() + model.size() + stage.size();
+        state.timeline.add(TimelineSoundEvent{
             *id, start, end, std::move(label), std::move(model),
             probability, std::move(stage)});
+        state.annotation_text_bytes += text_bytes;
         seen_windows_.insert(key);
     }
     void addGap(std::uint64_t track_id, std::uint64_t start,
@@ -96,7 +138,16 @@ public:
         if (!id || !samples) return;
         if (samples > std::numeric_limits<std::uint64_t>::max() - start)
             throw std::length_error("Recording gap sample offset overflow");
-        recordings_.at(*id).timeline.add(TimelineGapEvent{
+        auto& state = recordings_.at(*id);
+        const auto& gaps = state.timeline.gaps();
+        // Adjacent gaps merge without consuming a second event slot.
+        const bool merges = !gaps.empty() && gaps.back().end_sample == start &&
+                            gaps.back().reason == "recorder_backpressure";
+        if (!merges && gaps.size() >= options_.max_gap_events) {
+            ++drops_.gaps;
+            return;
+        }
+        state.timeline.add(TimelineGapEvent{
             *id, start, start + samples, "recorder_backpressure"});
     }
     // Non-blocking; only retired generations retain their timeline.
@@ -146,8 +197,20 @@ public:
     std::size_t activeRecordings() const noexcept { return active_.size(); }
     // Active and retired generation bindings still held in this session.
     std::size_t boundAsrGenerations() const noexcept { return generations_.size(); }
+    std::size_t retainedRecordings() const noexcept { return recordings_.size(); }
+    SourceRecordingDrops droppedAnnotations() const noexcept { return drops_; }
 
 private:
+    bool fitsTextBudget(const State& state,
+                        std::initializer_list<const std::string*> values) const noexcept {
+        std::size_t remaining = options_.max_annotation_text_bytes -
+                                state.annotation_text_bytes;
+        for (const auto* value : values) {
+            if (value->size() > remaining) return false;
+            remaining -= value->size();
+        }
+        return true;
+    }
     static std::optional<std::uint64_t> offset(Timestamp timestamp,
                                                 const State& record) {
         if (!timestamp.comparableWith(record.origin)) return std::nullopt;
@@ -196,6 +259,8 @@ private:
             else ++seen;
         }
     }
+    SourceRecordingOptions options_{};
+    SourceRecordingDrops drops_{};
     std::optional<std::string> last_persistence_error_{};
     std::map<std::uint64_t, RecordingId> active_;
     std::map<RecordingId, State> recordings_;

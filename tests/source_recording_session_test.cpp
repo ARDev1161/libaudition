@@ -162,6 +162,65 @@ int main() {
     assert(out_of_range.speech().empty());
     assert(records.boundAsrGenerations() == 0U);
 
+
+    // Annotation memory is bounded per recording, even if the client does
+    // not rotate a long capture and model result rates remain high.
+    {
+        audition::recording::SourceRecordingOptions limits{};
+        limits.max_recordings = 1U;
+        limits.max_speech_events = 1U;
+        limits.max_sound_events = 1U;
+        limits.max_gap_events = 1U;
+        limits.max_annotation_text_bytes = 12U;
+        SourceRecordingSession bounded{limits};
+        const auto path = root / "bounded.wav";
+        bounded.begin(880U, 880U, path, 16000U, origin);
+        assert(bounded.retainedRecordings() == 1U);
+        bool saturated = false;
+        try { bounded.begin(881U, 881U, root / "too-many.wav", 16000U, origin); }
+        catch (const std::length_error&) { saturated = true; }
+        assert(saturated && !bounded.active(881U));
+
+        bounded.bindAsr(880U, 880U);
+        audition::SourceSpeechResult utterance{};
+        utterance.generation = 880U;
+        utterance.start_time = origin;
+        utterance.end_time = origin;
+        utterance.transcript.text = "yes";
+        utterance.transcript.language = "en";
+        bounded.addSpeech(utterance);
+        bounded.addSpeech(utterance); // second speech result dropped
+        bounded.addSound(880U, 1U, 2U, "tap", "m", .8, "q");
+        bounded.addSound(880U, 3U, 4U, "tap", "m", .8, "q");
+        bounded.addGap(880U, 0U, 2U);
+        bounded.addGap(880U, 2U, 2U); // merged at event capacity
+        bounded.addGap(880U, 10U, 2U); // unrelated gap dropped
+        assert(bounded.droppedAnnotations().speech == 1U);
+        assert(bounded.droppedAnnotations().sound == 1U);
+        assert(bounded.droppedAnnotations().gaps == 1U);
+        bounded.retire(880U, 880U);
+        bounded.completeGeneration(880U);
+        assert(bounded.retainedRecordings() == 0U);
+        const auto saved = audition::readRecordingTimelineJson(
+            fs::path{path.string() + ".json"});
+        assert(saved.speech().size() == 1U);
+        assert(saved.sounds().size() == 1U);
+        assert(saved.gaps().size() == 1U);
+        assert(saved.gaps()[0].end_sample == 4U);
+
+        bounded.begin(881U, 881U, root / "recovered.wav", 16000U, origin);
+        bounded.addSound(881U, 0U, 1U, "oversized-label", "m", .5, "q");
+        assert(bounded.droppedAnnotations().sound == 2U);
+        bounded.retire(881U, std::nullopt);
+        assert(bounded.retainedRecordings() == 0U);
+        bool invalid_options = false;
+        try {
+            limits.max_sound_events = 0U;
+            (void)SourceRecordingSession{limits};
+        } catch (const std::invalid_argument&) { invalid_options = true; }
+        assert(invalid_options);
+    }
+
     auto meter = audition::dsp::StreamingLevelMeter{};
     meter.push(0.5f);
     meter.push(-0.5f);
