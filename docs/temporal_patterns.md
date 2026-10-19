@@ -202,3 +202,17 @@ concurrent calls on the same matcher without external synchronization.
 The new API reduces avoidable result-vector allocation opportunities but
 does not promise allocation-free operation for arbitrary label lengths,
 template counts, or workloads. A dedicated measured comparison is pending.
+
+### Independent exact-match acceptance oracles
+
+To detect regressions beyond hand-authored examples, CTest includes an
+independent 2400-step, seeded streaming oracle. With zero warping radius
+and zero score tolerance, its reference implementation uses ordinary
+suffix equality and per-source/per-label frame counters; it checks both
+`push()` and reusable `pushInto()`, source forget/reset, cooldown and
+rolling-window boundaries without calling DTW internals. A second oracle
+exhaustively enumerates all 256 binary 8-frame sequences, compares the
+motif finder's best pair to exact window equality and checks up to two
+greedily selected disjoint motif pairs using a separate frame-occupancy
+model. These are synthetic correctness checks, **not** field accuracy
+measurements or a substitute for representative audio recordings.
