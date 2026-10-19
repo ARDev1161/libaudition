@@ -63,6 +63,8 @@ positive rates and streaming motif indexing are not yet measured.
 
 `AcousticMotifFinder::findMultiple(frames, max_matches)` enumerates valid non-overlapping DTW motif pairs, orders them by normalized cost with deterministic tie breaking, and greedily selects up to `max_matches` pairs with no frame-window overlap across selected matches. The result cap bounds output size; input frame/window capacities still bound computation. Greedy disjoint selection is **not** a proof of globally optimal motif-set coverage. `AcousticMotifFinder.Multiple*` CTest cases cover independent repetitions, overlap exclusion and result-cap validation.
 
+Offline motif scans reuse invocation-local DTW row buffers across window comparisons. This reduces repeated DP-row allocations without sharing mutable scratch between concurrent `const` calls. It does not eliminate per-window feature copies or quadratic candidate enumeration; `max_matches` bounds selected output but not temporary candidates. Keep offline motif discovery outside hard real-time callbacks until representative performance and memory measurements are available.
+
 ## Streaming template recognition
 
 `StreamingPatternMatcher` stores a bounded rolling feature history per

@@ -138,3 +138,29 @@ TEST(AcousticMotifFinder, ExhaustiveBinaryWindowOracle) {
         }
     }
 }
+
+TEST(AcousticMotifFinder, HugeStrideDoesNotWrapOrHang) {
+    auto o=options();
+    o.window_frames=2;
+    o.stride=std::numeric_limits<std::size_t>::max();
+    audition::temporal::AcousticMotifFinder finder{o};
+    const Frames data{{1},{2},{1},{2},{99},{100}};
+    const auto single=finder.find(data);
+    ASSERT_TRUE(single.found);
+    EXPECT_EQ(single.first_start,0u);
+    EXPECT_EQ(single.second_start,2u);
+    const auto multiple=finder.findMultiple(data,1);
+    ASSERT_EQ(multiple.size(),1u);
+    EXPECT_EQ(multiple.front().first_start,single.first_start);
+    EXPECT_EQ(multiple.front().second_start,single.second_start);
+}
+
+TEST(AcousticMotifFinder, HugeWindowDoesNotOverflowShortInputCheck) {
+    auto o=options();
+    o.max_frames=std::numeric_limits<std::size_t>::max();
+    o.window_frames=o.max_frames/2+1;
+    audition::temporal::AcousticMotifFinder finder{o};
+    const Frames short_data{{1},{2},{3},{4}};
+    EXPECT_FALSE(finder.find(short_data).found);
+    EXPECT_TRUE(finder.findMultiple(short_data,1).empty());
+}
