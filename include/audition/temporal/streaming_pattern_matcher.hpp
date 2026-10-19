@@ -67,8 +67,21 @@ public:
         templates_[std::move(label)]=std::move(frames);
     }
 
+    // Convenience API: returning a nonempty vector may allocate.
     [[nodiscard]] std::vector<StreamingPatternMatch> push(AcousticSourceId source,
                                                            const std::vector<double>& frame) {
+        std::vector<StreamingPatternMatch> matches;
+        pushInto(source,frame,matches);
+        return matches;
+    }
+
+    // Allocation-conscious API: callers may reserve max_templates elements in
+    // output and reuse it across pushes. Output is cleared on a valid push;
+    // on a comparison/allocation exception it may contain partial results,
+    // but source history and cooldown remain unmodified.
+    // Like push(), this API is not thread-safe on the same matcher.
+    void pushInto(AcousticSourceId source,const std::vector<double>& frame,
+                  std::vector<StreamingPatternMatch>& output) {
         if (!source.valid() || frame.empty() || frame.size()>options_.max_dimensions)
             throw std::invalid_argument("invalid streaming pattern frame");
         for(double value:frame)
@@ -89,7 +102,8 @@ public:
         const std::size_t ending_frame=seen+1;
         const std::size_t retained=prior?prior->history.size():0;
         const std::size_t available=std::min(options_.max_frames,retained+1);
-        std::vector<StreamingPatternMatch> matches;
+        output.clear();
+        auto& matches=output;
         for (auto& candidate:suffix_cache_) candidate.second.valid=false;
         for(const auto& entry:templates_) {
             const auto& reference=entry.second;
@@ -166,7 +180,6 @@ public:
             state.frames_seen=ending_frame;
             if (record_cooldown) state.last_emission.swap(emission);
         }
-        return matches;
     }
 
     void forget(AcousticSourceId source) noexcept {states_.erase(source);}
