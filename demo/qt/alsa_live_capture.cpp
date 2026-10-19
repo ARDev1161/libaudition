@@ -313,20 +313,6 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     event.probability, event.stage);
             }
         };
-        const auto retireSource = [&](std::uint64_t trackId) {
-            if (classifier) classifier->forget(trackId);
-            recorder.retire(trackId);
-#if LIBAUDITION_DEMO_HAS_SHERPA
-            std::optional<std::uint64_t> generation;
-            if (speech_runtime) {
-                generation = speech_runtime->retire(trackId);
-                transcripts.erase(trackId);
-            }
-            recordings.retire(trackId, generation);
-#else
-            recordings.retire(trackId, std::nullopt);
-#endif
-        };
 #if LIBAUDITION_DEMO_HAS_SHERPA
         const auto drainAsr = [&]() {
             if (!speech_runtime) return;
@@ -344,7 +330,34 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 speech_runtime->releaseRetired(generation);
             }
         };
+        std::uint64_t retirement_capacity_drops = 0;
 #endif
+        const auto retireSource = [&](std::uint64_t trackId) {
+            if (classifier) classifier->forget(trackId);
+            recorder.retire(trackId);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            std::optional<std::uint64_t> generation;
+            if (speech_runtime) {
+                generation = speech_runtime->retire(trackId);
+                if (!generation && speech_runtime->activeGeneration(trackId)) {
+                    // Release completed generations before discarding any
+                    // final utterance at the bounded retirement capacity.
+                    drainAsr();
+                    generation = speech_runtime->retire(trackId);
+                    if (!generation) {
+                        // The ODAS source is gone; never leave a live speech
+                        // track around to pollute future numeric-ID reuse.
+                        speech_runtime->forget(trackId);
+                        ++retirement_capacity_drops;
+                    }
+                }
+                transcripts.erase(trackId);
+            }
+            recordings.retire(trackId, generation);
+#else
+            recordings.retire(trackId, std::nullopt);
+#endif
+        };
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -567,7 +580,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 latest_.speech_status = "ASR completed=" +
                     std::to_string(stats.completed_segments) +
                     " queued=" + std::to_string(stats.pending_segments) +
-                    " dropped=" + std::to_string(stats.dropped_segments);
+                    " dropped=" + std::to_string(stats.dropped_segments) +
+                    " retired=" + std::to_string(stats.retired_generations) +
+                    " retire_capacity_drops=" +
+                    std::to_string(retirement_capacity_drops);
                 if (!resultFrame.tracks.empty()) {
                     const auto id = resultFrame.tracks.front().track_id.value();
                     const auto source = speech_runtime->trackStatus(id);

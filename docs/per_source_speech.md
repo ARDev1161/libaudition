@@ -237,6 +237,14 @@ be discarded. `statistics().retired_generations` exposes the current
 metadata pressure. A caller that ignores rejected retirement cannot claim
 that its final utterance or sidecar was persisted.
 
+The Qt/ALSA demo now first drains completed ASR generations and retries
+`retire()` once when its retirement table is full. If earlier in-flight
+ASR still prevents retirement, it explicitly `forget()`s the vanished
+track so its state cannot survive into a reused numeric ODAS ID. The
+WAV/timeline sidecar persists without the unfinished final transcript,
+and live diagnostics increment `retire_capacity_drops`. This is an
+explicitly reported overload fallback, **not** lossless ASR retirement.
+
 The Qt capture adapter delays the retired recording's final JSON write until
 that generation has drained; ALSA xrun retirement uses the same mechanism.
 On capture shutdown it allows up to 10 seconds for outstanding ASR results

@@ -1157,3 +1157,63 @@ TEST(PerSourceSpeechRuntime, RetiredGenerationCapacityIsBoundedAndRetryIsTransac
         EXPECT_EQ(runtime.statistics().retired_generations,0U);
     }
 }
+
+TEST(PerSourceSpeechRuntime, FullRetirementTableCanDiscardVanishedSourceSafely) {
+    ThresholdVad vad;
+    auto slow=std::make_shared<SlowAsr>();
+    PerSourceSpeechOptions cfg{};
+    cfg.max_retired_generations=1U;
+    cfg.min_speech_samples=4U;
+    cfg.pre_roll_samples=0U;
+    cfg.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,slow,cfg};
+    const std::vector<float> voice(4U,0.5F),silence(4U,0.0F);
+    runtime.push(610U,chunk(voice));
+    runtime.push(610U,chunk(silence));
+    for (int spin=0;spin<1000 && !slow->entered.load();++spin)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!slow->entered.load()) {
+        slow->release.store(true);
+        FAIL() << "ASR worker did not begin";
+        return;
+    }
+    const auto first=runtime.retire(610U);
+    ASSERT_TRUE(first.has_value());
+    runtime.push(611U,chunk(voice));
+    const auto second=runtime.activeGeneration(611U);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_FALSE(runtime.retire(611U).has_value());
+    const auto attempted_drain=runtime.drainReady();
+    EXPECT_TRUE(attempted_drain.ready_retired_generations.empty());
+    EXPECT_EQ(runtime.activeGeneration(611U),second);
+    // Consumer's explicit loss fallback must not cancel earlier ASR.
+    runtime.forget(611U);
+    EXPECT_FALSE(runtime.activeGeneration(611U).has_value());
+    EXPECT_EQ(runtime.statistics().retired_generations,1U);
+    slow->release.store(true);
+    bool ready=false;
+    for (int spin=0;spin<1000;++spin) {
+        auto drained=runtime.drainReady();
+        if (!drained.ready_retired_generations.empty()) {
+            ASSERT_EQ(drained.ready_retired_generations.size(),1U);
+            EXPECT_EQ(drained.ready_retired_generations.front(),*first);
+            ASSERT_EQ(drained.results.size(),1U);
+            EXPECT_EQ(drained.results.front().generation,*first);
+            ready=true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(ready);
+    runtime.releaseRetired(*first);
+    EXPECT_EQ(runtime.statistics().retired_generations,0U);
+    runtime.push(611U,chunk(voice));
+    const auto fresh=runtime.activeGeneration(611U);
+    ASSERT_TRUE(fresh.has_value());
+    EXPECT_NE(*fresh,*second);
+    runtime.push(611U,chunk(silence));
+    const auto recovered=awaitSpeech(runtime,1U);
+    ASSERT_EQ(recovered.size(),1U);
+    EXPECT_EQ(recovered.front().generation,*fresh);
+    EXPECT_EQ(recovered.front().transcript.text,"2");
+}
