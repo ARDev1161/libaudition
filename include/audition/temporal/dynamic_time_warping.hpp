@@ -81,25 +81,27 @@ private:
     // No feature vectors or pointer arrays are materialized.
     [[nodiscard]] DtwResult compareValidatedSuffix(
         const std::vector<std::vector<double>>& reference,
-        const std::deque<std::vector<double>>& history,
+        const std::deque<std::vector<double>>* history,
         const std::vector<double>& incoming,
         std::size_t candidate_frames,
         DtwWorkspace& workspace) const {
+        const std::size_t retained=history ? history->size() : 0;
         if (reference.empty() || !candidate_frames ||
-            candidate_frames-1>history.size())
+            candidate_frames-1>retained)
             throw std::invalid_argument("invalid DTW streaming suffix");
         if (reference.size()>options_.max_frames ||
             candidate_frames>options_.max_frames)
             throw std::length_error("DTW sequence exceeds frame capacity");
         const std::size_t old_frames=candidate_frames-1;
-        const std::size_t first_old=history.size()-old_frames;
+        const std::size_t first_old=retained-old_frames;
         return compareIndexed(reference.size(),candidate_frames,
             reference.front().size(),
             [&](std::size_t i) -> const std::vector<double>& {
                 return reference[i];
             },
             [&](std::size_t j) -> const std::vector<double>& {
-                return j==old_frames ? incoming : history[first_old+j];
+                // A null history is valid only on the first (incoming) frame.
+                return j==old_frames ? incoming : (*history)[first_old+j];
             },workspace);
     }
 
