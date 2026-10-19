@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <deque>
 #include <limits>
 #include <stdexcept>
 #include <vector>
@@ -73,6 +74,36 @@ private:
     // redundant work. Keep this overload private: unvalidated callers must
     // use compareWindows(), whose validation contract is unchanged.
     friend class AcousticMotifFinder;
+    friend class StreamingPatternMatcher;
+
+    // Streaming-only validated view: template, retained history and incoming
+    // frame have already passed the matcher's dimension/capacity checks.
+    // No feature vectors or pointer arrays are materialized.
+    [[nodiscard]] DtwResult compareValidatedSuffix(
+        const std::vector<std::vector<double>>& reference,
+        const std::deque<std::vector<double>>& history,
+        const std::vector<double>& incoming,
+        std::size_t candidate_frames,
+        DtwWorkspace& workspace) const {
+        if (reference.empty() || !candidate_frames ||
+            candidate_frames-1>history.size())
+            throw std::invalid_argument("invalid DTW streaming suffix");
+        if (reference.size()>options_.max_frames ||
+            candidate_frames>options_.max_frames)
+            throw std::length_error("DTW sequence exceeds frame capacity");
+        const std::size_t old_frames=candidate_frames-1;
+        const std::size_t first_old=history.size()-old_frames;
+        return compareIndexed(reference.size(),candidate_frames,
+            reference.front().size(),
+            [&](std::size_t i) -> const std::vector<double>& {
+                return reference[i];
+            },
+            [&](std::size_t j) -> const std::vector<double>& {
+                return j==old_frames ? incoming : history[first_old+j];
+            },workspace);
+    }
+
+
     [[nodiscard]] DtwResult compareValidatedWindows(
         const std::vector<std::vector<double>>& frames,
         std::size_t first_start,
@@ -119,6 +150,20 @@ private:
             validate(a,first_start,first_size);
             validate(b,second_start,second_size);
         }
+        return compareIndexed(first_size,second_size,dimensions,
+            [&](std::size_t i) -> const std::vector<double>& {
+                return a[first_start+i];
+            },
+            [&](std::size_t j) -> const std::vector<double>& {
+                return b[second_start+j];
+            },workspace);
+    }
+
+    template<class FirstFrame,class SecondFrame>
+    [[nodiscard]] DtwResult compareIndexed(
+        std::size_t first_size,std::size_t second_size,
+        std::size_t dimensions,FirstFrame&& first,SecondFrame&& second,
+        DtwWorkspace& workspace) const {
         const double inf=std::numeric_limits<double>::infinity();
         using Cell=DtwWorkspace::Cell;
         auto& previous=workspace.previous;
