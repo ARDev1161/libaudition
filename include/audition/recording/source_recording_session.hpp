@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -93,6 +94,8 @@ public:
                 std::uint64_t samples) {
         const auto id = recordingId(track_id);
         if (!id || !samples) return;
+        if (samples > std::numeric_limits<std::uint64_t>::max() - start)
+            throw std::length_error("Recording gap sample offset overflow");
         recordings_.at(*id).timeline.add(TimelineGapEvent{
             *id, start, start + samples, "recorder_backpressure"});
     }
@@ -101,6 +104,13 @@ public:
         const auto current = active_.find(track_id);
         if (current == active_.end()) return;
         const auto id = current->second;
+        // A generation must never be reassigned from another recording:
+        // check before retiring the active track or changing its timeline.
+        if (generation) {
+            const auto bound = generations_.find(*generation);
+            if (bound != generations_.end() && bound->second != id)
+                throw std::invalid_argument("ASR generation assigned twice");
+        }
         active_.erase(current);
         const auto it = recordings_.find(id);
         it->second.retired = true;
@@ -142,11 +152,21 @@ private:
                                                 const State& record) {
         if (!timestamp.comparableWith(record.origin)) return std::nullopt;
         if (timestamp.nanoseconds() <= record.origin.nanoseconds()) return 0;
-        const auto delta = static_cast<long double>(
-            timestamp.nanoseconds() - record.origin.nanoseconds());
-        return static_cast<std::uint64_t>(
-            delta * static_cast<long double>(record.timeline.sampleRateHz()) /
-            1000000000.0L);
+        // Unsigned subtraction computes the exact nonnegative difference
+        // even when the signed nanosecond delta exceeds INT64_MAX.
+        const auto delta = static_cast<std::uint64_t>(timestamp.nanoseconds()) -
+                           static_cast<std::uint64_t>(record.origin.nanoseconds());
+        constexpr std::uint64_t billion = 1000000000ULL;
+        const auto whole_seconds = delta / billion;
+        const auto fractional_ns = delta % billion;
+        const auto rate = static_cast<std::uint64_t>(record.timeline.sampleRateHz());
+        const auto max_samples = std::numeric_limits<std::uint64_t>::max();
+        if (whole_seconds > max_samples / rate) return std::nullopt;
+        const auto whole_samples = whole_seconds * rate;
+        // fractional_ns < 1e9 and rate <= UINT32_MAX: product fits uint64.
+        const auto fraction_samples = (fractional_ns * rate) / billion;
+        if (fraction_samples > max_samples - whole_samples) return std::nullopt;
+        return whole_samples + fraction_samples;
     }
     bool persist(const State& record) {
         try {

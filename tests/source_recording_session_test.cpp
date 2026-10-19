@@ -9,6 +9,8 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <limits>
+#include <stdexcept>
 #include <string>
 
 int main() {
@@ -79,6 +81,87 @@ int main() {
         assert(records.activeRecordings() == 0U);
         assert(fs::exists(fs::path{path.string() + ".json"}));
     }
+    // A duplicate generation passed to retire() must not steal an existing
+    // recording's ASR result or retire the rejected active track.
+    const auto collision_a = root / "collision-a.wav";
+    const auto collision_b = root / "collision-b.wav";
+    records.begin(70U, 700U, collision_a, 16000U, origin);
+    records.begin(71U, 701U, collision_b, 16000U, origin);
+    records.bindAsr(70U, 900U);
+    records.retire(70U, 900U);
+    bool collision_rejected = false;
+    try { records.retire(71U, 900U); }
+    catch (const std::invalid_argument&) { collision_rejected = true; }
+    assert(collision_rejected);
+    assert(records.active(71U));
+    assert(records.recordingId(71U) == 701U);
+    assert(records.pendingRetirements() == 1U);
+    assert(records.boundAsrGenerations() == 1U);
+    records.completeGeneration(900U);
+    records.retire(71U, std::nullopt);
+    assert(records.pendingRetirements() == 0U);
+    assert(records.boundAsrGenerations() == 0U);
+    assert(fs::exists(fs::path{collision_a.string() + ".json"}));
+    assert(fs::exists(fs::path{collision_b.string() + ".json"}));
+
+    // Invalid gap arithmetic must not create a wrapped or partial event.
+    const auto overflow_path = root / "gap-overflow.wav";
+    records.begin(72U, 702U, overflow_path, 16000U, origin);
+    bool gap_rejected = false;
+    try { records.addGap(72U, std::numeric_limits<std::uint64_t>::max(), 2U); }
+    catch (const std::length_error&) { gap_rejected = true; }
+    assert(gap_rejected && records.active(72U));
+    records.addGap(72U, 1U, 2U);
+    records.retire(72U, std::nullopt);
+    const auto gap_record = audition::readRecordingTimelineJson(
+        fs::path{overflow_path.string() + ".json"});
+    assert(gap_record.gaps().size() == 1U);
+    assert(gap_record.gaps()[0].start_sample == 1U);
+    assert(gap_record.gaps()[0].end_sample == 3U);
+
+    // A valid timestamp delta may exceed INT64_MAX nanoseconds. Conversion
+    // must not overflow signed arithmetic or lose integer sample precision.
+    const auto wide_path = root / "wide-timestamps.wav";
+    const auto low = std::numeric_limits<std::int64_t>::min();
+    const auto high = std::numeric_limits<std::int64_t>::max();
+    records.begin(73U, 703U, wide_path, 16000U,
+                  Timestamp{low, {ClockDomain::Monotonic, 2U}});
+    records.bindAsr(73U, 903U);
+    audition::SourceSpeechResult wide{};
+    wide.generation = 903U;
+    wide.start_time = Timestamp{high, {ClockDomain::Monotonic, 2U}};
+    wide.end_time = wide.start_time;
+    wide.transcript.text = "wide";
+    records.addSpeech(wide);
+    records.retire(73U, 903U);
+    records.completeGeneration(903U);
+    const auto wide_record = audition::readRecordingTimelineJson(
+        fs::path{wide_path.string() + ".json"});
+    assert(wide_record.speech().size() == 1U);
+    assert(wide_record.speech()[0].start_sample ==
+           static_cast<std::uint64_t>(
+               ((static_cast<std::uint64_t>(high) -
+                 static_cast<std::uint64_t>(low)) / 1000000000ULL) * 16000ULL +
+               (((static_cast<std::uint64_t>(high) -
+                  static_cast<std::uint64_t>(low)) % 1000000000ULL) *
+                 16000ULL) / 1000000000ULL));
+
+    // Excessive sample-rate * time spans cannot be represented in uint64;
+    // discard the annotation rather than committing a wrapped offset.
+    const auto out_of_range_path = root / "offset-overflow.wav";
+    records.begin(74U, 704U, out_of_range_path,
+                  std::numeric_limits<std::uint32_t>::max(),
+                  Timestamp{low, {ClockDomain::Monotonic, 2U}});
+    records.bindAsr(74U, 904U);
+    wide.generation = 904U;
+    records.addSpeech(wide);
+    records.retire(74U, 904U);
+    records.completeGeneration(904U);
+    const auto out_of_range = audition::readRecordingTimelineJson(
+        fs::path{out_of_range_path.string() + ".json"});
+    assert(out_of_range.speech().empty());
+    assert(records.boundAsrGenerations() == 0U);
+
     auto meter = audition::dsp::StreamingLevelMeter{};
     meter.push(0.5f);
     meter.push(-0.5f);

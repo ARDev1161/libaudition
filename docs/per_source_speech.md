@@ -19,6 +19,11 @@ queue. The ASR worker transcribes complete segments off the capture thread.
 The application drains results with `takeResults()`.
 
 Safety and lifecycle:
+- The recording-sidecar coordinator rejects ASR generation collisions before
+  changing active track state. Gap sample arithmetic is overflow-checked;
+  timestamp-to-sample conversion handles the full signed nanosecond domain
+  using checked integer arithmetic. Unrepresentable speech offsets are
+  discarded rather than written as wrapped sample indices;
 - Independent VAD state and PCM accumulation for each source;
 - At most `max_sources` active source sessions and `max_pending_segments`
   waiting jobs/results. Unreleased retired generations are separately capped
