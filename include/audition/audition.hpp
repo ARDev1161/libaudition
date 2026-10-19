@@ -18,6 +18,7 @@
 #include <audition/spatial/spl_calibration.hpp>
 #include <audition/spatial/temporal_smoother.hpp>
 #include <audition/speech/bounded_speech_pcm_ingress.hpp>
+#include <audition/speech/async_speech_ingress_worker.hpp>
 #include <audition/temporal/acoustic_motif_finder.hpp>
 #include <audition/temporal/dynamic_time_warping.hpp>
 #include <audition/temporal/recurrence_analyzer.hpp>
