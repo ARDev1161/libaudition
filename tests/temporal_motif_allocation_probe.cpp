@@ -127,7 +127,7 @@ int main() {
                  static_cast<double>(repetitions)
              <<" three_mean_us="<<std::chrono::duration<double,std::micro>(dense_three_elapsed).count()/
                  static_cast<double>(repetitions)
-             <<"\\n";
+             <<"\n";
     std::cout<<"[temporal-motif-allocations] frames=32 dimensions=4 window=4"
              <<" repetitions="<<repetitions
              <<" find_new_calls="<<single_allocations
