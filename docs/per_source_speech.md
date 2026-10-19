@@ -305,12 +305,12 @@ explicit acceptance work, not guarantees of this refactor.
 
 ## Bounded annotation retention in long recordings
 
-\`SourceRecordingSession\` takes optional \`SourceRecordingOptions\`. By
+`SourceRecordingSession` takes optional `SourceRecordingOptions`. By
 default each recording keeps up to 4096 speech events, 8192 sound events,
 4096 noncontiguous gap events and 1 MiB of retained annotation text.
 At most 64 active-plus-awaiting-ASR recording objects are kept at once.
 At-capacity adjacent gaps still merge, and duplicate classifier windows
 do not count again. Further events are discarded with source-wide
-\`droppedAnnotations()\` counters; earlier events remain intact in the
+`droppedAnnotations()` counters; earlier events remain intact in the
 versioned JSON sidecar. These limits do **not** constrain model inference
-memory or an independently constructed \`RecordingTimeline\`.
+memory or an independently constructed `RecordingTimeline`.

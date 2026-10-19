@@ -603,6 +603,11 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #else
             latest_.speech_status = "Requires Sherpa";
 #endif
+            const auto annotation_drops = recordings.droppedAnnotations();
+            latest_.speech_status += " | Annotations dropped: speech=" +
+                std::to_string(annotation_drops.speech) +
+                " sound=" + std::to_string(annotation_drops.sound) +
+                " gaps=" + std::to_string(annotation_drops.gaps);
             latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped());
             if (recordings.persistenceError())
                 latest_.speech_status += " | JSON error: " + *recordings.persistenceError();
