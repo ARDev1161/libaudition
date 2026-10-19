@@ -309,6 +309,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check installed-consumer Python harness syntax
+        run: python3 -m py_compile tests/integration/verify_installed_package.py
       - name: Configure dependency-free install
         run: >-
           cmake -S . -B build-install -G Ninja
