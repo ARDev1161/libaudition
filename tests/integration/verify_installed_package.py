@@ -107,12 +107,12 @@ def main() -> int:
                 // Force direct references to the core's out-of-line
                 // classes from the installed shared library, not only
                 // through other shared targets.
-                const audition::AudioFormat mono{
-                    16000U,1U,audition::AudioLayout::Interleaved};
-                const audition::Timestamp origin{
-                    1000000000LL,{audition::ClockDomain::Monotonic,4U}};
-                const audition::AudioBuffer pcm{
-                    std::vector<float>{0.1F,0.2F},mono,origin};
+                const audition::AudioFormat mono{{
+                    16000U,1U,audition::AudioLayout::Interleaved}};
+                const audition::Timestamp origin{{
+                    1000000000LL,{{audition::ClockDomain::Monotonic,4U}}}};
+                const audition::AudioBuffer pcm{{
+                    std::vector<float>{{0.1F,0.2F}},mono,origin}};
                 const auto pcm_view=pcm.view();
                 if (pcm.frameCount()!=2U || pcm_view.frameCount()!=2U ||
                     pcm_view.channel(0U).size()!=2U ||
