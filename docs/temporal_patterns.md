@@ -151,3 +151,7 @@ The allocation probe additionally reports `max_cpp_new_per_push` and `zero_alloc
 ### Full-history storage recycling
 
 When a source's history reaches `max_frames`, `push()` now fills a reusable staging vector, swaps it into the oldest slot, and rotates the bounded deque of feature vectors. This avoids allocating a new feature vector on each steady-state frame; a failed staging copy cannot mutate committed history. Rotation costs O(`max_frames`) vector swaps per full-history push, so benchmark both allocation count and elapsed time before treating this as an overall speedup. Sources remain isolated.
+
+### Allocation attribution
+
+The standalone probe additionally groups measured `operator new` calls into pushes that emitted matches (`matching_pushes`, `matching_allocations`) versus pushes that emitted no matches (`nonmatching_allocations`). These categories help distinguish baseline per-frame allocations from alert/cooldown bookkeeping. The current measured baseline before attribution was 1260 C++ allocations over 1000 pushes (1.26/push) in Ubuntu CI #1329, down from 2310 in #1326 (same configured workload). This is not a throughput or allocation-free guarantee.
