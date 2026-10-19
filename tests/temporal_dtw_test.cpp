@@ -1,5 +1,6 @@
 #include <audition/temporal/dynamic_time_warping.hpp>
 #include <gtest/gtest.h>
+#include <cstddef>
 #include <limits>
 #include <stdexcept>
 #include <vector>
