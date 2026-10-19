@@ -221,13 +221,16 @@ measurements or a substitute for representative audio recordings.
 
 ### Offline motif search scratch reuse and diagnostics
 
-`AcousticMotifFinder::find()` and `findMultiple()` now reuse per-invocation
-feature-window vectors throughout the candidate comparison loops instead
-of reconstructing `left` and `right` per pair. The two DTW DP rows already
-use an invocation-local `DtwWorkspace`, so concurrent `const` calls do
-not share mutable scratch. This reduces repeated window allocation
-opportunities, but still copies feature values and leaves the bounded
-quadratic candidate search intact.
+`AcousticMotifFinder::find()` and `findMultiple()` now compare
+windows directly within the caller's existing feature sequence, avoiding
+temporary copies of the left/right feature frames. The core DTW engine
+exposes `compareWindows(frames, first_start, second_start, length, workspace)`,
+which validates bounded offset ranges, dimensions and numeric input. The
+existing `compare(a,b)` APIs delegate to the same two-row DP engine.
+All motif calls keep `DtwWorkspace` invocation-local, so concurrent
+`const` calls do not share mutable scratch. The underlying candidate
+search remains quadratic; this optimization does not change the
+greedy best/disjoint selection contract.
 
 `AcousticMotifFinder.ReusedWindowsPreserveMultidimensionalMatchesAcrossCalls`
 checks repeated multidimensional matches and negative controls.
@@ -237,3 +240,12 @@ execution time per `find`/`findMultiple` invocation, and verifies the
 expected exact motif. Ubuntu CI prints it together with the existing
 streaming allocation probe. All timings and counts are diagnostic; no
 cross-runner allocation or latency thresholds are implied.
+
+`DynamicTimeWarping.WindowComparisonMatchesCopiedSequenceOracle` now compares
+thousands of in-place DTW windows to the original copied-sequence API
+across multiple dimensions, offsets, lengths and warping radii. Additional
+tests check out-of-range offsets (including `SIZE_MAX`), zero/capacity
+limits, invalid feature shapes, numeric overflow and workspace recovery.
+The motif allocation probe remains the quantitative baseline; allocation
+or latency improvements from this change are not asserted until the
+updated CI publishes them.
