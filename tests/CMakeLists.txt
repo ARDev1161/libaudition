@@ -119,7 +119,8 @@ add_executable(libaudition_tests
     speech_contracts_test.cpp
     speaker_contracts_test.cpp
     classification_runtime_test.cpp
-    per_source_speech_runtime_test.cpp)
+    per_source_speech_runtime_test.cpp
+    bounded_speech_pcm_ingress_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces

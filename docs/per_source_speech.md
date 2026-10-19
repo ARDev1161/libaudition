@@ -12,7 +12,12 @@ default). **`push()` runs VAD synchronously while holding the runtime
 mutex**; it is not a nonblocking capture-thread guarantee. For devices
 with strict audio callback deadlines, invoke it from an application-owned
 processing worker fed by a bounded input queue and explicitly reset on
-lost/discontinuous PCM. Active VAD frames are concatenated until the VAD
+lost/discontinuous PCM. A reusable experimental transport,
+`BoundedSpeechPcmIngress`, now provides bounded source-aware PCM admission,
+overflow-triggered `Forget` events, FIFO draining and an application-owned
+worker boundary (see [ingress API](bounded_speech_pcm_ingress.md)).
+**The Qt/ALSA path is not yet migrated to this transport**, and it does not
+yet serialize retirement/final speech flush or prove audio deadlines. Active VAD frames are concatenated until the VAD
 first becomes inactive. Completed
 speech with at least `min_speech_samples` is moved into the bounded job
 queue. The ASR worker transcribes complete segments off the capture thread.
