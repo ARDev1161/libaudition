@@ -494,6 +494,9 @@ TEST(PerSourceSpeechRuntime, RejectsInvalidConstructorLimits) {
     options.max_pending_segments = 0U;
     reject(options);
     options = {};
+    options.max_retired_generations = 0U;
+    reject(options);
+    options = {};
     options.min_speech_samples = 0U;
     reject(options);
     options = {};
@@ -1098,4 +1101,59 @@ TEST(PerSourceSpeechRuntime, RejectsZeroTranscriptBudgets) {
     opts = {};
     opts.max_result_items = 0U;
     EXPECT_THROW((PerSourceSpeechRuntime{vad, asr, opts}), std::invalid_argument);
+}
+
+TEST(PerSourceSpeechRuntime, RetiredGenerationCapacityIsBoundedAndRetryIsTransactional) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.max_retired_generations=1U;
+    opts.min_speech_samples=4U;
+    opts.pre_roll_samples=0U;
+    opts.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    const std::vector<float> quiet(4U,0.0F), voice(4U,0.5F);
+
+    runtime.push(501U,chunk(quiet));
+    const auto first=runtime.retire(501U);
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(runtime.statistics().retired_generations,1U);
+
+    runtime.push(502U,chunk(voice));
+    const auto second_generation=runtime.activeGeneration(502U);
+    ASSERT_TRUE(second_generation.has_value());
+    EXPECT_FALSE(runtime.retire(502U).has_value());
+    EXPECT_EQ(runtime.activeGeneration(502U),second_generation);
+    EXPECT_EQ(runtime.trackStatus(502U).buffered_samples,4U);
+    EXPECT_EQ(runtime.statistics().pending_segments,0U);
+    EXPECT_EQ(runtime.statistics().retired_generations,1U);
+
+    const auto ready=runtime.drainReady();
+    EXPECT_TRUE(ready.results.empty());
+    ASSERT_EQ(ready.ready_retired_generations.size(),1U);
+    EXPECT_EQ(ready.ready_retired_generations.front(),*first);
+    runtime.releaseRetired(*first);
+    EXPECT_EQ(runtime.statistics().retired_generations,0U);
+
+    const auto second=runtime.retire(502U);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(*second,*second_generation);
+    const auto result=awaitSpeech(runtime,1U);
+    ASSERT_EQ(result.size(),1U);
+    EXPECT_EQ(result.front().generation,*second);
+    EXPECT_EQ(result.front().transcript.text,"502:4");
+    const auto settled=runtime.drainReady();
+    ASSERT_EQ(settled.ready_retired_generations.size(),1U);
+    EXPECT_EQ(settled.ready_retired_generations.front(),*second);
+    runtime.releaseRetired(*second);
+    EXPECT_EQ(runtime.statistics().retired_generations,0U);
+
+    // Repeated retirement/release must not consume capacity permanently.
+    for (std::uint64_t id=503U;id<535U;++id) {
+        runtime.push(id,chunk(quiet));
+        const auto gen=runtime.retire(id);
+        ASSERT_TRUE(gen.has_value()) << "id="<<id;
+        EXPECT_EQ(runtime.statistics().retired_generations,1U);
+        runtime.releaseRetired(*gen);
+        EXPECT_EQ(runtime.statistics().retired_generations,0U);
+    }
 }
