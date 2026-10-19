@@ -83,16 +83,15 @@ real-model tests; green workflow jobs do not imply calibrated quality.
 
 ## Feature-branch evidence snapshot (2026-10-20)
 
-- [CI #1417](https://github.com/ARDev1161/libaudition/actions/runs/39334431439)
-  on `315e3a426c50befe33a17593764fa60d328af3af` completed with
+- [CI #1427](https://github.com/ARDev1161/libaudition/actions/runs/39339464694)
+  on `05e1667a9f2bce92d4b4742bd5d1b31f8f8b7f22` completed with
   **25 successful jobs** and one skipped `real-spatial-corpus` job.
-  All four independent installed C++17 package consumers passed:
-  Ubuntu/macOS x static/shared. This explicitly verifies installed dynamic
-  symbol exports and source-local VAD/ASR lifecycle in an external project.
-- CI #1420 on `1dcf2e9327fb7d8e4710b04c103deca49901c66b`
-  was **pending** when this entry was written. It adds strict VAD/ASR
-  sample-rate/channel/layout capability compatibility checks. Do not
-  mark this unverified change as passed on the strength of #1417.
+  Four independent installed C++17 consumers passed (Ubuntu/macOS x
+  static/shared), along with sanitizers, Qt and optional backend jobs.
+- Subsequent source-aware PCM ingress and FIFO source-retirement changes
+  are new work; passing #1427 does **not** verify them. The Qt/ALSA
+  producer is not yet migrated to an application-owned VAD worker, and
+  PR #54/#55 API reconciliation remains an open integration decision.
 - These checks concern a stacked feature branch, **not** a final integrated
   release candidate. Neither physical hardware metrics nor independently
   annotated real-acoustic accuracy has been established by this evidence.

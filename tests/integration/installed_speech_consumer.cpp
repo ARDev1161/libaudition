@@ -71,6 +71,15 @@ bool verifyInstalledSpeech() {
         auto reset=ingress.tryPop();
         if (!reset || reset->kind!=audition::SpeechPcmIngressEvent::Kind::Forget)
             return false;
+        // Retirement keeps the final PCM ahead of the control event.
+        if (ingress.push(12U,chunk(initial))!=audition::SpeechPcmAdmission::Accepted ||
+            !ingress.retire(12U)) return false;
+        auto final_audio=ingress.tryPop();
+        auto retired=ingress.tryPop();
+        if (!final_audio || !retired ||
+            final_audio->kind!=audition::SpeechPcmIngressEvent::Kind::Audio ||
+            retired->kind!=audition::SpeechPcmIngressEvent::Kind::Retire ||
+            retired->source_id!=12U) return false;
         ingress.close();
         if (ingress.waitPop().has_value()) return false;
         TestVad vad{};
