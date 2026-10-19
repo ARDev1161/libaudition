@@ -61,23 +61,25 @@ public:
         if (frames.size()/options_.window_frames<2) return {};
         std::vector<MotifMatch> candidates;
         DtwWorkspace workspace; // Invocation-local scratch for concurrent const calls.
-        for (std::size_t a=0;a<=frames.size()-options_.window_frames;) {
-            const std::vector<std::vector<double>> left(
-                frames.begin()+static_cast<std::ptrdiff_t>(a),
-                frames.begin()+static_cast<std::ptrdiff_t>(a+options_.window_frames));
-            for (std::size_t b=a+options_.window_frames;
-                 b<=frames.size()-options_.window_frames;) {
-                const std::vector<std::vector<double>> right(
-                    frames.begin()+static_cast<std::ptrdiff_t>(b),
-                    frames.begin()+static_cast<std::ptrdiff_t>(b+options_.window_frames));
+        // Reuse feature-vector capacity across the quadratic candidate search.
+        // The scratch is local to this invocation, so parallel const calls do
+        // not share mutable state or leak the contents of previous recordings.
+        std::vector<std::vector<double>> left, right;
+        const auto last_start=frames.size()-options_.window_frames;
+        for (std::size_t a=0;a<=last_start;) {
+            left.assign(frames.begin()+static_cast<std::ptrdiff_t>(a),
+                        frames.begin()+static_cast<std::ptrdiff_t>(a+options_.window_frames));
+            for (std::size_t b=a+options_.window_frames;b<=last_start;) {
+                right.assign(frames.begin()+static_cast<std::ptrdiff_t>(b),
+                             frames.begin()+static_cast<std::ptrdiff_t>(b+options_.window_frames));
                 const auto aligned=dtw_.compare(left,right,workspace);
                 if (aligned.reachable &&
                     aligned.normalized_cost<=options_.max_normalized_cost)
                     candidates.push_back({a,b,aligned.normalized_cost,true});
-                if (options_.stride>frames.size()-options_.window_frames-b) break;
+                if (options_.stride>last_start-b) break;
                 b+=options_.stride;
             }
-            if (options_.stride>frames.size()-options_.window_frames-a) break;
+            if (options_.stride>last_start-a) break;
             a+=options_.stride;
         }
         std::sort(candidates.begin(),candidates.end(),[](const auto& x,const auto& y) {
@@ -126,15 +128,14 @@ public:
         const auto last_start=frames.size()-options_.window_frames;
         MotifMatch best{};
         DtwWorkspace workspace; // Invocation-local scratch; no shared mutable state.
+        std::vector<std::vector<double>> left, right;
         double min_cost=std::numeric_limits<double>::infinity();
         for (std::size_t a=0;a<=last_start;) {
-            const std::vector<std::vector<double>> left(
-                frames.begin()+static_cast<std::ptrdiff_t>(a),
-                frames.begin()+static_cast<std::ptrdiff_t>(a+options_.window_frames));
+            left.assign(frames.begin()+static_cast<std::ptrdiff_t>(a),
+                        frames.begin()+static_cast<std::ptrdiff_t>(a+options_.window_frames));
             for (std::size_t b=a+options_.window_frames;b<=last_start;) {
-                const std::vector<std::vector<double>> right(
-                    frames.begin()+static_cast<std::ptrdiff_t>(b),
-                    frames.begin()+static_cast<std::ptrdiff_t>(b+options_.window_frames));
+                right.assign(frames.begin()+static_cast<std::ptrdiff_t>(b),
+                             frames.begin()+static_cast<std::ptrdiff_t>(b+options_.window_frames));
                 const auto result=dtw_.compare(left,right,workspace);
                 if (result.reachable && result.normalized_cost<min_cost) {
                     min_cost=result.normalized_cost;
