@@ -274,3 +274,25 @@ the motif finder. Regression tests exercise invalid middle frames, both
 best-pair and multi-pair searches, and recovery after exceptions. Numeric
 cost overflow remains checked per candidate. Benchmark improvements
 should be assessed from the subsequent CI probe.
+
+### Bounded two-pair motif selection
+
+`findMultiple(frames, max_matches)` now uses a bounded-memory second
+candidate scan for requests of exactly **two** disjoint motif pairs.
+The first pair comes from `find()`; the second scan ignores all windows
+overlapping the first and selects the best remaining valid pair (cost,
+then earliest frame offsets). This produces the same greedy ordering as
+the full candidate-vector sort, but stores at most two results and DTW
+scratch instead of O(candidate_pairs) motif records. A request for one
+result continues to use `find()`; requests for more than two retain the
+single-scan, sort-and-greedy implementation to avoid many repeated DTW
+passes. The two-pair bounded scan can increase CPU time because it may
+compare windows twice; it is a **memory/latency tradeoff**, not a universal
+speed optimization.
+
+The CTest oracle compares the two-result path to the first two results
+of the original multi-result selector across 1024 deterministic
+sequences, and checks large strides and capacity rejection. The isolated
+motif profiler adds a dense repeated-pattern scenario and separately
+reports allocations and elapsed time for requests for two and three
+pairs. Numerical results remain diagnostic and depend on CI hardware.
