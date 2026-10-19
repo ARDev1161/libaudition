@@ -92,6 +92,51 @@ int main() {
             assert(pcm[i * 2] == 0 && pcm[i * 2 + 1] == 0);
         assert(nonzero(pcm[108 * 2], pcm[108 * 2 + 1]));
     }
+
+    {
+        // Keep only the latest three completed entries, but do not delete
+        // any physical WAV. Previously completed IDs must remain prunable.
+        audition::recording::SourceWavRecorder recorder(
+            path / "history",16000,4096,256,3);
+        const std::vector<float> audio(16U,0.2F);
+        std::vector<std::string> wav_paths;
+        for (std::uint64_t i=1;i<=12U;++i) {
+            const auto report=recorder.append(900U,audio);
+            assert(report.recording_id==i);
+            const auto entry=recorder.activeEntry(900U);
+            assert(entry.has_value());
+            wav_paths.push_back(entry->path);
+            recorder.retire(900U);
+        }
+        recorder.closeAll();
+        const auto recent=recorder.entries();
+        assert(recent.size()==3U);
+        assert(recent[0].recording_id==10U);
+        assert(recent[1].recording_id==11U);
+        assert(recent[2].recording_id==12U);
+        assert(recorder.historyEvicted()==9U);
+        for(const auto& wav:wav_paths) assert(fs::exists(wav));
+    }
+    {
+        // A conflicting directory causes deterministic worker I/O failure.
+        // Failed IDs must also be retired and bounded after Close.
+        const auto fail_dir=path / "error-history";
+        audition::recording::SourceWavRecorder recorder(
+            fail_dir,16000,4096,256,2);
+        for (std::uint64_t i=1;i<=6U;++i) {
+            fs::create_directories(fail_dir /
+                ("track_901_" + std::to_string(i) + ".wav"));
+            recorder.append(901U,std::vector<float>(8U,0.2F));
+            recorder.retire(901U);
+        }
+        recorder.closeAll();
+        const auto recent=recorder.entries();
+        assert(recent.size()==2U);
+        assert(recent[0].recording_id==5U);
+        assert(recent[1].recording_id==6U);
+        assert(recorder.historyEvicted()==4U);
+        for(const auto& entry:recent) assert(!entry.error.empty());
+    }
     std::error_code ec;
     fs::remove_all(path, ec);
 }

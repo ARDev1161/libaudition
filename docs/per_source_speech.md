@@ -321,3 +321,15 @@ do not count again. Further events are discarded with source-wide
 `droppedAnnotations()` counters; earlier events remain intact in the
 versioned JSON sidecar. These limits do **not** constrain model inference
 memory or an independently constructed `RecordingTimeline`.
+
+
+## Bounded WAV recording history
+
+`SourceWavRecorder` retains up to 256 completed recording metadata entries
+by default (configurable fifth constructor argument). Active and
+queued-for-close recordings are never evicted. Pruning only removes old
+metadata from `entries()` and the Qt history: existing WAV files remain
+on disk. `historyEvicted()` reports the number pruned. Failed-file
+bookkeeping is cleared at Close, preventing indefinite accumulation
+after repeated disk errors. This cap does not bound disk usage or the
+number of simultaneously live sources.

@@ -39,9 +39,10 @@ public:
     };
     SourceWavRecorder(std::filesystem::path dir, std::uint32_t rate,
                       std::uint64_t budget = 256ULL * 1024 * 1024,
-                      std::size_t queue_limit = 256)
+                      std::size_t queue_limit = 256,
+                      std::size_t max_completed_entries = 256)
         : dir_(std::move(dir)), rate_(rate), budget_(budget),
-          queue_limit_(queue_limit) {
+          queue_limit_(queue_limit), max_completed_entries_(max_completed_entries) {
         std::error_code ec;
         std::filesystem::create_directories(dir_, ec);
         enabled_ = !ec && rate_ != 0 && queue_limit_ != 0;
@@ -153,7 +154,21 @@ public:
         return out;
     }
     [[nodiscard]] std::uint64_t dropped() const noexcept { return dropped_.load(); }
+    [[nodiscard]] std::uint64_t historyEvicted() const {
+        std::lock_guard<std::mutex> lock(mu_);
+        return history_evicted_;
+    }
 private:
+    // Called under mu_ only after the worker processes Close. Queued audio
+    // and the live source map can no longer reference this completed entry.
+    void rememberCompletedLocked(std::uint64_t id) {
+        completed_ids_.push_back(id);
+        while (completed_ids_.size() > max_completed_entries_) {
+            entries_.erase(completed_ids_.front());
+            completed_ids_.pop_front();
+            ++history_evicted_;
+        }
+    }
     struct Command {
         enum Kind { Audio, Close } kind{Audio};
         std::uint64_t id{0};
@@ -187,7 +202,14 @@ private:
                 meta = entries_[cmd.id];
             }
             try {
-                if (failedFiles.count(cmd.id)) continue;
+                if (failedFiles.count(cmd.id)) {
+                    if (cmd.kind == Command::Close) {
+                        failedFiles.erase(cmd.id);
+                        std::lock_guard<std::mutex> lock(mu_);
+                        rememberCompletedLocked(cmd.id);
+                    }
+                    continue;
+                }
                 const auto ensureFile = [&]() -> File& {
                     auto it = files.find(cmd.id);
                     if (it == files.end()) {
@@ -208,6 +230,7 @@ private:
                     files.erase(cmd.id);
                     std::lock_guard<std::mutex> lock(mu_);
                     entries_.at(cmd.id).samples = written;
+                    rememberCompletedLocked(cmd.id);
                     continue;
                 }
                 auto& f = ensureFile();
@@ -225,6 +248,11 @@ private:
                     entries_[cmd.id].error = e.what();
                 }
                 files.erase(cmd.id);
+                if (cmd.kind == Command::Close) {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    rememberCompletedLocked(cmd.id);
+                    failedFiles.erase(cmd.id);
+                }
             } catch (...) {
                 ++dropped_;
                 failedFiles.insert(cmd.id);
@@ -233,6 +261,11 @@ private:
                     entries_[cmd.id].error = "Unknown WAV I/O failure";
                 }
                 files.erase(cmd.id);
+                if (cmd.kind == Command::Close) {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    rememberCompletedLocked(cmd.id);
+                    failedFiles.erase(cmd.id);
+                }
             }
         }
         for (auto& p : files) {
@@ -243,7 +276,10 @@ private:
     std::uint32_t rate_;
     std::uint64_t budget_, pending_bytes_{0}, next_id_{0};
     std::size_t queue_limit_;
+    std::size_t max_completed_entries_;
     std::size_t pending_audio_{0};
+    std::uint64_t history_evicted_{0};
+    std::deque<std::uint64_t> completed_ids_{};
     mutable std::mutex mu_;
     std::condition_variable cv_;
     std::deque<Command> queue_;
