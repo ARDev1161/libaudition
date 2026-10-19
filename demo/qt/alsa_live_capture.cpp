@@ -302,6 +302,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             std::filesystem::temp_directory_path() / "libaudition-recordings" /
                 ("session-" + std::to_string(session_stamp)), config.sample_rate_hz};
         audition::recording::SourceRecordingSession recordings;
+        // Track only active ODAS generations denied a timeline. Retrying
+        // midway through a WAV would shift its annotation clock origin.
+        std::map<std::uint64_t, std::uint64_t> skipped_annotation_recordings;
+        std::uint64_t annotation_recordings_skipped = 0;
         const auto drainClassification = [&]() {
             if (!classifier) return;
             for (const auto& [sourceId, event] : classifier->takeCompleted()) {
@@ -333,6 +337,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::uint64_t retirement_capacity_drops = 0;
 #endif
         const auto retireSource = [&](std::uint64_t trackId) {
+            skipped_annotation_recordings.erase(trackId);
             if (classifier) classifier->forget(trackId);
             recorder.retire(trackId);
 #if LIBAUDITION_DEMO_HAS_SHERPA
@@ -457,11 +462,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     const auto sourceId = separated.track_id.value();
                     const auto recorded = recorder.append(sourceId, separated.audio.samples());
                     if (recorded.recording_id != 0) {
-                        if (!recordings.active(sourceId)) {
-                            if (auto entry = recorder.activeEntry(sourceId))
-                                recordings.begin(sourceId, entry->recording_id,
-                                    entry->path, config.sample_rate_hz,
-                                    separated.audio.captureTime());
+                        if (!recordings.active(sourceId) &&
+                            skipped_annotation_recordings.count(sourceId) == 0) {
+                            if (auto entry = recorder.activeEntry(sourceId)) {
+                                // Keep WAV, audio capture and inference
+                                // running when annotation memory is full.
+                                if (!recordings.tryBegin(sourceId, entry->recording_id,
+                                        entry->path, config.sample_rate_hz,
+                                        separated.audio.captureTime())) {
+                                    skipped_annotation_recordings.emplace(
+                                        sourceId, entry->recording_id);
+                                    ++annotation_recordings_skipped;
+                                }
+                            }
                         }
                         if (recorded.lost_samples != 0)
                             recordings.addGap(sourceId, recorded.start_sample +
@@ -604,6 +617,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.speech_status = "Requires Sherpa";
 #endif
             const auto annotation_drops = recordings.droppedAnnotations();
+            latest_.speech_status += " | Sidecars skipped=" +
+                std::to_string(annotation_recordings_skipped);
             latest_.speech_status += " | Annotations dropped: speech=" +
                 std::to_string(annotation_drops.speech) +
                 " sound=" + std::to_string(annotation_drops.sound) +

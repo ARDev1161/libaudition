@@ -74,6 +74,17 @@ public:
         if (!inserted) throw std::invalid_argument("Duplicate recording ID");
         active_[track_id] = recording_id;
     }
+    // Full recording metadata is normal backpressure, not a capture failure.
+    // Invalid/duplicate identities remain exceptions as in begin().
+    bool tryBegin(std::uint64_t track_id, RecordingId recording_id,
+                  const std::filesystem::path& wav, std::uint32_t sample_rate,
+                  Timestamp capture_origin) {
+        if (!recording_id || active_.count(track_id))
+            throw std::invalid_argument("Recording already active or invalid ID");
+        if (recordings_.size() >= options_.max_recordings) return false;
+        begin(track_id, recording_id, wav, sample_rate, capture_origin);
+        return true;
+    }
     bool active(std::uint64_t track_id) const noexcept {
         return active_.count(track_id) != 0;
     }

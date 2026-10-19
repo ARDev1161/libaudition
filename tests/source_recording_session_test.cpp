@@ -180,6 +180,13 @@ int main() {
         try { bounded.begin(881U, 881U, root / "too-many.wav", 16000U, origin); }
         catch (const std::length_error&) { saturated = true; }
         assert(saturated && !bounded.active(881U));
+        // Repeat capacity refusal while keeping the existing timeline.
+        for (int n = 0; n < 16; ++n) {
+            assert(!bounded.tryBegin(881U, 881U,
+                                     root / "denied.wav", 16000U, origin));
+            assert(bounded.retainedRecordings() == 1U);
+            assert(bounded.active(880U) && !bounded.active(881U));
+        }
 
         bounded.bindAsr(880U, 880U);
         audition::SourceSpeechResult utterance{};
@@ -208,7 +215,8 @@ int main() {
         assert(saved.gaps().size() == 1U);
         assert(saved.gaps()[0].end_sample == 4U);
 
-        bounded.begin(881U, 881U, root / "recovered.wav", 16000U, origin);
+        assert(bounded.tryBegin(881U, 881U, root / "recovered.wav",
+                                16000U, origin));
         bounded.addSound(881U, 0U, 1U, "oversized-label", "m", .5, "q");
         assert(bounded.droppedAnnotations().sound == 2U);
         bounded.retire(881U, std::nullopt);

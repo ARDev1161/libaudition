@@ -309,6 +309,13 @@ explicit acceptance work, not guarantees of this refactor.
 default each recording keeps up to 4096 speech events, 8192 sound events,
 4096 noncontiguous gap events and 1 MiB of retained annotation text.
 At most 64 active-plus-awaiting-ASR recording objects are kept at once.
+`SourceRecordingSession::tryBegin()` returns `false` for capacity refusal
+rather than throwing. Invalid source/recording identity still throws.
+The Qt/ALSA adapter treats a refused recording as WAV-only for the
+lifetime of that ODAS generation: it does not start a misaligned sidecar
+halfway into the WAV. `Sidecars skipped` tracks the losses in its live
+diagnostics. Capture, WAV writing and speech inference remain active.
+Missing sidecars after saturation are an explicit overload limitation.
 At-capacity adjacent gaps still merge, and duplicate classifier windows
 do not count again. Further events are discarded with source-wide
 `droppedAnnotations()` counters; earlier events remain intact in the
