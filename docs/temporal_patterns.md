@@ -19,9 +19,12 @@ CTest / GoogleTest: `RecurrenceAnalyzer.*` covers stable and irregular
 sequences, isolation, clock regression, signed timestamp extremes, memory
 bounds and history truncation.
 
-This is the first TMP-04 slice. Still open: DTW sequence similarity,
-motif discovery, missing-pulse robustness, multiple competing periods,
-independently annotated acoustic corpora, calibration and runtime benchmarks.
+TMP-04 now includes bounded DTW sequence similarity, offline motif
+discovery, source-local streaming template recognition, configurable
+candidate lengths, cooldown handling, and CI allocation/latency probes.
+Open work includes independently annotated real-world evaluation,
+calibrated detection thresholds, missing-pulse models, competing-period
+estimation and real-time guarantees on target hardware.
 
 ## Dynamic time warping (DTW)
 
@@ -69,12 +72,14 @@ source-local frame indices. It never combines frames from different sources.
 Templates are validated on registration; malformed incoming frames are
 rejected before history commit. `forget(source)` clears a source's history.
 
-This is an intentionally simple **fixed-length trailing-window** matcher:
-it cannot yet handle deletion of an entire event, variable-length candidate
-boundaries or timestamp-based silence gaps. It can emit the same label at
-successive frame positions; consumers must supply deduplication/cooldown
-policy. `StreamingPatternMatcher.*` CTest scenarios verify completion,
-source isolation, rollover/recovery, invalid frame rejection and capacity.
+The default matcher uses a **fixed-length trailing window**, and an
+optional candidate-length range supports shorter or longer feature
+sequences. It does not reconstruct wholly missing discriminating events
+or infer timestamp-based silence gaps. Repeated labels can be suppressed
+by a source-local, per-label cooldown measured in frames.
+`StreamingPatternMatcher.*` CTest scenarios cover completion, source
+isolation, rollover/recovery, invalid frames, capacity, cooldown and
+dynamic template lifecycle.
 
 ### Per-source template alert cooldown
 
@@ -86,6 +91,22 @@ labels and sources, and `forget(source)` / `reset()` clear emission state.
 Cooldown is measured in feature frames, **not wall-clock time**, and does not
 repair missing observations. A wrap of the source-local frame counter is
 rejected before committing a new frame.
+
+### Dynamic template lifecycle
+
+`registerTemplate(label, frames)` atomically validates and inserts or
+replaces a template. Successful replacement clears prior cooldown records
+for that label across all sources, because previously suppressed detections
+refer to a different template definition. Feature histories and cooldown
+records for other labels are retained. Invalid replacement arguments leave
+both the prior template and its suppression records unchanged.
+
+`unregisterTemplate(label)` returns true if a template existed and removes
+only that label and its source-local cooldown records. An unknown label
+returns false without changing state. Removing a template releases one slot
+from `max_templates`; later re-registration of the same label can emit
+immediately. Neither operation discards source histories. Like other matcher
+mutations, template registration/removal must not race with `push()`.
 
 ### Variable-length suffix alignment
 
