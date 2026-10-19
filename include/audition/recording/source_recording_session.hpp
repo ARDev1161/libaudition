@@ -51,6 +51,7 @@ public:
         Timestamp origin{};
         bool retired{false};
         bool awaiting_asr{false};
+        bool pending_retire_ack{false};
         std::size_t annotation_text_bytes{0};
         State(std::uint64_t track, RecordingId id, std::uint32_t rate,
               std::filesystem::path path, Timestamp capture_origin)
@@ -95,11 +96,17 @@ public:
     }
     void bindAsr(std::uint64_t track_id, std::uint64_t generation) {
         const auto id = recordingId(track_id);
-        if (!id) return;
+        if (id) bindRecordingAsr(*id, generation);
+    }
+    // Bind the exact WAV identity, even if its numeric source ID was
+    // already retired/reused before asynchronous VAD created a generation.
+    void bindRecordingAsr(RecordingId id, std::uint64_t generation) {
+        if (!recordings_.count(id))
+            throw std::invalid_argument("Cannot bind ASR to unknown recording");
         const auto found = generations_.find(generation);
-        if (found != generations_.end() && found->second != *id)
+        if (found != generations_.end() && found->second != id)
             throw std::invalid_argument("ASR generation assigned twice");
-        generations_[generation] = *id;
+        generations_[generation] = id;
     }
     void addSpeech(const SourceSpeechResult& result) {
         const auto gen = generations_.find(result.generation);
@@ -161,6 +168,35 @@ public:
         state.timeline.add(TimelineGapEvent{
             *id, start, start + samples, "recorder_backpressure"});
     }
+    // Retire the producer-side WAV before the queued VAD worker has
+    // processed final PCM. A delayed acknowledgement must be matched by
+    // RecordingId, never by a reused numeric ODAS track ID.
+    [[nodiscard]] std::optional<RecordingId> retireDeferred(std::uint64_t track_id) {
+        const auto active = active_.find(track_id);
+        if (active == active_.end()) return std::nullopt;
+        const auto id = active->second;
+        active_.erase(active);
+        auto& state = recordings_.at(id);
+        state.retired = true;
+        state.awaiting_asr = true;
+        state.pending_retire_ack = true;
+        return id;
+    }
+
+    // Complete a deferred retirement after the serialized speech worker
+    // reports the generation. A null generation persists a WAV-only sidecar.
+    void acknowledgeRetired(RecordingId id, std::optional<std::uint64_t> generation) {
+        const auto record = recordings_.find(id);
+        if (record == recordings_.end() || !record->second.pending_retire_ack)
+            throw std::invalid_argument("Unknown deferred recording retirement");
+        if (generation) {
+            bindRecordingAsr(id,*generation); // validate before state mutation
+            record->second.pending_retire_ack = false;
+        } else {
+            persistAndErase(id);
+        }
+    }
+
     // Non-blocking; only retired generations retain their timeline.
     void retire(std::uint64_t track_id, std::optional<std::uint64_t> generation) {
         const auto current = active_.find(track_id);

@@ -104,6 +104,56 @@ int main() {
     assert(fs::exists(fs::path{collision_a.string() + ".json"}));
     assert(fs::exists(fs::path{collision_b.string() + ".json"}));
 
+
+    // The producer can retire an old WAV before the worker finishes VAD.
+    // A reused numeric ID must never steal late text or the retired WAV.
+    const auto deferred_a = root / "deferred-a.wav";
+    const auto deferred_b = root / "deferred-b.wav";
+    records.begin(85U, 785U, deferred_a, 16000U, origin);
+    const auto delayed = records.retireDeferred(85U);
+    assert(delayed == 785U);
+    assert(!records.active(85U) && records.pendingRetirements() == 1U);
+    records.begin(85U, 786U, deferred_b, 16000U, origin);
+    records.bindAsr(85U, 985U);
+    records.bindRecordingAsr(785U, 984U);
+    bool deferred_collision = false;
+    try { records.acknowledgeRetired(*delayed,985U); }
+    catch (const std::invalid_argument&) { deferred_collision = true; }
+    assert(deferred_collision);
+    assert(records.pendingRetirements() == 1U);
+    records.acknowledgeRetired(*delayed,984U);
+    audition::SourceSpeechResult delayed_text{};
+    delayed_text.track_id=85U;
+    delayed_text.generation=984U;
+    delayed_text.start_time=origin;
+    delayed_text.end_time=origin;
+    delayed_text.transcript.text="old-utterance";
+    records.addSpeech(delayed_text);
+    records.completeGeneration(984U);
+    const auto saved_deferred=audition::readRecordingTimelineJson(
+        fs::path{deferred_a.string()+".json"});
+    assert(saved_deferred.speech().size()==1U);
+    assert(saved_deferred.speech()[0].text=="old-utterance");
+    assert(records.active(85U));
+    records.retire(85U,985U);
+    records.completeGeneration(985U);
+    const auto saved_new=audition::readRecordingTimelineJson(
+        fs::path{deferred_b.string()+".json"});
+    assert(saved_new.speech().empty());
+    assert(records.boundAsrGenerations()==0U);
+
+    const auto expired_path=root/"deferred-expired.wav";
+    records.begin(86U,787U,expired_path,16000U,origin);
+    const auto expired=records.retireDeferred(86U);
+    assert(expired==787U);
+    records.acknowledgeRetired(*expired,std::nullopt);
+    assert(records.pendingRetirements()==0U);
+    assert(fs::exists(fs::path{expired_path.string()+".json"}));
+    bool double_ack_rejected=false;
+    try {records.acknowledgeRetired(*expired,std::nullopt);}
+    catch(const std::invalid_argument&) {double_ack_rejected=true;}
+    assert(double_ack_rejected);
+
     // Invalid gap arithmetic must not create a wrapped or partial event.
     const auto overflow_path = root / "gap-overflow.wav";
     records.begin(72U, 702U, overflow_path, 16000U, origin);
