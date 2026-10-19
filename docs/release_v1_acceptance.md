@@ -141,6 +141,17 @@ P1 items may become P0 for a particular target product. Their omission
 must appear transparently under “Known limitations” and must never become
 a fabricated pass.
 
+## Signed audio-clock arithmetic (P0 audit)
+
+`Duration` addition/subtraction and `Timestamp::since()` /
+`Timestamp::advancedBy()` reject int64-nanosecond overflow with
+`std::overflow_error`, rather than executing undefined signed arithmetic.
+`Timestamp::since()` still rejects mismatched clock identities first.
+`core_time_test` covers signed limits and valid boundary values.
+These changes do **not** validate arbitrary `std::chrono` conversions,
+physical clock continuity, or downstream timestamp arithmetic; they must
+pass CTest and sanitizers on the final integrated release candidate.
+
 ## Release-candidate verification commands
 
 ```sh

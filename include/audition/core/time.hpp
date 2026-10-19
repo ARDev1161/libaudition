@@ -2,6 +2,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 
 #include <audition/core/error.hpp>
 #include <audition/core/export.hpp>
@@ -45,11 +47,22 @@ public:
         return std::chrono::nanoseconds{nanoseconds_};
     }
 
-    friend constexpr Duration operator+(Duration lhs, Duration rhs) noexcept {
-        return Duration{lhs.nanoseconds_ + rhs.nanoseconds_};
+    // Checked arithmetic avoids undefined signed overflow in audio clocks.
+    friend constexpr Duration operator+(Duration lhs, Duration rhs) {
+        const auto a = lhs.nanoseconds_;
+        const auto b = rhs.nanoseconds_;
+        if ((b > 0 && a > std::numeric_limits<std::int64_t>::max() - b) ||
+            (b < 0 && a < std::numeric_limits<std::int64_t>::min() - b))
+            throw std::overflow_error{"Duration addition overflows int64 nanoseconds"};
+        return Duration{a + b};
     }
-    friend constexpr Duration operator-(Duration lhs, Duration rhs) noexcept {
-        return Duration{lhs.nanoseconds_ - rhs.nanoseconds_};
+    friend constexpr Duration operator-(Duration lhs, Duration rhs) {
+        const auto a = lhs.nanoseconds_;
+        const auto b = rhs.nanoseconds_;
+        if ((b < 0 && a > std::numeric_limits<std::int64_t>::max() + b) ||
+            (b > 0 && a < std::numeric_limits<std::int64_t>::min() + b))
+            throw std::overflow_error{"Duration subtraction overflows int64 nanoseconds"};
+        return Duration{a - b};
     }
 
 private:
@@ -69,7 +82,8 @@ public:
     }
 
     [[nodiscard]] Duration since(const Timestamp& earlier) const;
-    [[nodiscard]] Timestamp advancedBy(Duration duration) const noexcept;
+    // Throws std::overflow_error if signed nanosecond arithmetic would wrap.
+    [[nodiscard]] Timestamp advancedBy(Duration duration) const;
 
     static Timestamp systemNow();
     static Timestamp monotonicNow();

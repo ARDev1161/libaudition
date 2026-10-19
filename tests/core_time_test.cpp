@@ -1,6 +1,8 @@
 #include <audition/core/time.hpp>
 
 #include <gtest/gtest.h>
+#include <limits>
+#include <stdexcept>
 
 TEST(Time, DifferenceRequiresSameClock) {
     const audition::Timestamp a{100, {audition::ClockDomain::Simulation, 1}};
@@ -46,4 +48,36 @@ TEST(Time, SignedDurationAndComparableClockIdentityArePreserved) {
     EXPECT_EQ(moved.clock(), before.clock());
     EXPECT_FALSE(after.comparableWith(
         audition::Timestamp{100, {audition::ClockDomain::Simulation, 43}}));
+}
+
+TEST(Time, DurationArithmeticRejectsSignedOverflow) {
+    using audition::Duration;
+    constexpr auto high = std::numeric_limits<std::int64_t>::max();
+    constexpr auto low = std::numeric_limits<std::int64_t>::min();
+    EXPECT_EQ((Duration{high - 1} + Duration{1}).nanoseconds(), high);
+    EXPECT_EQ((Duration{low + 1} - Duration{1}).nanoseconds(), low);
+    EXPECT_EQ((Duration{low + 1} + Duration{-1}).nanoseconds(), low);
+    EXPECT_EQ((Duration{high - 1} - Duration{-1}).nanoseconds(), high);
+    EXPECT_THROW((void)(Duration{high} + Duration{1}), std::overflow_error);
+    EXPECT_THROW((void)(Duration{low} + Duration{-1}), std::overflow_error);
+    EXPECT_THROW((void)(Duration{high} - Duration{-1}), std::overflow_error);
+    EXPECT_THROW((void)(Duration{low} - Duration{1}), std::overflow_error);
+}
+
+TEST(Time, TimestampArithmeticRejectsSignedOverflow) {
+    using audition::Duration;
+    using audition::Timestamp;
+    constexpr auto high = std::numeric_limits<std::int64_t>::max();
+    constexpr auto low = std::numeric_limits<std::int64_t>::min();
+    const audition::ClockIdentity clock{audition::ClockDomain::External, 42U};
+    const Timestamp top{high, clock};
+    const Timestamp bottom{low, clock};
+    EXPECT_EQ(top.advancedBy(Duration{-1}).nanoseconds(), high - 1);
+    EXPECT_EQ(bottom.advancedBy(Duration{1}).nanoseconds(), low + 1);
+    EXPECT_THROW((void)top.advancedBy(Duration{1}), std::overflow_error);
+    EXPECT_THROW((void)bottom.advancedBy(Duration{-1}), std::overflow_error);
+    EXPECT_THROW((void)top.since(bottom), std::overflow_error);
+    EXPECT_THROW((void)bottom.since(top), std::overflow_error);
+    EXPECT_EQ(top.clock(), clock);
+    EXPECT_EQ(bottom.clock(), clock);
 }

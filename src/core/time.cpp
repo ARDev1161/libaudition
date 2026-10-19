@@ -7,11 +7,11 @@ Duration Timestamp::since(const Timestamp& earlier) const {
         throw Error{ErrorCode::ClockDomainMismatch,
                     "Cannot subtract timestamps from different clock domains"};
     }
-    return Duration{nanoseconds_ - earlier.nanoseconds_};
+    return Duration{nanoseconds_} - Duration{earlier.nanoseconds_};
 }
 
-Timestamp Timestamp::advancedBy(Duration duration) const noexcept {
-    return Timestamp{nanoseconds_ + duration.nanoseconds(), clock_};
+Timestamp Timestamp::advancedBy(Duration duration) const {
+    return Timestamp{(Duration{nanoseconds_} + duration).nanoseconds(), clock_};
 }
 
 Timestamp Timestamp::systemNow() {
