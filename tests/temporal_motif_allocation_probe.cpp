@@ -89,6 +89,45 @@ int main() {
             results.front().second_start!=12)
             return 4;
     }
+    // Dense exact repetition deliberately exercises the worst-case
+    // candidate-storage pressure of the general greedy selector.
+    const std::vector<std::vector<double>> repeated(32,
+        std::vector<double>{1.0,2.0,3.0,4.0});
+    std::size_t dense_two_new_calls=0;
+    std::size_t dense_three_new_calls=0;
+    std::chrono::steady_clock::duration dense_two_elapsed{};
+    std::chrono::steady_clock::duration dense_three_elapsed{};
+    for (std::size_t i=0;i<repetitions;++i) {
+        auto before=new_calls.load(std::memory_order_relaxed);
+        auto start=std::chrono::steady_clock::now();
+        const auto two=finder.findMultiple(repeated,2);
+        dense_two_elapsed+=std::chrono::steady_clock::now()-start;
+        dense_two_new_calls+=new_calls.load(std::memory_order_relaxed)-before;
+        if (two.size()!=2 || two[0].first_start!=0 || two[0].second_start!=4 ||
+            two[1].first_start!=8 || two[1].second_start!=12)
+            return 6;
+
+        before=new_calls.load(std::memory_order_relaxed);
+        start=std::chrono::steady_clock::now();
+        const auto three=finder.findMultiple(repeated,3);
+        dense_three_elapsed+=std::chrono::steady_clock::now()-start;
+        dense_three_new_calls+=new_calls.load(std::memory_order_relaxed)-before;
+        if (three.size()!=3 || three[0].first_start!=0 || three[0].second_start!=4 ||
+            three[1].first_start!=8 || three[1].second_start!=12 ||
+            three[2].first_start!=16 || three[2].second_start!=20)
+            return 7;
+    }
+    std::cout<<"[temporal-motif-dense] frames=32 window=4"
+             <<" repetitions="<<repetitions
+             <<" two_new_calls_per_invocation="<<
+                 static_cast<double>(dense_two_new_calls)/static_cast<double>(repetitions)
+             <<" three_new_calls_per_invocation="<<
+                 static_cast<double>(dense_three_new_calls)/static_cast<double>(repetitions)
+             <<" two_mean_us="<<std::chrono::duration<double,std::micro>(dense_two_elapsed).count()/
+                 static_cast<double>(repetitions)
+             <<" three_mean_us="<<std::chrono::duration<double,std::micro>(dense_three_elapsed).count()/
+                 static_cast<double>(repetitions)
+             <<"\\n";
     std::cout<<"[temporal-motif-allocations] frames=32 dimensions=4 window=4"
              <<" repetitions="<<repetitions
              <<" find_new_calls="<<single_allocations
