@@ -183,8 +183,7 @@ private:
             for (std::size_t j=low;j<=high;++j) {
                 double local=0;
                 for (std::size_t k=0;k<dimensions;++k) {
-                    const double delta=a[first_start+i-1][k]-
-                                       b[second_start+j-1][k];
+                    const double delta=first(i-1)[k]-second(j-1)[k];
                     local+=delta*delta;
                 }
                 if (!std::isfinite(local))
