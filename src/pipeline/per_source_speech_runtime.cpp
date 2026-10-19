@@ -287,7 +287,8 @@ std::vector<SourceSpeechResult> PerSourceSpeechRuntime::takeResults() {
 
 SourceSpeechStatistics PerSourceSpeechRuntime::statistics() const {
     std::lock_guard<std::mutex> guard{mutex_};
-    return {completed_, dropped_, jobs_.size(), error_};
+    return {completed_, dropped_, jobs_.size(), error_,
+            results_.size(), evicted_results_};
 }
 
 SourceSpeechTrackStatus PerSourceSpeechRuntime::trackStatus(
@@ -323,6 +324,7 @@ void PerSourceSpeechRuntime::workerLoop() {
                 if (results_.size() > options_.max_pending_segments) {
                     results_.erase(results_.begin());
                     ++dropped_;
+                    ++evicted_results_;
                 }
                 ++completed_;
             }
