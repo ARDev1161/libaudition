@@ -249,3 +249,50 @@ TEST(AcousticMotifFinder, PrevalidatedFastPathStillRejectsInvalidMiddleFrames) {
     EXPECT_EQ(recovered.first_start,baseline.first_start);
     EXPECT_EQ(recovered.second_start,baseline.second_start);
 }
+
+TEST(AcousticMotifFinder, BoundedTwoPairSelectionAgreesWithGeneralGreedyOrder) {
+    auto o=options();
+    o.max_frames=12;
+    o.window_frames=2;
+    o.warping_radius=0;
+    o.max_normalized_cost=0;
+    audition::temporal::AcousticMotifFinder finder{o};
+
+    for (unsigned mask=0;mask<1024u;++mask) {
+        Frames frames(12,std::vector<double>(1));
+        for (std::size_t i=0;i<frames.size();++i)
+            frames[i][0]=static_cast<double>((mask>>(i%10u))&1u);
+        // max_matches=3 takes the original global sort/greedy path.
+        const auto general=finder.findMultiple(frames,3);
+        const auto bounded=finder.findMultiple(frames,2);
+        ASSERT_EQ(bounded.size(),std::min(std::size_t{2},general.size()))
+            << "mask="<<mask;
+        for (std::size_t i=0;i<bounded.size();++i) {
+            EXPECT_EQ(bounded[i].first_start,general[i].first_start)
+                << "mask="<<mask;
+            EXPECT_EQ(bounded[i].second_start,general[i].second_start)
+                << "mask="<<mask;
+            EXPECT_DOUBLE_EQ(bounded[i].normalized_cost,general[i].normalized_cost)
+                << "mask="<<mask;
+            EXPECT_TRUE(bounded[i].found);
+        }
+    }
+}
+
+TEST(AcousticMotifFinder, BoundedTwoPairSelectionHandlesLargeStrideAndCapacity) {
+    auto o=options();
+    o.window_frames=2;
+    o.max_frames=12;
+    o.stride=std::numeric_limits<std::size_t>::max();
+    o.max_normalized_cost=0;
+    audition::temporal::AcousticMotifFinder finder{o};
+    const Frames data{{1},{2},{1},{2},{1},{2},{1},{2}};
+    const auto one=finder.find(data);
+    const auto two=finder.findMultiple(data,2);
+    ASSERT_TRUE(one.found);
+    ASSERT_EQ(two.size(),1u);
+    EXPECT_EQ(two.front().first_start,one.first_start);
+    EXPECT_EQ(two.front().second_start,one.second_start);
+    EXPECT_THROW(static_cast<void>(finder.findMultiple(Frames(13,std::vector<double>{1}),2)),
+                 std::length_error);
+}
