@@ -216,3 +216,36 @@ TEST(AcousticMotifFinder, SingleResultUsesSameOrderingAndThresholdAsFind) {
     EXPECT_THROW(static_cast<void>(finder.findMultiple(Frames{{1},{1,2}},1)),
                  std::invalid_argument);
 }
+
+TEST(AcousticMotifFinder, PrevalidatedFastPathStillRejectsInvalidMiddleFrames) {
+    auto o=options();
+    o.window_frames=2;
+    o.max_frames=8;
+    o.max_dimensions=3;
+    o.max_normalized_cost=0;
+    audition::temporal::AcousticMotifFinder finder{o};
+    const Frames correct{{1,2},{3,4},{9,9},{8,8},{1,2},{3,4}};
+    const auto baseline=finder.find(correct);
+    ASSERT_TRUE(baseline.found);
+    EXPECT_EQ(baseline.first_start,0u);
+    EXPECT_EQ(baseline.second_start,4u);
+    EXPECT_EQ(finder.findMultiple(correct,2).size(),1u);
+
+    Frames invalid=correct;
+    invalid[3].push_back(7);
+    EXPECT_THROW(static_cast<void>(finder.find(invalid)),std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(finder.findMultiple(invalid,2)),std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(finder.findMultiple(invalid,1)),std::invalid_argument);
+
+    invalid=correct;
+    invalid[3][1]=std::numeric_limits<double>::quiet_NaN();
+    EXPECT_THROW(static_cast<void>(finder.find(invalid)),std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(finder.findMultiple(invalid,2)),std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(finder.findMultiple(invalid,1)),std::invalid_argument);
+
+    // Invalid calls must not poison local scratch or subsequent invocations.
+    const auto recovered=finder.find(correct);
+    ASSERT_TRUE(recovered.found);
+    EXPECT_EQ(recovered.first_start,baseline.first_start);
+    EXPECT_EQ(recovered.second_start,baseline.second_start);
+}
