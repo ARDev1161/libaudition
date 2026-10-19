@@ -246,3 +246,113 @@ TEST(BoundedSpeechPcmIngress, WorkerForgetStopsSpeechAcrossPcmGap) {
     EXPECT_EQ(received.front().transcript.text,"4");
     EXPECT_EQ(runtime.statistics().completed_segments,1U);
 }
+
+TEST(BoundedSpeechPcmIngress, FifoRetirePreservesFinalUtteranceAndGeneration) {
+    SpeechPcmIngressOptions limits{};
+    limits.max_sources=2U;
+    limits.max_pending_chunks=1U;
+    limits.max_pending_samples=4U;
+    limits.max_chunk_samples=4U;
+    BoundedSpeechPcmIngress ingress{limits};
+    IngressVad vad{};
+    PerSourceSpeechOptions speech_options{};
+    speech_options.min_speech_samples=4U;
+    speech_options.pre_roll_samples=0U;
+    speech_options.post_roll_samples=0U;
+    PerSourceSpeechRuntime speech{vad,std::make_shared<IngressAsr>(),speech_options};
+    const std::vector<float> voice(4U,0.5F);
+    EXPECT_EQ(ingress.push(83U,block(voice)),SpeechPcmAdmission::Accepted);
+    // Control must enqueue even at the audio-chunk capacity; processing
+    // the command before the PCM would lose the final speech.
+    ASSERT_TRUE(ingress.retire(83U));
+    EXPECT_EQ(ingress.statistics().pending_chunks,1U);
+    EXPECT_EQ(ingress.statistics().pending_retirements,1U);
+    EXPECT_EQ(ingress.push(83U,block(voice)),
+              SpeechPcmAdmission::RejectedRetiring);
+    auto queued=ingress.tryPop();
+    ASSERT_TRUE(queued.has_value());
+    ASSERT_EQ(queued->kind,SpeechPcmIngressEvent::Kind::Audio);
+    speech.push(queued->source_id,queued->audio.view());
+    const auto active=speech.activeGeneration(83U);
+    ASSERT_TRUE(active.has_value());
+    auto control=ingress.tryPop();
+    ASSERT_TRUE(control.has_value());
+    EXPECT_EQ(control->kind,SpeechPcmIngressEvent::Kind::Retire);
+    const auto retired=speech.retire(control->source_id);
+    ASSERT_TRUE(retired.has_value());
+    EXPECT_EQ(*retired,*active);
+    EXPECT_FALSE(ingress.tryPop().has_value());
+    EXPECT_EQ(ingress.statistics().pending_retirements,0U);
+
+    std::vector<SourceSpeechResult> found;
+    for (int spin=0;spin<1000 && found.empty();++spin) {
+        found=speech.takeResults();
+        if (found.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(found.size(),1U);
+    EXPECT_EQ(found.front().transcript.text,"4");
+    EXPECT_EQ(found.front().generation,*retired);
+    const auto complete=speech.drainReady();
+    ASSERT_EQ(complete.ready_retired_generations.size(),1U);
+    EXPECT_EQ(complete.ready_retired_generations.front(),*retired);
+    speech.releaseRetired(*retired);
+
+    // Reusing an ODAS numeric ID after a finished retire must always
+    // produce a new speech-runtime generation.
+    EXPECT_EQ(ingress.push(83U,block(voice)),SpeechPcmAdmission::Accepted);
+    auto reused=ingress.tryPop();
+    ASSERT_TRUE(reused.has_value());
+    EXPECT_NE(reused->epoch,queued->epoch);
+    speech.push(reused->source_id,reused->audio.view());
+    const auto fresh=speech.activeGeneration(83U);
+    ASSERT_TRUE(fresh.has_value());
+    EXPECT_NE(*fresh,*retired);
+}
+
+TEST(BoundedSpeechPcmIngress, RetireControlsAreBoundedAndBlockNewSources) {
+    SpeechPcmIngressOptions cfg{};
+    cfg.max_sources=1U;
+    cfg.max_pending_chunks=1U;
+    BoundedSpeechPcmIngress ingress{cfg};
+    const std::vector<float> audio(4U,0.2F);
+    for(std::uint64_t source=1U;source<=48U;++source) {
+        ASSERT_EQ(ingress.push(source,block(audio)),SpeechPcmAdmission::Accepted);
+        ASSERT_TRUE(ingress.retire(source));
+        EXPECT_FALSE(ingress.retire(source));
+        EXPECT_EQ(ingress.statistics().pending_retirements,1U);
+        EXPECT_EQ(ingress.statistics().outstanding_source_slots,1U);
+        EXPECT_EQ(ingress.push(source+1000U,block(audio)),
+                  SpeechPcmAdmission::RejectedSourceLimit);
+        const auto frame=ingress.tryPop();
+        ASSERT_TRUE(frame.has_value());
+        EXPECT_EQ(frame->kind,SpeechPcmIngressEvent::Kind::Audio);
+        const auto control=ingress.tryPop();
+        ASSERT_TRUE(control.has_value());
+        EXPECT_EQ(control->kind,SpeechPcmIngressEvent::Kind::Retire);
+        EXPECT_EQ(control->source_id,source);
+        EXPECT_FALSE(ingress.tryPop().has_value());
+        EXPECT_EQ(ingress.statistics().outstanding_source_slots,0U);
+    }
+}
+
+TEST(BoundedSpeechPcmIngress, ExplicitForgetCancelsAnUnprocessedRetirement) {
+    SpeechPcmIngressOptions cfg{};
+    cfg.max_sources=1U;
+    cfg.max_chunk_samples=4U;
+    BoundedSpeechPcmIngress ingress{cfg};
+    const std::vector<float> audio(4U,0.3F);
+    ASSERT_EQ(ingress.push(55U,block(audio)),SpeechPcmAdmission::Accepted);
+    ASSERT_TRUE(ingress.retire(55U));
+    ingress.forget(55U);
+    EXPECT_EQ(ingress.statistics().pending_retirements,0U);
+    EXPECT_EQ(ingress.statistics().pending_chunks,0U);
+    EXPECT_EQ(ingress.statistics().pending_invalidations,1U);
+    EXPECT_EQ(ingress.statistics().invalidated_chunks,1U);
+    auto control=ingress.tryPop();
+    ASSERT_TRUE(control.has_value());
+    EXPECT_EQ(control->kind,SpeechPcmIngressEvent::Kind::Forget);
+    EXPECT_EQ(control->source_id,55U);
+    EXPECT_FALSE(ingress.tryPop().has_value());
+    EXPECT_EQ(ingress.push(56U,block(audio)),SpeechPcmAdmission::Accepted);
+}
