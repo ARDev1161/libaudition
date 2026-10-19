@@ -21,7 +21,8 @@ The application drains results with `takeResults()`.
 Safety and lifecycle:
 - Independent VAD state and PCM accumulation for each source;
 - At most `max_sources` active source sessions and `max_pending_segments`
-  waiting jobs/results;
+  waiting jobs/results. Unreleased retired generations are separately capped
+  by `max_retired_generations` (default 64);
 - `max_segment_samples` caps speech buffers to prevent unbounded growth;
 - `forget(track_id)` invalidates pending/inflight results from retired IDs;
 - `reset()` invalidates source generations and jobs after a discontinuity;
@@ -227,7 +228,14 @@ uses `drainReady()` to atomically collect results and finished generations;
 this avoids dropping an ASR result in the gap between separate polling calls.
 `activeGeneration(track_id)` validates current-source identity across reused
 numeric IDs. After consuming results and final sidecar persistence the consumer must call
-`releaseRetired(generation)` to free retirement state.
+`releaseRetired(generation)` to free retirement state. At the configured
+`max_retired_generations` cap, `retire(track_id)` returns `std::nullopt`
+**without modifying the active track or queuing its final segment**.
+Applications must check this return value, drain finished generations and
+release them before retrying, or explicitly `forget(track_id)` if audio can
+be discarded. `statistics().retired_generations` exposes the current
+metadata pressure. A caller that ignores rejected retirement cannot claim
+that its final utterance or sidecar was persisted.
 
 The Qt capture adapter delays the retired recording's final JSON write until
 that generation has drained; ALSA xrun retirement uses the same mechanism.
