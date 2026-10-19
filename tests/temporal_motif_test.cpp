@@ -1,5 +1,8 @@
 #include <audition/temporal/acoustic_motif_finder.hpp>
 #include <gtest/gtest.h>
+#include <array>
+#include <cstddef>
+#include <utility>
 #include <limits>
 #include <stdexcept>
 #include <vector>
@@ -82,4 +85,56 @@ TEST(AcousticMotifFinder, MultipleHonorsResultCapacityAndValidation) {
     EXPECT_THROW(static_cast<void>(finder.findMultiple(data,0)),std::invalid_argument);
     EXPECT_THROW(static_cast<void>(finder.findMultiple(Frames{{1},{1,2}},1)),
                  std::invalid_argument);
+}
+
+TEST(AcousticMotifFinder, ExhaustiveBinaryWindowOracle) {
+    // 2^8 complete feature streams. At radius=0/cost=0 a two-frame
+    // window matches iff both features match exactly. The oracle uses
+    // direct equality and a frame-occupancy array, not DTW or motif code.
+    auto o=options();
+    o.max_frames=8;
+    o.window_frames=2;
+    o.warping_radius=0;
+    o.max_normalized_cost=0;
+    o.stride=1;
+    audition::temporal::AcousticMotifFinder finder{o};
+    constexpr std::size_t frame_count=8;
+    for (unsigned mask=0;mask<256u;++mask) {
+        Frames frames(frame_count,std::vector<double>(1));
+        for (std::size_t i=0;i<frame_count;++i)
+            frames[i][0]=static_cast<double>((mask>>i)&1u);
+        std::vector<std::pair<std::size_t,std::size_t>> candidates;
+        for (std::size_t a=0;a+3<frame_count;++a)
+            for (std::size_t b=a+2;b+1<frame_count;++b)
+                if (frames[a][0]==frames[b][0] &&
+                    frames[a+1][0]==frames[b+1][0])
+                    candidates.emplace_back(a,b);
+
+        const auto best=finder.find(frames);
+        ASSERT_EQ(best.found,!candidates.empty()) << "mask="<<mask;
+        if (!candidates.empty()) {
+            EXPECT_EQ(best.first_start,candidates.front().first) << "mask="<<mask;
+            EXPECT_EQ(best.second_start,candidates.front().second) << "mask="<<mask;
+            EXPECT_DOUBLE_EQ(best.normalized_cost,0);
+        }
+
+        std::array<bool,frame_count> used{};
+        std::vector<std::pair<std::size_t,std::size_t>> expected;
+        for (const auto& pair:candidates) {
+            const auto a=pair.first;
+            const auto b=pair.second;
+            if (used[a] || used[a+1] || used[b] || used[b+1]) continue;
+            used[a]=used[a+1]=used[b]=used[b+1]=true;
+            expected.push_back(pair);
+            if (expected.size()==2) break;
+        }
+        const auto found=finder.findMultiple(frames,2);
+        ASSERT_EQ(found.size(),expected.size()) << "mask="<<mask;
+        for (std::size_t i=0;i<expected.size();++i) {
+            EXPECT_EQ(found[i].first_start,expected[i].first) << "mask="<<mask;
+            EXPECT_EQ(found[i].second_start,expected[i].second) << "mask="<<mask;
+            EXPECT_DOUBLE_EQ(found[i].normalized_cost,0);
+            EXPECT_TRUE(found[i].found);
+        }
+    }
 }
