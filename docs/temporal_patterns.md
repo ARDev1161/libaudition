@@ -174,9 +174,27 @@ The probe remains registered in CTest. To view its numeric diagnostics, run `cte
 
 `StreamingPatternMatcher` retains a single `DtwWorkspace` across sequential `push()` calls rather than allocating a new scratch object for every frame. The instance already owns mutable per-source state and remains **not thread-safe**: synchronize concurrent access or use one matcher per processing thread. DTW arithmetic failures still occur before accepted history/cooldown is committed. The allocation impact should be measured with the standalone probe; it has not yet been quantified.
 
-### Reusable suffix feature buffers
+### Virtual suffix DTW without feature-window copies
 
-Candidate suffix windows now retain their outer and per-frame vector capacity across sequential `push()` calls, keyed by candidate length. Each call invalidates cached content and refills only lengths requested by templates, preventing reuse of stale source frames when streams interleave. Buffer contents are scratch state (not committed source history), so failed DTW comparisons still leave source history and cooldown unmodified. This trades retained bounded scratch memory for fewer repeat allocations, but still copies feature values into DTW-compatible contiguous candidate vectors; allocation reductions are not yet benchmark-verified.
+`StreamingPatternMatcher` now reads each candidate suffix directly from the
+retained source deque plus the incoming feature frame. The DTW engine shares
+a two-row indexed DP kernel between its ordinary validated public API and
+a private streaming-only `compareValidatedSuffix()` accessor. The matcher
+validates incoming frames and registered templates, then evaluates candidate
+lengths without copying their feature vectors into any temporary window
+buffers. The former per-length suffix cache and its retained O(max_frames² ×
+feature_dimensions) scratch storage have been removed.
+
+The accepted incoming frame is still staged/committed into the bounded
+per-source history, and returning match labels/results may allocate.
+Mutable history and DP workspace remain instance-local: a single matcher
+is **not thread-safe**. Per-source histories remain independent, and a
+DTW overflow throws before history or cooldown is committed.
+`StreamingPatternMatcher.VirtualSuffixMatchesIndependentCopiedWindowDtw`
+compares 1500 seeded, multi-source, variable-length matching steps against
+the validated, copied-window DTW API. CI additionally reports per-call
+C++ allocations and mean processing latency on a fixed workload. New
+allocation and latency figures must be verified by the next CI run.
 
 The allocation probe additionally reports `max_cpp_new_per_push` and `zero_allocation_pushes` for the measured 1000 calls. Counts include any C++ allocation within each synchronous `push()` call; they are diagnostic rather than CI acceptance thresholds. For comparable baselines, use the same build configuration and runner, and inspect verbose CTest output.
 
