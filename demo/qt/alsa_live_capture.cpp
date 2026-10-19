@@ -317,6 +317,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_SHERPA
         using SpeechEpochKey = std::pair<std::uint64_t, std::uint64_t>;
         std::map<SpeechEpochKey, audition::RecordingId> epoch_recordings;
+        // Worker Forget can cancel an unconsumed FIFO Retire. Keep the
+        // affected deferred WAV identities so they can be finalized.
+        std::set<audition::RecordingId> deferred_ack_recordings;
         std::uint64_t retirement_capacity_drops = 0;
         std::uint64_t speech_worker_errors = 0;
         std::string last_speech_worker_error;
@@ -333,6 +336,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Retired:
                     if (mapped!=epoch_recordings.end()) {
                         recordings.acknowledgeRetired(mapped->second,event.generation);
+                        deferred_ack_recordings.erase(mapped->second);
                         epoch_recordings.erase(mapped);
                     }
                     if (!event.generation) ++retirement_capacity_drops;
@@ -343,9 +347,14 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     for (auto it=epoch_recordings.begin();
                          it!=epoch_recordings.end();) {
                         if (it->first.first==event.source_id &&
-                            it->first.second!=event.epoch)
+                            it->first.second!=event.epoch) {
+                            // An old Retire may have been canceled by a
+                            // producer discontinuity before its worker ack.
+                            // Persist that old WAV without unfinished ASR.
+                            if (deferred_ack_recordings.erase(it->second))
+                                recordings.acknowledgeRetired(it->second,std::nullopt);
                             it=epoch_recordings.erase(it);
-                        else ++it;
+                        } else ++it;
                     }
                     break;
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Error:
@@ -399,8 +408,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 const auto epoch=speech_worker->retire(trackId);
                 if (epoch) {
                     const auto recording_id=recordings.retireDeferred(trackId);
-                    if (recording_id)
+                    if (recording_id) {
                         epoch_recordings[{trackId,*epoch}]=*recording_id;
+                        deferred_ack_recordings.insert(*recording_id);
+                    }
                 } else {
                     // No PCM was admitted to the worker for this lifecycle.
                     recordings.retire(trackId,std::nullopt);
