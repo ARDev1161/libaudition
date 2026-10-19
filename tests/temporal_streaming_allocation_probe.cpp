@@ -69,7 +69,7 @@ int main() {
     // Construct the input feature storage outside the measurement window.
     // A braced temporary vector passed to push() would itself allocate once.
     std::vector<double> input_frame(2);
-    const auto before=allocations.load(std::memory_order_relaxed);
+    // Count only the returning API, excluding the interleaved reuse calls.
     std::size_t max_new_per_push=0;
     std::size_t zero_allocation_pushes=0;
     std::size_t matching_pushes=0;
@@ -121,7 +121,7 @@ int main() {
             if (used>max_new_per_push) max_new_per_push=used;
             if (used==0) ++zero_allocation_pushes;
         }
-    const auto allocated=allocations.load(std::memory_order_relaxed)-before;
+    const auto allocated=matching_allocations+nonmatching_allocations;
     const auto calls=source_count*measured_frames;
     std::cout<<"[temporal-stream-allocations] sources="<<source_count
              <<" templates=8 calls="<<calls
