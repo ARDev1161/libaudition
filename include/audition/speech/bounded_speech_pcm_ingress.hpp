@@ -156,10 +156,10 @@ public:
 
 private:
     std::size_t outstandingSourceSlotsLocked() const {
-        std::size_t slots=sources_.size();
+        std::size_t source_slot_count=sources_.size();
         for (const auto& item:invalidations_)
-            if (!sources_.count(item.first)) ++slots;
-        return slots;
+            if (!sources_.count(item.first)) ++source_slot_count;
+        return source_slot_count;
     }
     bool hasSourceSlotLocked(std::uint64_t id) const {
         return invalidations_.count(id) ||
