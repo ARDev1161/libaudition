@@ -45,6 +45,13 @@ public:
         const std::vector<std::vector<double>>& frames,
         std::size_t max_matches) const {
         if (!max_matches) throw std::invalid_argument("motif result capacity must be positive");
+        // A single result is exactly the best pair returned by find().
+        // Avoid retaining/sorting O(candidate_pairs) matches for this common
+        // bounded-memory use case; find() keeps only its best pair.
+        if (max_matches==1) {
+            const auto best=find(frames);
+            return best.found ? std::vector<MotifMatch>{best} : std::vector<MotifMatch>{};
+        }
         if (frames.size()>options_.max_frames)
             throw std::length_error("motif frame capacity exceeded");
         if (frames.empty()) return {};

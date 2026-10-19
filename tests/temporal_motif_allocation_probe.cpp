@@ -56,8 +56,10 @@ int main() {
 
     constexpr std::size_t repetitions=8;
     std::size_t single_allocations=0;
+    std::size_t one_allocations=0;
     std::size_t multiple_allocations=0;
     std::chrono::steady_clock::duration single_elapsed{};
+    std::chrono::steady_clock::duration one_elapsed{};
     std::chrono::steady_clock::duration multiple_elapsed{};
     for (std::size_t i=0;i<repetitions;++i) {
         auto before=new_calls.load(std::memory_order_relaxed);
@@ -67,6 +69,16 @@ int main() {
         single_allocations+=new_calls.load(std::memory_order_relaxed)-before;
         if (!result.found || result.first_start!=0 || result.second_start!=12)
             return 3;
+
+        before=new_calls.load(std::memory_order_relaxed);
+        start=std::chrono::steady_clock::now();
+        const auto one=finder.findMultiple(frames,1);
+        one_elapsed+=std::chrono::steady_clock::now()-start;
+        one_allocations+=new_calls.load(std::memory_order_relaxed)-before;
+        if (one.size()!=1 || one.front().first_start!=result.first_start ||
+            one.front().second_start!=result.second_start ||
+            one.front().normalized_cost!=result.normalized_cost)
+            return 5;
 
         before=new_calls.load(std::memory_order_relaxed);
         start=std::chrono::steady_clock::now();
@@ -82,10 +94,16 @@ int main() {
              <<" find_new_calls="<<single_allocations
              <<" find_new_calls_per_invocation="<<
                  static_cast<double>(single_allocations)/static_cast<double>(repetitions)
+             <<" find_multiple_one_new_calls="<<one_allocations
+             <<" find_multiple_one_new_calls_per_invocation="<<
+                 static_cast<double>(one_allocations)/static_cast<double>(repetitions)
              <<" find_multiple_new_calls="<<multiple_allocations
              <<" find_multiple_new_calls_per_invocation="<<
                  static_cast<double>(multiple_allocations)/static_cast<double>(repetitions)
              <<" find_mean_us="<<std::chrono::duration<double,std::micro>(single_elapsed).count()/
+                 static_cast<double>(repetitions)
+             <<" find_multiple_one_mean_us="<<
+                 std::chrono::duration<double,std::micro>(one_elapsed).count()/
                  static_cast<double>(repetitions)
              <<" find_multiple_mean_us="<<
                  std::chrono::duration<double,std::micro>(multiple_elapsed).count()/

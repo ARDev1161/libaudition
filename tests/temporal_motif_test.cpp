@@ -190,3 +190,29 @@ TEST(AcousticMotifFinder, ReusedWindowsPreserveMultidimensionalMatchesAcrossCall
         EXPECT_TRUE(finder.findMultiple(unrelated,2).empty());
     }
 }
+
+TEST(AcousticMotifFinder, SingleResultUsesSameOrderingAndThresholdAsFind) {
+    auto o=options();
+    o.max_frames=64;
+    o.window_frames=2;
+    o.max_normalized_cost=0;
+    audition::temporal::AcousticMotifFinder finder{o};
+    // Every pair is a candidate: the single-result API must select the
+    // deterministic earliest pair without retaining the quadratic list.
+    const Frames repeated(64,std::vector<double>{1});
+    const auto best=finder.find(repeated);
+    ASSERT_TRUE(best.found);
+    const auto one=finder.findMultiple(repeated,1);
+    ASSERT_EQ(one.size(),1u);
+    EXPECT_EQ(one[0].first_start,best.first_start);
+    EXPECT_EQ(one[0].second_start,best.second_start);
+    EXPECT_DOUBLE_EQ(one[0].normalized_cost,best.normalized_cost);
+    EXPECT_EQ(one[0].first_start,0u);
+    EXPECT_EQ(one[0].second_start,2u);
+
+    const Frames distinct{{0},{1},{2},{3},{4},{5}};
+    EXPECT_FALSE(finder.find(distinct).found);
+    EXPECT_TRUE(finder.findMultiple(distinct,1).empty());
+    EXPECT_THROW(static_cast<void>(finder.findMultiple(Frames{{1},{1,2}},1)),
+                 std::invalid_argument);
+}
