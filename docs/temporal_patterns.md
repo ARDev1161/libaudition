@@ -163,3 +163,21 @@ The standalone probe additionally groups measured `operator new` calls into push
 Ubuntu CI #1333 measured the corrected caller-buffer-excluded baseline: 1000 `push()` calls across 10 sources and 8 templates produced 260 C++ `operator new` calls (0.26 per push), with 870 allocation-free nonmatching pushes and 130 matching pushes accounting for all 260 allocations. The probe does **not** capture direct `malloc`, bytes allocated or system allocator behavior.
 
 When `cooldown_frames == 0`, repeated notifications are intentionally never suppressed. The matcher therefore no longer copies or updates `last_emission` for matching frames in that configuration. Positive cooldown values retain pre-commit staging of emission bookkeeping for transactional history/cooldown semantics. The effect of this optimization must be verified by a new corrected probe run, not inferred from the source change.
+
+### Caller-owned result storage
+
+For sustained audio streams, use `pushInto(source, features, results)` rather than
+`push(source, features)` when result-vector allocations matter. Preallocate
+`results.reserve(max_templates)` once and reuse the vector across calls.
+The matcher clears it after input validation, then fills it with detections;
+an empty result is an empty vector, not stale results from the preceding frame.
+The original returning-vector API remains available and behaves identically.
+
+The matcher commits history and cooldown only after comparisons and result
+construction succeed. If an exception occurs during comparison or output
+growth, source state is unchanged, but the caller-owned result vector may
+contain partial detections and must be discarded. Neither API is safe for
+concurrent calls on the same matcher without external synchronization.
+The new API reduces avoidable result-vector allocation opportunities but
+does not promise allocation-free operation for arbitrary label lengths,
+template counts, or workloads. A dedicated measured comparison is pending.
