@@ -50,6 +50,31 @@ is already merged into the #55 feature branch, **not directly into main**.
 PRs #57, #58 and #59 are descendants of #55. CI on #59 therefore tests
 that descendant snapshot, not a merge of sibling #54 or a release from main.
 
+### Speech runtime reconciliation: observed implementation differences
+
+The #54 branch introduces `SourceSpeechRuntime`
+(`audition/speech/source_speech_runtime.hpp`, 2 internal workers). Its
+capture-facing `push()` queues audio for asynchronous VAD and ASR, returns a
+backpressure/capacity `bool`, and exposes `status()` /
+`drainTranscripts()`. The #55 branch instead implements
+`PerSourceSpeechRuntime`
+(`audition/speech/per_source_speech_runtime.hpp`, an ASR worker).
+It processes VAD on the calling path, exposes `trackStatus()` /
+`takeResults()`, and has generation-retirement APIs. They are **distinct
+contracts**, not merely two spellings of one API.
+
+The #54 tests emphasize asynchronous VAD queueing, a two-source
+transcription path, in-flight cancellation after `forget()`, error
+isolation and source capacity. #55 has a much larger suite covering
+sample-exact pre/post-roll, chunk boundaries, segment caps, source errors
+and generation retirement. Before deciding which public API survives,
+review requirements for capture-thread blocking, queue backpressure,
+timestamp/sample-clock origin and result lifecycle. If keeping #55 only,
+record how #54's nonblocking ingestion requirement is satisfied (by a
+caller-controlled bounded worker/queue or a separate explicit API) and
+preserve equivalent behavioral regression tests. Do **not** claim #54
+has been functionally subsumed merely because #55 has more tests.
+
 Before integration, confirm branch heads and PR bases have not changed;
 perform a conflict/source/CTest inventory review, merge in dependency
 order only with user approval, retarget surviving PRs, and run full CI
