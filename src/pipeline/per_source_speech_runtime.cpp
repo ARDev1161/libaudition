@@ -7,6 +7,19 @@
 namespace audition {
 namespace {
 // Subtract instead of summing untrusted lengths: avoids size_t overflow.
+// VAD and ASR must agree on the mono input shape before any worker starts.
+// Empty sample-rate capabilities follow the AudioRequirements any-rate contract.
+bool acceptsMonoInterleaved(const AudioRequirements& requirements,
+                             std::uint32_t sample_rate) {
+    const auto& rates = requirements.supported_sample_rates_hz;
+    return (rates.empty() ||
+            std::find(rates.begin(), rates.end(), sample_rate) != rates.end()) &&
+           requirements.min_channels <= 1U &&
+           requirements.max_channels >= 1U &&
+           std::find(requirements.supported_layouts.begin(),
+                     requirements.supported_layouts.end(),
+                     AudioLayout::Interleaved) != requirements.supported_layouts.end();
+}
 bool transcriptWithinBudget(const Transcript& transcript,
                             std::size_t bytes, std::size_t items) noexcept {
     if (transcript.tokens.size() > items ||
@@ -44,11 +57,12 @@ PerSourceSpeechRuntime::PerSourceSpeechRuntime(
         options_.max_input_chunk_samples = options_.sample_rate_hz;
     if (options_.max_input_chunk_samples > options_.sample_rate_hz)
         throw std::invalid_argument{"Speech input chunk limit exceeds one second"};
-    const auto rates = vad_.audioRequirements().supported_sample_rates_hz;
-    if (!rates.empty() &&
-        std::find(rates.begin(), rates.end(), options_.sample_rate_hz) == rates.end()) {
-        throw std::invalid_argument{"VAD does not support configured sample rate"};
-    }
+    if (!acceptsMonoInterleaved(vad_.audioRequirements(),
+                                options_.sample_rate_hz))
+        throw std::invalid_argument{"VAD does not accept mono interleaved speech PCM at configured rate"};
+    if (!acceptsMonoInterleaved(asr_->capabilities().audio,
+                                options_.sample_rate_hz))
+        throw std::invalid_argument{"ASR does not accept mono interleaved speech PCM at configured rate"};
     worker_ = std::thread{[this] { workerLoop(); }};
 }
 
