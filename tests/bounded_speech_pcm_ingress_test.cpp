@@ -1,9 +1,12 @@
 #include <audition/speech/bounded_speech_pcm_ingress.hpp>
+#include <audition/speech/per_source_speech_runtime.hpp>
 #include <gtest/gtest.h>
 #include <chrono>
 #include <future>
 #include <limits>
 #include <thread>
+#include <memory>
+#include <string>
 #include <vector>
 
 using namespace audition;
@@ -155,4 +158,91 @@ TEST(BoundedSpeechPcmIngress, PendingForgetCannotAccumulateUnboundedDistinctIds)
         EXPECT_FALSE(ingress.tryPop().has_value());
         EXPECT_EQ(ingress.statistics().outstanding_source_slots,0U);
     }
+}
+
+
+namespace {
+class IngressVadSession final : public IVadSession {
+public:
+    void reset() override {}
+    VadResult process(AudioView audio) override {
+        bool speech=false;
+        for(std::size_t i=0;i<audio.sampleCount();++i)
+            speech=speech || audio.data()[i]>0.2F;
+        return {std::nullopt,speech};
+    }
+};
+class IngressVad final : public IVoiceActivityDetector {
+public:
+    BackendInfo backendInfo() const override { return {"ingress-vad","1"}; }
+    AudioRequirements audioRequirements() const override { return {}; }
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<IngressVadSession>();
+    }
+};
+class IngressAsr final : public IAsrEngine {
+public:
+    BackendInfo backendInfo() const override { return {"ingress-asr","1"}; }
+    AsrCapabilities capabilities() const override { return {}; }
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        Transcript result{};
+        result.segment_id=segment.segment_id;
+        result.text=std::to_string(segment.audio.samples().size());
+        return result;
+    }
+};
+}
+
+TEST(BoundedSpeechPcmIngress, WorkerForgetStopsSpeechAcrossPcmGap) {
+    SpeechPcmIngressOptions limits{};
+    limits.max_pending_chunks=1U;
+    limits.max_pending_samples=4U;
+    limits.max_chunk_samples=4U;
+    BoundedSpeechPcmIngress ingress{limits};
+    IngressVad vad{};
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples=4U;
+    options.pre_roll_samples=0U;
+    options.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<IngressAsr>(),options};
+    const std::vector<float> speech(4U,0.5F),quiet(4U,0.0F);
+
+    const auto dispatch=[&]() {
+        auto event=ingress.tryPop();
+        if (!event) return false;
+        if (event->kind==SpeechPcmIngressEvent::Kind::Forget)
+            runtime.forget(event->source_id);
+        else
+            runtime.push(event->source_id,event->audio.view());
+        return true;
+    };
+    EXPECT_EQ(ingress.push(87U,block(speech)),SpeechPcmAdmission::Accepted);
+    ASSERT_TRUE(dispatch());
+    const auto first=runtime.activeGeneration(87U);
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(runtime.trackStatus(87U).buffered_samples,4U);
+
+    EXPECT_EQ(ingress.push(87U,block(speech)),SpeechPcmAdmission::Accepted);
+    EXPECT_EQ(ingress.push(87U,block(speech)),SpeechPcmAdmission::RejectedCapacity);
+    EXPECT_EQ(ingress.statistics().invalidated_chunks,1U);
+    EXPECT_EQ(ingress.push(87U,block(speech)),SpeechPcmAdmission::Accepted);
+    ASSERT_TRUE(dispatch()); // Prioritized Forget before post-gap audio.
+    EXPECT_FALSE(runtime.activeGeneration(87U).has_value());
+    ASSERT_TRUE(dispatch());
+    const auto fresh=runtime.activeGeneration(87U);
+    ASSERT_TRUE(fresh.has_value());
+    EXPECT_NE(*fresh,*first);
+    EXPECT_EQ(ingress.push(87U,block(quiet)),SpeechPcmAdmission::Accepted);
+    ASSERT_TRUE(dispatch());
+
+    std::vector<SourceSpeechResult> received;
+    for (int spin=0;spin<1000 && received.empty();++spin) {
+        received=runtime.takeResults();
+        if (received.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(received.size(),1U);
+    EXPECT_EQ(received.front().generation,*fresh);
+    EXPECT_EQ(received.front().transcript.text,"4");
+    EXPECT_EQ(runtime.statistics().completed_segments,1U);
 }

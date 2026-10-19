@@ -1,6 +1,7 @@
 // Standalone consumer compiled against the installed C++17 package.
 // No access to libaudition's source tree, GTest, Qt or model weights.
 #include <audition/speech/per_source_speech_runtime.hpp>
+#include <audition/speech/bounded_speech_pcm_ingress.hpp>
 #include <algorithm>
 #include <chrono>
 #include <memory>
@@ -59,6 +60,19 @@ std::vector<audition::SourceSpeechResult> poll(
 
 bool verifyInstalledSpeech() {
     try {
+        audition::BoundedSpeechPcmIngress ingress{};
+        const std::vector<float> initial(4U,0.3F);
+        if (ingress.push(11U,chunk(initial))!=audition::SpeechPcmAdmission::Accepted)
+            return false;
+        auto accepted=ingress.tryPop();
+        if (!accepted || accepted->kind!=audition::SpeechPcmIngressEvent::Kind::Audio ||
+            accepted->audio.samples().size()!=4U) return false;
+        ingress.forget(11U);
+        auto reset=ingress.tryPop();
+        if (!reset || reset->kind!=audition::SpeechPcmIngressEvent::Kind::Forget)
+            return false;
+        ingress.close();
+        if (ingress.waitPop().has_value()) return false;
         TestVad vad{};
         audition::PerSourceSpeechOptions options{};
         options.min_speech_samples=4U;
