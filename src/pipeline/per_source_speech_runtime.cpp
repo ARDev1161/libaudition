@@ -38,6 +38,12 @@ PerSourceSpeechRuntime::PerSourceSpeechRuntime(
         options_.post_roll_samples > options_.max_segment_samples) {
         throw std::invalid_argument{"Invalid per-source speech runtime configuration"};
     }
+    // Bound synchronous inspection and VAD work per call. Longer source
+    // audio must be divided into contiguous chunks by the application.
+    if (options_.max_input_chunk_samples == 0U)
+        options_.max_input_chunk_samples = options_.sample_rate_hz;
+    if (options_.max_input_chunk_samples > options_.sample_rate_hz)
+        throw std::invalid_argument{"Speech input chunk limit exceeds one second"};
     const auto rates = vad_.audioRequirements().supported_sample_rates_hz;
     if (!rates.empty() &&
         std::find(rates.begin(), rates.end(), options_.sample_rate_hz) == rates.end()) {
@@ -77,6 +83,8 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
 }
 
 void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
+    if (audio.sampleCount() > options_.max_input_chunk_samples)
+        throw std::length_error{"Speech PCM chunk exceeds configured input capacity"};
     if (audio.sampleCount() == 0U) return;
     if (!audio.data() || audio.format().sample_rate_hz != options_.sample_rate_hz ||
         audio.format().channel_count != 1U ||

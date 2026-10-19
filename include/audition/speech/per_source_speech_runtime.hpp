@@ -21,6 +21,9 @@ namespace audition {
 // No ODAS, Qt, ROS or sherpa dependency.
 struct PerSourceSpeechOptions {
     std::uint32_t sample_rate_hz{16000};
+    // 0: one second of mono PCM at sample_rate_hz; custom limits must
+    // be positive and no greater than one second.
+    std::size_t max_input_chunk_samples{0};
     std::size_t max_sources{16};
     std::size_t max_pending_segments{16};
     // Caps retired generations awaiting client-side sidecar/result release.
@@ -84,6 +87,7 @@ public:
 
     // Serialized producer calls: VAD processing and state mutation happen
     // synchronously. Never call this from a hard real-time capture callback.
+    // Oversized chunks are rejected before VAD and source mutation.
     // Samples are copied only for speech and configured pre/post-roll.
     // A track with an active VAD session is never shared with another track.
     void push(std::uint64_t track_id, AudioView audio);

@@ -24,6 +24,11 @@ Safety and lifecycle:
   waiting jobs/results. Unreleased retired generations are separately capped
   by `max_retired_generations` (default 64);
 - `max_segment_samples` caps speech buffers to prevent unbounded growth;
+- `max_input_chunk_samples` bounds synchronous `push()` work: zero resolves
+  to one second at the configured sample rate (16,000 mono samples by
+  default), and smaller nonzero limits are supported. Oversized chunks
+  raise `std::length_error` before VAD or source-state mutation. Split
+  longer input into contiguous blocks, and reset/forget on actual PCM loss;
 - `forget(track_id)` invalidates pending/inflight results from retired IDs;
 - `reset()` invalidates source generations and jobs after a discontinuity;
 - Per-runtime `statistics()` reports completions, losses, last ASR error,

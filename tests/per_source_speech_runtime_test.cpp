@@ -494,6 +494,9 @@ TEST(PerSourceSpeechRuntime, RejectsInvalidConstructorLimits) {
     options.max_pending_segments = 0U;
     reject(options);
     options = {};
+    options.max_input_chunk_samples = 16001U;
+    reject(options);
+    options = {};
     options.max_retired_generations = 0U;
     reject(options);
     options = {};
@@ -1216,4 +1219,42 @@ TEST(PerSourceSpeechRuntime, FullRetirementTableCanDiscardVanishedSourceSafely) 
     ASSERT_EQ(recovered.size(),1U);
     EXPECT_EQ(recovered.front().generation,*fresh);
     EXPECT_EQ(recovered.front().transcript.text,"2");
+}
+
+TEST(PerSourceSpeechRuntime, OversizedInputChunkPreservesExistingAndUnseenSources) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions cfg{};
+    cfg.max_input_chunk_samples=8U;
+    cfg.min_speech_samples=4U;
+    cfg.max_segment_samples=64U;
+    cfg.pre_roll_samples=0U;
+    cfg.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),cfg};
+    const std::vector<float> voice(4U,0.5F),quiet(4U,0.0F);
+    const std::vector<float> too_long(9U,0.5F);
+    runtime.push(510U,chunk(voice));
+    const auto generation=runtime.activeGeneration(510U);
+    ASSERT_TRUE(generation.has_value());
+    EXPECT_EQ(runtime.trackStatus(510U).buffered_samples,4U);
+    EXPECT_THROW(runtime.push(510U,chunk(too_long)),std::length_error);
+    EXPECT_THROW(runtime.push(511U,chunk(too_long)),std::length_error);
+    EXPECT_EQ(runtime.activeGeneration(510U),generation);
+    EXPECT_EQ(runtime.trackStatus(510U).buffered_samples,4U);
+    EXPECT_FALSE(runtime.activeGeneration(511U).has_value());
+    EXPECT_FALSE(runtime.trackStatus(511U).exists);
+    EXPECT_EQ(runtime.statistics().completed_segments,0U);
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+    runtime.push(510U,chunk(quiet));
+    const auto done=awaitSpeech(runtime,1U);
+    ASSERT_EQ(done.size(),1U);
+    EXPECT_EQ(done.front().generation,*generation);
+    EXPECT_EQ(done.front().transcript.text,"510:4");
+    EXPECT_NO_THROW(runtime.push(512U,chunk(std::vector<float>(8U,0.0F))));
+    EXPECT_TRUE(runtime.trackStatus(512U).exists);
+
+    // Unspecified limit equals one second at the configured sample rate.
+    PerSourceSpeechRuntime standard{vad,std::make_shared<MockAsr>()};
+    const std::vector<float> default_too_long(16001U,0.5F);
+    EXPECT_THROW(standard.push(513U,chunk(default_too_long)),std::length_error);
+    EXPECT_FALSE(standard.activeGeneration(513U).has_value());
 }
