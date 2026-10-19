@@ -1258,3 +1258,91 @@ TEST(PerSourceSpeechRuntime, OversizedInputChunkPreservesExistingAndUnseenSource
     EXPECT_THROW(standard.push(513U,chunk(default_too_long)),std::length_error);
     EXPECT_FALSE(standard.activeGeneration(513U).has_value());
 }
+
+namespace {
+class ConstrainedVad final : public IVoiceActivityDetector {
+public:
+    explicit ConstrainedVad(AudioRequirements requirements)
+        : requirements_(std::move(requirements)) {}
+    BackendInfo backendInfo() const override { return {"constrained-vad","1"}; }
+    AudioRequirements audioRequirements() const override { return requirements_; }
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<ThresholdSession>();
+    }
+private:
+    AudioRequirements requirements_{};
+};
+class ConstrainedAsr final : public IAsrEngine {
+public:
+    explicit ConstrainedAsr(AudioRequirements requirements)
+        : requirements_(std::move(requirements)) {}
+    BackendInfo backendInfo() const override { return {"constrained-asr","1"}; }
+    AsrCapabilities capabilities() const override {
+        AsrCapabilities capabilities{};
+        capabilities.audio=requirements_;
+        return capabilities;
+    }
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        Transcript result{};
+        result.segment_id=segment.segment_id;
+        result.text="compatible";
+        return result;
+    }
+private:
+    AudioRequirements requirements_{};
+};
+} // namespace
+
+TEST(PerSourceSpeechRuntime, RejectsIncompatibleVadAndAsrAudioCapabilities) {
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples=4U;
+    options.pre_roll_samples=0U;
+    options.post_roll_samples=0U;
+    const auto good=AudioRequirements{};
+    ConstrainedVad good_vad{good};
+    const auto good_asr=std::make_shared<ConstrainedAsr>(good);
+    const auto fails_vad=[&](AudioRequirements requirement) {
+        ConstrainedVad vad{std::move(requirement)};
+        EXPECT_THROW((PerSourceSpeechRuntime{vad,good_asr,options}),
+                     std::invalid_argument);
+    };
+    const auto fails_asr=[&](AudioRequirements requirement) {
+        auto asr=std::make_shared<ConstrainedAsr>(std::move(requirement));
+        EXPECT_THROW((PerSourceSpeechRuntime{good_vad,asr,options}),
+                     std::invalid_argument);
+    };
+    AudioRequirements wrong_rate{};
+    wrong_rate.supported_sample_rates_hz={8000U,48000U};
+    fails_vad(wrong_rate);
+    fails_asr(wrong_rate);
+
+    AudioRequirements stereo_only{};
+    stereo_only.min_channels=2U;
+    stereo_only.max_channels=2U;
+    fails_vad(stereo_only);
+    fails_asr(stereo_only);
+
+    AudioRequirements planar_only{};
+    planar_only.supported_layouts={AudioLayout::Planar};
+    fails_vad(planar_only);
+    fails_asr(planar_only);
+
+    AudioRequirements invalid_range{};
+    invalid_range.max_channels=0U;
+    fails_vad(invalid_range);
+    fails_asr(invalid_range);
+
+    // Explicit matching capabilities must still construct successfully.
+    AudioRequirements matching{};
+    matching.supported_sample_rates_hz={16000U};
+    matching.supported_layouts={AudioLayout::Interleaved};
+    ConstrainedVad matching_vad{matching};
+    auto matching_asr=std::make_shared<ConstrainedAsr>(matching);
+    PerSourceSpeechRuntime runtime{matching_vad,matching_asr,options};
+    const std::vector<float> voice(4U,0.5F),silence(4U,0.0F);
+    runtime.push(772U,chunk(voice));
+    runtime.push(772U,chunk(silence));
+    const auto results=awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results.front().transcript.text,"compatible");
+}
