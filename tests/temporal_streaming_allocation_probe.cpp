@@ -56,6 +56,9 @@ int main() {
         for (std::size_t source=1;source<=source_count;++source)
             matches+=matcher.push(audition::AcousticSourceId{static_cast<std::uint64_t>(source)},
                                   {static_cast<double>(source%8),static_cast<double>(frame%8)}).size();
+    // Construct the input feature storage outside the measurement window.
+    // A braced temporary vector passed to push() would itself allocate once.
+    std::vector<double> input_frame(2);
     const auto before=allocations.load(std::memory_order_relaxed);
     std::size_t max_new_per_push=0;
     std::size_t zero_allocation_pushes=0;
@@ -65,8 +68,10 @@ int main() {
     for (std::size_t frame=warmup_frames;frame<warmup_frames+measured_frames;++frame)
         for (std::size_t source=1;source<=source_count;++source) {
             const auto frame_before=allocations.load(std::memory_order_relaxed);
+            input_frame[0]=static_cast<double>(source%8);
+            input_frame[1]=static_cast<double>(frame%8);
             const auto result=matcher.push(audition::AcousticSourceId{static_cast<std::uint64_t>(source)},
-                                          {static_cast<double>(source%8),static_cast<double>(frame%8)});
+                                          input_frame);
             const auto used=allocations.load(std::memory_order_relaxed)-frame_before;
             matches+=result.size();
             if (result.empty()) {
