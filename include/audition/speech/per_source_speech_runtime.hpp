@@ -15,8 +15,9 @@
 
 namespace audition {
 
-// Capture-thread-friendly source-specific VAD -> speech segmentation -> ASR.
-// VAD sessions and segment buffers are source-local; ASR runs off capture thread.
+// Source-specific VAD -> speech segmentation -> asynchronous ASR.
+// VAD runs synchronously in push() under a mutex; only ASR runs on a worker.
+// Strict-deadline capture must use a caller-owned bounded processing queue.
 // No ODAS, Qt, ROS or sherpa dependency.
 struct PerSourceSpeechOptions {
     std::uint32_t sample_rate_hz{16000};
@@ -73,8 +74,9 @@ public:
     PerSourceSpeechRuntime(const PerSourceSpeechRuntime&) = delete;
     PerSourceSpeechRuntime& operator=(const PerSourceSpeechRuntime&) = delete;
 
-    // One capture producer thread. Samples are copied only for speech or
-    // configured pre/post-roll; ASR inference runs in the worker.
+    // Serialized producer calls: VAD processing and state mutation happen
+    // synchronously. Never call this from a hard real-time capture callback.
+    // Samples are copied only for speech and configured pre/post-roll.
     // A track with an active VAD session is never shared with another track.
     void push(std::uint64_t track_id, AudioView audio);
     // Retire a track and cancel unfinished segments/results; no old text may
