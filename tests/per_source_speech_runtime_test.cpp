@@ -1,5 +1,6 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <chrono>
 #include <atomic>
 #include <memory>
