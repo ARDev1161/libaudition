@@ -132,6 +132,7 @@ private:
     std::uint64_t next_segment_{1};
     std::uint64_t completed_{0};
     std::uint64_t dropped_{0};
+    std::uint64_t evicted_results_{0};
     std::optional<std::string> error_{};
 };
 
