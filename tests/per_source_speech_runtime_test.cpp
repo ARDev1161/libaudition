@@ -893,6 +893,8 @@ TEST(PerSourceSpeechRuntime, BoundedAsrQueueDropsOverflowAndRecovers) {
     ASSERT_EQ(results.size(), 1U);
     EXPECT_EQ(results[0].track_id, 302U);
     EXPECT_EQ(runtime.statistics().dropped_segments, 2U);
+    EXPECT_EQ(runtime.statistics().evicted_results, 1U);
+    EXPECT_EQ(runtime.statistics().buffered_results, 0U);
     EXPECT_EQ(runtime.statistics().pending_segments, 0U);
     runtime.push(303U, chunk(voice));
     runtime.push(303U, chunk(quiet));
@@ -967,4 +969,57 @@ TEST(PerSourceSpeechRuntime, PartialPostRollDiscardedOnResetWithoutGhostSegment)
     EXPECT_EQ(results[0].transcript.text, "71:9");
     EXPECT_EQ(results[0].generation, *after);
     EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+}
+
+TEST(PerSourceSpeechRuntime, UnpolledTranscriptsStayBoundedAndExposeEvictions) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.max_pending_segments=2U;
+    opts.min_speech_samples=1U;
+    opts.max_segment_samples=4U;
+    opts.pre_roll_samples=0U;
+    opts.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    const std::vector<float> speech(4U,0.5F);
+    constexpr std::size_t completed_count=8U;
+    for (std::size_t i=0;i<completed_count;++i) {
+        runtime.push(409U,chunk(speech)); // segment cap completes the utterance
+        bool completed=false;
+        for (int spin=0;spin<1500;++spin) {
+            if (runtime.statistics().completed_segments==i+1U) {
+                completed=true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        ASSERT_TRUE(completed) << "ASR completion "<<i;
+        const auto stats=runtime.statistics();
+        EXPECT_EQ(stats.pending_segments,0U);
+        EXPECT_EQ(stats.buffered_results,std::min(i+1U,opts.max_pending_segments));
+        EXPECT_EQ(stats.evicted_results,
+                  (i+1U>opts.max_pending_segments)
+                      ? i+1U-opts.max_pending_segments : 0U);
+    }
+    const auto held=runtime.takeResults();
+    ASSERT_EQ(held.size(),opts.max_pending_segments);
+    EXPECT_EQ(held[0].track_id,409U);
+    EXPECT_EQ(held[1].track_id,409U);
+    EXPECT_NE(held[0].transcript.segment_id,held[1].transcript.segment_id);
+    EXPECT_EQ(runtime.statistics().buffered_results,0U);
+    EXPECT_EQ(runtime.statistics().evicted_results,completed_count-2U);
+
+    runtime.push(409U,chunk(speech));
+    bool recovered=false;
+    for (int spin=0;spin<1500;++spin) {
+        if (runtime.statistics().completed_segments==completed_count+1U) {
+            recovered=true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(recovered);
+    const auto latest=runtime.takeResults();
+    ASSERT_EQ(latest.size(),1U);
+    EXPECT_EQ(latest.front().transcript.text,"409:4");
+    EXPECT_EQ(runtime.statistics().evicted_results,completed_count-2U);
 }
