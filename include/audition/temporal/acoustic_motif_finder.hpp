@@ -48,9 +48,54 @@ public:
         // A single result is exactly the best pair returned by find().
         // Avoid retaining/sorting O(candidate_pairs) matches for this common
         // bounded-memory use case; find() keeps only its best pair.
-        if (max_matches==1) {
-            const auto best=find(frames);
-            return best.found ? std::vector<MotifMatch>{best} : std::vector<MotifMatch>{};
+        if (max_matches<=2) {
+            const auto first=find(frames); // validates the complete input
+            if (!first.found) return {};
+            std::vector<MotifMatch> selected{first};
+            if (max_matches==1 ||
+                frames.size()/options_.window_frames<4) return selected;
+
+            // Select the best pair disjoint from the first pair with a
+            // second scan. This uses O(window) DP scratch and O(1) results,
+            // instead of storing O(candidate_pairs) matching windows.
+            // For larger requested result sets, retain the single-pass
+            // candidate enumeration below to avoid repeating the entire
+            // quadratic DTW search many times.
+            const auto overlaps=[this](std::size_t a,std::size_t b) {
+                return a<b ? b-a<options_.window_frames :
+                             a-b<options_.window_frames;
+            };
+            const auto conflicts=[&](std::size_t start) {
+                return overlaps(start,first.first_start) ||
+                       overlaps(start,first.second_start);
+            };
+            DtwWorkspace workspace;
+            const auto last_start=frames.size()-options_.window_frames;
+            MotifMatch second{};
+            double second_cost=std::numeric_limits<double>::infinity();
+            for (std::size_t a=0;a<=last_start;) {
+                if (!conflicts(a)) {
+                    for (std::size_t b=a+options_.window_frames;
+                         b<=last_start;) {
+                        if (!conflicts(b)) {
+                            const auto aligned=dtw_.compareValidatedWindows(
+                                frames,a,b,options_.window_frames,workspace);
+                            if (aligned.reachable &&
+                                aligned.normalized_cost<=options_.max_normalized_cost &&
+                                aligned.normalized_cost<second_cost) {
+                                second_cost=aligned.normalized_cost;
+                                second={a,b,second_cost,true};
+                            }
+                        }
+                        if (options_.stride>last_start-b) break;
+                        b+=options_.stride;
+                    }
+                }
+                if (options_.stride>last_start-a) break;
+                a+=options_.stride;
+            }
+            if (second.found) selected.push_back(second);
+            return selected;
         }
         if (frames.size()>options_.max_frames)
             throw std::length_error("motif frame capacity exceeded");
