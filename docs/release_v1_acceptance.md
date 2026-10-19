@@ -18,13 +18,51 @@ Do **not** require every proposed research algorithm or optional hardware
 accelerator for v1.0. Instead, accurately distinguish stable components,
 experimental/preview features, and backend-specific limitations.
 
+## Verified stacked-PR integration order (2026-10-19)
+
+GitHub PR metadata and branch commit comparisons establish the following
+dependency chain. This is a **plan**, not authorization to merge:
+
+1. [#52](https://github.com/ARDev1161/libaudition/pull/52)
+   `feat/yamnet-audio-tagger` targets `main` (open, draft).
+2. [#53](https://github.com/ARDev1161/libaudition/pull/53)
+   `feat/classification-runtime-vocabulary` targets #52 (open, draft).
+3. [#55](https://github.com/ARDev1161/libaudition/pull/55)
+   `feat/per-source-speech-runtime` targets #53 (open, draft).
+4. [#57](https://github.com/ARDev1161/libaudition/pull/57)
+   `feat/temporal-acoustic-events` targets #55 (open).
+5. [#58](https://github.com/ARDev1161/libaudition/pull/58)
+   `feat/temporal-analysis-association` targets #57 (open, draft).
+6. [#59](https://github.com/ARDev1161/libaudition/pull/59)
+   `feat/temporal-acoustic-patterns` targets #58 (open, draft).
+
+**Competing branch:** [#54](https://github.com/ARDev1161/libaudition/pull/54)
+`feat/per-source-vad-asr` independently targets #53. Commit comparison
+against #55 reports 18 commits reachable only from #54 and 520 reachable
+only from #55 (as of this audit); these branches **diverge**. Do not
+blindly merge or cherry-pick #54 after #55, and do not assume its behavior
+has been superseded without a focused diff review. Reconcile the actual
+`SourceSpeechRuntime` implementation, Qt integration and regression
+coverage, then explicitly close/rebase the redundant PR if warranted.
+
+[#56](https://github.com/ARDev1161/libaudition/pull/56) (CTest migration)
+is already merged into the #55 feature branch, **not directly into main**.
+PRs #57, #58 and #59 are descendants of #55. CI on #59 therefore tests
+that descendant snapshot, not a merge of sibling #54 or a release from main.
+
+Before integration, confirm branch heads and PR bases have not changed;
+perform a conflict/source/CTest inventory review, merge in dependency
+order only with user approval, retarget surviving PRs, and run full CI
+on the final combined candidate. Preserve provenance of all optional
+real-model tests; green workflow jobs do not imply calibrated quality.
+
 ## Mandatory gates (P0)
 
 | Gate | Verification | Current evidence / action |
 | --- | --- | --- |
 | **Integration** | Required stacked PRs have an explicit merge sequence; combined head is compiled/tested, with no unresolved conflicts or outdated bases | OPEN: speech/classification and temporal work still appear in multiple draft/stacked PRs. Green feature-branch CI does not close this gate |
-| **Core behavior** | Default build and CTest on supported Linux and macOS configurations; deterministic numeric, invalid-input, lifecycle, overflow and multi-source tests; no ignored mandatory failures | Partial evidence: CI #1380 green on TMP-04 branch. Require a fresh integrated-head CI run after merges |
-| **C++17 install consumption** | Build/install using documented CMake options, then compile and link an **independent** installed-package consumer of `audition::core`, `audition::dsp`, `audition::spatial`, `audition::memory` and `audition::pipeline`; exercise umbrella header and temporal headers | Installed-package CTest job exists. Explicit temporal umbrella coverage added on TMP-04 branch; rerun after integration |
+| **Core behavior** | Default build and CTest on supported Linux and macOS configurations; deterministic numeric, invalid-input, lifecycle, overflow and multi-source tests; no ignored mandatory failures | Partial evidence: CI #1385 green on TMP-04 branch. Require a fresh integrated-head CI run after merges |
+| **C++17 install consumption** | Build/install using documented CMake options, then compile and link an **independent** installed-package consumer of `audition::core`, `audition::dsp`, `audition::spatial`, `audition::memory` and `audition::pipeline`; exercise umbrella header and temporal headers | Installed-package CTest job exists. Independent C++17 installed-package temporal consumer added on TMP-04 branch; require passing CI and rerun after integration |
 | **Backend opt-in** | Every advertised enabled backend builds and executes appropriate contract/model-backed tests with pinned assets. Missing required model/WAV must fail rather than produce misleading PASS | Existing model-backed CI jobs and coverage matrix; audit the release's actually enabled backend matrix |
 | **Accuracy claims** | Every accuracy/quality number in release notes includes model, version, dataset provenance, reference annotations, metric definition and measured result | Open for broad real-room DOA/SSS, model generalization, WER, DER/JER, and anti-spoofing. **No global quality claim** until measured |
 | **Concurrency and bounded resources** | Verify no unbounded source/queue/label growth in documented core paths. Define caller-owned scratch and thread-safety contracts; reject malformed frames without corrupting committed source state | Unit/CTest work exists; TMP-04 includes bounded candidate/source histories and allocation probes. Review remaining adapters |
