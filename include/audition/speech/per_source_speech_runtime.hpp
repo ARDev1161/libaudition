@@ -23,6 +23,8 @@ struct PerSourceSpeechOptions {
     std::uint32_t sample_rate_hz{16000};
     std::size_t max_sources{16};
     std::size_t max_pending_segments{16};
+    // Caps retired generations awaiting client-side sidecar/result release.
+    std::size_t max_retired_generations{64};
     std::size_t min_speech_samples{1600};
     std::size_t pre_roll_samples{3200}; // 200ms @ 16kHz
     std::size_t post_roll_samples{4800}; // 300ms @ 16kHz
@@ -67,6 +69,8 @@ struct SourceSpeechStatistics {
     // Completed transcripts evicted from the mailbox due to a slow consumer.
     // Excludes explicit forget/reset cancellations and queued-job overflow.
     std::uint64_t evicted_results{0};
+    // Retired source generations still awaiting releaseRetired().
+    std::size_t retired_generations{0};
 };
 
 class AUDITION_API PerSourceSpeechRuntime final {
@@ -88,6 +92,8 @@ public:
     void forget(std::uint64_t track_id);
     // Retire and flush final speech without blocking ASR. Results remain
     // keyed by source generation even if numeric track ID is reused.
+    // At max_retired_generations, returns nullopt and leaves an existing
+    // active source untouched; caller must drain/release or explicitly forget.
     [[nodiscard]] std::optional<std::uint64_t> retire(std::uint64_t track_id);
     [[nodiscard]] std::size_t pendingResults(std::uint64_t generation) const;
     [[nodiscard]] std::optional<std::uint64_t> activeGeneration(std::uint64_t track_id) const;
