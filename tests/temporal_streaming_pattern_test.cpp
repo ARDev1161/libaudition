@@ -312,3 +312,27 @@ TEST(StreamingPatternMatcher, FullHistoryRecyclesFramesWithoutMixingSources) {
         EXPECT_TRUE(matcher.push(source(2),{100}).empty());
     }
 }
+
+TEST(StreamingPatternMatcher, ZeroCooldownEmitsEveryMatchEvenAcrossSources) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_frames=2;
+    options.cooldown_frames=0;
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("steady",{{1}});
+    matcher.registerTemplate("other",{{2}});
+    for (std::size_t frame=1;frame<=25;++frame) {
+        const auto first=matcher.push(source(1),{1});
+        ASSERT_EQ(first.size(),1u);
+        EXPECT_EQ(first.front().label,"steady");
+        EXPECT_EQ(first.front().ending_frame,frame);
+        const auto second=matcher.push(source(2),{2});
+        ASSERT_EQ(second.size(),1u);
+        EXPECT_EQ(second.front().label,"other");
+        EXPECT_EQ(second.front().ending_frame,frame);
+    }
+    matcher.forget(source(1));
+    const auto restarted=matcher.push(source(1),{1});
+    ASSERT_EQ(restarted.size(),1u);
+    EXPECT_EQ(restarted.front().ending_frame,1u);
+}
