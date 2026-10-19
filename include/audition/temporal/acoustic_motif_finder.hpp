@@ -120,25 +120,30 @@ public:
             for(const double x:frame)
                 if(!std::isfinite(x)) throw std::invalid_argument("nonfinite motif feature");
         }
-        if(frames.size()<2*options_.window_frames) return {};
+        // Division avoids overflow in 2 * window_frames.
+        if (frames.size()/options_.window_frames<2) return {};
+        const auto last_start=frames.size()-options_.window_frames;
         MotifMatch best{};
         double min_cost=std::numeric_limits<double>::infinity();
-        for(std::size_t a=0;a+options_.window_frames<=frames.size();a+=options_.stride) {
+        for (std::size_t a=0;a<=last_start;) {
             const std::vector<std::vector<double>> left(
                 frames.begin()+static_cast<std::ptrdiff_t>(a),
                 frames.begin()+static_cast<std::ptrdiff_t>(a+options_.window_frames));
-            for(std::size_t b=a+options_.window_frames;
-                b+options_.window_frames<=frames.size();b+=options_.stride) {
+            for (std::size_t b=a+options_.window_frames;b<=last_start;) {
                 const std::vector<std::vector<double>> right(
                     frames.begin()+static_cast<std::ptrdiff_t>(b),
                     frames.begin()+static_cast<std::ptrdiff_t>(b+options_.window_frames));
                 const auto result=dtw_.compare(left,right);
-                if(result.reachable && result.normalized_cost<min_cost) {
+                if (result.reachable && result.normalized_cost<min_cost) {
                     min_cost=result.normalized_cost;
                     best={a,b,result.normalized_cost,
                           result.normalized_cost<=options_.max_normalized_cost};
                 }
+                if (options_.stride>last_start-b) break;
+                b+=options_.stride;
             }
+            if (options_.stride>last_start-a) break;
+            a+=options_.stride;
         }
         if(!best.found) return {};
         return best;
