@@ -59,12 +59,22 @@ int main() {
     const auto before=allocations.load(std::memory_order_relaxed);
     std::size_t max_new_per_push=0;
     std::size_t zero_allocation_pushes=0;
+    std::size_t matching_pushes=0;
+    std::size_t matching_allocations=0;
+    std::size_t nonmatching_allocations=0;
     for (std::size_t frame=warmup_frames;frame<warmup_frames+measured_frames;++frame)
         for (std::size_t source=1;source<=source_count;++source) {
             const auto frame_before=allocations.load(std::memory_order_relaxed);
-            matches+=matcher.push(audition::AcousticSourceId{static_cast<std::uint64_t>(source)},
-                                  {static_cast<double>(source%8),static_cast<double>(frame%8)}).size();
+            const auto result=matcher.push(audition::AcousticSourceId{static_cast<std::uint64_t>(source)},
+                                          {static_cast<double>(source%8),static_cast<double>(frame%8)});
             const auto used=allocations.load(std::memory_order_relaxed)-frame_before;
+            matches+=result.size();
+            if (result.empty()) {
+                nonmatching_allocations+=used;
+            } else {
+                ++matching_pushes;
+                matching_allocations+=used;
+            }
             if (used>max_new_per_push) max_new_per_push=used;
             if (used==0) ++zero_allocation_pushes;
         }
@@ -76,6 +86,9 @@ int main() {
              <<" new_calls_per_push="<<static_cast<double>(allocated)/static_cast<double>(calls)
              <<" max_cpp_new_per_push="<<max_new_per_push
              <<" zero_allocation_pushes="<<zero_allocation_pushes
+             <<" matching_pushes="<<matching_pushes
+             <<" matching_allocations="<<matching_allocations
+             <<" nonmatching_allocations="<<nonmatching_allocations
              <<" matches="<<matches<<"\n";
     return 0;
 }
