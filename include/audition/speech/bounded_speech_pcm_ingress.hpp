@@ -29,11 +29,11 @@ struct SpeechPcmIngressOptions {
 };
 
 enum class SpeechPcmAdmission {
-    Accepted, RejectedCapacity, RejectedSourceLimit, Closed
+    Accepted, RejectedCapacity, RejectedSourceLimit, RejectedRetiring, Closed
 };
 
 struct SpeechPcmIngressEvent {
-    enum class Kind { Audio, Forget };
+    enum class Kind { Audio, Forget, Retire };
     Kind kind{Kind::Audio};
     std::uint64_t source_id{0U};
     std::uint64_t epoch{0U};
@@ -46,6 +46,8 @@ struct SpeechPcmIngressStatistics {
     std::size_t outstanding_source_slots{0U};
     std::size_t pending_chunks{0U};
     std::size_t pending_samples{0U};
+    // Controls waiting behind already-admitted PCM; excluded from PCM caps.
+    std::size_t pending_retirements{0U};
     std::size_t pending_invalidations{0U};
     std::uint64_t accepted_chunks{0U};
     std::uint64_t rejected_chunks{0U};
@@ -53,10 +55,11 @@ struct SpeechPcmIngressStatistics {
 };
 
 // push() copies at most max_chunk_samples and never performs VAD/ASR work.
-// Overflow for an existing source is a PCM discontinuity: all of its queued
-// chunks are removed, and a coalesced Forget event is prioritized ahead of
-// future Audio events. A consumer MUST dispatch each Forget to
-// PerSourceSpeechRuntime::forget(source_id) before consuming subsequent PCM.
+// Overflow for an existing source is a PCM discontinuity: all queued PCM
+// for that source is removed and a coalesced Forget is prioritized ahead of
+// future audio. A normal Retire, in contrast, is FIFO after accepted audio
+// so final speech is flushed, not discarded. Consume both control kinds on
+// the same serialized worker as PerSourceSpeechRuntime::push().
 class AUDITION_API BoundedSpeechPcmIngress final {
 public:
     explicit BoundedSpeechPcmIngress(SpeechPcmIngressOptions options = {})
@@ -87,12 +90,18 @@ public:
         std::vector<float> copy(audio.data(),audio.data()+audio.sampleCount());
         std::lock_guard<std::mutex> lock{mutex_};
         if (closed_) return SpeechPcmAdmission::Closed;
+        // A retired source cannot restart until its FIFO retirement
+        // control has been handed to the serialized VAD worker.
+        if (retiring_.count(source_id)) {
+            ++rejected_;
+            return SpeechPcmAdmission::RejectedRetiring;
+        }
         auto existing=sources_.find(source_id);
         if (existing==sources_.end() && !hasSourceSlotLocked(source_id)) {
             ++rejected_;
             return SpeechPcmAdmission::RejectedSourceLimit;
         }
-        if (pending_.size()>=options_.max_pending_chunks ||
+        if (pending_audio_chunks_>=options_.max_pending_chunks ||
             copy.size()>options_.max_pending_samples-pending_samples_) {
             ++rejected_;
             // Existing source loses continuity. Also discard its buffered
@@ -110,18 +119,46 @@ public:
         entry.epoch=existing->second;
         entry.audio=AudioBuffer{std::move(copy),audio.format(),
                                 audio.captureTime(),audio.sequenceNumber()};
-        pending_samples_+=entry.audio.samples().size();
         pending_.push_back(std::move(entry));
+        pending_samples_+=audio.sampleCount();
+        ++pending_audio_chunks_;
         ++accepted_;
         cv_.notify_one();
         return SpeechPcmAdmission::Accepted;
     }
 
-    // Permanently ends the current producer epoch. The consumer receives a
-    // Forget event before any subsequent audio for the reused numeric ID.
+    // Append a FIFO control *behind all accepted audio* for this source.
+    // The consumer must call PerSourceSpeechRuntime::retire(source_id),
+    // bind the returned generation to its recording and drain late ASR.
+    // Distinct pending retirements count against max_sources.
+    [[nodiscard]] bool retire(std::uint64_t source_id) {
+        std::lock_guard<std::mutex> lock{mutex_};
+        auto it=sources_.find(source_id);
+        if (closed_ || it==sources_.end()) return false;
+        SpeechPcmIngressEvent event{};
+        event.kind=SpeechPcmIngressEvent::Kind::Retire;
+        event.source_id=source_id;
+        event.epoch=it->second;
+        // Allocate control state transactionally if either insertion fails.
+        retiring_.emplace(source_id,it->second);
+        try {
+            pending_.push_back(std::move(event));
+        } catch (...) {
+            retiring_.erase(source_id);
+            throw;
+        }
+        sources_.erase(it);
+        cv_.notify_one();
+        return true;
+    }
+
+    // Discontinuity or cancellation: drop accepted PCM and any unprocessed
+    // Retire for this numeric ID. The worker receives a prioritized Forget.
     void forget(std::uint64_t source_id) {
         std::lock_guard<std::mutex> lock{mutex_};
-        if (sources_.erase(source_id)) {
+        const bool was_active=sources_.erase(source_id)!=0U;
+        const bool was_retiring=retiring_.erase(source_id)!=0U;
+        if (was_active || was_retiring) {
             discardQueuedLocked(source_id);
             invalidations_[source_id]=next_epoch_++;
             cv_.notify_one();
@@ -150,15 +187,18 @@ public:
     [[nodiscard]] SpeechPcmIngressStatistics statistics() const {
         std::lock_guard<std::mutex> lock{mutex_};
         return {sources_.size(),outstandingSourceSlotsLocked(),
-                pending_.size(),pending_samples_,invalidations_.size(),
-                accepted_,rejected_,invalidated_};
+                pending_audio_chunks_,pending_samples_,retiring_.size(),
+                invalidations_.size(),accepted_,rejected_,invalidated_};
     }
 
 private:
     std::size_t outstandingSourceSlotsLocked() const {
         std::size_t source_slot_count=sources_.size();
-        for (const auto& item:invalidations_)
+        for (const auto& item:retiring_)
             if (!sources_.count(item.first)) ++source_slot_count;
+        for (const auto& item:invalidations_)
+            if (!sources_.count(item.first) && !retiring_.count(item.first))
+                ++source_slot_count;
         return source_slot_count;
     }
     bool hasSourceSlotLocked(std::uint64_t id) const {
@@ -168,8 +208,11 @@ private:
     void discardQueuedLocked(std::uint64_t id) {
         for (auto it=pending_.begin();it!=pending_.end();) {
             if (it->source_id==id) {
-                pending_samples_-=it->audio.samples().size();
-                ++invalidated_;
+                if (it->kind==SpeechPcmIngressEvent::Kind::Audio) {
+                    pending_samples_-=it->audio.samples().size();
+                    --pending_audio_chunks_;
+                    ++invalidated_;
+                }
                 it=pending_.erase(it);
             } else ++it;
         }
@@ -193,7 +236,12 @@ private:
         if (pending_.empty()) return std::nullopt;
         auto result=std::move(pending_.front());
         pending_.pop_front();
-        pending_samples_-=result.audio.samples().size();
+        if (result.kind==SpeechPcmIngressEvent::Kind::Audio) {
+            pending_samples_-=result.audio.samples().size();
+            --pending_audio_chunks_;
+        } else if (result.kind==SpeechPcmIngressEvent::Kind::Retire) {
+            retiring_.erase(result.source_id);
+        }
         return result;
     }
 
@@ -202,9 +250,11 @@ private:
     std::condition_variable cv_{};
     std::map<std::uint64_t,std::uint64_t> sources_{};
     std::map<std::uint64_t,std::uint64_t> invalidations_{};
+    std::map<std::uint64_t,std::uint64_t> retiring_{};
     std::deque<SpeechPcmIngressEvent> pending_{};
     std::uint64_t next_epoch_{1U};
     std::size_t pending_samples_{0U};
+    std::size_t pending_audio_chunks_{0U};
     std::uint64_t accepted_{0U},rejected_{0U},invalidated_{0U};
     bool closed_{false};
 };
