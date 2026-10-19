@@ -6,9 +6,14 @@ depend on ODAS, sherpa-onnx, ROS or Qt. Applications supply any
 `IVoiceActivityDetector` (which creates an independent `IVadSession`
 per source) and an `IAsrEngine` held by `std::shared_ptr<const ...>`.
 
-The capture thread calls `push(track_id, AudioView)` with the source's
-mono samples at the configured sample rate (16 kHz by default). Active VAD
-frames are concatenated until the VAD first becomes inactive. Completed
+The caller supplies source-local mono samples through
+`push(track_id, AudioView)` at the configured sample rate (16 kHz by
+default). **`push()` runs VAD synchronously while holding the runtime
+mutex**; it is not a nonblocking capture-thread guarantee. For devices
+with strict audio callback deadlines, invoke it from an application-owned
+processing worker fed by a bounded input queue and explicitly reset on
+lost/discontinuous PCM. Active VAD frames are concatenated until the VAD
+first becomes inactive. Completed
 speech with at least `min_speech_samples` is moved into the bounded job
 queue. The ASR worker transcribes complete segments off the capture thread.
 The application drains results with `takeResults()`.
@@ -20,7 +25,13 @@ Safety and lifecycle:
 - `max_segment_samples` caps speech buffers to prevent unbounded growth;
 - `forget(track_id)` invalidates pending/inflight results from retired IDs;
 - `reset()` invalidates source generations and jobs after a discontinuity;
-- Per-runtime `statistics()` reports completions, losses, and last ASR error.
+- Per-runtime `statistics()` reports completions, losses, last ASR error,
+  the current unread transcript mailbox size (`buffered_results`), and
+  the number of evicted unread transcripts (`evicted_results`).
+  The output mailbox is independently bounded by `max_pending_segments`;
+  oldest unread results are discarded on overflow. The aggregate
+  `dropped_segments` includes queue failures and those evictions.
+  `evicted_results` excludes explicit cancellation via `forget()`/`reset()`.
 
 This is an **initial foundation**, not the complete low-latency ASR pipeline:
 VAD gates whole pushed chunks with configurable pre-roll and post-roll, but without
