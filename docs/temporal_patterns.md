@@ -260,3 +260,17 @@ limits, invalid feature shapes, numeric overflow and workspace recovery.
 The motif allocation probe remains the quantitative baseline; allocation
 or latency improvements from this change are not asserted until the
 updated CI publishes them.
+
+### Single-pass feature validation in motif searches
+
+The public `DynamicTimeWarping::compare()` and `compareWindows()` calls
+continue to validate frame dimensions, finiteness and input bounds for
+every invocation. The offline motif finder separately validates **all**
+input feature frames once before enumerating any DTW candidate pair, then
+uses an internal, friend-only `compareValidatedWindows()` path. This avoids
+repeating the expensive frame validation for every pair; it does not
+weaken the public API's safety contract or allow invalid input to pass
+the motif finder. Regression tests exercise invalid middle frames, both
+best-pair and multi-pair searches, and recovery after exceptions. Numeric
+cost overflow remains checked per candidate. Benchmark improvements
+should be assessed from the subsequent CI probe.
