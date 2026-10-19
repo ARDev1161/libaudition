@@ -73,7 +73,7 @@ public:
         const auto last_start=frames.size()-options_.window_frames;
         for (std::size_t a=0;a<=last_start;) {
             for (std::size_t b=a+options_.window_frames;b<=last_start;) {
-                const auto aligned=dtw_.compareWindows(
+                const auto aligned=dtw_.compareValidatedWindows(
                     frames,a,b,options_.window_frames,workspace);
                 if (aligned.reachable &&
                     aligned.normalized_cost<=options_.max_normalized_cost)
@@ -133,7 +133,7 @@ public:
         double min_cost=std::numeric_limits<double>::infinity();
         for (std::size_t a=0;a<=last_start;) {
             for (std::size_t b=a+options_.window_frames;b<=last_start;) {
-                const auto result=dtw_.compareWindows(
+                const auto result=dtw_.compareValidatedWindows(
                     frames,a,b,options_.window_frames,workspace);
                 if (result.reachable && result.normalized_cost<min_cost) {
                     min_cost=result.normalized_cost;
