@@ -1,0 +1,108 @@
+// Standalone consumer compiled against the installed C++17 package.
+// No access to libaudition's source tree, GTest, Qt or model weights.
+#include <audition/speech/per_source_speech_runtime.hpp>
+#include <algorithm>
+#include <chrono>
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace {
+class TestSession final : public audition::IVadSession {
+public:
+    void reset() override {}
+    audition::VadResult process(audition::AudioView audio) override {
+        bool active=false;
+        for (std::size_t i=0;i<audio.sampleCount();++i)
+            active = active || audio.data()[i]>0.2F;
+        return {std::nullopt,active};
+    }
+};
+class TestVad final : public audition::IVoiceActivityDetector {
+public:
+    audition::BackendInfo backendInfo() const override { return {"installed-vad","1"}; }
+    audition::AudioRequirements audioRequirements() const override { return {}; }
+    std::unique_ptr<audition::IVadSession> createSession() const override {
+        return std::make_unique<TestSession>();
+    }
+};
+class TestAsr final : public audition::IAsrEngine {
+public:
+    audition::BackendInfo backendInfo() const override { return {"installed-asr","1"}; }
+    audition::AsrCapabilities capabilities() const override { return {}; }
+    audition::Transcript transcribe(const audition::SpeechSegment& segment) const override {
+        audition::Transcript value{};
+        value.segment_id=segment.segment_id;
+        value.text=std::to_string(segment.track_id->value())+":"+
+                   std::to_string(segment.audio.samples().size());
+        return value;
+    }
+};
+audition::AudioView chunk(const std::vector<float>& pcm) {
+    return audition::AudioView{
+        pcm.data(),pcm.size(),{16000U,1U,audition::AudioLayout::Interleaved},
+        audition::Timestamp{}};
+}
+std::vector<audition::SourceSpeechResult> poll(
+    audition::PerSourceSpeechRuntime& runtime, std::size_t expected) {
+    std::vector<audition::SourceSpeechResult> received{};
+    for (int attempt=0;attempt<3000 && received.size()<expected;++attempt) {
+        auto batch=runtime.takeResults();
+        for (auto& item:batch) received.push_back(std::move(item));
+        if (received.size()<expected)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    return received;
+}
+} // namespace
+
+bool verifyInstalledSpeech() {
+    try {
+        TestVad vad{};
+        audition::PerSourceSpeechOptions options{};
+        options.min_speech_samples=4U;
+        options.pre_roll_samples=0U;
+        options.post_roll_samples=0U;
+        audition::PerSourceSpeechRuntime runtime{
+            vad,std::make_shared<TestAsr>(),options};
+        const std::vector<float> voice(4U,0.5F);
+        const std::vector<float> silence(4U,0.0F);
+        runtime.push(21U,chunk(voice));
+        runtime.push(22U,chunk(voice));
+        runtime.push(21U,chunk(silence));
+        runtime.push(22U,chunk(silence));
+        auto first=poll(runtime,2U);
+        if (first.size()!=2U) return false;
+        const auto is21=[](const audition::SourceSpeechResult& r) {
+            return r.track_id==21U;
+        };
+        const auto is22=[](const audition::SourceSpeechResult& r) {
+            return r.track_id==22U;
+        };
+        const auto a=std::find_if(first.begin(),first.end(),is21);
+        const auto b=std::find_if(first.begin(),first.end(),is22);
+        if (a==first.end() || b==first.end() ||
+            a->transcript.text!="21:4" || b->transcript.text!="22:4")
+            return false;
+        const auto retired=runtime.retire(21U);
+        if (!retired || *retired!=a->generation) return false;
+        const auto done=runtime.drainReady();
+        if (!done.results.empty() ||
+            std::find(done.ready_retired_generations.begin(),
+                      done.ready_retired_generations.end(),*retired)
+                ==done.ready_retired_generations.end())
+            return false;
+        runtime.releaseRetired(*retired);
+        runtime.push(21U,chunk(voice));
+        runtime.push(21U,chunk(silence));
+        auto reused=poll(runtime,1U);
+        if (reused.size()!=1U || reused[0].track_id!=21U ||
+            reused[0].transcript.text!="21:4" ||
+            reused[0].generation==*retired)
+            return false;
+        return runtime.statistics().completed_segments==3U;
+    } catch (...) {
+        return false;
+    }
+}

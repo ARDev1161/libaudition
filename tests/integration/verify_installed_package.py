@@ -33,6 +33,12 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="libaudition-consumer-") as folder:
         root = Path(folder)
         extra_target = "\n                audition::backend_sherpa" if args.backend == "sherpa" else ""
+        extra_sources = " speech_smoke.cpp" if args.backend == "core" else ""
+        if args.backend == "core":
+            # Keep substantial C++ fixtures in normal .cpp files. Unlike
+            # inline C++ inside Python f-strings, braces need no escaping.
+            fixture = Path(__file__).with_name("installed_speech_consumer.cpp")
+            (root / "speech_smoke.cpp").write_bytes(fixture.read_bytes())
         (root / "CMakeLists.txt").write_text(textwrap.dedent(f"""\
             cmake_minimum_required(VERSION 3.20)
             project(libaudition_installed_consumer LANGUAGES CXX)
@@ -40,7 +46,7 @@ def main() -> int:
             set(CMAKE_CXX_STANDARD_REQUIRED ON)
             set(CMAKE_CXX_EXTENSIONS OFF)
             find_package(libaudition {args.version} EXACT CONFIG REQUIRED)
-            add_executable(consumer main.cpp)
+            add_executable(consumer main.cpp{extra_sources})
             target_link_libraries(consumer PRIVATE
                 audition::core
                 audition::interfaces
@@ -96,6 +102,7 @@ def main() -> int:
             source = textwrap.dedent(f"""\
             #include <audition/audition.hpp>
             #include <vector>
+            extern bool verifyInstalledSpeech();
             int main() {{
                 if (audition::kVersion != "{args.version}") return 1;
                 audition::TemporalSpatialTrackSmoother smoother{{}};
@@ -120,6 +127,7 @@ def main() -> int:
                     origin.advancedBy(pcm.duration()).nanoseconds()!=1000125000LL ||
                     origin.since(origin).nanoseconds()!=0LL) return 7;
 
+                if (!verifyInstalledSpeech()) return 8;
                 // The installed umbrella must expose the backend-neutral
                 // temporal types and their C++17 inline implementations.
                 audition::temporal::DynamicTimeWarping dtw{{}};
