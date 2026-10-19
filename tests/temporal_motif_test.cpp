@@ -1,5 +1,6 @@
 #include <audition/temporal/acoustic_motif_finder.hpp>
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <utility>
