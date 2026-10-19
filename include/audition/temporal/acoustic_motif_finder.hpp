@@ -20,6 +20,8 @@ struct MotifOptions {
     std::size_t stride{1};
     std::size_t warping_radius{2};
     double max_normalized_cost{0.1};
+    // Bounds qualifying pairs retained when requesting more than two matches.
+    std::size_t max_candidate_pairs{65536};
 };
 struct MotifMatch {
     std::size_t first_start{0};
@@ -34,6 +36,7 @@ public:
         dtw_({options.max_frames,options.max_dimensions,options.warping_radius}) {
         if (!options.max_frames || !options.max_dimensions || !options.window_frames ||
             options.window_frames>options.max_frames || !options.stride ||
+            !options.max_candidate_pairs ||
             !std::isfinite(options.max_normalized_cost) || options.max_normalized_cost<0)
             throw std::invalid_argument("invalid motif options");
     }
@@ -121,8 +124,11 @@ public:
                 const auto aligned=dtw_.compareValidatedWindows(
                     frames,a,b,options_.window_frames,workspace);
                 if (aligned.reachable &&
-                    aligned.normalized_cost<=options_.max_normalized_cost)
+                    aligned.normalized_cost<=options_.max_normalized_cost) {
+                    if (candidates.size()>=options_.max_candidate_pairs)
+                        throw std::length_error("motif candidate capacity exceeded");
                     candidates.push_back({a,b,aligned.normalized_cost,true});
+                }
                 if (options_.stride>last_start-b) break;
                 b+=options_.stride;
             }

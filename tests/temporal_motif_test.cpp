@@ -297,3 +297,40 @@ TEST(AcousticMotifFinder, BoundedTwoPairSelectionHandlesLargeStrideAndCapacity) 
     EXPECT_THROW(static_cast<void>(finder.findMultiple(Frames(13,std::vector<double>{1}),2)),
                  std::length_error);
 }
+
+TEST(AcousticMotifFinder, MultipleCandidateBudgetBoundsTemporaryStorage) {
+    auto o=options();
+    o.max_frames=8;
+    o.window_frames=2;
+    o.warping_radius=0;
+    o.max_normalized_cost=0;
+    o.max_candidate_pairs=14;
+    const Frames repeated(8,std::vector<double>{1});
+    audition::temporal::AcousticMotifFinder limited{o};
+    // Seven starts yield 15 non-overlapping candidate pairs.
+    // Request >2 results to exercise the materialized-candidate path.
+    EXPECT_THROW(static_cast<void>(limited.findMultiple(repeated,3)),
+                 std::length_error);
+    EXPECT_TRUE(limited.find(repeated).found);
+    EXPECT_EQ(limited.findMultiple(repeated,1).size(),1u);
+    EXPECT_EQ(limited.findMultiple(repeated,2).size(),2u);
+
+    o.max_candidate_pairs=15;
+    audition::temporal::AcousticMotifFinder sufficient{o};
+    const auto matches=sufficient.findMultiple(repeated,3);
+    ASSERT_EQ(matches.size(),2u);
+    EXPECT_EQ(matches[0].first_start,0u);
+    EXPECT_EQ(matches[0].second_start,2u);
+    EXPECT_EQ(matches[1].first_start,4u);
+    EXPECT_EQ(matches[1].second_start,6u);
+
+    // Only accepted candidates count against the budget.
+    const Frames distinct{{0},{1},{2},{3},{4},{5},{6},{7}};
+    o.max_candidate_pairs=1;
+    audition::temporal::AcousticMotifFinder sparse{o};
+    EXPECT_TRUE(sparse.findMultiple(distinct,3).empty());
+
+    o.max_candidate_pairs=0;
+    EXPECT_THROW(static_cast<void>(audition::temporal::AcousticMotifFinder{o}),
+                 std::invalid_argument);
+}
