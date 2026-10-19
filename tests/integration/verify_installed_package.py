@@ -92,14 +92,42 @@ def main() -> int:
         else:
             source = textwrap.dedent(f"""\
             #include <audition/audition.hpp>
+            #include <vector>
             int main() {{
                 if (audition::kVersion != "{args.version}") return 1;
                 audition::TemporalSpatialTrackSmoother smoother{{}};
                 audition::AcousticEventAssembler events{{}};
                 audition::InMemoryAcousticSourceRegistry registry{{}};
-                return smoother.trackedCount() == 0U &&
-                       events.activeCount() == 0U &&
-                       registry.list().empty() ? 0 : 2;
+                if (smoother.trackedCount() != 0U ||
+                    events.activeCount() != 0U || !registry.list().empty()) return 2;
+
+                // The installed umbrella must expose the backend-neutral
+                // temporal types and their C++17 inline implementations.
+                audition::temporal::DynamicTimeWarping dtw{{}};
+                const std::vector<std::vector<double>> sequence{{{{1.0}}, {{2.0}}}};
+                const auto aligned=dtw.compare(sequence,sequence);
+                if (!aligned.reachable || aligned.normalized_cost != 0.0) return 3;
+
+                audition::temporal::StreamingPatternMatcher streaming{{}};
+                streaming.registerTemplate("pulse",sequence);
+                const audition::AcousticSourceId id{{1}};
+                if (!streaming.push(id,{{1.0}}).empty()) return 4;
+                const auto detected=streaming.push(id,{{2.0}});
+                if (detected.size() != 1U || detected[0].label != "pulse") return 5;
+
+                audition::temporal::MotifOptions motif_options{{}};
+                motif_options.window_frames=2;
+                motif_options.max_normalized_cost=0;
+                audition::temporal::AcousticMotifFinder motifs{{motif_options}};
+                const auto motif=motifs.find({{{{1.0}}, {{2.0}}, {{9.0}},
+                                               {{8.0}}, {{1.0}}, {{2.0}}}});
+                if (!motif.found || motif.first_start != 0U ||
+                    motif.second_start != 4U) return 6;
+                audition::temporal::RecurrenceAnalyzer recurrence{{}};
+                audition::temporal::TemporalScalarAnalyzer scalar{{}};
+                (void)recurrence;
+                (void)scalar;
+                return 0;
             }}
             """)
         (root / "main.cpp").write_text(source, encoding="utf-8")
