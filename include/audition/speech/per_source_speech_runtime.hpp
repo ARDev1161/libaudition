@@ -56,6 +56,12 @@ struct SourceSpeechStatistics {
     std::uint64_t dropped_segments{0};
     std::size_t pending_segments{0};
     std::optional<std::string> last_error{};
+    // Number of completed transcripts held until the application drains them.
+    // This mailbox is independently capped at max_pending_segments.
+    std::size_t buffered_results{0};
+    // Completed transcripts evicted from the mailbox due to a slow consumer.
+    // Excludes explicit forget/reset cancellations and queued-job overflow.
+    std::uint64_t evicted_results{0};
 };
 
 class AUDITION_API PerSourceSpeechRuntime final {
