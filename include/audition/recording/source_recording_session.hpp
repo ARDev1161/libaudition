@@ -108,6 +108,11 @@ public:
             throw std::invalid_argument("ASR generation assigned twice");
         generations_[generation] = id;
     }
+    // A producer discontinuity cancels the old speech generation while its
+    // WAV may remain open. Do not retain stale generation-to-WAV links.
+    void cancelGeneration(std::uint64_t generation) {
+        generations_.erase(generation);
+    }
     void addSpeech(const SourceSpeechResult& result) {
         const auto gen = generations_.find(result.generation);
         if (gen == generations_.end()) return;
