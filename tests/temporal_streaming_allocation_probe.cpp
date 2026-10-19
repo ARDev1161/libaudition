@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -80,20 +81,26 @@ int main() {
     std::size_t reuse_zero_allocation_pushes=0;
     std::size_t reuse_matching_allocations=0;
     std::size_t reuse_nonmatching_allocations=0;
+    std::chrono::steady_clock::duration returning_elapsed{};
+    std::chrono::steady_clock::duration reuse_elapsed{};
     for (std::size_t frame=warmup_frames;frame<warmup_frames+measured_frames;++frame)
         for (std::size_t source=1;source<=source_count;++source) {
             const auto frame_before=allocations.load(std::memory_order_relaxed);
             input_frame[0]=static_cast<double>(source%8);
             input_frame[1]=static_cast<double>(frame%8);
+            const auto returning_start=std::chrono::steady_clock::now();
             const auto result=matcher.push(audition::AcousticSourceId{static_cast<std::uint64_t>(source)},
                                           input_frame);
+            returning_elapsed+=std::chrono::steady_clock::now()-returning_start;
             const auto used=allocations.load(std::memory_order_relaxed)-frame_before;
             matches+=result.size();
             // Both matchers receive identical features and source histories.
             // Count the caller-owned output path separately from push().
             const auto reuse_before=allocations.load(std::memory_order_relaxed);
+            const auto reuse_start=std::chrono::steady_clock::now();
             reusable.pushInto(audition::AcousticSourceId{static_cast<std::uint64_t>(source)},
                               input_frame,reusable_output);
+            reuse_elapsed+=std::chrono::steady_clock::now()-reuse_start;
             const auto reuse_used=allocations.load(std::memory_order_relaxed)-reuse_before;
             reuse_allocations+=reuse_used;
             reuse_max_new_per_push=std::max(reuse_max_new_per_push,reuse_used);
@@ -139,6 +146,13 @@ int main() {
              <<" reuse_zero_allocation_pushes="<<reuse_zero_allocation_pushes
              <<" reuse_matching_allocations="<<reuse_matching_allocations
              <<" reuse_nonmatching_allocations="<<reuse_nonmatching_allocations
-             <<" reuse_output_capacity="<<reusable_output.capacity()<<"\n";
+             <<" reuse_output_capacity="<<reusable_output.capacity()
+             <<" returning_mean_us="<<
+                 std::chrono::duration<double,std::micro>(returning_elapsed).count()/
+                 static_cast<double>(calls)
+             <<" reuse_mean_us="<<
+                 std::chrono::duration<double,std::micro>(reuse_elapsed).count()/
+                 static_cast<double>(calls)
+             <<"\n";
     return 0;
 }
