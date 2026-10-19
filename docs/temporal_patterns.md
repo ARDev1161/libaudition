@@ -218,3 +218,22 @@ motif finder's best pair to exact window equality and checks up to two
 greedily selected disjoint motif pairs using a separate frame-occupancy
 model. These are synthetic correctness checks, **not** field accuracy
 measurements or a substitute for representative audio recordings.
+
+### Offline motif search scratch reuse and diagnostics
+
+`AcousticMotifFinder::find()` and `findMultiple()` now reuse per-invocation
+feature-window vectors throughout the candidate comparison loops instead
+of reconstructing `left` and `right` per pair. The two DTW DP rows already
+use an invocation-local `DtwWorkspace`, so concurrent `const` calls do
+not share mutable scratch. This reduces repeated window allocation
+opportunities, but still copies feature values and leaves the bounded
+quadratic candidate search intact.
+
+`AcousticMotifFinder.ReusedWindowsPreserveMultidimensionalMatchesAcrossCalls`
+checks repeated multidimensional matches and negative controls.
+The isolated `temporal_motif_allocation_probe` runs 32-frame, 4-feature,
+4-frame-window motif searches, reports C++ allocation calls and mean
+execution time per `find`/`findMultiple` invocation, and verifies the
+expected exact motif. Ubuntu CI prints it together with the existing
+streaming allocation probe. All timings and counts are diagnostic; no
+cross-runner allocation or latency thresholds are implied.
