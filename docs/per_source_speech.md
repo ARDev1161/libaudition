@@ -24,6 +24,10 @@ Safety and lifecycle:
   timestamp-to-sample conversion handles the full signed nanosecond domain
   using checked integer arithmetic. Unrepresentable speech offsets are
   discarded rather than written as wrapped sample indices;
+- Constructor rejects VAD **or ASR** backends that cannot consume the
+  configured sample rate, mono channel count, or interleaved PCM layout;
+  this is checked before launching the ASR worker and prevents silent
+  misconfiguration of independently selected models;
 - Independent VAD state and PCM accumulation for each source;
 - At most `max_sources` active source sessions and `max_pending_segments`
   waiting jobs/results. Unreleased retired generations are separately capped

@@ -8,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 using namespace audition;
 namespace {
