@@ -17,3 +17,8 @@
 #include <audition/spatial/level_range_prior.hpp>
 #include <audition/spatial/spl_calibration.hpp>
 #include <audition/spatial/temporal_smoother.hpp>
+#include <audition/temporal/acoustic_motif_finder.hpp>
+#include <audition/temporal/dynamic_time_warping.hpp>
+#include <audition/temporal/recurrence_analyzer.hpp>
+#include <audition/temporal/scalar_analyzer.hpp>
+#include <audition/temporal/streaming_pattern_matcher.hpp>
