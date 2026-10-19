@@ -64,7 +64,26 @@ public:
             for(double value:frame)
                 if (!std::isfinite(value)) throw std::invalid_argument("nonfinite template");
         }
-        templates_[std::move(label)]=std::move(frames);
+        // Replacing a label changes the meaning of its matches. Reset only
+        // that label's suppression state after the validated replacement is
+        // committed; keep all feature histories and other labels unchanged.
+        const auto inserted=templates_.insert_or_assign(std::move(label),std::move(frames));
+        if (!inserted.second) {
+            for (auto& state:states_)
+                state.second.last_emission.erase(inserted.first->first);
+        }
+    }
+
+    // Removes a template and any cooldown state bound to its label while
+    // preserving source histories and other registered templates.
+    // Returns false for an unknown label (no mutation).
+    bool unregisterTemplate(const std::string& label) {
+        const auto it=templates_.find(label);
+        if (it==templates_.end()) return false;
+        for (auto& state:states_)
+            state.second.last_emission.erase(label);
+        templates_.erase(it);
+        return true;
     }
 
     // Convenience API: returning a nonempty vector may allocate.
