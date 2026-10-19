@@ -56,7 +56,7 @@ private:
     std::int64_t nanoseconds_{0};
 };
 
-class Timestamp {
+class AUDITION_API Timestamp {
 public:
     constexpr Timestamp() noexcept = default;
     constexpr Timestamp(std::int64_t nanoseconds, ClockIdentity clock) noexcept

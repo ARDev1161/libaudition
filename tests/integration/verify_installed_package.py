@@ -104,6 +104,22 @@ def main() -> int:
                 if (smoother.trackedCount() != 0U ||
                     events.activeCount() != 0U || !registry.list().empty()) return 2;
 
+                // Force direct references to the core's out-of-line
+                // classes from the installed shared library, not only
+                // through other shared targets.
+                const audition::AudioFormat mono{
+                    16000U,1U,audition::AudioLayout::Interleaved};
+                const audition::Timestamp origin{
+                    1000000000LL,{audition::ClockDomain::Monotonic,4U}};
+                const audition::AudioBuffer pcm{
+                    std::vector<float>{0.1F,0.2F},mono,origin};
+                const auto pcm_view=pcm.view();
+                if (pcm.frameCount()!=2U || pcm_view.frameCount()!=2U ||
+                    pcm_view.channel(0U).size()!=2U ||
+                    pcm.duration().nanoseconds()!=125000LL ||
+                    origin.advancedBy(pcm.duration()).nanoseconds()!=1000125000LL ||
+                    origin.since(origin).nanoseconds()!=0LL) return 7;
+
                 // The installed umbrella must expose the backend-neutral
                 // temporal types and their C++17 inline implementations.
                 audition::temporal::DynamicTimeWarping dtw{{}};

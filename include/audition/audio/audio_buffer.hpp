@@ -6,12 +6,13 @@
 
 #include <audition/audio/audio_format.hpp>
 #include <audition/core/error.hpp>
+#include <audition/core/export.hpp>
 #include <audition/core/span.hpp>
 #include <audition/core/time.hpp>
 
 namespace audition {
 
-class AudioView {
+class AUDITION_API AudioView {
 public:
     AudioView() = default;
     AudioView(const float* data, std::size_t sample_count, AudioFormat format,
@@ -34,7 +35,7 @@ private:
     std::uint64_t sequence_number_{0};
 };
 
-class AudioBuffer {
+class AUDITION_API AudioBuffer {
 public:
     AudioBuffer() = default;
     AudioBuffer(std::vector<float> samples, AudioFormat format, Timestamp capture_time,
