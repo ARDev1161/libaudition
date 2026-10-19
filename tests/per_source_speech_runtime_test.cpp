@@ -1024,3 +1024,78 @@ TEST(PerSourceSpeechRuntime, UnpolledTranscriptsStayBoundedAndExposeEvictions) {
     EXPECT_EQ(latest.front().transcript.text,"409:4");
     EXPECT_EQ(runtime.statistics().evicted_results,completed_count-2U);
 }
+
+namespace {
+class BudgetAsr final : public IAsrEngine {
+public:
+    BackendInfo backendInfo() const override { return {"budget-asr", "1"}; }
+    AsrCapabilities capabilities() const override { return {}; }
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        Transcript result{};
+        result.segment_id = segment.segment_id;
+        const auto id = segment.track_id->value();
+        if (id == 700U) result.text = std::string(9U, 'x');
+        else if (id == 701U) result.tokens.push_back({std::string(9U, 't'), {}, {}, {}});
+        else if (id == 702U) {
+            result.words.push_back({"a", {}, {}, {}});
+            result.words.push_back({"b", {}, {}, {}});
+        } else {
+            result.text = "ok";
+            result.language = "en";
+        }
+        return result;
+    }
+};
+}
+
+TEST(PerSourceSpeechRuntime, BoundedTranscriptBytesAndItemsPreserveOtherSources) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples = 4U;
+    opts.pre_roll_samples = 0U;
+    opts.post_roll_samples = 0U;
+    opts.max_result_text_bytes = 8U;
+    opts.max_result_items = 1U;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<BudgetAsr>(), opts};
+    const std::vector<float> speech(4U, 0.5F), silence(4U, 0.F);
+    for (const auto id : {700U, 701U, 702U, 703U}) {
+        runtime.push(id, chunk(speech));
+        runtime.push(id, chunk(silence));
+    }
+    bool settled = false;
+    for (int spin = 0; spin < 1500; ++spin) {
+        const auto stats = runtime.statistics();
+        if (stats.completed_segments + stats.dropped_segments == 4U) {
+            settled = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(settled);
+    const auto results = runtime.takeResults();
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results.front().track_id, 703U);
+    EXPECT_EQ(results.front().transcript.text, "ok");
+    EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+    EXPECT_EQ(runtime.statistics().dropped_segments, 3U);
+    EXPECT_EQ(runtime.statistics().evicted_results, 0U);
+    ASSERT_TRUE(runtime.statistics().last_error.has_value());
+    EXPECT_EQ(*runtime.statistics().last_error,
+              "ASR transcript exceeds configured result budget");
+    runtime.push(703U, chunk(speech));
+    runtime.push(703U, chunk(silence));
+    const auto recovered = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(recovered.size(), 1U);
+    EXPECT_EQ(recovered.front().track_id, 703U);
+}
+
+TEST(PerSourceSpeechRuntime, RejectsZeroTranscriptBudgets) {
+    ThresholdVad vad;
+    const auto asr = std::make_shared<MockAsr>();
+    PerSourceSpeechOptions opts{};
+    opts.max_result_text_bytes = 0U;
+    EXPECT_THROW((PerSourceSpeechRuntime{vad, asr, opts}), std::invalid_argument);
+    opts = {};
+    opts.max_result_items = 0U;
+    EXPECT_THROW((PerSourceSpeechRuntime{vad, asr, opts}), std::invalid_argument);
+}

@@ -32,6 +32,9 @@ Safety and lifecycle:
   oldest unread results are discarded on overflow. The aggregate
   `dropped_segments` includes queue failures and those evictions.
   `evicted_results` excludes explicit cancellation via `forget()`/`reset()`.
+- Completed ASR outputs have a byte budget (16 KiB) and combined token/word
+  item budget (512) by default. Oversized outputs are dropped and counted;
+  these limits apply after model inference and do not bound backend memory.
 
 This is an **initial foundation**, not the complete low-latency ASR pipeline:
 VAD gates whole pushed chunks with configurable pre-roll and post-roll, but without

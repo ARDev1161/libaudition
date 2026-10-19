@@ -27,6 +27,10 @@ struct PerSourceSpeechOptions {
     std::size_t pre_roll_samples{3200}; // 200ms @ 16kHz
     std::size_t post_roll_samples{4800}; // 300ms @ 16kHz
     std::size_t max_segment_samples{160000};
+    // Bounds retained ASR result text (including token and word strings).
+    std::size_t max_result_text_bytes{16384};
+    // Bounds the combined number of timed tokens and words per result.
+    std::size_t max_result_items{512};
 };
 
 struct SourceSpeechResult {

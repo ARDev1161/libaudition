@@ -5,6 +5,25 @@
 #include <utility>
 
 namespace audition {
+namespace {
+// Subtract instead of summing untrusted lengths: avoids size_t overflow.
+bool transcriptWithinBudget(const Transcript& transcript,
+                            std::size_t bytes, std::size_t items) noexcept {
+    if (transcript.tokens.size() > items ||
+        transcript.words.size() > items - transcript.tokens.size()) return false;
+    const auto consume = [&bytes](const std::string& value) {
+        if (value.size() > bytes) return false;
+        bytes -= value.size();
+        return true;
+    };
+    if (!consume(transcript.text) || !consume(transcript.language)) return false;
+    for (const auto& token : transcript.tokens)
+        if (!consume(token.text)) return false;
+    for (const auto& word : transcript.words)
+        if (!consume(word.text)) return false;
+    return true;
+}
+} // namespace
 
 PerSourceSpeechRuntime::PerSourceSpeechRuntime(
     const IVoiceActivityDetector& vad, std::shared_ptr<const IAsrEngine> asr,
@@ -12,6 +31,7 @@ PerSourceSpeechRuntime::PerSourceSpeechRuntime(
     : vad_(vad), asr_(std::move(asr)), options_(options) {
     if (!asr_ || !options_.sample_rate_hz || !options_.max_sources ||
         !options_.max_pending_segments || !options_.min_speech_samples ||
+        !options_.max_result_text_bytes || !options_.max_result_items ||
         options_.max_segment_samples < options_.min_speech_samples ||
         options_.pre_roll_samples > options_.max_segment_samples ||
         options_.post_roll_samples > options_.max_segment_samples) {
@@ -317,16 +337,22 @@ void PerSourceSpeechRuntime::workerLoop() {
             if ((current != tracks_.end() &&
                  current->second.generation == job.generation) ||
                 retired_generations_.count(job.generation) != 0) {
-                results_.push_back({job.track_id, job.generation, std::move(transcript),
-                    job.segment.audio.captureTime(),
-                    job.segment.audio.captureTime().advancedBy(job.segment.audio.duration())});
-                // Prevent unbounded accumulation when application does not poll.
-                if (results_.size() > options_.max_pending_segments) {
-                    results_.erase(results_.begin());
+                if (!transcriptWithinBudget(transcript,
+                        options_.max_result_text_bytes, options_.max_result_items)) {
+                    error_ = "ASR transcript exceeds configured result budget";
                     ++dropped_;
-                    ++evicted_results_;
+                } else {
+                    results_.push_back({job.track_id, job.generation, std::move(transcript),
+                        job.segment.audio.captureTime(),
+                        job.segment.audio.captureTime().advancedBy(job.segment.audio.duration())});
+                    // Prevent unbounded accumulation when application does not poll.
+                    if (results_.size() > options_.max_pending_segments) {
+                        results_.erase(results_.begin());
+                        ++dropped_;
+                        ++evicted_results_;
+                    }
+                    ++completed_;
                 }
-                ++completed_;
             }
             completeJobLocked(job.generation);
         } catch (const std::exception& e) {
