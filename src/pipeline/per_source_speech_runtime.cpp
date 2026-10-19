@@ -30,7 +30,8 @@ PerSourceSpeechRuntime::PerSourceSpeechRuntime(
     PerSourceSpeechOptions options)
     : vad_(vad), asr_(std::move(asr)), options_(options) {
     if (!asr_ || !options_.sample_rate_hz || !options_.max_sources ||
-        !options_.max_pending_segments || !options_.min_speech_samples ||
+        !options_.max_pending_segments || !options_.max_retired_generations ||
+        !options_.min_speech_samples ||
         !options_.max_result_text_bytes || !options_.max_result_items ||
         options_.max_segment_samples < options_.min_speech_samples ||
         options_.pre_roll_samples > options_.max_segment_samples ||
@@ -212,6 +213,11 @@ std::optional<std::uint64_t> PerSourceSpeechRuntime::retire(std::uint64_t id) {
     std::lock_guard<std::mutex> guard{mutex_};
     auto it = tracks_.find(id);
     if (it == tracks_.end()) return std::nullopt;
+    // Keep the existing source fully live if retirement metadata is full;
+    // the client can drain/release generations and retry, or forget it.
+    // Check BEFORE queuing its final speech or mutating the active track.
+    if (retired_generations_.size() >= options_.max_retired_generations)
+        return std::nullopt;
     const auto generation = it->second.generation;
     if (!it->second.speech.empty()) queueSegment(id, it->second);
     retired_generations_.insert(generation);
@@ -308,7 +314,7 @@ std::vector<SourceSpeechResult> PerSourceSpeechRuntime::takeResults() {
 SourceSpeechStatistics PerSourceSpeechRuntime::statistics() const {
     std::lock_guard<std::mutex> guard{mutex_};
     return {completed_, dropped_, jobs_.size(), error_,
-            results_.size(), evicted_results_};
+            results_.size(), evicted_results_, retired_generations_.size()};
 }
 
 SourceSpeechTrackStatus PerSourceSpeechRuntime::trackStatus(
