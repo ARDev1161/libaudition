@@ -75,11 +75,11 @@ bool verifyInstalledSpeech() {
         if (ingress.push(12U,chunk(initial))!=audition::SpeechPcmAdmission::Accepted ||
             !ingress.retire(12U)) return false;
         auto final_audio=ingress.tryPop();
-        auto retired=ingress.tryPop();
-        if (!final_audio || !retired ||
+        auto retire_event=ingress.tryPop();
+        if (!final_audio || !retire_event ||
             final_audio->kind!=audition::SpeechPcmIngressEvent::Kind::Audio ||
-            retired->kind!=audition::SpeechPcmIngressEvent::Kind::Retire ||
-            retired->source_id!=12U) return false;
+            retire_event->kind!=audition::SpeechPcmIngressEvent::Kind::Retire ||
+            retire_event->source_id!=12U) return false;
         ingress.close();
         if (ingress.waitPop().has_value()) return false;
         TestVad vad{};
