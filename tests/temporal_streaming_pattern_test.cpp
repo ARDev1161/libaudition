@@ -336,3 +336,54 @@ TEST(StreamingPatternMatcher, ZeroCooldownEmitsEveryMatchEvenAcrossSources) {
     ASSERT_EQ(restarted.size(),1u);
     EXPECT_EQ(restarted.front().ending_frame,1u);
 }
+
+TEST(StreamingPatternMatcher, ReusableResultsAgreeWithReturningApiAcrossSourcesAndCooldown) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_frames=4;
+    options.max_normalized_cost=0;
+    options.cooldown_frames=4;
+    audition::temporal::StreamingPatternMatcher returning{options};
+    audition::temporal::StreamingPatternMatcher reusable{options};
+    for (auto* matcher:{&returning,&reusable}) {
+        matcher->registerTemplate("first",{{1},{2},{3}});
+        matcher->registerTemplate("second",{{7},{8}});
+    }
+    std::vector<audition::temporal::StreamingPatternMatch> output;
+    output.reserve(options.max_templates);
+    const auto initial_capacity=output.capacity();
+    for (std::size_t i=0;i<80;++i) {
+        const std::vector<double> left{static_cast<double>((i%4)+1)};
+        const std::vector<double> right{static_cast<double>(7+(i%3))};
+        for (const auto& sample: {std::pair<unsigned,const std::vector<double>*>{1,&left},
+                                  std::pair<unsigned,const std::vector<double>*>{2,&right}}) {
+            const auto expected=returning.push(source(sample.first),*sample.second);
+            reusable.pushInto(source(sample.first),*sample.second,output);
+            ASSERT_EQ(output.size(),expected.size());
+            for (std::size_t k=0;k<expected.size();++k) {
+                EXPECT_EQ(output[k].label,expected[k].label);
+                EXPECT_DOUBLE_EQ(output[k].normalized_cost,expected[k].normalized_cost);
+                EXPECT_EQ(output[k].ending_frame,expected[k].ending_frame);
+            }
+            EXPECT_EQ(output.capacity(),initial_capacity);
+        }
+    }
+}
+
+TEST(StreamingPatternMatcher, ReusableResultsPreserveHistoryAfterInvalidFrame) {
+    audition::temporal::StreamingPatternOptions options{};
+    options.max_normalized_cost=0;
+    audition::temporal::StreamingPatternMatcher matcher{options};
+    matcher.registerTemplate("beep",{{1},{2}});
+    std::vector<audition::temporal::StreamingPatternMatch> output;
+    output.reserve(2);
+    matcher.pushInto(source(1),{1},output);
+    EXPECT_TRUE(output.empty());
+    EXPECT_THROW(matcher.pushInto(source(1),
+                 {std::numeric_limits<double>::infinity()},output),std::invalid_argument);
+    matcher.pushInto(source(1),{2},output);
+    ASSERT_EQ(output.size(),1u);
+    EXPECT_EQ(output.front().label,"beep");
+    EXPECT_EQ(output.front().ending_frame,2u);
+    matcher.pushInto(source(1),{100},output);
+    EXPECT_TRUE(output.empty());
+}
