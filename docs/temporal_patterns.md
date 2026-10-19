@@ -155,3 +155,5 @@ When a source's history reaches `max_frames`, `push()` now fills a reusable stag
 ### Allocation attribution
 
 The standalone probe additionally groups measured `operator new` calls into pushes that emitted matches (`matching_pushes`, `matching_allocations`) versus pushes that emitted no matches (`nonmatching_allocations`). These categories help distinguish baseline per-frame allocations from alert/cooldown bookkeeping. The current measured baseline before attribution was 1260 C++ allocations over 1000 pushes (1.26/push) in Ubuntu CI #1329, down from 2310 in #1326 (same configured workload). This is not a throughput or allocation-free guarantee.
+
+**Measurement correction (following CI #1331):** Previous `cpp_new_calls` included one allocation per push from the probe's own temporary input `std::vector<double>` construction. The probe now preallocates and reuses that caller-owned input outside the measured interval. Prior totals (2310 and 1260) are *not* pure matcher-internal allocation counts; compare corrected runs with the same probe version before attributing allocation changes to the matcher.
