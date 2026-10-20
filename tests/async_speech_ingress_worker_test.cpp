@@ -533,6 +533,8 @@ TEST(AsyncSpeechIngressWorker, RuntimeCapacityMismatchReportsError) {
     EXPECT_NE(events[1].epoch,*rejected_epoch);
     EXPECT_FALSE(speech.activeGeneration(12U).has_value());
     EXPECT_TRUE(speech.activeGeneration(11U).has_value());
+    EXPECT_EQ(speech.trackStatus(11U).received_samples,4U);
+    EXPECT_FALSE(speech.trackStatus(11U).error.has_value());
     EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,1U);
 }
 
