@@ -347,7 +347,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     for (auto it=epoch_recordings.begin();
                          it!=epoch_recordings.end();) {
                         if (it->first.first==event.source_id &&
-                            it->first.second!=event.epoch) {
+                            it->first.second<event.epoch) {
                             // An old Retire may have been canceled by a
                             // producer discontinuity before its worker ack.
                             // Persist that old WAV without unfinished ASR.
