@@ -241,6 +241,32 @@ cherry-pick #54 wholesale. CI #1459 passed **25 jobs**, with the optional
 `ae5f63c529587f7e6defdc23ad4216d83a5019bb`; this verifies the stacked
 feature branch, not a combined release candidate or hardware timing.
 
+## Release candidate evidence triage (2026-10-20; CI #1462)
+
+The stacked PR bases were rechecked: #52 -> main, #53 -> #52,
+#55 -> #53, #57 -> #55, #58 -> #57, and #59 -> #58.
+Sibling #54 still targets #53 and is not part of this chain.
+
+[CI #1462](https://github.com/ARDev1161/libaudition/actions/runs/39458727937)
+on `e4191463a9ed8c224b15f3fb73b4c4dec625076b` finished with
+**25 successful jobs, zero failures, one skipped**. Successful jobs include
+Ubuntu/macOS build-test, sanitizers, C++ coverage, four independent
+installed-package C++17 consumers (Ubuntu/macOS x static/shared), Qt,
+ODAS, Sherpa, AASIST, CLAP, EfficientAT and its real-weights job,
+AEC3, WORLD, GTSAM, and audio integration. This is job-level evidence,
+not a calibrated model accuracy or hardware timing result.
+`real-spatial-corpus` was **SKIPPED**, not passed.
+
+The delayed-`Forgot`/reused-WAV-epoch fix has a focused regression in
+`tests/async_speech_ingress_worker_test.cpp` and is included in #1462.
+
+**Remaining P0 work:** audit the advertised backend/model fixture
+requirements and license provenance; reconcile #54/#55 source-offset
+and status-counter contracts; prepare a single integration candidate
+without unauthorized main merges; rerun the full matrix on its exact
+SHA and document all limitations. Do not bump to 1.0.0 or tag a
+release before these gates pass.
+
 ## Mandatory gates (P0)
 
 | Gate | Verification | Current evidence / action |
