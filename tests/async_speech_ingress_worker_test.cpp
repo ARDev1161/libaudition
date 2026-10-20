@@ -416,8 +416,9 @@ TEST(AsyncSpeechIngressWorker, VadFailureOfOneSourcePreservesOtherSourceAsr) {
                 healthy_generation=event.generation;
             } else if(event.kind==Kind::Retired) {
                 ASSERT_TRUE(event.generation.has_value());
-                if(healthy_generation)
+                if(healthy_generation) {
                     EXPECT_EQ(event.generation,healthy_generation);
+                }
                 saw_retire=true;
             } else {
                 FAIL() << "Healthy source received error or invalidation";
