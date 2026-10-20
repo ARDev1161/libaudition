@@ -22,3 +22,66 @@ models:
     redistributable: true
     bundled: false
     purpose: ci-only inference fixture; AudioSet labels separately CC-BY-4.0
+  # Unbundled CI-only fixtures. Repository-declared licenses are not a completed
+  # legal/provenance review; commercial/redistribution approval is withheld.
+  # resolve/main is mutable even though each artifact has a checked SHA-256.
+  - id: sensevoice-small-int8-ci-model
+    backend: sherpa-onnx
+    task: automatic_speech_recognition
+    source: https://huggingface.co/nocmt/SenseVoiceSmall-INT8-ONNX/resolve/main/model.int8.onnx
+    source_revision: UNPINNED-main
+    sha256: c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51
+    license: Apache-2.0
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only inference fixture; approval flags withheld pending provenance review
+  - id: sensevoice-small-int8-ci-tokens
+    backend: sherpa-onnx
+    task: automatic_speech_recognition_tokens
+    source: https://huggingface.co/nocmt/SenseVoiceSmall-INT8-ONNX/resolve/main/tokens.txt
+    source_revision: UNPINNED-main
+    sha256: f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc
+    license: Apache-2.0
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only tokenizer fixture; approval flags withheld pending provenance review
+  - id: clap-ci-audio-encoder
+    backend: onnxruntime
+    task: audio_text_embedding
+    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_audio.onnx
+    source_revision: UNPINNED-main
+    sha256: 3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332
+    license: BSD-3-Clause
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only CLAP audio encoder; approval withheld pending provenance review
+  - id: clap-ci-text-encoder
+    backend: onnxruntime
+    task: audio_text_embedding
+    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_text.onnx
+    source_revision: UNPINNED-main
+    sha256: c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf
+    license: BSD-3-Clause
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only CLAP text encoder; approval withheld pending provenance review
+  - id: clap-ci-tokenizer
+    backend: onnxruntime
+    task: audio_text_tokenizer
+    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/tokenizer.json
+    source_revision: UNPINNED-main
+    sha256: 4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a
+    license: BSD-3-Clause
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only CLAP tokenizer; approval withheld pending provenance review
