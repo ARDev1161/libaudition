@@ -319,6 +319,7 @@ TEST(BoundedSpeechPcmIngress, WorkerForgetStopsSpeechAcrossPcmGap) {
     const auto first=runtime.activeGeneration(87U);
     ASSERT_TRUE(first.has_value());
     EXPECT_EQ(runtime.trackStatus(87U).buffered_samples,4U);
+    EXPECT_EQ(runtime.trackStatus(87U).received_samples,4U);
 
     EXPECT_EQ(ingress.push(87U,block(speech)),SpeechPcmAdmission::Accepted);
     EXPECT_EQ(ingress.push(87U,block(speech)),SpeechPcmAdmission::RejectedCapacity);
@@ -330,6 +331,8 @@ TEST(BoundedSpeechPcmIngress, WorkerForgetStopsSpeechAcrossPcmGap) {
     const auto fresh=runtime.activeGeneration(87U);
     ASSERT_TRUE(fresh.has_value());
     EXPECT_NE(*fresh,*first);
+    EXPECT_EQ(runtime.trackStatus(87U).received_samples,4U);
+    EXPECT_EQ(runtime.trackStatus(87U).queued_segments,0U);
     EXPECT_EQ(ingress.push(87U,block(quiet)),SpeechPcmAdmission::Accepted);
     ASSERT_TRUE(dispatch());
 
@@ -341,6 +344,10 @@ TEST(BoundedSpeechPcmIngress, WorkerForgetStopsSpeechAcrossPcmGap) {
     }
     ASSERT_EQ(received.size(),1U);
     EXPECT_EQ(received.front().generation,*fresh);
+    EXPECT_EQ(received.front().audio_start_sample,0U);
+    EXPECT_EQ(received.front().audio_end_sample,4U);
+    EXPECT_EQ(runtime.trackStatus(87U).received_samples,8U);
+    EXPECT_EQ(runtime.trackStatus(87U).queued_segments,1U);
     EXPECT_EQ(received.front().transcript.text,"4");
     EXPECT_EQ(runtime.statistics().completed_segments,1U);
 }
