@@ -83,6 +83,12 @@ real-model tests; green workflow jobs do not imply calibrated quality.
 
 ## Feature-branch evidence snapshot (2026-10-20)
 
+- [CI #1446](https://github.com/ARDev1161/libaudition/actions/runs/39408004979)
+  on `000d20558088799297d338b06187106035a55566` completed with
+  **25 successful jobs and one skipped** `real-spatial-corpus` job.
+  This documentation-only update does not establish release readiness.
+
+
 - [CI #1445](https://github.com/ARDev1161/libaudition/actions/runs/39401475193)
   on `0132531e3909309d5d567af53b4a94254af78b84` completed with
   **25 successful jobs, zero failures and one skipped** `real-spatial-corpus`.
@@ -205,6 +211,12 @@ and disables package registries, so a build-tree/previous user package cannot
 silently satisfy the test. This expanded test passed all four Ubuntu/macOS static/shared installed-package
 CI jobs in #1445 on commit `0132531e3909309d5d567af53b4a94254af78b84`.
 It must still run on the final integrated release candidate.
+
+The next P0 check exercises a **relocated** core package (including a prefix
+with spaces) and checks imported target locations and installed include paths
+against that new prefix. It must pass the four Linux/macOS static/shared CI
+jobs before it can be counted as evidence; the optional Sherpa consumer keeps
+its existing non-relocated smoke to avoid copying large third-party payloads.
 
 This verifies distribution completeness and ABI/link usability for the tested
 platforms only. Windows, hardware realtime deadlines, model accuracy, license

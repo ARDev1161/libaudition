@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -58,6 +59,22 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="libaudition-consumer-") as folder:
         root = Path(folder)
+        if args.backend == "core":
+            # Exercise the package after moving it to a new prefix containing
+            # spaces. This catches exported build/install paths that happen to
+            # work only in the original CI workspace.
+            original_prefix = prefix
+            relocated_prefix = root / "relocated installed package"
+            shutil.copytree(original_prefix, relocated_prefix, symlinks=True)
+            for asset in relocated_prefix.rglob("*"):
+                if asset.is_symlink() and not asset.resolve().is_relative_to(relocated_prefix):
+                    raise RuntimeError(f"Installed package symlink escapes prefix: {asset}")
+            prefix = relocated_prefix
+            package_dir = prefix / package_dir.relative_to(original_prefix)
+            for cmake_export in package_dir.glob("*.cmake"):
+                if str(original_prefix) in cmake_export.read_text(encoding="utf-8"):
+                    raise RuntimeError(
+                        f"Export retains original installation path: {cmake_export}")
         extra_target = "\n                audition::backend_sherpa" if args.backend == "sherpa" else ""
         extra_sources = " speech_smoke.cpp" if args.backend == "core" else ""
         if args.backend == "core":
@@ -65,6 +82,53 @@ def main() -> int:
             # inline C++ inside Python f-strings, braces need no escaping.
             fixture = Path(__file__).with_name("installed_speech_consumer.cpp")
             (root / "speech_smoke.cpp").write_bytes(fixture.read_bytes())
+        # Inspect the actual imported target locations, not only successful
+        # linking: an ambient build tree or old install must not satisfy the
+        # consumer while the relocated package is being tested.
+        imported_target_check = """
+            set(_audition_install_prefix "@@PREFIX@@")
+            foreach(_audition_target IN ITEMS
+                    audition::core audition::interfaces audition::dsp
+                    audition::io audition::spatial audition::memory
+                    audition::model audition::logging audition::pipeline)
+                if(NOT TARGET ${_audition_target})
+                    message(FATAL_ERROR "Missing installed target: ${_audition_target}")
+                endif()
+                get_target_property(_audition_imported ${_audition_target} IMPORTED)
+                if(NOT _audition_imported)
+                    message(FATAL_ERROR "Target is not imported: ${_audition_target}")
+                endif()
+                get_target_property(_audition_configs ${_audition_target}
+                                    IMPORTED_CONFIGURATIONS)
+                foreach(_audition_config IN LISTS _audition_configs)
+                    foreach(_audition_property IN ITEMS
+                            IMPORTED_LOCATION IMPORTED_IMPLIB)
+                        get_target_property(_audition_path ${_audition_target}
+                            "${_audition_property}_${_audition_config}")
+                        if(_audition_path)
+                            cmake_path(IS_PREFIX _audition_install_prefix
+                                "${_audition_path}" NORMALIZE _audition_inside)
+                            if(NOT _audition_inside)
+                                message(FATAL_ERROR
+                                    "${_audition_target} refers outside install: ${_audition_path}")
+                            endif()
+                        endif()
+                    endforeach()
+                endforeach()
+                get_target_property(_audition_includes ${_audition_target}
+                                    INTERFACE_INCLUDE_DIRECTORIES)
+                foreach(_audition_include IN LISTS _audition_includes)
+                    if(IS_ABSOLUTE "${_audition_include}")
+                        cmake_path(IS_PREFIX _audition_install_prefix
+                            "${_audition_include}" NORMALIZE _audition_inside)
+                        if(NOT _audition_inside)
+                            message(FATAL_ERROR
+                                "${_audition_target} includes outside install: ${_audition_include}")
+                        endif()
+                    endif()
+                endforeach()
+            endforeach()
+        """.replace("@@PREFIX@@", prefix.as_posix())
         (root / "CMakeLists.txt").write_text(textwrap.dedent(f"""\
             cmake_minimum_required(VERSION 3.20)
             project(libaudition_installed_consumer LANGUAGES CXX)
@@ -84,7 +148,7 @@ def main() -> int:
                 audition::logging
                 audition::pipeline{extra_target})
             target_compile_features(consumer PRIVATE cxx_std_17)
-            """), encoding="utf-8")
+            """) + textwrap.dedent(imported_target_check), encoding="utf-8")
         if args.backend == "sherpa":
             source = textwrap.dedent("""\
                 #include <audition/backends/sherpa.hpp>
@@ -216,7 +280,8 @@ def main() -> int:
         library_paths = [str(prefix / subdir) for subdir in ("lib", "lib64", "bin")]
         env[key] = os.pathsep.join(library_paths + ([env[key]] if key in env else []))
         run([str(exe)], env=env)
-        print("PASS: installed libaudition package consumed from separate C++17 project")
+        print("PASS: installed libaudition package consumed from separate C++17 project"
+              + (" after relocation" if args.backend == "core" else ""))
     return 0
 
 
