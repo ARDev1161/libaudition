@@ -374,6 +374,78 @@ TEST(AsyncSpeechIngressWorker, VadFailureCancelsGenerationAndAllowsReusedSource)
     EXPECT_NE(resumed[0].generation,events[0].generation);
 }
 
+TEST(AsyncSpeechIngressWorker, VadFailureOfOneSourcePreservesOtherSourceAsr) {
+    FailingSecondVad vad{};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    AsyncSpeechIngressWorker worker{speech};
+    const std::vector<float> pcm(4U,0.5F);
+    ASSERT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto failing_epoch=worker.sourceEpoch(71U);
+    ASSERT_TRUE(failing_epoch.has_value());
+    ASSERT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    ASSERT_EQ(worker.push(72U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto healthy_epoch=worker.sourceEpoch(72U);
+    ASSERT_TRUE(healthy_epoch.has_value());
+    ASSERT_EQ(worker.retire(72U),healthy_epoch);
+    worker.closeInput();
+
+    for(int i=0;i<2000 && !worker.finished();++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    ASSERT_TRUE(worker.finished());
+    using Kind=AsyncSpeechIngressWorker::Acknowledgement::Kind;
+    const auto events=worker.drainAcknowledgements();
+    std::optional<std::uint64_t> healthy_generation;
+    bool saw_error=false, saw_forget=false, saw_retire=false;
+    for(const auto& event:events) {
+        if(event.source_id==71U) {
+            if(event.kind==Kind::Error) {
+                EXPECT_EQ(event.epoch,*failing_epoch);
+                EXPECT_EQ(event.error,"synthetic VAD failure");
+                saw_error=true;
+            } else if(event.kind==Kind::Forgot) {
+                EXPECT_NE(event.epoch,*failing_epoch);
+                saw_forget=true;
+            } else {
+                EXPECT_EQ(event.kind,Kind::Bound);
+            }
+        } else {
+            EXPECT_EQ(event.source_id,72U);
+            EXPECT_EQ(event.epoch,*healthy_epoch);
+            if(event.kind==Kind::Bound) {
+                ASSERT_TRUE(event.generation.has_value());
+                healthy_generation=event.generation;
+            } else if(event.kind==Kind::Retired) {
+                ASSERT_TRUE(event.generation.has_value());
+                if(healthy_generation)
+                    EXPECT_EQ(event.generation,healthy_generation);
+                saw_retire=true;
+            } else {
+                FAIL() << "Healthy source received error or invalidation";
+            }
+        }
+    }
+    EXPECT_TRUE(saw_error);
+    EXPECT_TRUE(saw_forget);
+    EXPECT_TRUE(saw_retire);
+    ASSERT_TRUE(healthy_generation.has_value());
+    EXPECT_FALSE(speech.activeGeneration(71U).has_value());
+
+    std::vector<SourceSpeechResult> results;
+    for(int i=0;i<2000 && results.empty();++i) {
+        results=speech.takeResults();
+        if(results.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].track_id,72U);
+    EXPECT_EQ(results[0].generation,*healthy_generation);
+    EXPECT_EQ(results[0].transcript.text,"4");
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,4U);
+    EXPECT_TRUE(speech.takeResults().empty());
+    speech.releaseRetired(*healthy_generation);
+}
+
 TEST(AsyncSpeechIngressWorker, RetirementCapacityReportsDiscardWithoutLosingPriorResult) {
     WorkerVad vad{};
     auto options=speechOptions();
