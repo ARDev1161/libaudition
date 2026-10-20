@@ -109,6 +109,17 @@ private:
                 switch(event->kind) {
                 case SpeechPcmIngressEvent::Kind::Audio: {
                     runtime_.push(id,event->audio.view());
+                    // Per-source VAD failures are reported via trackStatus().
+                    const auto status=runtime_.trackStatus(id);
+                    if (status.error) {
+                        const auto failed_generation=runtime_.activeGeneration(id);
+                        runtime_.forget(id);
+                        bound.erase(id);
+                        ingress_.forget(id);
+                        publish({Acknowledgement::Kind::Error,id,epoch,
+                                 failed_generation,*status.error});
+                        break;
+                    }
                     const auto generation=runtime_.activeGeneration(id);
                     if (generation) {
                         const auto last=bound.find(id);

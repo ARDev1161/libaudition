@@ -358,6 +358,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     }
                     break;
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Error:
+                    if (event.generation)
+                        recordings.cancelGeneration(*event.generation);
                     ++speech_worker_errors;
                     last_speech_worker_error=event.error.substr(0,200);
                     break;

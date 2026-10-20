@@ -7,6 +7,7 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -245,4 +246,73 @@ TEST(AsyncSpeechIngressWorker, OverflowInvalidatesGenerationBeforeReusedRetireme
     EXPECT_NE(events[0].generation,events[2].generation);
     EXPECT_EQ(events[2].generation,events[3].generation);
     EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,0U);
+}
+
+
+namespace {
+class FailingSecondVadSession final : public IVadSession {
+public:
+    void reset() override { calls_=0U; }
+    VadResult process(AudioView) override {
+        if (++calls_==2U) throw std::runtime_error{"synthetic VAD failure"};
+        return {std::nullopt,true};
+    }
+private:
+    std::size_t calls_{0U};
+};
+class FailingSecondVad final : public IVoiceActivityDetector {
+public:
+    BackendInfo backendInfo() const override { return {"failing-vad","1"}; }
+    AudioRequirements audioRequirements() const override { return {}; }
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<FailingSecondVadSession>();
+    }
+};
+} // namespace
+
+TEST(AsyncSpeechIngressWorker, VadFailureCancelsGenerationAndAllowsReusedSource) {
+    FailingSecondVad vad{};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    AsyncSpeechIngressWorker worker{speech};
+    const std::vector<float> pcm(4U,0.5F);
+    ASSERT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto first_epoch=worker.sourceEpoch(71U);
+    ASSERT_TRUE(first_epoch.has_value());
+    ASSERT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+
+    using Kind=AsyncSpeechIngressWorker::Acknowledgement::Kind;
+    std::vector<AsyncSpeechIngressWorker::Acknowledgement> events;
+    for(int i=0;i<2000 && events.size()<3U;++i) {
+        auto batch=worker.drainAcknowledgements();
+        for(auto& event:batch) events.push_back(std::move(event));
+        if(events.size()<3U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(events.size(),3U);
+    EXPECT_EQ(events[0].kind,Kind::Bound);
+    EXPECT_EQ(events[1].kind,Kind::Error);
+    EXPECT_EQ(events[2].kind,Kind::Forgot);
+    ASSERT_TRUE(events[0].generation.has_value());
+    EXPECT_EQ(events[1].generation,events[0].generation);
+    EXPECT_EQ(events[1].error,"synthetic VAD failure");
+    EXPECT_EQ(events[0].epoch,*first_epoch);
+    EXPECT_EQ(events[1].epoch,*first_epoch);
+    EXPECT_NE(events[2].epoch,*first_epoch);
+    EXPECT_FALSE(speech.activeGeneration(71U).has_value());
+    EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,0U);
+
+    ASSERT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto reused_epoch=worker.sourceEpoch(71U);
+    ASSERT_TRUE(reused_epoch.has_value());
+    EXPECT_NE(reused_epoch,first_epoch);
+    worker.closeInput();
+    for(int i=0;i<2000 && !worker.finished();++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    ASSERT_TRUE(worker.finished());
+    const auto resumed=worker.drainAcknowledgements();
+    ASSERT_EQ(resumed.size(),1U);
+    EXPECT_EQ(resumed[0].kind,Kind::Bound);
+    EXPECT_EQ(resumed[0].epoch,*reused_epoch);
+    ASSERT_TRUE(resumed[0].generation.has_value());
+    EXPECT_NE(resumed[0].generation,events[0].generation);
 }
