@@ -168,6 +168,7 @@ namespace {
 struct PausedVadGate {
     std::atomic<bool> entered{false};
     std::atomic<bool> resume{false};
+    std::atomic<bool> fail_once{false};
 };
 class PausedVadSession final : public IVadSession {
 public:
@@ -178,6 +179,8 @@ public:
         gate_->entered.store(true);
         while (!gate_->resume.load())
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        if (gate_->fail_once.exchange(false))
+            throw std::runtime_error{"delayed stale-epoch VAD failure"};
         return {std::nullopt,true};
     }
 private:
@@ -195,6 +198,69 @@ public:
 private:
     std::shared_ptr<PausedVadGate> gate_;
 };
+}
+
+TEST(AsyncSpeechIngressWorker, StaleVadFailurePreservesReusedPcmAndRetirement) {
+    auto gate=std::make_shared<PausedVadGate>();
+    PausedVad vad{gate};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    AsyncSpeechIngressWorker worker{speech};
+    const std::vector<float> pcm(4U,0.5F);
+    using Kind=AsyncSpeechIngressWorker::Acknowledgement::Kind;
+    ASSERT_EQ(worker.push(91U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto old_epoch=worker.sourceEpoch(91U);
+    ASSERT_TRUE(old_epoch.has_value());
+    for(int i=0;i<2000 && !gate->entered.load();++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if(!gate->entered.load()) {
+        gate->resume.store(true);
+        FAIL() << "Old-epoch VAD did not enter the test gate";
+        return;
+    }
+    worker.forget(91U);
+    ASSERT_EQ(worker.push(91U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto new_epoch=worker.sourceEpoch(91U);
+    ASSERT_TRUE(new_epoch.has_value());
+    ASSERT_NE(*old_epoch,*new_epoch);
+    ASSERT_EQ(worker.retire(91U),new_epoch);
+    worker.closeInput();
+    gate->fail_once.store(true);
+    gate->resume.store(true);
+
+    std::vector<AsyncSpeechIngressWorker::Acknowledgement> events;
+    for(int i=0;i<2000 && (!worker.finished() || events.size()<4U);++i) {
+        auto batch=worker.drainAcknowledgements();
+        for(auto& event:batch) events.push_back(std::move(event));
+        if(!worker.finished() || events.size()<4U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(worker.finished());
+    ASSERT_EQ(events.size(),4U);
+    EXPECT_EQ(events[0].kind,Kind::Error);
+    EXPECT_EQ(events[0].epoch,*old_epoch);
+    EXPECT_EQ(events[0].error,"delayed stale-epoch VAD failure");
+    EXPECT_EQ(events[1].kind,Kind::Forgot);
+    EXPECT_GT(events[1].epoch,*old_epoch);
+    EXPECT_LT(events[1].epoch,*new_epoch);
+    EXPECT_EQ(events[2].kind,Kind::Bound);
+    EXPECT_EQ(events[2].epoch,*new_epoch);
+    EXPECT_EQ(events[3].kind,Kind::Retired);
+    EXPECT_EQ(events[3].epoch,*new_epoch);
+    ASSERT_TRUE(events[2].generation.has_value());
+    EXPECT_EQ(events[3].generation,events[2].generation);
+    EXPECT_EQ(worker.inputStatistics().invalidated_chunks,0U);
+    EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,0U);
+    std::vector<SourceSpeechResult> results;
+    for(int i=0;i<2000 && results.empty();++i) {
+        results=speech.takeResults();
+        if(results.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].track_id,91U);
+    EXPECT_EQ(results[0].generation,*events[2].generation);
+    EXPECT_EQ(results[0].transcript.text,"4");
+    speech.releaseRetired(results[0].generation);
 }
 
 TEST(AsyncSpeechIngressWorker, OverflowInvalidatesGenerationBeforeReusedRetirement) {

@@ -170,13 +170,21 @@ public:
     // Retire for this numeric ID. The worker receives a prioritized Forget.
     void forget(std::uint64_t source_id) {
         std::lock_guard<std::mutex> lock{mutex_};
-        const bool was_active=sources_.erase(source_id)!=0U;
-        const bool was_retiring=retiring_.erase(source_id)!=0U;
-        if (was_active || was_retiring) {
-            discardQueuedLocked(source_id);
-            invalidations_[source_id]=next_epoch_++;
-            cv_.notify_one();
-        }
+        forgetLocked(source_id);
+    }
+
+    // Worker-side error cancellation must not invalidate PCM admitted for a
+    // newer epoch after the producer has forgotten/reused this numeric ID.
+    [[nodiscard]] bool forgetIfEpoch(std::uint64_t source_id,
+                                     std::uint64_t epoch) {
+        std::lock_guard<std::mutex> lock{mutex_};
+        const auto active=sources_.find(source_id);
+        const auto retiring=retiring_.find(source_id);
+        if ((active==sources_.end() || active->second!=epoch) &&
+            (retiring==retiring_.end() || retiring->second!=epoch))
+            return false;
+        forgetLocked(source_id);
+        return true;
     }
 
     [[nodiscard]] std::optional<SpeechPcmIngressEvent> tryPop() {
@@ -217,6 +225,15 @@ public:
     }
 
 private:
+    void forgetLocked(std::uint64_t source_id) {
+        const bool was_active=sources_.erase(source_id)!=0U;
+        const bool was_retiring=retiring_.erase(source_id)!=0U;
+        if (was_active || was_retiring) {
+            discardQueuedLocked(source_id);
+            invalidations_[source_id]=next_epoch_++;
+            cv_.notify_one();
+        }
+    }
     std::size_t outstandingSourceSlotsLocked() const {
         std::size_t source_slot_count=sources_.size();
         for (const auto& item:retiring_)
