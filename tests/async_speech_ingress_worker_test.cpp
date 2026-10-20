@@ -685,3 +685,58 @@ TEST(AsyncSpeechIngressWorker, InFlightAsrForgetDoesNotPublishIntoReusedSource) 
     EXPECT_TRUE(speech.takeResults().empty());
     speech.releaseRetired(results[0].generation);
 }
+
+TEST(AsyncSpeechIngressWorker, FixedVadFramesPreserveSourceLocalSampleOffsets) {
+    // Cross-check sibling PR #54's fixed 10 ms framing contract.
+    WorkerVad vad{};
+    auto options=speechOptions();
+    options.min_speech_samples=160U;
+    options.pre_roll_samples=160U;
+    options.post_roll_samples=320U;
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),options};
+    AsyncSpeechIngressWorker worker{speech};
+    const ClockId clock{ClockDomain::Monotonic,17U};
+    const std::vector<float> quiet(160U,0.0F), voiced(160U,0.5F);
+    for(std::int64_t frame=0;frame<9;++frame) {
+        const auto& pcm=(frame>=2 && frame<5)?voiced:quiet;
+        const Timestamp capture{1000000000LL+frame*10000000LL,clock};
+        ASSERT_EQ(worker.push(83U,audioBlock(pcm,capture)),
+                  SpeechPcmAdmission::Accepted);
+    }
+    const auto epoch=worker.sourceEpoch(83U);
+    ASSERT_TRUE(epoch.has_value());
+    ASSERT_EQ(worker.retire(83U),epoch);
+    worker.closeInput();
+    std::vector<AsyncSpeechIngressWorker::Acknowledgement> events;
+    for(int i=0;i<2000 && (!worker.finished() || events.size()<2U);++i) {
+        auto batch=worker.drainAcknowledgements();
+        for(auto& event:batch) events.push_back(std::move(event));
+        if(!worker.finished() || events.size()<2U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(worker.finished());
+    ASSERT_EQ(events.size(),2U);
+    using Kind=AsyncSpeechIngressWorker::Acknowledgement::Kind;
+    EXPECT_EQ(events[0].kind,Kind::Bound);
+    EXPECT_EQ(events[1].kind,Kind::Retired);
+    EXPECT_EQ(events[0].epoch,*epoch);
+    EXPECT_EQ(events[1].epoch,*epoch);
+    ASSERT_TRUE(events[0].generation.has_value());
+    EXPECT_EQ(events[1].generation,events[0].generation);
+    std::vector<SourceSpeechResult> results;
+    for(int i=0;i<2000 && results.empty();++i) {
+        results=speech.takeResults();
+        if(results.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].track_id,83U);
+    EXPECT_EQ(results[0].generation,*events[0].generation);
+    // [160,1120) source samples at 16 kHz => [1.01,1.07) seconds.
+    EXPECT_EQ(results[0].transcript.text,"960");
+    EXPECT_EQ(results[0].start_time.clock(),clock);
+    EXPECT_EQ(results[0].end_time.clock(),clock);
+    EXPECT_EQ(results[0].start_time.nanoseconds(),1010000000LL);
+    EXPECT_EQ(results[0].end_time.nanoseconds(),1070000000LL);
+    speech.releaseRetired(results[0].generation);
+}
