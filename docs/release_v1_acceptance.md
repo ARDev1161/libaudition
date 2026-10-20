@@ -438,3 +438,36 @@ See [CTest suites](ctest_suites.md),
 
 This document should be updated with concrete commit hashes and evidence
 rather than a percentage-complete estimate.
+
+## Model fixture provenance audit (2026-10-21, PR #59)
+
+The model CI jobs use SHA-256 content checks, but **content integrity is not
+an upstream revision pin or redistribution permission**. Do not mark the
+model provenance/licensing P0 gate complete based on a green workflow alone.
+
+| Fixture | Workflow location | Immutable upstream revision | Content check | Release decision |
+| --- | --- | --- | --- | --- |
+| Silero VAD | `ci.yml` sherpa | GitHub release asset ID recorded in `models/manifest.yaml` | SHA-256 | Listed in manifest; verify upstream licensing before redistribution |
+| YAMNet ONNX | `ci.yml` YAMNet | Hugging Face commit `f25b741c2f0bdc6d7e6db24b5fddda23347dbafd` | SHA-256 | Listed in manifest; label-map attribution separate |
+| Whisper tiny.en INT8 | `ci.yml` sherpa | Hugging Face commit `d026532c022fa99fd789d6b32446a1df7b6bfc43` | SHA-256 per ONNX | Not yet recorded in manifest |
+| NeMo speaker embedding | `ci.yml` sherpa | Hugging Face revision `2b697b2` | SHA-256 | Not yet recorded in manifest |
+| SenseVoiceSmall INT8 | `ci.yml` sherpa | **Not pinned** (`resolve/main`) | SHA-256 model + tokens | Resolve immutable commit and licensing |
+| CLAP audio/text/tokenizer | `ci.yml` CLAP | **Not pinned** (`resolve/main`) | SHA-256 for all three files | Resolve immutable commit and licensing |
+| AASIST ONNX | `ci.yml` AASIST | Hugging Face commit `16774d458d86d2a021ae31646c1bf66a5331b53e` | SHA-256 | Not yet recorded in manifest |
+
+Additional external archives and datasets in the sherpa jobs are checked
+in some cases against pinned digests, but some steps only **print** the
+SHA-256 of downloaded archives. Those are not verification gates and must
+be separately inventoried before a reproducible release claim.
+
+**Required closure:** obtain immutable upstream revision identifiers for
+SenseVoice and CLAP, validate each against the currently accepted SHA-256,
+record provenance, license, commercial-use and redistribution decisions
+for every fixture, and convert any download-only hashes used as release
+gates into expected-digest checks. Where upstream license terms cannot be
+verified, mark them **UNVERIFIED** and keep model files unbundled; do not
+infer permission from public availability.
+
+**Current integration evidence:** CI #1479 on `96eae742` passed 25 jobs,
+with `real-spatial-corpus` skipped. This validates the stacked PR #59
+snapshot only, not real-audio accuracy or the final v1.0 candidate.
