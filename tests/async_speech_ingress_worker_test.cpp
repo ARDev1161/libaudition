@@ -372,3 +372,66 @@ TEST(AsyncSpeechIngressWorker, VadFailureCancelsGenerationAndAllowsReusedSource)
     ASSERT_TRUE(resumed[0].generation.has_value());
     EXPECT_NE(resumed[0].generation,events[0].generation);
 }
+
+TEST(AsyncSpeechIngressWorker, RetirementCapacityReportsDiscardWithoutLosingPriorResult) {
+    WorkerVad vad{};
+    auto options=speechOptions();
+    options.max_retired_generations=1U;
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),options};
+    AsyncSpeechIngressWorker worker{speech};
+    const std::vector<float> pcm(4U,0.5F);
+    using Ack=AsyncSpeechIngressWorker::Acknowledgement;
+    using Kind=Ack::Kind;
+    auto drainUntil=[&](std::size_t expected) {
+        std::vector<Ack> events;
+        for(int i=0;i<2000 && events.size()<expected;++i) {
+            auto batch=worker.drainAcknowledgements();
+            for(auto& event:batch) events.push_back(std::move(event));
+            if(events.size()<expected)
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        return events;
+    };
+
+    ASSERT_EQ(worker.push(301U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto first_epoch=worker.sourceEpoch(301U);
+    ASSERT_TRUE(first_epoch.has_value());
+    ASSERT_EQ(worker.retire(301U),first_epoch);
+    const auto first=drainUntil(2U);
+    ASSERT_EQ(first.size(),2U);
+    EXPECT_EQ(first[0].kind,Kind::Bound);
+    EXPECT_EQ(first[1].kind,Kind::Retired);
+    ASSERT_TRUE(first[0].generation.has_value());
+    EXPECT_EQ(first[0].generation,first[1].generation);
+    EXPECT_EQ(speech.statistics().retired_generations,1U);
+
+    ASSERT_EQ(worker.push(302U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto second_epoch=worker.sourceEpoch(302U);
+    ASSERT_TRUE(second_epoch.has_value());
+    ASSERT_EQ(worker.retire(302U),second_epoch);
+    worker.closeInput();
+    const auto second=drainUntil(3U);
+    ASSERT_EQ(second.size(),3U);
+    EXPECT_EQ(second[0].kind,Kind::Bound);
+    EXPECT_EQ(second[1].kind,Kind::Error);
+    EXPECT_EQ(second[2].kind,Kind::Retired);
+    for(const auto& event:second) EXPECT_EQ(event.epoch,*second_epoch);
+    EXPECT_EQ(second[1].error,
+              "Speech retirement capacity exhausted; final utterance discarded");
+    EXPECT_FALSE(second[1].generation.has_value());
+    EXPECT_FALSE(second[2].generation.has_value());
+    EXPECT_FALSE(speech.activeGeneration(302U).has_value());
+    EXPECT_EQ(speech.statistics().retired_generations,1U);
+
+    std::vector<SourceSpeechResult> results;
+    for(int i=0;i<2000 && results.empty();++i) {
+        results=speech.takeResults();
+        if(results.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].generation,*first[0].generation);
+    EXPECT_EQ(results[0].track_id,301U);
+    EXPECT_EQ(results[0].transcript.text,"4");
+    speech.releaseRetired(*first[0].generation);
+}

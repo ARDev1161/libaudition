@@ -142,7 +142,13 @@ private:
                 case SpeechPcmIngressEvent::Kind::Retire: {
                     auto generation=runtime_.retire(id);
                     if (!generation && runtime_.activeGeneration(id)) {
+                        // The ingress already retired this epoch, but the
+                        // runtime cannot flush while retirement slots are full.
                         runtime_.forget(id);
+                        bound.erase(id);
+                        publish({Acknowledgement::Kind::Error,id,epoch,
+                                 std::nullopt,
+                                 "Speech retirement capacity exhausted; final utterance discarded"});
                     }
                     bound.erase(id);
                     publish({Acknowledgement::Kind::Retired,id,epoch,
