@@ -110,6 +110,16 @@ private:
                     runtime_.push(id,event->audio.view());
                     // Per-source VAD failures are reported via trackStatus().
                     const auto status=runtime_.trackStatus(id);
+                    if (!status.exists) {
+                        // Runtime and ingress can have different source limits.
+                        // Do not silently discard successfully admitted PCM.
+                        ingress_.forget(id);
+                        bound.erase(id);
+                        publish({Acknowledgement::Kind::Error,id,epoch,
+                                 std::nullopt,
+                                 "Speech runtime source capacity exhausted"});
+                        break;
+                    }
                     if (status.error) {
                         const auto failed_generation=runtime_.activeGeneration(id);
                         runtime_.forget(id);
