@@ -83,6 +83,15 @@ real-model tests; green workflow jobs do not imply calibrated quality.
 
 ## Feature-branch evidence snapshot (2026-10-20)
 
+- [CI #1445](https://github.com/ARDev1161/libaudition/actions/runs/39401475193)
+  on `0132531e3909309d5d567af53b4a94254af78b84` completed with
+  **25 successful jobs, zero failures and one skipped** `real-spatial-corpus`.
+  All four expanded independent installed-package C++17 consumers
+  (Ubuntu/macOS, static/shared), sanitizer and optional backend jobs passed.
+  This verifies the stacked #59 branch, **not** a merged v1.0 candidate;
+  real spatial accuracy and hardware deadlines remain **NOT MEASURED**.
+
+
 - [CI #1444](https://github.com/ARDev1161/libaudition/actions/runs/39394768807)
   on `d5818578a1e09bf7d384a3275b74e414765ae5f9` completed with
   **25 successful jobs and one skipped** `real-spatial-corpus` job.
@@ -135,8 +144,8 @@ real-model tests; green workflow jobs do not imply calibrated quality.
 | Gate | Verification | Current evidence / action |
 | --- | --- | --- |
 | **Integration** | Required stacked PRs have an explicit merge sequence; combined head is compiled/tested, with no unresolved conflicts or outdated bases | OPEN: speech/classification and temporal work still appear in multiple draft/stacked PRs. Green feature-branch CI does not close this gate |
-| **Core behavior** | Default build and CTest on supported Linux and macOS configurations; deterministic numeric, invalid-input, lifecycle, overflow and multi-source tests; no ignored mandatory failures | CI #1441 green on stacked PR #59 **feature branch**, including sanitizers and model-backed jobs. Require a fresh unified-head CI run after integration |
-| **C++17 install consumption** | Build/install using documented CMake options, then compile and link an **independent** installed-package consumer of all nine core targets (`core`, `interfaces`, `dsp`, `io`, `spatial`, `memory`, `model`, `logging`, `pipeline`); exercise umbrella/temporal/speech headers, package exports and installed legal notices | **FEATURE BRANCH VERIFIED (earlier scope):** #1444 passes Ubuntu/macOS static/shared. Expanded all-target and legal-payload verification is **PENDING CI**. **STILL OPEN FOR v1.0:** rerun on final combined candidate |
+| **Core behavior** | Default build and CTest on supported Linux and macOS configurations; deterministic numeric, invalid-input, lifecycle, overflow and multi-source tests; no ignored mandatory failures | CI #1445 green on stacked PR #59 **feature branch**, including sanitizers and model-backed jobs. Require a fresh unified-head CI run after integration |
+| **C++17 install consumption** | Build/install using documented CMake options, then compile and link an **independent** installed-package consumer of all nine core targets (`core`, `interfaces`, `dsp`, `io`, `spatial`, `memory`, `model`, `logging`, `pipeline`); exercise umbrella/temporal/speech headers, package exports and installed legal notices | **FEATURE BRANCH VERIFIED (expanded scope):** #1445 passes all-target and legal-payload checks on Ubuntu/macOS static/shared. **STILL OPEN FOR v1.0:** rerun on final combined candidate |
 | **Backend opt-in** | Every advertised enabled backend builds and executes appropriate contract/model-backed tests with pinned assets. Missing required model/WAV must fail rather than produce misleading PASS | Existing model-backed CI jobs and coverage matrix; audit the release's actually enabled backend matrix |
 | **Accuracy claims** | Every accuracy/quality number in release notes includes model, version, dataset provenance, reference annotations, metric definition and measured result | Open for broad real-room DOA/SSS, model generalization, WER, DER/JER, and anti-spoofing. **No global quality claim** until measured |
 | **Concurrency and bounded resources** | Verify no unbounded source/queue/label growth in documented core paths. Define caller-owned scratch and thread-safety contracts; reject malformed frames without corrupting committed source state | Unit/CTest work exists; TMP-04 includes bounded candidate/source histories and allocation probes. Review remaining adapters |
@@ -185,7 +194,7 @@ These changes do **not** validate arbitrary `std::chrono` conversions,
 physical clock continuity, or downstream timestamp arithmetic; they must
 pass CTest and sanitizers on the final integrated release candidate.
 
-## Installed-package integrity (P0 extension, pending CI)
+## Installed-package integrity (P0 extension, feature-branch CI verified)
 
 The external C++17 consumer now checks all nine core exported CMake targets,
 including actual calls through the I/O, model-registry and logging libraries.
@@ -193,8 +202,9 @@ It requires the installed umbrella/speech/temporal headers, CMake export and
 version files, Apache license, NOTICE, third-party inventory and retained
 third-party license texts. It explicitly points CMake to the installed package
 and disables package registries, so a build-tree/previous user package cannot
-silently satisfy the test. This is a **proposed test change**, not a pass,
-until its commit completes Ubuntu/macOS static/shared CI.
+silently satisfy the test. This expanded test passed all four Ubuntu/macOS static/shared installed-package
+CI jobs in #1445 on commit `0132531e3909309d5d567af53b4a94254af78b84`.
+It must still run on the final integrated release candidate.
 
 This verifies distribution completeness and ABI/link usability for the tested
 platforms only. Windows, hardware realtime deadlines, model accuracy, license
