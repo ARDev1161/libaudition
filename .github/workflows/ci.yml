@@ -1315,6 +1315,7 @@ jobs:
       - name: Download pinned CLAP inference fixtures
         shell: bash
         run: |
+          set -euo pipefail
           curl --fail --location --retry 3 \
             --output "$PWD/build-clap/clap_audio.onnx" \
             "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_audio.onnx?download=true"
