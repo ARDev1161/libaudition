@@ -435,3 +435,63 @@ TEST(AsyncSpeechIngressWorker, RetirementCapacityReportsDiscardWithoutLosingPrio
     EXPECT_EQ(results[0].transcript.text,"4");
     speech.releaseRetired(*first[0].generation);
 }
+
+TEST(AsyncSpeechIngressWorker, ReusedIdRetirementKeepsCaptureClock) {
+    WorkerVad vad{};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    AsyncSpeechIngressWorker worker{speech};
+    const std::vector<float> pcm(4U,0.5F);
+    const Timestamp t1{1000000000LL,{ClockDomain::Monotonic,17U}};
+    const Timestamp t2{3000000000LL,{ClockDomain::Monotonic,17U}};
+    using Ack=AsyncSpeechIngressWorker::Acknowledgement;
+    std::vector<Ack> acks;
+    auto collect=[&](std::size_t count) {
+        for(int i=0;i<2000 && acks.size()<count;++i) {
+            auto batch=worker.drainAcknowledgements();
+            for(auto& a:batch) acks.push_back(std::move(a));
+            if(acks.size()<count)
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        return acks.size()==count;
+    };
+    ASSERT_EQ(worker.push(71U,audioBlock(pcm,t1)),SpeechPcmAdmission::Accepted);
+    const auto epoch1=worker.sourceEpoch(71U);
+    ASSERT_TRUE(epoch1.has_value());
+    ASSERT_EQ(worker.retire(71U),epoch1);
+    ASSERT_TRUE(collect(2U));
+    ASSERT_EQ(acks[1].kind,Ack::Kind::Retired);
+    ASSERT_EQ(worker.push(71U,audioBlock(pcm,t2)),SpeechPcmAdmission::Accepted);
+    const auto epoch2=worker.sourceEpoch(71U);
+    ASSERT_TRUE(epoch2.has_value());
+    EXPECT_NE(epoch1,epoch2);
+    ASSERT_EQ(worker.retire(71U),epoch2);
+    worker.closeInput();
+    ASSERT_TRUE(collect(4U));
+    ASSERT_EQ(acks[0].kind,Ack::Kind::Bound);
+    ASSERT_EQ(acks[2].kind,Ack::Kind::Bound);
+    ASSERT_EQ(acks[3].kind,Ack::Kind::Retired);
+    ASSERT_TRUE(acks[0].generation.has_value());
+    ASSERT_TRUE(acks[2].generation.has_value());
+    EXPECT_NE(acks[0].generation,acks[2].generation);
+    EXPECT_EQ(acks[0].epoch,*epoch1);
+    EXPECT_EQ(acks[1].epoch,*epoch1);
+    EXPECT_EQ(acks[2].epoch,*epoch2);
+    EXPECT_EQ(acks[3].epoch,*epoch2);
+    std::vector<SourceSpeechResult> results;
+    for(int i=0;i<2000 && results.size()<2U;++i) {
+        auto batch=speech.takeResults();
+        for(auto& result:batch) results.push_back(std::move(result));
+        if(results.size()<2U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(results.size(),2U);
+    for(const auto& result:results) {
+        const bool first=result.generation==*acks[0].generation;
+        EXPECT_TRUE(first || result.generation==*acks[2].generation);
+        EXPECT_EQ(result.start_time.clock(),first?t1.clock():t2.clock());
+        EXPECT_EQ(result.start_time.nanoseconds(),
+                  first?t1.nanoseconds():t2.nanoseconds());
+        EXPECT_EQ(result.track_id,71U);
+        speech.releaseRetired(result.generation);
+    }
+}
