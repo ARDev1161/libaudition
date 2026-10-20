@@ -735,6 +735,9 @@ TEST(AsyncSpeechIngressWorker, FixedVadFramesPreserveSourceLocalSampleOffsets) {
     EXPECT_EQ(results[0].generation,*events[0].generation);
     // [160,1120) source samples at 16 kHz => [1.01,1.07) seconds.
     EXPECT_EQ(results[0].transcript.text,"960");
+    EXPECT_EQ(results[0].audio_start_sample,160U);
+    EXPECT_EQ(results[0].audio_end_sample,1120U);
+    EXPECT_EQ(results[0].audio_end_sample-results[0].audio_start_sample,960U);
     EXPECT_EQ(results[0].start_time.clock(),clock);
     EXPECT_EQ(results[0].end_time.clock(),clock);
     EXPECT_EQ(results[0].start_time.nanoseconds(),1010000000LL);
