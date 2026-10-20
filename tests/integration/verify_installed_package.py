@@ -30,6 +30,32 @@ def main() -> int:
     args = p.parse_args()
     prefix = args.prefix.resolve(strict=True)
 
+    # Verify the distribution, not merely a build-tree package discovered by
+    # CMake. A missing notice or exported header is a release-blocking error.
+    package_dirs = list(prefix.glob("lib*/cmake/libaudition"))
+    if len(package_dirs) != 1:
+        raise RuntimeError(f"Expected one installed CMake package under {prefix}, "
+                           f"found {package_dirs}")
+    package_dir = package_dirs[0]
+    for relative in (
+        "include/audition/audition.hpp",
+        "include/audition/io/wav_io.hpp",
+        "include/audition/speech/async_speech_ingress_worker.hpp",
+        "include/audition/temporal/streaming_pattern_matcher.hpp",
+        "share/libaudition/LICENSE",
+        "share/libaudition/NOTICE",
+        "share/libaudition/THIRD_PARTY.md",
+    ):
+        if not (prefix / relative).is_file():
+            raise FileNotFoundError(f"Missing installed package asset: {relative}")
+    for filename in ("libauditionConfig.cmake", "libauditionConfigVersion.cmake",
+                     "libauditionTargets.cmake"):
+        if not (package_dir / filename).is_file():
+            raise FileNotFoundError(f"Missing CMake export: {filename}")
+    licenses_dir = prefix / "share/libaudition/LICENSES"
+    if not licenses_dir.is_dir() or not any(licenses_dir.glob("*.txt")):
+        raise FileNotFoundError("Installed third-party license texts are missing")
+
     with tempfile.TemporaryDirectory(prefix="libaudition-consumer-") as folder:
         root = Path(folder)
         extra_target = "\n                audition::backend_sherpa" if args.backend == "sherpa" else ""
@@ -51,8 +77,11 @@ def main() -> int:
                 audition::core
                 audition::interfaces
                 audition::dsp
+                audition::io
                 audition::spatial
                 audition::memory
+                audition::model
+                audition::logging
                 audition::pipeline{extra_target})
             target_compile_features(consumer PRIVATE cxx_std_17)
             """), encoding="utf-8")
@@ -101,6 +130,7 @@ def main() -> int:
         else:
             source = textwrap.dedent(f"""\
             #include <audition/audition.hpp>
+            #include <audition/io/wav_io.hpp>
             #include <vector>
             extern bool verifyInstalledSpeech();
             int main() {{
@@ -126,6 +156,16 @@ def main() -> int:
                     pcm.duration().nanoseconds()!=125000LL ||
                     origin.advancedBy(pcm.duration()).nanoseconds()!=1000125000LL ||
                     origin.since(origin).nanoseconds()!=0LL) return 7;
+
+                // Link and execute every core installed library target, not
+                // only the five targets needed by the original smoke.
+                audition::InMemoryModelRegistry models{{}};
+                if (!models.list().empty()) return 9;
+                audition::Logger logger{{"installed-consumer"}};
+                logger.trace("installed package smoke");
+                const auto selected=audition::io::selectMonoChannel(pcm_view,0U);
+                if (selected.frameCount()!=2U ||
+                    selected.samples()[1]!=0.2F) return 10;
 
                 if (!verifyInstalledSpeech()) return 8;
                 // The installed umbrella must expose the backend-neutral
@@ -160,7 +200,10 @@ def main() -> int:
         (root / "main.cpp").write_text(source, encoding="utf-8")
         build = root / "build"
         run([args.cmake, "-S", str(root), "-B", str(build), "-G",
-             args.generator, f"-DCMAKE_PREFIX_PATH={prefix}"])
+             args.generator, f"-DCMAKE_PREFIX_PATH={prefix}",
+             f"-Dlibaudition_DIR={package_dir}",
+             "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
+             "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF"])
         run([args.cmake, "--build", str(build), "--parallel", "2"])
         exe = build / ("consumer.exe" if os.name == "nt" else "consumer")
         env = dict(os.environ)
