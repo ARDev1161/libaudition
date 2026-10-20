@@ -44,6 +44,9 @@ struct SourceSpeechResult {
     Transcript transcript{};
     Timestamp start_time{};
     Timestamp end_time{};
+    // Half-open offsets in samples since this source generation began.
+    std::uint64_t audio_start_sample{0};
+    std::uint64_t audio_end_sample{0};
 };
 
 // Atomic consumer snapshot: results and completed retired generations
@@ -125,6 +128,7 @@ private:
         bool speech_active{false};
         std::optional<std::string> error{};
         Timestamp start_time{};
+        std::uint64_t start_sample{0};
         std::uint64_t generation{0};
         std::uint64_t received_samples{0};
         std::uint64_t queued_segments{0};
@@ -134,6 +138,7 @@ private:
         std::uint64_t track_id{0};
         std::uint64_t generation{0};
         SpeechSegment segment{};
+        std::uint64_t start_sample{0};
     };
     void queueSegment(std::uint64_t track_id, Track& track);
     void workerLoop();
