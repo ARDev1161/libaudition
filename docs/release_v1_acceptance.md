@@ -196,6 +196,51 @@ work. This is a proposal, **not** authorization to close #54. The open
 clock/sample-offset and Qt end-to-end cancellation checks must be resolved
 before the sibling PR can be declared redundant.
 
+## Speech API disposition audit (2026-10-20; CI #1459)
+
+The sibling #54 `SourceSpeechRuntime` and stacked #55/#59
+`PerSourceSpeechRuntime` remain distinct, and no merge/closure is authorized.
+A direct review of their public headers and the #59 async adapter establishes:
+
+- **Capture path:** #54 `push(source_id, AudioView)` returns a boolean and
+  internally queues chunks for a VAD worker. #59's direct runtime `push()`
+  returns void and executes VAD synchronously; only
+  `AsyncSpeechIngressWorker::push()` is the bounded capture-facing entry.
+  Document this adapter requirement in every example before declaring parity.
+- **Backpressure:** #54's false result conflates queue/source-capacity
+  rejection; #59 returns `SpeechPcmAdmission` from the ingress and has a
+  separate bounded acknowledgement mailbox. A consumer **must** drain
+  acknowledgements; an undrained mailbox can block the worker. These are
+  not source-compatible contracts.
+- **Time origin:** #54 exposes source-local `audio_start_sample` and
+  `audio_end_sample` offsets. #59 exposes clock-identified `Timestamp`
+  boundaries and carries the capture timestamp through its ingress.
+  Fixed 160-sample/10-ms frame replay is covered on the #59 branch by
+  `FixedVadFramesPreserveSourceLocalSampleOffsets`, but a public sample-offset
+  conversion contract has **not** been established. Avoid claiming exact
+  parity for callers requiring absolute sample counters.
+- **Source reuse:** #54 invalidates old generation results on `forget()`.
+  #59 distinguishes ingress epoch from ASR generation, with explicit
+  `Bound/Forgot/Retired/Error` acknowledgements and `releaseRetired()`
+  ownership. `InFlightAsrForgetDoesNotPublishIntoReusedSource` covers
+  in-flight cancellation through the async adapter. The consumer must not
+  mistake the forget invalidation epoch for either source binding epoch.
+- **Lifecycle and observability:** #54 provides per-source received samples,
+  dropped chunks/segments and last transcript. #59 separates runtime
+  statistics/track status from ingress statistics and acknowledgement
+  draining; #59 additionally supports flush-on-retire and bounded retired
+  generations. Any compatibility facade would need to translate these
+  semantics explicitly, not just rename types.
+
+**Provisional decision:** use #55/#59 plus `AsyncSpeechIngressWorker` as
+primary implementation; keep #54 open pending a Qt end-to-end capture/recording
+review, public sample-offset requirements and verification that all #54
+status/drop counters have equivalent consumer-visible diagnostics. Do not
+cherry-pick #54 wholesale. CI #1459 passed **25 jobs**, with the optional
+`real-spatial-corpus` job skipped, on commit
+`ae5f63c529587f7e6defdc23ad4216d83a5019bb`; this verifies the stacked
+feature branch, not a combined release candidate or hardware timing.
+
 ## Mandatory gates (P0)
 
 | Gate | Verification | Current evidence / action |
