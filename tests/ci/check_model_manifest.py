@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Fail CI when registered model fixture digests drift from workflow checks.
+
+Only validates manifest/workflow consistency, not upstream provenance or licensing.
+"""
+from pathlib import Path
+import re
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+manifest = (ROOT / "models/manifest.yaml").read_text(encoding="utf-8")
+workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+entries = []
+current = None
+for line in manifest.splitlines():
+    match = re.fullmatch(r"  - id: ([a-zA-Z0-9_.-]+)", line)
+    if match:
+        current = {"id": match.group(1)}
+        entries.append(current)
+        continue
+    field = re.fullmatch(r"    (sha256|source_revision|source|bundled): (.+)", line)
+    if field and current is not None:
+        if field.group(1) in current:
+            raise SystemExit(f"Duplicate {field.group(1)} in {current['id']}")
+        current[field.group(1)] = field.group(2).strip()
+
+if not entries:
+    raise SystemExit("No registered model fixtures")
+seen = set()
+errors = []
+for entry in entries:
+    name = entry["id"]
+    if name in seen:
+        errors.append(f"{name}: duplicate id")
+    seen.add(name)
+    digest = entry.get("sha256", "")
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        errors.append(f"{name}: missing or invalid SHA-256")
+    elif not re.search(r"(?<![0-9a-f])" + digest + r"(?![0-9a-f])", workflow):
+        errors.append(f"{name}: SHA-256 absent from CI workflow")
+    if not entry.get("source") or not entry.get("source_revision"):
+        errors.append(f"{name}: missing source or source_revision")
+    if entry.get("bundled") != "false":
+        errors.append(f"{name}: CI fixture must explicitly be unbundled")
+if errors:
+    print("\n".join(errors), file=sys.stderr)
+    raise SystemExit(1)
+print(f"Validated {len(entries)} unbundled model fixture digests against CI workflow")
