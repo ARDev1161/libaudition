@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -246,6 +247,61 @@ TEST(AsyncSpeechIngressWorker, OverflowInvalidatesGenerationBeforeReusedRetireme
     EXPECT_NE(events[0].generation,events[2].generation);
     EXPECT_EQ(events[2].generation,events[3].generation);
     EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,0U);
+}
+
+
+TEST(AsyncSpeechIngressWorker, TimestampOverflowDropsQueuedPcm) {
+    auto gate=std::make_shared<PausedVadGate>();
+    PausedVad vad{gate};
+    auto cfg=speechOptions();
+    cfg.max_segment_samples=4U;
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),cfg};
+    SpeechPcmIngressOptions ingress_cfg{};
+    ingress_cfg.max_sources=1U;
+    ingress_cfg.max_chunk_samples=4U;
+    AsyncSpeechIngressWorker worker{speech,ingress_cfg};
+    const std::vector<float> pcm(4U,0.5F);
+    const Timestamp near_limit{std::numeric_limits<std::int64_t>::max()-1,
+                               {ClockDomain::Monotonic,17U}};
+    ASSERT_EQ(worker.push(71U,audioBlock(pcm,near_limit)),
+              SpeechPcmAdmission::Accepted);
+    const auto first_epoch=worker.sourceEpoch(71U);
+    ASSERT_TRUE(first_epoch.has_value());
+    for(int i=0;i<2000 && !gate->entered.load();++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if(!gate->entered.load()) {
+        gate->resume.store(true);
+        FAIL() << "VAD did not enter the test gate";
+        return;
+    }
+    EXPECT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    gate->resume.store(true);
+    std::vector<AsyncSpeechIngressWorker::Acknowledgement> events;
+    for(int i=0;i<2000 && events.size()<2U;++i) {
+        auto batch=worker.drainAcknowledgements();
+        for(auto& e:batch)events.push_back(std::move(e));
+        if(events.size()<2U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    using Kind=AsyncSpeechIngressWorker::Acknowledgement::Kind;
+    ASSERT_EQ(events.size(),2U);
+    EXPECT_EQ(events[0].kind,Kind::Error);
+    EXPECT_EQ(events[0].epoch,*first_epoch);
+    EXPECT_EQ(events[1].kind,Kind::Forgot);
+    EXPECT_NE(events[1].epoch,*first_epoch);
+    EXPECT_EQ(worker.inputStatistics().invalidated_chunks,1U);
+    EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,0U);
+    ASSERT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto new_epoch=worker.sourceEpoch(71U);
+    ASSERT_TRUE(new_epoch.has_value());
+    worker.closeInput();
+    for(int i=0;i<2000 && !worker.finished();++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    ASSERT_TRUE(worker.finished());
+    const auto resumed=worker.drainAcknowledgements();
+    ASSERT_EQ(resumed.size(),1U);
+    EXPECT_EQ(resumed[0].kind,Kind::Bound);
+    EXPECT_EQ(resumed[0].epoch,*new_epoch);
 }
 
 

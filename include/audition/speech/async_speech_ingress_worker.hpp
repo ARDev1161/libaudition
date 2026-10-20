@@ -153,6 +153,9 @@ private:
                 }
             } catch (const std::exception& error) {
                 try { runtime_.forget(id); } catch (...) {}
+                // Failed Audio processing invalidates all queued same-source PCM.
+                if (event->kind==SpeechPcmIngressEvent::Kind::Audio)
+                    ingress_.forget(id);
                 bound.erase(id);
                 publish({Acknowledgement::Kind::Error,id,epoch,std::nullopt,
                          error.what()});
@@ -161,6 +164,9 @@ private:
                              std::nullopt,{}});
             } catch (...) {
                 try { runtime_.forget(id); } catch (...) {}
+                // Failed Audio processing invalidates all queued same-source PCM.
+                if (event->kind==SpeechPcmIngressEvent::Kind::Audio)
+                    ingress_.forget(id);
                 bound.erase(id);
                 publish({Acknowledgement::Kind::Error,id,epoch,
                          std::nullopt,"Unknown asynchronous speech error"});
