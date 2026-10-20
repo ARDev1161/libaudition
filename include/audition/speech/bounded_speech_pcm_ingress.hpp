@@ -85,7 +85,12 @@ public:
         for (std::size_t i=0;i<audio.sampleCount();++i)
             if (!std::isfinite(audio.data()[i]))
                 throw std::invalid_argument("Nonfinite speech PCM ingress sample");
-        if (!audio.sampleCount()) return SpeechPcmAdmission::Accepted;
+        if (!audio.sampleCount()) {
+            // Even a no-op admission must observe close() atomically.
+            std::lock_guard<std::mutex> lock{mutex_};
+            return closed_ ? SpeechPcmAdmission::Closed
+                           : SpeechPcmAdmission::Accepted;
+        }
         // Allocate/copy outside the queue lock; never call a model here.
         std::vector<float> copy(audio.data(),audio.data()+audio.sampleCount());
         std::lock_guard<std::mutex> lock{mutex_};

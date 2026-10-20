@@ -139,6 +139,68 @@ TEST(BoundedSpeechPcmIngress, BlockingConsumerWakesOnCloseAndDrains) {
     EXPECT_FALSE(result.get().has_value());
 }
 
+TEST(BoundedSpeechPcmIngress, EmptyInputRespectsCloseWithoutMutatingState) {
+    BoundedSpeechPcmIngress ingress{};
+    const std::vector<float> empty{};
+    EXPECT_EQ(ingress.push(1U,block(empty)),SpeechPcmAdmission::Accepted);
+    const auto before=ingress.statistics();
+    EXPECT_EQ(before.sources,0U);
+    EXPECT_EQ(before.accepted_chunks,0U);
+    ingress.close();
+    EXPECT_EQ(ingress.push(1U,block(empty)),SpeechPcmAdmission::Closed);
+    EXPECT_EQ(ingress.push(2U,block(empty)),SpeechPcmAdmission::Closed);
+    const auto after=ingress.statistics();
+    EXPECT_EQ(after.sources,before.sources);
+    EXPECT_EQ(after.pending_chunks,before.pending_chunks);
+    EXPECT_EQ(after.accepted_chunks,before.accepted_chunks);
+    EXPECT_EQ(after.rejected_chunks,before.rejected_chunks);
+    EXPECT_FALSE(ingress.waitPop().has_value());
+}
+
+TEST(BoundedSpeechPcmIngress, ConcurrentProducersPreservePerSourceAudioBeforeRetire) {
+    SpeechPcmIngressOptions options{};
+    options.max_sources=2U;
+    options.max_pending_chunks=64U;
+    options.max_pending_samples=256U;
+    options.max_chunk_samples=4U;
+    BoundedSpeechPcmIngress ingress{options};
+    const std::vector<float> audio(4U,0.3F);
+    auto produce=[&](std::uint64_t source_id) {
+        for (std::uint64_t seq=1U;seq<=32U;++seq)
+            if (ingress.push(source_id,block(audio,seq))!=SpeechPcmAdmission::Accepted)
+                return false;
+        return ingress.retire(source_id);
+    };
+    auto first=std::async(std::launch::async,produce,1U);
+    auto second=std::async(std::launch::async,produce,2U);
+    ASSERT_TRUE(first.get());
+    ASSERT_TRUE(second.get());
+    std::uint64_t next_sequence[2]={1U,1U};
+    bool retired[2]={false,false};
+    for (std::size_t i=0U;i<66U;++i) {
+        const auto event=ingress.tryPop();
+        ASSERT_TRUE(event.has_value());
+        ASSERT_GE(event->source_id,1U);
+        ASSERT_LE(event->source_id,2U);
+        const auto index=static_cast<std::size_t>(event->source_id-1U);
+        if (event->kind==SpeechPcmIngressEvent::Kind::Audio) {
+            EXPECT_FALSE(retired[index]);
+            EXPECT_EQ(event->audio.sequenceNumber(),next_sequence[index]++);
+        } else {
+            EXPECT_EQ(event->kind,SpeechPcmIngressEvent::Kind::Retire);
+            EXPECT_FALSE(retired[index]);
+            EXPECT_EQ(next_sequence[index],33U);
+            retired[index]=true;
+        }
+    }
+    EXPECT_EQ(next_sequence[0],33U);
+    EXPECT_EQ(next_sequence[1],33U);
+    EXPECT_TRUE(retired[0]);
+    EXPECT_TRUE(retired[1]);
+    EXPECT_FALSE(ingress.tryPop().has_value());
+    EXPECT_EQ(ingress.statistics().outstanding_source_slots,0U);
+}
+
 TEST(BoundedSpeechPcmIngress, PendingForgetCannotAccumulateUnboundedDistinctIds) {
     SpeechPcmIngressOptions options{};
     options.max_sources=1U;
