@@ -4,6 +4,7 @@
 Only validates manifest/workflow consistency, not upstream provenance or licensing.
 """
 from pathlib import Path
+from urllib.parse import urlsplit
 import re
 import sys
 
@@ -37,8 +38,18 @@ for entry in entries:
     digest = entry.get("sha256", "")
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
         errors.append(f"{name}: missing or invalid SHA-256")
-    elif not re.search(r"(?<![0-9a-f])" + digest + r"(?![0-9a-f])", workflow):
-        errors.append(f"{name}: SHA-256 absent from CI workflow")
+    else:
+        # Require a digest to appear with its expected filename on the same
+        # checksum command line, not merely somewhere in the workflow.
+        filename = Path(urlsplit(entry.get("source", "")).path).name
+        checks = [
+            line for line in workflow.splitlines()
+            if re.search(r"(?<![0-9a-f])" + digest + r"(?![0-9a-f])", line)
+            and filename in line
+            and "sha256sum" in line
+        ]
+        if not checks:
+            errors.append(f"{name}: SHA-256 not checked with filename {filename}")
     if not entry.get("source") or not entry.get("source_revision"):
         errors.append(f"{name}: missing source or source_revision")
     if entry.get("bundled") != "false":
