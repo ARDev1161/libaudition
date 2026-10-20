@@ -83,6 +83,14 @@ real-model tests; green workflow jobs do not imply calibrated quality.
 
 ## Feature-branch evidence snapshot (2026-10-20)
 
+- [CI #1447](https://github.com/ARDev1161/libaudition/actions/runs/39409532351)
+  on `38dceef0c9409cdaf0386de35b83c1a1dbca265c` completed with
+  **25 successful jobs, zero failures and one skipped** `real-spatial-corpus`.
+  The relocated-prefix installed C++17 consumer (including spaces in the
+  prefix), imported-target path checks and existing sanitizer/backend matrix
+  passed. This remains feature-branch evidence, not a final v1.0 candidate.
+
+
 - [CI #1446](https://github.com/ARDev1161/libaudition/actions/runs/39408004979)
   on `000d20558088799297d338b06187106035a55566` completed with
   **25 successful jobs and one skipped** `real-spatial-corpus` job.
@@ -144,6 +152,26 @@ real-model tests; green workflow jobs do not imply calibrated quality.
 - These checks concern a stacked feature branch, **not** a final integrated
   release candidate. Neither physical hardware metrics nor independently
   annotated real-acoustic accuracy has been established by this evidence.
+
+## Speech API reconciliation checkpoint (2026-10-20)
+
+- #54's `SourceSpeechRuntime::push()` returns `bool` and enqueues PCM for
+  dedicated VAD and ASR workers; `SourceSpeechStatus` includes drop counters,
+  and `SourceTranscriptEvent` uses sample offsets and a generation number.
+- The #59 descendant of #55 exposes `PerSourceSpeechRuntime` with synchronous
+  VAD on `push()`, but the application-facing `AsyncSpeechIngressWorker::push()`
+  feeds a bounded PCM ingress queue instead. The worker performs VAD off the
+  capture caller and emits epoch/generation-aware `Bound`, `Retired`, `Forgot`
+  and `Error` acknowledgements. Its admission result is `SpeechPcmAdmission`,
+  not #54's `bool`, and the consumer must drain acknowledgements.
+- Both architectures provide asynchronous ASR and source invalidation, but
+  they do **not** have source-compatible APIs or identical lifecycle and
+  backpressure reporting. The #54 timestamp/sample-offset contract and
+  cancellation tests still require an explicit behavior-by-behavior comparison
+  against the #55/#59 stack before deciding which public API survives.
+- **Decision pending:** no automatic merge/cherry-pick of #54; the adapter's
+  separate worker is a mitigation for capture-thread VAD blocking, not proof
+  of identical latency or real-device behavior.
 
 ## Mandatory gates (P0)
 
@@ -214,8 +242,8 @@ It must still run on the final integrated release candidate.
 
 The next P0 check exercises a **relocated** core package (including a prefix
 with spaces) and checks imported target locations and installed include paths
-against that new prefix. It must pass the four Linux/macOS static/shared CI
-jobs before it can be counted as evidence; the optional Sherpa consumer keeps
+against that new prefix. It passed the four Linux/macOS static/shared CI jobs in #1447;
+the optional Sherpa consumer keeps
 its existing non-relocated smoke to avoid copying large third-party payloads.
 
 This verifies distribution completeness and ABI/link usability for the tested
