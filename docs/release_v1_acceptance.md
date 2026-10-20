@@ -173,6 +173,29 @@ real-model tests; green workflow jobs do not imply calibrated quality.
   separate worker is a mitigation for capture-thread VAD blocking, not proof
   of identical latency or real-device behavior.
 
+### Speech-runtime behavior and regression crosswalk (P0)
+
+The #54 public API is not source-compatible with the #55/#59 API. The
+following maps observable behavior, not implementation names. Tests below
+were inspected on the #59 descendant; passing its CI is not proof that the
+sibling #54 tests have been replayed against that implementation.
+
+| Contract | #54 | #55/#59 evidence | Remaining release check |
+| --- | --- | --- | --- |
+| Capture callback does not execute VAD/ASR | `SourceSpeechRuntime::push` queues to dedicated VAD/ASR workers | `AsyncSpeechIngressWorker::push` uses bounded transport; VAD runs on worker; `PerSourceSpeechRuntime::push` itself **does** execute VAD | Document that capture must use async adapter, not direct runtime; measure worst-case copy/validation latency on target hardware |
+| Bounded queue and PCM discontinuity | `push` returns false on capacity/backpressure | `SpeechPcmAdmission` distinguishes capacity, source limit, retirement and closed; `OverflowInvalidatesGenerationBeforeReusedRetirement` and `WorkerForgetStopsSpeechAcrossPcmGap` | Validate that callers handle every rejection and that WAV/sidecar state observes discontinuities |
+| Source ID reuse and stale ASR | Generation invalidation on `forget` | Epoch-aware `Bound/Forgot/Retired/Error` acknowledgements; `VadFailureCancelsGenerationAndAllowsReusedSource` | Check end-to-end late-ASR cancellation in the actual Qt recording lifecycle |
+| Flush final utterance | #54 has no public retire-with-generation contract | `DeferredRecordingRetireSavesLastUtterance` and `FifoRetirePreservesFinalUtteranceAndGeneration` | Preserve retirement acknowledgements and explicit `releaseRetired` ownership in public examples |
+| Event/mailbox bounds | `max_events`, `max_queued_segments` | `BoundedAcknowledgementMailboxResumesAfterDrain`; runtime has `max_pending_segments` and result eviction accounting | Document that a non-draining consumer can stall the worker; no unconditional realtime guarantee |
+| Timestamps | #54 transcript events carry `audio_start_sample` / `audio_end_sample` | #55 results carry `Timestamp start_time/end_time`; PCM ingress preserves capture timestamp and sequence number | Verify origin clock, chunk continuity, sample-offset conversion and clock-domain mismatch tests before calling behavior equivalent |
+| Exceptions and recovery | Worker isolation, per-source status | `TimestampOverflowDropsQueuedPcm` and `VadFailureCancelsGenerationAndAllowsReusedSource` | Compare all #54 cancellation/exception cases and retain any missing regressions |
+
+**Provisional integration choice:** retain the richer generation/retirement
+contract in #55/#59 and use the bounded async ingress for capture-facing
+work. This is a proposal, **not** authorization to close #54. The open
+clock/sample-offset and Qt end-to-end cancellation checks must be resolved
+before the sibling PR can be declared redundant.
+
 ## Mandatory gates (P0)
 
 | Gate | Verification | Current evidence / action |
