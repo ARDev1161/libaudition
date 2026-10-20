@@ -267,6 +267,32 @@ without unauthorized main merges; rerun the full matrix on its exact
 SHA and document all limitations. Do not bump to 1.0.0 or tag a
 release before these gates pass.
 
+## Speech API P0 disposition: public contract comparison (2026-10-20)
+
+Direct header comparison of sibling #54 against current #59 (descendant of
+#55) establishes the following **source-incompatible** differences:
+
+| Behavior | #54 SourceSpeechRuntime | #55/#59 implementation | Disposition |
+| --- | --- | --- | --- |
+| Capture ingestion | `push(source_id, AudioView) -> bool`, VAD and ASR run on dedicated workers | `PerSourceSpeechRuntime::push() -> void` executes VAD on caller; `AsyncSpeechIngressWorker::push() -> SpeechPcmAdmission` is the bounded capture adapter | Keep adapter mandatory for capture; do not alias the two public APIs |
+| Per-source counters | `received_samples`, `completed_segments`, `dropped_chunks`, `dropped_segments`, `last_transcript` | `trackStatus()` now exposes `received_samples`, `queued_segments`, `dropped_segments`; `inputStatistics()` reports ingress outcomes, `statistics()` reports global completed/dropped/evicted ASR results | Partial parity only: no single per-source last-transcript or completed-segment snapshot; dropped-chunk accounting is at ingress rather than the runtime |
+| Speech time coordinates | `audio_start_sample` and `audio_end_sample` are source-local uint64 sample offsets | `SourceSpeechResult` carries clock-identified `Timestamp start_time/end_time` | **Unresolved public API requirement:** do not claim equivalent absolute sample-offset reporting; define origin/conversion if clients require it |
+| Source reuse | `forget()` invalidates queued/in-flight generation | ingress epoch and ASR generation are separate; `Bound/Forgot/Retired/Error` acknowledgements, explicit retired-generation release | Delayed Forgot/reused WAV epoch regression is green in CI #1462; still verify complete cancellation behavior on integrated RC |
+| End of source | `forget()` discards work; no public retire/flush acknowledgement | `retire()` can flush final utterance; acknowledgement mailbox is bounded and **must be drained** | Preserve richer #55/#59 lifecycle; document consumer responsibility |
+
+**Decision for the candidate design (not a merge/closure decision):**
+prefer #55/#59 plus `AsyncSpeechIngressWorker` for capture-facing consumers,
+with the explicit caveat that it does not implement #54's public source-local
+sample-offset API. #54 must remain open until consumers confirm whether
+source-local sample offsets and per-source last-transcript snapshots are
+required, and parity tests for those requirements are written or a deliberate
+breaking change is documented. Do not cherry-pick or merge #54 wholesale.
+
+The #59 branch currently has a successful CI #1464 on
+`e72c2707dc64c20be5913dc1ebdeff897b1c840d` after retrying one
+cancelled macOS installed-package job. This evidence is **not** a combined
+release candidate.
+
 ## Mandatory gates (P0)
 
 | Gate | Verification | Current evidence / action |
