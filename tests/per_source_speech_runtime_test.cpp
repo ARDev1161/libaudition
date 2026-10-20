@@ -1374,3 +1374,50 @@ TEST(PerSourceSpeechRuntime, RejectsIncompatibleVadAndAsrAudioCapabilities) {
     ASSERT_EQ(results.size(),1U);
     EXPECT_EQ(results.front().transcript.text,"compatible");
 }
+
+TEST(PerSourceSpeechRuntime, SourceLocalSampleOffsetsIncludeRollAndResetOnReuse) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples=1U;
+    opts.pre_roll_samples=2U;
+    opts.post_roll_samples=3U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    const std::vector<float> quiet(2U,0.0F), voice(4U,0.5F);
+    runtime.push(91U,chunk(quiet));
+    runtime.push(91U,chunk(voice));
+    runtime.push(91U,chunk(quiet));
+    runtime.push(91U,chunk(quiet));
+    const auto first=awaitSpeech(runtime,1U);
+    ASSERT_EQ(first.size(),1U);
+    EXPECT_EQ(first[0].audio_start_sample,0U);
+    EXPECT_EQ(first[0].audio_end_sample,9U);
+    runtime.forget(91U);
+    runtime.push(91U,chunk(voice));
+    runtime.push(91U,chunk(quiet));
+    runtime.push(91U,chunk(quiet));
+    const auto second=awaitSpeech(runtime,1U);
+    ASSERT_EQ(second.size(),1U);
+    EXPECT_EQ(second[0].audio_start_sample,0U);
+    EXPECT_EQ(second[0].audio_end_sample,7U);
+    EXPECT_NE(first[0].generation,second[0].generation);
+}
+
+TEST(PerSourceSpeechRuntime, SourceLocalOffsetsSurviveSegmentCap) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples=1U;
+    opts.pre_roll_samples=0U;
+    opts.post_roll_samples=0U;
+    opts.max_segment_samples=5U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    runtime.push(92U,chunk(std::vector<float>(12U,0.5F)));
+    runtime.push(92U,chunk(std::vector<float>(2U,0.0F)));
+    const auto results=awaitSpeech(runtime,3U);
+    ASSERT_EQ(results.size(),3U);
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,5U);
+    EXPECT_EQ(results[1].audio_start_sample,5U);
+    EXPECT_EQ(results[1].audio_end_sample,10U);
+    EXPECT_EQ(results[2].audio_start_sample,10U);
+    EXPECT_EQ(results[2].audio_end_sample,12U);
+}
