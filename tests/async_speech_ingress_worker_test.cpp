@@ -695,7 +695,7 @@ TEST(AsyncSpeechIngressWorker, FixedVadFramesPreserveSourceLocalSampleOffsets) {
     options.post_roll_samples=320U;
     PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),options};
     AsyncSpeechIngressWorker worker{speech};
-    const ClockId clock{ClockDomain::Monotonic,17U};
+    const ClockIdentity clock{ClockDomain::Monotonic,17U};
     const std::vector<float> quiet(160U,0.0F), voiced(160U,0.5F);
     for(std::int64_t frame=0;frame<9;++frame) {
         const auto& pcm=(frame>=2 && frame<5)?voiced:quiet;
