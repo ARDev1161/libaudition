@@ -75,6 +75,36 @@ caller-controlled bounded worker/queue or a separate explicit API) and
 preserve equivalent behavioral regression tests. Do **not** claim #54
 has been functionally subsumed merely because #55 has more tests.
 
+### #54 versus #55/#59: verified capture-path parity audit (2026-10-20)
+
+A direct GitHub branch comparison against #59 at `18636be` reports #54
+**18 commits ahead / 799 behind**, with merge base `9ff5423`. Its 13
+changed files include the old speech runtime, Qt acoustic page, ALSA capture,
+public umbrella header and tests. This is **not** a clean patch to apply to
+#59: the latter already has a different live capture implementation.
+
+| #54 requirement | Current #59 mechanism | Remaining acceptance work |
+| --- | --- | --- |
+| Nonblocking capture-to-VAD ingestion | `AsyncSpeechIngressWorker::push` uses bounded `BoundedSpeechPcmIngress`; VAD executes on its dedicated worker, ASR on the runtime worker | Verify admission latency under contention and worker shutdown with full acknowledgement mailbox |
+| Per-source error isolation | `trackStatus(id).error`, worker `Error` acknowledgement and source-specific `forget` | Verify other active sources survive model exceptions and capacity exhaustion |
+| PCM discontinuity | Ingress overflow invalidates only affected source, prioritizes `Forget` before post-gap PCM; ALSA capture also observes lost separated PCM | Confirm source-local sample offsets and generation reset after all gap paths (CI #1470 covers overflow) |
+| Forget and ID reuse | Epoch-tagged worker acknowledgements and runtime generation cancellation; retired generations remain independently drainable | Stress interleaved `Forgot`/`Retired`/new `Bound` and late ASR results |
+| Final utterance on source disappearance | FIFO `Retire`, generation-tagged ASR result and explicit retired-generation release | Verify capacity-failure fallback and recording timeline ownership |
+| Qt separated-source transcripts | Acoustic page defaults transcription ON where supported; ALSA capture binds source epochs to recording timeline | Real model and device smoke remain required; do not claim quality validation from mocked CI |
+
+The retained #54 implementation exposes `SourceSpeechRuntime` with separate
+bounded VAD/ASR workers. The newer architecture is not a source-compatible
+replacement: `PerSourceSpeechRuntime::push` is synchronous VAD and the
+**separate ingress worker** is required to preserve #54's nonblocking
+capture-facing behavior. #54's source-local sample offsets now have an
+analogous half-open `[audio_start_sample, audio_end_sample)` result contract
+on #59, scoped to one source generation. Offsets are not wall-clock time and
+must not be joined across a `Forget`/gap.
+
+**Decision pending:** retain #54 open until the remaining behavior and
+physical smoke checks above are evidenced; do not merge it blindly or close
+it as redundant. No release gate is satisfied solely by this audit.
+
 Before integration, confirm branch heads and PR bases have not changed;
 perform a conflict/source/CTest inventory review, merge in dependency
 order only with user approval, retarget surviving PRs, and run full CI
