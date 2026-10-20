@@ -534,3 +534,62 @@ TEST(AsyncSpeechIngressWorker, RuntimeCapacityMismatchReportsError) {
     EXPECT_TRUE(speech.activeGeneration(11U).has_value());
     EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,1U);
 }
+
+TEST(AsyncSpeechIngressWorker, ForgetWhileVadBlockedInvalidatesOldEpochBeforeReuse) {
+    auto gate=std::make_shared<PausedVadGate>();
+    PausedVad vad{gate};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    AsyncSpeechIngressWorker worker{speech};
+    const std::vector<float> pcm(4U,0.5F);
+    ASSERT_EQ(worker.push(81U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto old_epoch=worker.sourceEpoch(81U);
+    ASSERT_TRUE(old_epoch.has_value());
+    for(int i=0;i<2000 && !gate->entered.load();++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if(!gate->entered.load()) {
+        gate->resume.store(true);
+        FAIL() << "VAD did not enter the test gate";
+        return;
+    }
+    // A queued old chunk must not survive explicit cancellation.
+    ASSERT_EQ(worker.push(81U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    worker.forget(81U);
+    ASSERT_EQ(worker.push(81U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto new_epoch=worker.sourceEpoch(81U);
+    ASSERT_TRUE(new_epoch.has_value());
+    EXPECT_NE(*old_epoch,*new_epoch);
+    ASSERT_EQ(worker.retire(81U),new_epoch);
+    worker.closeInput();
+    gate->resume.store(true);
+    using Kind=AsyncSpeechIngressWorker::Acknowledgement::Kind;
+    std::vector<AsyncSpeechIngressWorker::Acknowledgement> events;
+    for(int i=0;i<2000 && (!worker.finished() || events.size()<4U);++i) {
+        auto batch=worker.drainAcknowledgements();
+        for(auto& e:batch) events.push_back(std::move(e));
+        if(!worker.finished() || events.size()<4U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(worker.finished());
+    ASSERT_EQ(events.size(),4U);
+    EXPECT_EQ(events[0].kind,Kind::Bound);
+    EXPECT_EQ(events[1].kind,Kind::Forgot);
+    EXPECT_EQ(events[2].kind,Kind::Bound);
+    EXPECT_EQ(events[3].kind,Kind::Retired);
+    EXPECT_EQ(events[0].epoch,*old_epoch);
+    EXPECT_EQ(events[2].epoch,*new_epoch);
+    EXPECT_EQ(events[3].epoch,*new_epoch);
+    ASSERT_TRUE(events[0].generation.has_value());
+    ASSERT_TRUE(events[2].generation.has_value());
+    EXPECT_NE(events[0].generation,events[2].generation);
+    std::vector<SourceSpeechResult> results;
+    for(int i=0;i<2000 && results.empty();++i) {
+        results=speech.takeResults();
+        if(results.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].generation,*events[2].generation);
+    EXPECT_EQ(results[0].track_id,81U);
+    EXPECT_EQ(results[0].transcript.text,"4");
+    speech.releaseRetired(results[0].generation);
+}
