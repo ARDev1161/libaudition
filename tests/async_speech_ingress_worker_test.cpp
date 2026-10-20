@@ -664,7 +664,8 @@ TEST(AsyncSpeechIngressWorker, InFlightAsrForgetDoesNotPublishIntoReusedSource) 
     EXPECT_EQ(events[2].kind,Kind::Bound);
     EXPECT_EQ(events[3].kind,Kind::Retired);
     EXPECT_EQ(events[0].epoch,*old_epoch);
-    EXPECT_EQ(events[1].epoch,*old_epoch);
+    // Forget acknowledges the newly invalidated epoch, not the retired one.
+    EXPECT_EQ(events[1].epoch,*new_epoch);
     EXPECT_EQ(events[2].epoch,*new_epoch);
     EXPECT_EQ(events[3].epoch,*new_epoch);
     ASSERT_TRUE(events[0].generation.has_value());
