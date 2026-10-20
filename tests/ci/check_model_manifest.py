@@ -9,8 +9,12 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-manifest = (ROOT / "models/manifest.yaml").read_text(encoding="utf-8")
-workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+manifest_path = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "models/manifest.yaml"
+workflow_path = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / ".github/workflows/ci.yml"
+if len(sys.argv) not in (1, 3):
+    raise SystemExit("usage: check_model_manifest.py [MANIFEST WORKFLOW]")
+manifest = manifest_path.read_text(encoding="utf-8")
+workflow = workflow_path.read_text(encoding="utf-8")
 
 entries = []
 current = None
