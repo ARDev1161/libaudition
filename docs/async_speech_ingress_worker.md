@@ -34,3 +34,10 @@ This is not a hard real-time implementation: producer calls validate
 and copy bounded PCM, acquire mutexes, and can allocate. The ASR model
 remains on the runtime's own independent worker. Hardware latency,
 accuracy and RK3588 deadlines must be measured separately.
+
+A delayed VAD/runtime failure is scoped to the ingress epoch of its
+already-dequeued PCM. If the producer has forgotten and reused the same
+numeric source ID, the worker reports the old-epoch error without invalidating
+the new epoch's PCM or FIFO retirement. The transport exposes
+`forgetIfEpoch(source_id, epoch)` for conditional worker cancellation; normal
+producer `forget(source_id)` still cancels the current source.

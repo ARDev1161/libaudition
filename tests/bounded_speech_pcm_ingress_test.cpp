@@ -441,6 +441,52 @@ TEST(BoundedSpeechPcmIngress, RetireControlsAreBoundedAndBlockNewSources) {
     }
 }
 
+TEST(BoundedSpeechPcmIngress, StaleWorkerErrorCannotInvalidateReusedEpoch) {
+    BoundedSpeechPcmIngress ingress{};
+    const std::vector<float> pcm(4U,0.3F);
+    ASSERT_EQ(ingress.push(61U,block(pcm)),SpeechPcmAdmission::Accepted);
+    const auto old_epoch=ingress.sourceEpoch(61U);
+    ASSERT_TRUE(old_epoch.has_value());
+    const auto in_flight=ingress.tryPop();
+    ASSERT_TRUE(in_flight.has_value());
+    EXPECT_EQ(in_flight->epoch,*old_epoch);
+    ingress.forget(61U);
+    ASSERT_EQ(ingress.push(61U,block(pcm)),SpeechPcmAdmission::Accepted);
+    const auto new_epoch=ingress.sourceEpoch(61U);
+    ASSERT_TRUE(new_epoch.has_value());
+    ASSERT_NE(*old_epoch,*new_epoch);
+    ASSERT_EQ(ingress.retireWithEpoch(61U),new_epoch);
+
+    EXPECT_FALSE(ingress.forgetIfEpoch(61U,*old_epoch));
+    EXPECT_EQ(ingress.statistics().pending_chunks,1U);
+    EXPECT_EQ(ingress.statistics().pending_retirements,1U);
+    EXPECT_EQ(ingress.statistics().invalidated_chunks,0U);
+    auto invalidation=ingress.tryPop();
+    ASSERT_TRUE(invalidation.has_value());
+    EXPECT_EQ(invalidation->kind,SpeechPcmIngressEvent::Kind::Forget);
+    auto new_audio=ingress.tryPop();
+    ASSERT_TRUE(new_audio.has_value());
+    EXPECT_EQ(new_audio->kind,SpeechPcmIngressEvent::Kind::Audio);
+    EXPECT_EQ(new_audio->epoch,*new_epoch);
+    auto retirement=ingress.tryPop();
+    ASSERT_TRUE(retirement.has_value());
+    EXPECT_EQ(retirement->kind,SpeechPcmIngressEvent::Kind::Retire);
+    EXPECT_EQ(retirement->epoch,*new_epoch);
+    EXPECT_FALSE(ingress.tryPop().has_value());
+
+    ASSERT_EQ(ingress.push(61U,block(pcm)),SpeechPcmAdmission::Accepted);
+    const auto current_epoch=ingress.sourceEpoch(61U);
+    ASSERT_TRUE(current_epoch.has_value());
+    EXPECT_TRUE(ingress.forgetIfEpoch(61U,*current_epoch));
+    EXPECT_EQ(ingress.statistics().pending_chunks,0U);
+    EXPECT_EQ(ingress.statistics().invalidated_chunks,1U);
+    EXPECT_FALSE(ingress.sourceEpoch(61U).has_value());
+    auto final_forget=ingress.tryPop();
+    ASSERT_TRUE(final_forget.has_value());
+    EXPECT_EQ(final_forget->kind,SpeechPcmIngressEvent::Kind::Forget);
+    EXPECT_FALSE(ingress.tryPop().has_value());
+}
+
 TEST(BoundedSpeechPcmIngress, ExplicitForgetCancelsAnUnprocessedRetirement) {
     SpeechPcmIngressOptions cfg{};
     cfg.max_sources=1U;

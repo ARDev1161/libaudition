@@ -113,7 +113,7 @@ private:
                     if (!status.exists) {
                         // Runtime and ingress can have different source limits.
                         // Do not silently discard successfully admitted PCM.
-                        ingress_.forget(id);
+                        (void)ingress_.forgetIfEpoch(id,epoch);
                         bound.erase(id);
                         publish({Acknowledgement::Kind::Error,id,epoch,
                                  std::nullopt,
@@ -124,7 +124,7 @@ private:
                         const auto failed_generation=runtime_.activeGeneration(id);
                         runtime_.forget(id);
                         bound.erase(id);
-                        ingress_.forget(id);
+                        (void)ingress_.forgetIfEpoch(id,epoch);
                         publish({Acknowledgement::Kind::Error,id,epoch,
                                  failed_generation,*status.error});
                         break;
@@ -170,7 +170,7 @@ private:
                 try { runtime_.forget(id); } catch (...) {}
                 // Failed Audio processing invalidates all queued same-source PCM.
                 if (event->kind==SpeechPcmIngressEvent::Kind::Audio)
-                    ingress_.forget(id);
+                    (void)ingress_.forgetIfEpoch(id,epoch);
                 bound.erase(id);
                 publish({Acknowledgement::Kind::Error,id,epoch,std::nullopt,
                          error.what()});
@@ -181,7 +181,7 @@ private:
                 try { runtime_.forget(id); } catch (...) {}
                 // Failed Audio processing invalidates all queued same-source PCM.
                 if (event->kind==SpeechPcmIngressEvent::Kind::Audio)
-                    ingress_.forget(id);
+                    (void)ingress_.forgetIfEpoch(id,epoch);
                 bound.erase(id);
                 publish({Acknowledgement::Kind::Error,id,epoch,
                          std::nullopt,"Unknown asynchronous speech error"});
