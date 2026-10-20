@@ -495,3 +495,42 @@ TEST(AsyncSpeechIngressWorker, ReusedIdRetirementKeepsCaptureClock) {
         speech.releaseRetired(result.generation);
     }
 }
+
+TEST(AsyncSpeechIngressWorker, RuntimeCapacityMismatchReportsError) {
+    WorkerVad vad{};
+    auto cfg=speechOptions();
+    cfg.max_sources=1U;
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),cfg};
+    SpeechPcmIngressOptions ingress{};
+    ingress.max_sources=2U;
+    AsyncSpeechIngressWorker worker{speech,ingress};
+    const std::vector<float> pcm(4U,0.5F);
+    using Kind=AsyncSpeechIngressWorker::Acknowledgement::Kind;
+    ASSERT_EQ(worker.push(11U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    std::vector<AsyncSpeechIngressWorker::Acknowledgement> events;
+    for(int i=0;i<2000 && events.empty();++i) {
+        events=worker.drainAcknowledgements();
+        if(events.empty()) std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(events.size(),1U);
+    EXPECT_EQ(events[0].kind,Kind::Bound);
+    ASSERT_EQ(worker.push(12U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto rejected_epoch=worker.sourceEpoch(12U);
+    ASSERT_TRUE(rejected_epoch.has_value());
+    events.clear();
+    for(int i=0;i<2000 && events.size()<2U;++i) {
+        auto batch=worker.drainAcknowledgements();
+        for(auto& event:batch) events.push_back(std::move(event));
+        if(events.size()<2U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(events.size(),2U);
+    EXPECT_EQ(events[0].kind,Kind::Error);
+    EXPECT_EQ(events[0].epoch,*rejected_epoch);
+    EXPECT_EQ(events[0].error,"Speech runtime source capacity exhausted");
+    EXPECT_EQ(events[1].kind,Kind::Forgot);
+    EXPECT_NE(events[1].epoch,*rejected_epoch);
+    EXPECT_FALSE(speech.activeGeneration(12U).has_value());
+    EXPECT_TRUE(speech.activeGeneration(11U).has_value());
+    EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,1U);
+}
