@@ -136,10 +136,14 @@ public:
     // The consumer must call PerSourceSpeechRuntime::retire(source_id),
     // bind the returned generation to its recording and drain late ASR.
     // Distinct pending retirements count against max_sources.
-    [[nodiscard]] bool retire(std::uint64_t source_id) {
+    // Return the exact epoch whose Retire control was enqueued, under the
+    // same lock. A separate sourceEpoch() + retire() pair can race with
+    // forget()/reuse of the same numeric source ID.
+    [[nodiscard]] std::optional<std::uint64_t> retireWithEpoch(std::uint64_t source_id) {
         std::lock_guard<std::mutex> lock{mutex_};
         auto it=sources_.find(source_id);
-        if (closed_ || it==sources_.end()) return false;
+        if (closed_ || it==sources_.end()) return std::nullopt;
+        const auto epoch=it->second;
         SpeechPcmIngressEvent event{};
         event.kind=SpeechPcmIngressEvent::Kind::Retire;
         event.source_id=source_id;
@@ -154,7 +158,12 @@ public:
         }
         sources_.erase(it);
         cv_.notify_one();
-        return true;
+        return epoch;
+    }
+
+    // Compatibility wrapper for callers that do not need the epoch.
+    [[nodiscard]] bool retire(std::uint64_t source_id) {
+        return retireWithEpoch(source_id).has_value();
     }
 
     // Discontinuity or cancellation: drop accepted PCM and any unprocessed

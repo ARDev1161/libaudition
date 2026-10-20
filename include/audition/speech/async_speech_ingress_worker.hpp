@@ -66,9 +66,8 @@ public:
         return ingress_.sourceEpoch(source_id);
     }
     [[nodiscard]] std::optional<std::uint64_t> retire(std::uint64_t source_id) {
-        const auto epoch=ingress_.sourceEpoch(source_id);
-        if (!epoch || !ingress_.retire(source_id)) return std::nullopt;
-        return epoch;
+        // Atomic with respect to forget(), push() and numeric ID reuse.
+        return ingress_.retireWithEpoch(source_id);
     }
     void forget(std::uint64_t source_id) { ingress_.forget(source_id); }
     void closeInput() { ingress_.close(); }

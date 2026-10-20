@@ -89,8 +89,16 @@ real-model tests; green workflow jobs do not imply calibrated quality.
   The async speech overflow/generation regression, installed C++17
   consumers and sanitizer/backend jobs passed on stacked PR #59.
   Real-room accuracy and hardware capture deadlines remain **NOT MEASURED**.
-- Subsequent VAD-error propagation and WAV-generation cancellation must
-  pass their own CI; #1441 does not verify those changes.
+- [CI #1443](https://github.com/ARDev1161/libaudition/actions/runs/39387520234)
+  on `62815dd9a49f7b8396ae302ed759d3d45b60f546` completed with
+  **25 successful jobs and one skipped** `real-spatial-corpus` job.
+  The VAD-error propagation and queued-PCM invalidation regressions,
+  installed C++17 consumers and sanitizer/backend jobs passed on PR #59.
+  This is still a stacked feature-branch result, **not** a v1.0 release gate.
+- Concurrency audit: sourceEpoch() followed by retire() was a two-lock
+  check/use sequence; a concurrent forget/reuse of the numeric source ID
+  could change which epoch actually retired. The atomic retireWithEpoch()
+  contract and its regression require fresh CI on their own commit.
 
 - [CI #1440](https://github.com/ARDev1161/libaudition/actions/runs/39360106984)
   on `a1363aff570499c6c1a8540fd14b0fd6029b76a5` completed with
