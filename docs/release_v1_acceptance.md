@@ -83,6 +83,15 @@ real-model tests; green workflow jobs do not imply calibrated quality.
 
 ## Feature-branch evidence snapshot (2026-10-20)
 
+- [CI #1440](https://github.com/ARDev1161/libaudition/actions/runs/39360106984)
+  on `a1363aff570499c6c1a8540fd14b0fd6029b76a5` completed with
+  **25 successful jobs and one skipped** `real-spatial-corpus` job.
+  The installed C++17 consumers (Ubuntu/macOS, static/shared) and sanitizer
+  jobs passed. This verifies the stacked #59 head, not a final release
+  candidate. Skipped real-spatial-corpus remains **NOT MEASURED**.
+- New deterministic async speech ingress overflow/generation regression
+  is pending CI verification; do not count it as covered by #1440.
+
 - [CI #1427](https://github.com/ARDev1161/libaudition/actions/runs/39339464694)
   on `05e1667a9f2bce92d4b4742bd5d1b31f8f8b7f22` completed with
   **25 successful jobs** and one skipped `real-spatial-corpus` job.

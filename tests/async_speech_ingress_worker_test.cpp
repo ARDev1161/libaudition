@@ -3,6 +3,7 @@
 #include <audition/audio/recording_timeline_json.hpp>
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -158,4 +159,90 @@ TEST(AsyncSpeechIngressWorker, CloseWithoutInputReleasesWorker) {
     const std::vector<float> pcm(4U,0.2F);
     EXPECT_EQ(worker.push(1U,audioBlock(pcm)),SpeechPcmAdmission::Closed);
     EXPECT_TRUE(worker.drainAcknowledgements().empty());
+}
+
+namespace {
+struct PausedVadGate {
+    std::atomic<bool> entered{false};
+    std::atomic<bool> resume{false};
+};
+class PausedVadSession final : public IVadSession {
+public:
+    explicit PausedVadSession(std::shared_ptr<PausedVadGate> gate)
+        : gate_(std::move(gate)) {}
+    void reset() override {}
+    VadResult process(AudioView) override {
+        gate_->entered.store(true);
+        while (!gate_->resume.load())
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        return {std::nullopt,true};
+    }
+private:
+    std::shared_ptr<PausedVadGate> gate_;
+};
+class PausedVad final : public IVoiceActivityDetector {
+public:
+    explicit PausedVad(std::shared_ptr<PausedVadGate> gate)
+        : gate_(std::move(gate)) {}
+    BackendInfo backendInfo() const override { return {"paused-vad","1"}; }
+    AudioRequirements audioRequirements() const override { return {}; }
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<PausedVadSession>(gate_);
+    }
+private:
+    std::shared_ptr<PausedVadGate> gate_;
+};
+}
+
+TEST(AsyncSpeechIngressWorker, OverflowInvalidatesGenerationBeforeReusedRetirement) {
+    auto gate=std::make_shared<PausedVadGate>();
+    PausedVad vad{gate};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    SpeechPcmIngressOptions cfg{};
+    cfg.max_sources=1U;
+    cfg.max_pending_chunks=1U;
+    cfg.max_pending_samples=4U;
+    cfg.max_chunk_samples=4U;
+    AsyncSpeechIngressWorker worker{speech,cfg};
+    const std::vector<float> pcm(4U,0.5F);
+    EXPECT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto old_epoch=worker.sourceEpoch(71U);
+    for (int i=0;i<2000 && !gate->entered.load();++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!gate->entered.load()) {
+        gate->resume.store(true);
+        FAIL() << "VAD did not enter the test gate";
+        return;
+    }
+    EXPECT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    EXPECT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::RejectedCapacity);
+    EXPECT_EQ(worker.inputStatistics().invalidated_chunks,1U);
+    EXPECT_EQ(worker.push(71U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto new_epoch=worker.sourceEpoch(71U);
+    EXPECT_NE(old_epoch,new_epoch);
+    EXPECT_EQ(worker.retire(71U),new_epoch);
+    worker.closeInput();
+    gate->resume.store(true);
+
+    std::vector<AsyncSpeechIngressWorker::Acknowledgement> events;
+    for (int i=0;i<2000 && (!worker.finished() || events.size()<4U);++i) {
+        auto batch=worker.drainAcknowledgements();
+        for (auto& event:batch) events.push_back(std::move(event));
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(worker.finished());
+    ASSERT_EQ(events.size(),4U);
+    using Kind=AsyncSpeechIngressWorker::Acknowledgement::Kind;
+    EXPECT_EQ(events[0].kind,Kind::Bound);
+    EXPECT_EQ(events[1].kind,Kind::Forgot);
+    EXPECT_EQ(events[2].kind,Kind::Bound);
+    EXPECT_EQ(events[3].kind,Kind::Retired);
+    EXPECT_EQ(events[0].epoch,old_epoch.value_or(0U));
+    EXPECT_EQ(events[1].epoch,new_epoch.value_or(0U));
+    EXPECT_EQ(events[2].epoch,new_epoch.value_or(0U));
+    EXPECT_EQ(events[3].epoch,new_epoch.value_or(0U));
+    EXPECT_EQ(events[0].generation,events[1].generation);
+    EXPECT_NE(events[0].generation,events[2].generation);
+    EXPECT_EQ(events[2].generation,events[3].generation);
+    EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,0U);
 }
