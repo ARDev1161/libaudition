@@ -89,12 +89,14 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
             segment.audio = AudioBuffer{std::move(track.speech),
                 {options_.sample_rate_hz, 1U, AudioLayout::Interleaved},
                 track.start_time};
-            jobs_.push_back({id, track.generation, std::move(segment)});
+            jobs_.push_back({id, track.generation, std::move(segment),
+                             track.start_sample});
             ++track.queued_segments;
             ++pending_by_generation_[track.generation];
             cv_.notify_one();
         }
     }
+    track.start_sample += track.speech.size();
     track.speech.clear();
     track.voiced_samples = 0U;
 }
@@ -169,6 +171,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
     const auto accepted = static_cast<std::uint64_t>(audio.sampleCount());
     const auto remaining = std::numeric_limits<std::uint64_t>::max() -
                            track.received_samples;
+    const auto chunk_start = track.received_samples;
     track.received_samples += std::min(accepted, remaining);
     track.speech_active = active;
     const auto advanceTime = [&](std::size_t sample_offset) {
@@ -193,6 +196,8 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
                 static_cast<double>(track.pre_roll.size()) * 1000000000.0 /
                 static_cast<double>(options_.sample_rate_hz));
             track.start_time = audio.captureTime().advancedBy(Duration{-pre_ns});
+            track.start_sample = chunk_start -
+                std::min<std::uint64_t>(chunk_start, track.pre_roll.size());
             track.speech.insert(track.speech.end(),
                 track.pre_roll.begin(), track.pre_roll.end());
             track.pre_roll.clear();
@@ -211,6 +216,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
                 // Continue in the same capture chunk; no samples may be
                 // dropped at a max-duration boundary.
                 track.start_time = advanceTime(offset);
+                track.start_sample = chunk_start + offset;
                 track.trailing_silence_samples = 0U;
             }
         }
@@ -381,7 +387,9 @@ void PerSourceSpeechRuntime::workerLoop() {
                 } else {
                     results_.push_back({job.track_id, job.generation, std::move(transcript),
                         job.segment.audio.captureTime(),
-                        job.segment.audio.captureTime().advancedBy(job.segment.audio.duration())});
+                        job.segment.audio.captureTime().advancedBy(job.segment.audio.duration()),
+                        job.start_sample,
+                        job.start_sample + job.segment.audio.samples().size()});
                     // Prevent unbounded accumulation when application does not poll.
                     if (results_.size() > options_.max_pending_segments) {
                         results_.erase(results_.begin());
