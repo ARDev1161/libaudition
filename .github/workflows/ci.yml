@@ -23,7 +23,9 @@ jobs:
         run: ninja --version
       - name: Audit CI model fixture manifest
         if: matrix.os == 'ubuntu-latest'
-        run: python3 tests/ci/check_model_manifest.py
+        run: |
+          python3 tests/ci/test_model_manifest.py
+          python3 tests/ci/check_model_manifest.py
       - name: Configure
         run: cmake --preset ci
       - name: Build
