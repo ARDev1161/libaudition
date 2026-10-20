@@ -1,6 +1,7 @@
 #include "alsa_live_capture.hpp"
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
+#include "speech_epoch_recording_cleanup.hpp"
 #include <audition/recording/source_wav_recorder.hpp>
 #include <audition/recording/source_recording_session.hpp>
 #include <audition/dsp/streaming_level_meter.hpp>
@@ -344,18 +345,11 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Forgot:
                     if (event.generation)
                         recordings.cancelGeneration(*event.generation);
-                    for (auto it=epoch_recordings.begin();
-                         it!=epoch_recordings.end();) {
-                        if (it->first.first==event.source_id &&
-                            it->first.second<event.epoch) {
-                            // An old Retire may have been canceled by a
-                            // producer discontinuity before its worker ack.
-                            // Persist that old WAV without unfinished ASR.
-                            if (deferred_ack_recordings.erase(it->second))
-                                recordings.acknowledgeRetired(it->second,std::nullopt);
-                            it=epoch_recordings.erase(it);
-                        } else ++it;
-                    }
+                    // Only epochs older than this invalidation may be removed.
+                    // A new Bound may already have been applied for this ID.
+                    clearForgottenSpeechRecordingEpochs(
+                        epoch_recordings,deferred_ack_recordings,recordings,
+                        event.source_id,event.epoch);
                     break;
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Error:
                     if (event.generation)

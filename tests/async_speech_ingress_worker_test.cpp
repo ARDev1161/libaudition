@@ -1,6 +1,7 @@
 #include <audition/speech/async_speech_ingress_worker.hpp>
 #include <audition/recording/source_recording_session.hpp>
 #include <audition/audio/recording_timeline_json.hpp>
+#include "../demo/qt/speech_epoch_recording_cleanup.hpp"
 #include <gtest/gtest.h>
 
 #include <atomic>
@@ -739,4 +740,58 @@ TEST(AsyncSpeechIngressWorker, FixedVadFramesPreserveSourceLocalSampleOffsets) {
     EXPECT_EQ(results[0].start_time.nanoseconds(),1010000000LL);
     EXPECT_EQ(results[0].end_time.nanoseconds(),1070000000LL);
     speech.releaseRetired(results[0].generation);
+}
+
+
+TEST(AsyncSpeechIngressWorker, DelayedForgetPreservesReusedEpochAndWavAnnotations) {
+    const auto root=std::filesystem::temp_directory_path() /
+        ("audition-forget-epoch-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    const auto old_wav=root/"old.wav";
+    const auto new_wav=root/"new.wav";
+    const Timestamp origin{1000000000LL,{ClockDomain::Monotonic,17U}};
+    recording::SourceRecordingSession recordings{};
+    recordings.begin(71U,1001U,old_wav,16000U,origin);
+    ASSERT_EQ(recordings.retireDeferred(71U),1001U);
+    recordings.begin(71U,1002U,new_wav,16000U,origin);
+
+    demo::SpeechEpochRecordingMap epochs{
+        {{71U,7U},1001U}, // old deferred WAV
+        {{71U,8U},1002U}, // reused source already bound
+        {{71U,9U},1003U}, // later epoch must also survive
+        {{72U,2U},2001U}  // unrelated source must survive
+    };
+    std::set<RecordingId> deferred{1001U};
+    // Bound(new) may be delivered before delayed Forgot(old): the
+    // acknowledgement's epoch is the first valid new epoch, not the old one.
+    recordings.bindRecordingAsr(1002U,88U);
+    demo::clearForgottenSpeechRecordingEpochs(
+        epochs,deferred,recordings,71U,8U);
+    EXPECT_EQ(epochs.count({71U,7U}),0U);
+    EXPECT_EQ(epochs.at({71U,8U}),1002U);
+    EXPECT_EQ(epochs.at({71U,9U}),1003U);
+    EXPECT_EQ(epochs.at({72U,2U}),2001U);
+    EXPECT_TRUE(deferred.empty());
+    EXPECT_TRUE(recordings.active(71U));
+    EXPECT_EQ(recordings.boundAsrGenerations(),1U);
+
+    SourceSpeechResult result{};
+    result.track_id=71U;
+    result.generation=88U;
+    result.transcript.text="reused-source";
+    result.start_time=origin;
+    result.end_time=Timestamp{1010000000LL,origin.clock()};
+    recordings.addSpeech(result);
+    recordings.retire(71U,88U);
+    recordings.completeGeneration(88U);
+    const auto old_saved=readRecordingTimelineJson(
+        std::filesystem::path{old_wav.string()+".json"});
+    const auto new_saved=readRecordingTimelineJson(
+        std::filesystem::path{new_wav.string()+".json"});
+    EXPECT_TRUE(old_saved.speech().empty());
+    ASSERT_EQ(new_saved.speech().size(),1U);
+    EXPECT_EQ(new_saved.speech().front().text,"reused-source");
+    EXPECT_EQ(recordings.retainedRecordings(),0U);
+    std::filesystem::remove_all(root);
 }
