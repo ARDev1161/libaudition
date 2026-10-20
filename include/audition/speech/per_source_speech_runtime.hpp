@@ -59,6 +59,10 @@ struct SourceSpeechTrackStatus {
     std::size_t buffered_samples{0};
     std::size_t voiced_samples{0};
     std::optional<std::string> error{};
+    // Successful VAD input and ASR queue outcomes for the active generation.
+    std::uint64_t received_samples{0};
+    std::uint64_t queued_segments{0};
+    std::uint64_t dropped_segments{0};
 };
 
 struct SourceSpeechStatistics {
@@ -122,6 +126,9 @@ private:
         std::optional<std::string> error{};
         Timestamp start_time{};
         std::uint64_t generation{0};
+        std::uint64_t received_samples{0};
+        std::uint64_t queued_segments{0};
+        std::uint64_t dropped_segments{0};
     };
     struct Job {
         std::uint64_t track_id{0};

@@ -1,6 +1,7 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -80,6 +81,7 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
     if (track.voiced_samples >= options_.min_speech_samples) {
         if (jobs_.size() >= options_.max_pending_segments) {
             ++dropped_;
+            ++track.dropped_segments;
         } else {
             SpeechSegment segment{};
             segment.segment_id = SpeechSegmentId{next_segment_++};
@@ -88,6 +90,7 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
                 {options_.sample_rate_hz, 1U, AudioLayout::Interleaved},
                 track.start_time};
             jobs_.push_back({id, track.generation, std::move(segment)});
+            ++track.queued_segments;
             ++pending_by_generation_[track.generation];
             cv_.notify_one();
         }
@@ -163,6 +166,10 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         ++dropped_;
         return;
     }
+    const auto accepted = static_cast<std::uint64_t>(audio.sampleCount());
+    const auto remaining = std::numeric_limits<std::uint64_t>::max() -
+                           track.received_samples;
+    track.received_samples += std::min(accepted, remaining);
     track.speech_active = active;
     const auto advanceTime = [&](std::size_t sample_offset) {
         const auto ns = static_cast<std::int64_t>(
@@ -345,7 +352,9 @@ SourceSpeechTrackStatus PerSourceSpeechRuntime::trackStatus(
     const auto it = tracks_.find(track_id);
     if (it == tracks_.end()) return {};
     return {true, it->second.speech_active, it->second.speech.size(),
-            it->second.voiced_samples, it->second.error};
+            it->second.voiced_samples, it->second.error,
+            it->second.received_samples, it->second.queued_segments,
+            it->second.dropped_segments};
 }
 
 void PerSourceSpeechRuntime::workerLoop() {

@@ -47,6 +47,33 @@ AudioView chunk(const std::vector<float>& values) {
         {16000U,1U,AudioLayout::Interleaved},Timestamp{}};
 }
 }
+TEST(PerSourceSpeechRuntime, CountersAreSourceLocalAndResetOnReuse) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples=4U;
+    options.pre_roll_samples=0U;
+    options.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),options};
+    const std::vector<float> voice(4U,0.5F), quiet(4U,0.0F);
+    runtime.push(41U,chunk(voice));
+    runtime.push(42U,chunk(quiet));
+    EXPECT_EQ(runtime.trackStatus(41U).received_samples,4U);
+    EXPECT_EQ(runtime.trackStatus(42U).received_samples,4U);
+    runtime.push(41U,chunk(quiet));
+    EXPECT_EQ(runtime.trackStatus(41U).received_samples,8U);
+    EXPECT_EQ(runtime.trackStatus(41U).queued_segments,1U);
+    EXPECT_EQ(runtime.trackStatus(41U).dropped_segments,0U);
+    EXPECT_EQ(runtime.trackStatus(42U).queued_segments,0U);
+    runtime.forget(41U);
+    EXPECT_FALSE(runtime.trackStatus(41U).exists);
+    runtime.push(41U,chunk(voice));
+    EXPECT_EQ(runtime.trackStatus(41U).received_samples,4U);
+    EXPECT_EQ(runtime.trackStatus(41U).queued_segments,0U);
+    EXPECT_EQ(runtime.trackStatus(42U).received_samples,4U);
+    runtime.reset();
+    EXPECT_FALSE(runtime.trackStatus(41U).exists);
+    EXPECT_FALSE(runtime.trackStatus(42U).exists);
+}
 TEST(PerSourceSpeechRuntime, IndependentlySegmentsTwoTracksAndRunsAsyncAsr) {
     ThresholdVad vad;
     auto asr=std::make_shared<MockAsr>();
