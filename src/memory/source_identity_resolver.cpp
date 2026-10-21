@@ -451,7 +451,7 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
                 weighted_score +=
                     options_.fingerprint_weight * fingerprint_score;
                 available_weight += options_.fingerprint_weight;
-                fingerprint_anchor = true;
+                fingerprint_anchor = options_.fingerprint_weight > 0.0;
             }
         }
 
@@ -488,7 +488,7 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
                     weighted_score +=
                         options_.position_weight * score;
                     available_weight += options_.position_weight;
-                    position_anchor = true;
+                    position_anchor = options_.position_weight > 0.0;
                 }
             }
 
