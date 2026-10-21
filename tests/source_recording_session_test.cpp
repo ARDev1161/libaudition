@@ -279,6 +279,31 @@ int main() {
         assert(invalid_options);
     }
 
+
+    // A scenario may combine several model adapters on the same source.
+    // De-dup only an exact model/stage/window, not a different classifier
+    // or a distinct overlapping window that happens to share its end.
+    const auto multimodel_path = root / "multi-model.wav";
+    records.begin(91U, 791U, multimodel_path, 16000U, origin);
+    records.addSound(91U, 0U, 8000U, "speech", "YAMNet", .90, "quick");
+    records.addSound(91U, 0U, 8000U, "speech", "YAMNet", .90, "quick");
+    records.addSound(91U, 0U, 8000U, "speech", "EfficientAT", .85, "quick");
+    records.addSound(91U, 4000U, 8000U, "speech", "YAMNet", .80, "quick");
+    records.addSound(91U, 0U, 8000U, "speech", "YAMNet", .95, "refined");
+    records.retire(91U, std::nullopt);
+    const auto multi = audition::readRecordingTimelineJson(
+        fs::path{multimodel_path.string() + ".json"});
+    assert(multi.sounds().size() == 4U);
+    assert(multi.sounds()[0].model == "YAMNet" &&
+           multi.sounds()[0].start_sample == 0U &&
+           multi.sounds()[0].end_sample == 8000U);
+    assert(multi.sounds()[1].model == "EfficientAT" &&
+           multi.sounds()[1].stage == "quick");
+    assert(multi.sounds()[2].model == "YAMNet" &&
+           multi.sounds()[2].start_sample == 4000U);
+    assert(multi.sounds()[3].stage == "refined");
+    assert(records.retainedRecordings() == 0U);
+
     auto meter = audition::dsp::StreamingLevelMeter{};
     meter.push(0.5f);
     meter.push(-0.5f);

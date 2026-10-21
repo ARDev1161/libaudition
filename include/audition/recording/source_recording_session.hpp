@@ -140,7 +140,10 @@ public:
                   double probability, std::string stage) {
         const auto id = recordingId(track_id);
         if (!id || label.empty() || end < start) return;
-        const auto key = std::make_tuple(*id, stage, end);
+        // The same stage/end from another model (or a different start)
+        // is a distinct inference window, not a duplicate observation.
+        // Only suppress an exact repeated model/stage/window result.
+        const auto key = std::make_tuple(*id, model, stage, start, end);
         if (seen_windows_.count(key)) return;
         auto& state = recordings_.at(*id);
         if (state.timeline.sounds().size() >= options_.max_sound_events ||
@@ -317,7 +320,8 @@ private:
     std::map<std::uint64_t, RecordingId> active_;
     std::map<RecordingId, State> recordings_;
     std::map<std::uint64_t, RecordingId> generations_;
-    std::set<std::tuple<RecordingId, std::string, std::uint64_t>> seen_windows_;
+    std::set<std::tuple<RecordingId, std::string, std::string,
+                        std::uint64_t, std::uint64_t>> seen_windows_;
 };
 
 } // namespace audition::recording
