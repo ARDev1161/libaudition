@@ -1142,3 +1142,37 @@ TEST(AsyncSpeechIngressWorker, DeferredRetireRejectsForeignAsrGenerationWithoutM
     EXPECT_EQ(new_saved.speech().front().text,"foreign-generation-rejected");
     std::filesystem::remove_all(root);
 }
+
+TEST(AsyncSpeechIngressWorker, RecordingCapacityRecoversAfterDeferredRetireFallback) {
+    const auto root=std::filesystem::temp_directory_path() /
+        ("audition-retire-capacity-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    const Timestamp origin{1000000000LL,{ClockDomain::Monotonic,17U}};
+    recording::SourceRecordingOptions options{};
+    options.max_recordings=1U;
+    recording::SourceRecordingSession recordings{options};
+    const auto old_wav=root/"old.wav";
+    const auto new_wav=root/"new.wav";
+    ASSERT_TRUE(recordings.tryBegin(91U,7001U,old_wav,16000U,origin));
+    ASSERT_EQ(recordings.retireDeferred(91U),7001U);
+    // Retired WAV metadata remains retained while awaiting the speech worker.
+    EXPECT_FALSE(recordings.tryBegin(91U,7002U,new_wav,16000U,origin));
+    EXPECT_FALSE(recordings.active(91U));
+    EXPECT_EQ(recordings.pendingRetirements(),1U);
+    EXPECT_EQ(recordings.retainedRecordings(),1U);
+    // A generationless retirement acknowledgement frees capacity without
+    // leaking a source slot or silently dropping the previous sidecar.
+    recordings.acknowledgeRetired(7001U,std::nullopt);
+    EXPECT_EQ(recordings.pendingRetirements(),0U);
+    EXPECT_EQ(recordings.retainedRecordings(),0U);
+    ASSERT_TRUE(recordings.tryBegin(91U,7002U,new_wav,16000U,origin));
+    EXPECT_EQ(recordings.recordingId(91U),std::optional<RecordingId>{7002U});
+    recordings.retire(91U,std::nullopt);
+    EXPECT_EQ(recordings.retainedRecordings(),0U);
+    EXPECT_TRUE(readRecordingTimelineJson(
+        std::filesystem::path{old_wav.string()+".json"}).speech().empty());
+    EXPECT_TRUE(readRecordingTimelineJson(
+        std::filesystem::path{new_wav.string()+".json"}).speech().empty());
+    std::filesystem::remove_all(root);
+}
