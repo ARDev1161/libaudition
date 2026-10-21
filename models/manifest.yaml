@@ -137,3 +137,28 @@ models:
     redistributable: false
     bundled: false
     purpose: ci-only spoofing model
+
+  - id: gtcrn-simple-ci
+    backend: sherpa-onnx
+    task: speech_enhancement
+    source: https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx
+    source_revision: github-release-speech-enhancement-models-UNVERIFIED
+    sha256: e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only GTCRN enhancement fixture; release asset identity not independently pinned
+  - id: piper-amy-low-int8-ci
+    backend: sherpa-onnx
+    task: text_to_speech
+    source: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-low-int8.tar.bz2
+    source_revision: github-release-tts-models-UNVERIFIED
+    sha256: 93070ac9fadf512e56c46bdd0c5d2ce96b424fdc4e683d560167410bd2c4df7d
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only Piper TTS archive; bundled voice/espeak components require separate license audit

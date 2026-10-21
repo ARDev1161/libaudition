@@ -73,6 +73,24 @@ class ModelManifestAuditTests(unittest.TestCase):
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
 
+    def test_release_asset_archive_checksum(self):
+        manifest = self.manifest(name="voice.tar.bz2", revision="github-release-UNVERIFIED")
+        manifest = manifest.replace(
+            "https://example.test/resolve/main/voice.tar.bz2",
+            "https://github.com/example/project/releases/download/voices/voice.tar.bz2")
+        self.check(manifest,
+                   f'echo "{DIGEST}  build/voice.tar.bz2" | sha256sum --check\\n',
+                   True)
+
+    def test_release_asset_archive_wrong_checksum(self):
+        manifest = self.manifest(name="voice.tar.bz2", revision="github-release-UNVERIFIED")
+        manifest = manifest.replace(
+            "https://example.test/resolve/main/voice.tar.bz2",
+            "https://github.com/example/project/releases/download/voices/voice.tar.bz2")
+        self.check(manifest,
+                   f'echo "{OTHER}  build/voice.tar.bz2" | sha256sum --check\\n',
+                   False)
+
     def test_pinned_revision_valid(self):
         self.check(self.manifest(revision="deadbeef", source_ref="deadbeef"),
                    f"echo '{DIGEST}  model.onnx' | sha256sum --check\n", True)

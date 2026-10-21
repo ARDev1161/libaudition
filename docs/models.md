@@ -35,3 +35,15 @@ downloads are separately checked by real-model CI jobs.
 
 Release gating and remaining gaps are tracked in
 `docs/release_v1_acceptance.md`. No model weight is bundled by default.
+
+### Additional CI-only model assets (release audit)
+
+GTCRN `gtcrn_simple.onnx` and the Piper Amy Low INT8 `tar.bz2` archive
+are registered in `models/manifest.yaml` with the SHA-256 values checked by
+the CI download steps. The checks establish downloaded **byte identity**, not
+ownership, upstream immutability or redistribution rights. Both are unbundled,
+their license review is pending, and neither is approved for commercial
+distribution. The Piper archive may contain voice and eSpeak-related assets
+with distinct license obligations; inspect its contents before any packaging.
+The GitHub release URLs use release tags rather than immutable asset IDs;
+their source revisions remain explicitly unverified.
