@@ -965,6 +965,18 @@ TEST(SourceIdentityResolver, InvalidIndividualEvidenceWeightsAreRejected) {
     }
 }
 
+TEST(SourceIdentityResolver, FiniteIndividualWeightsWithOverflowingSumAreRejected) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    options.fingerprint_weight = std::numeric_limits<double>::max();
+    options.position_weight = std::numeric_limits<double>::max();
+    options.range_weight = 0.0;
+    options.direction_weight = 0.0;
+    EXPECT_THROW(
+        static_cast<void>(audition::HeuristicSourceIdentityResolver{registry, options}),
+        audition::Error);
+}
+
 TEST(SourceIdentityResolver, FingerprintAtExactQualityThresholdIsStored) {
     audition::InMemoryAcousticSourceRegistry registry;
     audition::HeuristicSourceIdentityResolverOptions options{};
