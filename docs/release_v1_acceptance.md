@@ -617,3 +617,28 @@ from `resolve/main`. Obtain full 40-character immutable upstream commits
 and verify the same five SHA-256 digests at those revisions before updating
 the manifest and workflow together. Do not infer commit IDs from abbreviated
 web-page history entries.
+
+## SenseVoice upstream license discrepancy — 2026-10-21
+
+A further upstream provenance review found **conflicting license claims**:
+the `nocmt/SenseVoiceSmall-INT8-ONNX` model card labels its repackaging
+Apache-2.0, while the `OpenVoiceOS/sensevoice-small-onnx` commit
+`65ba28a3ea49b5fc96ffc9209aea8d8e941e35a9` explicitly states that
+the original `FunAudioLLM/SenseVoiceSmall` weights use the *FunASR Model
+Open Source License Agreement v1.1*, not Apache-2.0. These are different
+packagings, so the latter is **not** by itself conclusive legal proof for
+the current `nocmt` artifact; it is nevertheless a material discrepancy
+requiring primary-source review.
+
+Sources:
+- https://huggingface.co/nocmt/SenseVoiceSmall-INT8-ONNX
+- https://huggingface.co/OpenVoiceOS/sensevoice-small-onnx/commit/65ba28a3ea49b5fc96ffc9209aea8d8e941e35a9
+
+**Release decision:** keep the SenseVoice entries unbundled with
+`license_review: pending`, `commercial: false`, and
+`redistributable: false`. The manifest's `license: Apache-2.0` is
+the *publisher-declared* license, **not a verified original-weight license**.
+Before commercial distribution, inspect the original FunAudioLLM license
+and its applicability to the repackaged weights; record reviewed text and
+attribution obligations. Do not promote the fixture to `approved`
+based only on the derivative repository's license metadata.
