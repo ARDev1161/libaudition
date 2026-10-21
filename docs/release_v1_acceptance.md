@@ -717,3 +717,16 @@ persistent HTTP 503 with source fallback, registration failure, source
 revision mismatch, and source build failure. A source fallback still
 requires GitHub and standard Ubuntu packages. **This is an availability
 fallback, not a substitute for a fully vendored/offline dependency.**
+
+## Multilabel sound annotations and invalid-score isolation — 2026-10-21
+
+A source-recording audit found that the previously revised de-duplication
+key `(RecordingId, model, stage, start, end)` incorrectly conflated two
+different labels from the same multi-label classifier and time window.
+The key now also includes the class label. Invalid classifier confidence
+values (NaN, infinity and values outside `[0,1]`) are counted and dropped
+by the producer-owned recording session, preserving the strict timeline
+validator without killing the capture loop. Regression tests read a
+persisted sidecar with independent same-window labels and verify bad
+scores do not reserve identities or contaminate subsequent valid
+results. This is deterministic unit coverage, not a real-device test.

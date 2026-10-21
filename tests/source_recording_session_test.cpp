@@ -304,6 +304,42 @@ int main() {
     assert(multi.sounds()[3].stage == "refined");
     assert(records.retainedRecordings() == 0U);
 
+
+    // Multi-label models legitimately return multiple classes for a
+    // single model/stage/window. Duplicates must still be suppressed.
+    const auto multilabel_path = root / "multi-label.wav";
+    records.begin(92U, 792U, multilabel_path, 16000U, origin);
+    const auto sound_drops_before=records.droppedAnnotations().sound;
+    records.addSound(92U, 0U, 8000U, "speech", "YAMNet", .85, "quick");
+    records.addSound(92U, 0U, 8000U, "music", "YAMNet", .70, "quick");
+    records.addSound(92U, 0U, 8000U, "music", "YAMNet", .70, "quick");
+    records.addSound(92U, 0U, 8000U, "music", "EfficientAT", .60, "quick");
+    // Bad scores from an optional model must not interrupt recording.
+    records.addSound(92U, 0U, 8000U, "invalid-nan", "YAMNet",
+                     std::numeric_limits<double>::quiet_NaN(), "quick");
+    records.addSound(92U, 0U, 8000U, "invalid-inf", "YAMNet",
+                     std::numeric_limits<double>::infinity(), "quick");
+    records.addSound(92U, 0U, 8000U, "invalid-negative", "YAMNet", -.1, "quick");
+    records.addSound(92U, 0U, 8000U, "invalid-over", "YAMNet", 1.1, "quick");
+    assert(records.droppedAnnotations().sound==sound_drops_before+4U);
+    // An invalid score cannot reserve the duplicate key for its label.
+    records.addSound(92U, 0U, 8000U, "invalid-over", "YAMNet", 1.0, "quick");
+    records.addSound(92U, 0U, 8000U, "zero", "YAMNet", 0.0, "quick");
+    records.retire(92U, std::nullopt);
+    const auto multilabel=audition::readRecordingTimelineJson(
+        fs::path{multilabel_path.string()+".json"});
+    assert(multilabel.sounds().size()==5U);
+    assert(multilabel.sounds()[0].label=="speech");
+    assert(multilabel.sounds()[1].label=="music");
+    assert(multilabel.sounds()[1].model=="YAMNet");
+    assert(multilabel.sounds()[2].label=="music");
+    assert(multilabel.sounds()[2].model=="EfficientAT");
+    assert(multilabel.sounds()[3].label=="invalid-over");
+    assert(multilabel.sounds()[3].confidence==1.0);
+    assert(multilabel.sounds()[4].label=="zero");
+    assert(multilabel.sounds()[4].confidence==0.0);
+    assert(records.retainedRecordings()==0U);
+
     auto meter = audition::dsp::StreamingLevelMeter{};
     meter.push(0.5f);
     meter.push(-0.5f);

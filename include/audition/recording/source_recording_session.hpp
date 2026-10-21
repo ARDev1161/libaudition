@@ -3,6 +3,7 @@
 #include <audition/audio/recording_timeline_json.hpp>
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -140,10 +141,17 @@ public:
                   double probability, std::string stage) {
         const auto id = recordingId(track_id);
         if (!id || label.empty() || end < start) return;
-        // The same stage/end from another model (or a different start)
-        // is a distinct inference window, not a duplicate observation.
-        // Only suppress an exact repeated model/stage/window result.
-        const auto key = std::make_tuple(*id, model, stage, start, end);
+        // Invalid model scores must not throw into the recording/capture
+        // owner thread. Preserve the strict RecordingTimeline invariant.
+        if (!std::isfinite(probability) || probability < 0.0 ||
+            probability > 1.0) {
+            ++drops_.sound;
+            return;
+        }
+        // Suppress only an exact class from one model/stage/window.
+        // Multilabel classifiers can legitimately emit several classes
+        // over the same time interval.
+        const auto key = std::make_tuple(*id, model, stage, start, end, label);
         if (seen_windows_.count(key)) return;
         auto& state = recordings_.at(*id);
         if (state.timeline.sounds().size() >= options_.max_sound_events ||
@@ -321,7 +329,7 @@ private:
     std::map<RecordingId, State> recordings_;
     std::map<std::uint64_t, RecordingId> generations_;
     std::set<std::tuple<RecordingId, std::string, std::string,
-                        std::uint64_t, std::uint64_t>> seen_windows_;
+                        std::uint64_t, std::uint64_t, std::string>> seen_windows_;
 };
 
 } // namespace audition::recording
