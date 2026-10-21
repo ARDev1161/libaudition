@@ -276,8 +276,10 @@ def main():
         if hop == 2:
             pair.reverse()  # Real output order may vary at a crossing.
         crossing_rows.extend(pair)
+    # Retain two genuine silent hops: quality acceptance must test its
+    # false-positive threshold rather than failing due to absent evidence.
     crossing_metrics, crossing_quality = module.evaluate(
-        crossing_rows, crossing, 5, 20, with_summary=True)
+        crossing_rows, crossing, 7, 20, with_summary=True)
     assert all(s["track_coverage"] == 1 for s in crossing_metrics)
     assert crossing_quality["simultaneous_track_coverage"] == 1
     assert crossing_quality["adjacent_hop_id_switches"] == 0
@@ -291,7 +293,7 @@ def main():
         if int(row["hop"]) >= 3:
             row["id"] = "20" if row["id"] == "10" else "10"
     swapped_metrics, swapped_quality = module.evaluate(
-        actual_swap, crossing, 5, 20, with_summary=True)
+        actual_swap, crossing, 7, 20, with_summary=True)
     assert all(s["track_coverage"] == 1 for s in swapped_metrics)
     assert swapped_quality["adjacent_hop_id_switches"] == 2
     fails(swapped_metrics, swapped_quality, gates())
