@@ -508,18 +508,22 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
                 }
             }
 
-            const double angle = directionAngle(
-                observation.direction.direction,
-                state.direction->direction);
-            if (finite(angle) &&
-                angle <= options_.max_direction_angle_rad) {
-                const double score =
-                    (1.0 -
-                     angle / options_.max_direction_angle_rad) *
-                    recency;
-                weighted_score +=
-                    options_.direction_weight * score;
-                available_weight += options_.direction_weight;
+            // Some backends cannot estimate direction for every frame.
+            // Missing direction must not invalidate position/fingerprint evidence.
+            if (state.direction.has_value()) {
+                const double angle = directionAngle(
+                    observation.direction.direction,
+                    state.direction->direction);
+                if (finite(angle) &&
+                    angle <= options_.max_direction_angle_rad) {
+                    const double score =
+                        (1.0 -
+                         angle / options_.max_direction_angle_rad) *
+                        recency;
+                    weighted_score +=
+                        options_.direction_weight * score;
+                    available_weight += options_.direction_weight;
+                }
             }
         }
 
