@@ -216,7 +216,7 @@ class ModelManifestAuditTests(unittest.TestCase):
 
     def test_approved_review_with_evidence(self):
         approved = self.manifest(review="approved", commercial="true",
-                                 revision="deadbeef", source_ref="deadbeef")
+                                 revision="d" * 40, source_ref="d" * 40)
         approved = approved.replace("    license_review: approved\n",
                                     "    license_review: approved\n"
                                     "    license_evidence: docs/legal/fixture-review.md\n")
@@ -274,8 +274,22 @@ class ModelManifestAuditTests(unittest.TestCase):
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
                    False, evidence_content="License review evidence")
 
-    def test_approved_fixture_accepts_immutable_revision_with_evidence(self):
+    def test_approved_fixture_rejects_short_resolve_revision(self):
         manifest = self.manifest(review="approved", revision="deadbeef", source_ref="deadbeef")
+        manifest += "    license_evidence: docs/legal/fixture-review.md\n"
+        self.check(manifest,
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False, evidence_content="License review evidence")
+
+    def test_approved_fixture_rejects_mutable_resolve_tag(self):
+        manifest = self.manifest(review="approved", revision="release-v1", source_ref="release-v1")
+        manifest += "    license_evidence: docs/legal/fixture-review.md\n"
+        self.check(manifest,
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False, evidence_content="License review evidence")
+
+    def test_approved_fixture_accepts_immutable_revision_with_evidence(self):
+        manifest = self.manifest(review="approved", revision="d" * 40, source_ref="d" * 40)
         manifest += "    license_evidence: docs/legal/fixture-review.md\n"
         self.check(manifest,
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",

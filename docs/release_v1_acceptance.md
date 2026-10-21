@@ -573,3 +573,14 @@ candidate, close the unverified model-provenance/license items, and
 document unsupported platforms and unmeasured real-audio performance.
 Do not merge to `main`, bump the version, or tag v1.0 based on this
 feature-branch CI result.
+
+## Approved fixture immutable-source validation (2026-10-21)
+
+The model-manifest checker now requires a full 40-hex-character commit ID
+in any `/resolve/<revision>/` source URL when `license_review: approved`.
+Short hashes, branch names and mutable tags cannot satisfy that approval gate,
+even if `source_revision` matches the URL. Pending, unbundled CI fixtures
+remain permitted with explicitly unverified revisions; this validation does
+**not** independently establish a model license or an upstream revision's
+provenance. SenseVoice and CLAP remain unpinned and unapproved, and the
+Whisper tokenizer still needs an independently verified SHA-256.

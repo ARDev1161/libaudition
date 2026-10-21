@@ -116,6 +116,8 @@ for entry in entries:
         errors.append(f"{name}: pending review cannot grant model use or redistribution")
     if review == "approved" and (revision.startswith("UNPINNED-") or "/resolve/main/" in source):
         errors.append(f"{name}: approved fixture requires immutable source revision")
+    if review == "approved" and resolved and not re.fullmatch(r"[0-9a-f]{40}", resolved.group(1)):
+        errors.append(f"{name}: approved resolve source requires full 40-character commit SHA")
     if review == "approved":
         evidence = entry.get("license_evidence", "")
         # Existence is a manifest consistency gate, not independent legal approval.
