@@ -114,7 +114,7 @@ for entry in entries:
         errors.append(f"{name}: unverified license requires pending review")
     if review == "pending" and (entry.get("commercial") == "true" or entry.get("redistributable") == "true"):
         errors.append(f"{name}: pending review cannot grant model use or redistribution")
-    if review == "approved" and (revision.startswith("UNPINNED-") or "/resolve/main/" in source):
+    if review == "approved" and (revision.startswith("UNPINNED-") or "UNVERIFIED" in revision or "/resolve/main/" in source):
         errors.append(f"{name}: approved fixture requires immutable source revision")
     if review == "approved" and resolved and not re.fullmatch(r"[0-9a-f]{40}", resolved.group(1)):
         errors.append(f"{name}: approved resolve source requires full 40-character commit SHA")
