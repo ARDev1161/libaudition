@@ -693,3 +693,27 @@ Sources:
 
 The next CI run must pass on this hard-pinned candidate; this
 documentation does not itself constitute a completed release gate.
+
+## Resilient GTSAM 4.2 Ubuntu 22.04 installation — 2026-10-21
+
+CI #1531 second attempt failed only at `gtsam-backend`: the
+`borglab/gtsam-release-4.2` Launchpad PPA repeatedly returned HTTP 503
+for its `jammy` package indices, even after five retries. The other
+24 jobs passed, including the new pinned CLAP and Whisper gates.
+Evidence: https://github.com/ARDev1161/libaudition/actions/runs/39654290113
+
+The Ubuntu 22.04 GTSAM job still **prefers the BorgLab binary package**.
+If the PPA cannot be registered or its metadata/install stays unavailable,
+`ci/install_gtsam_ubuntu.sh` falls back to building tag `4.2.0`
+from `borglab/gtsam`, requiring the exact Git commit
+`4f66a491ffc83cf092d0d818b11dc35135521612`.
+The pinned source is built with tests/examples/unstable disabled and
+installed locally; the existing libaudition GTSAM functional CTest,
+Qt smoke, and installed-package C++17 consumer then run unchanged.
+No GTSAM gate is marked skipped or allowed to pass without compiling.
+
+Offline regression coverage includes late PPA recovery, an update error,
+persistent HTTP 503 with source fallback, registration failure, source
+revision mismatch, and source build failure. A source fallback still
+requires GitHub and standard Ubuntu packages. **This is an availability
+fallback, not a substitute for a fully vendored/offline dependency.**
