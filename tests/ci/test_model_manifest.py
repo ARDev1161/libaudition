@@ -26,14 +26,23 @@ class ModelManifestAuditTests(unittest.TestCase):
             self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
 
     @staticmethod
-    def manifest(digest=DIGEST, name="model.onnx", model_id="fixture", bundled="false"):
+    def manifest(digest=DIGEST, name="model.onnx", model_id="fixture", bundled="false",
+                 revision="UNPINNED-main", source_ref="main", license="Apache-2.0",
+                 commercial="false", review="pending"):
         return (
             "schema_version: 1\nmodels:\n"
             f"  - id: {model_id}\n"
-            f"    source: https://example.test/resolve/main/{name}\n"
-            "    source_revision: UNPINNED-main\n"
+            "    backend: onnxruntime\n"
+            "    task: audio_event_classification\n"
+            f"    source: https://example.test/resolve/{source_ref}/{name}\n"
+            f"    source_revision: {revision}\n"
             f"    sha256: {digest}\n"
+            f"    license: {license}\n"
+            f"    license_review: {review}\n"
+            f"    commercial: {commercial}\n"
+            "    redistributable: false\n"
             f"    bundled: {bundled}\n"
+            "    purpose: ci-only fixture\n"
         )
 
     def test_matching_digest_and_filename(self):
@@ -61,6 +70,36 @@ class ModelManifestAuditTests(unittest.TestCase):
 
     def test_bundled_fixture(self):
         self.check(self.manifest(bundled="true"),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+
+    def test_pinned_revision_valid(self):
+        self.check(self.manifest(revision="deadbeef", source_ref="deadbeef"),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum --check\n", True)
+
+    def test_filename_prefix_collision(self):
+        self.check(self.manifest(), f"echo '{DIGEST}  other-model.onnx' | sha256sum -c -\n", False)
+
+    def test_filename_suffix_collision(self):
+        self.check(self.manifest(), f"echo '{DIGEST}  model.onnx.backup' | sha256sum -c -\n", False)
+
+    def test_hash_in_comment(self):
+        self.check(self.manifest(), f"# echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_revision_mismatch_with_main(self):
+        self.check(self.manifest(revision="deadbeef"),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_revision_mismatch_with_commit(self):
+        self.check(self.manifest(revision="deadbeef", source_ref="cafebabe"),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_unverified_license_needs_review(self):
+        self.check(self.manifest(license="UNVERIFIED", review="approved"),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_invalid_commercial_permission(self):
+        self.check(self.manifest(commercial="unknown"),
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
 

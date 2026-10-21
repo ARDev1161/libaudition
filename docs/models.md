@@ -22,8 +22,8 @@ permissions from a repository license label without checking the weights and
 training-data terms.
 
 The `ci_model_manifest_regressions` and `ci_model_manifest_audit` CTests
-check structural properties and that the registered SHA-256 values occur in
-workflow checksum commands for matching filenames. These are **consistency
+check required fixture metadata, URL/revision consistency and that registered
+SHA-256 values occur in workflow checksum commands for exact filenames. These are **consistency
 checks**, not proof that a URL resolves to that digest, that the upstream
 revision is immutable, or that the model is legally redistributable. Actual
 downloads are separately checked by real-model CI jobs.

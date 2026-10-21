@@ -24,7 +24,7 @@ for line in manifest.splitlines():
         current = {"id": match.group(1)}
         entries.append(current)
         continue
-    field = re.fullmatch(r"    (sha256|source_revision|source|bundled): (.+)", line)
+    field = re.fullmatch(r"    (sha256|source_revision|source|bundled|backend|task|license|license_review|commercial|redistributable|purpose): (.+)", line)
     if field and current is not None:
         if field.group(1) in current:
             raise SystemExit(f"Duplicate {field.group(1)} in {current['id']}")
@@ -46,16 +46,45 @@ for entry in entries:
         # Require a digest to appear with its expected filename on the same
         # checksum command line, not merely somewhere in the workflow.
         filename = Path(urlsplit(entry.get("source", "")).path).name
-        checks = [
-            line for line in workflow.splitlines()
-            if re.search(r"(?<![0-9a-f])" + digest + r"(?![0-9a-f])", line)
-            and filename in line
-            and "sha256sum" in line
-        ]
+        digest_pattern = re.compile(r"(?<![0-9a-f])" + digest + r"(?![0-9a-f])")
+        filename_pattern = re.compile(
+            r"(?<![A-Za-z0-9_.-])" + re.escape(filename) + r"(?=['\"\s]|$)"
+        )
+        checks = []
+        for line in workflow.splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            if not re.search(r"\|\s*sha256sum\s+(?:--check|-c)(?:\s|$)", line):
+                continue
+            producer = line.split("|", 1)[0]
+            found = digest_pattern.search(producer)
+            if found and filename_pattern.search(producer[found.end():]):
+                checks.append(line)
         if not checks:
             errors.append(f"{name}: SHA-256 not checked with filename {filename}")
     if not entry.get("source") or not entry.get("source_revision"):
         errors.append(f"{name}: missing source or source_revision")
+    source = entry.get("source", "")
+    revision = entry.get("source_revision", "")
+    parsed = urlsplit(source)
+    if parsed.scheme != "https" or not parsed.netloc:
+        errors.append(f"{name}: source must be HTTPS")
+    resolved = re.search(r"/resolve/([^/]+)/", parsed.path)
+    if resolved:
+        ref = resolved.group(1)
+        expected = "UNPINNED-main" if ref == "main" else ref
+        if revision != expected:
+            errors.append(f"{name}: source_revision does not match source URL")
+    elif revision.startswith("UNPINNED-"):
+        errors.append(f"{name}: unpinned revision without matching URL")
+    for field in ("backend", "task", "license", "purpose"):
+        if not entry.get(field):
+            errors.append(f"{name}: missing {field}")
+    for field in ("commercial", "redistributable"):
+        if entry.get(field) not in ("true", "false"):
+            errors.append(f"{name}: invalid {field}")
+    if entry.get("license") == "UNVERIFIED" and entry.get("license_review") != "pending":
+        errors.append(f"{name}: unverified license requires pending review")
     if entry.get("bundled") != "false":
         errors.append(f"{name}: CI fixture must explicitly be unbundled")
 if errors:
