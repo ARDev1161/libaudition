@@ -656,4 +656,40 @@ Source: https://huggingface.co/praxis-app/praxis-models/commit/307c8bf4ddcd5cbd4
 **Important:** this is a separately maintained *mirror*, not a verified
 commit of the original `nocmt` repository. The upstream identity and
 licensing review remain pending; the fixture is unbundled and not
-approved for redistribution. CLAP still uses `resolve/main`.
+approved for redistribution. CLAP is pinned to its upstream revision in the later checkpoint below.
+
+## Immutable CLAP fixtures and Whisper tokenizer inventory — 2026-10-21
+
+CI #1530 resolved the complete `ConceptualMachines/magda-sample-tagger`
+upstream revision `f24970352f239768aaad48cc8734fb298441a763` via the Hugging Face
+revision API and successfully downloaded and SHA-256-checked all three
+CLAP fixtures from that exact revision. The CLAP workflow and all three
+manifest entries now use that immutable commit directly instead of
+`resolve/main`. The verified hashes remain unchanged:
+`clap_audio.onnx` = `3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332`,
+`clap_text.onnx` = `c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf`,
+`tokenizer.json` = `4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a`.
+Evidence: https://github.com/ARDev1161/libaudition/actions/runs/39653605481
+
+The `tiny.en-tokens.txt` Whisper tokenizer is additionally registered
+in `models/manifest.yaml` with pinned upstream commit
+`d026532c022fa99fd789d6b32446a1df7b6bfc43` and SHA-256
+`306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930`,
+as observed in green CI #1528 and enforced by green CI #1529.
+
+**CLAP licensing review remains pending:** the MAGDA exporter model card
+declares BSD-3-Clause, while the source LAION Hugging Face model card
+`laion/clap-htsat-unfused` declares Apache-2.0 and the LAION CLAP
+GitHub repository's root LICENSE contains CC0-1.0. These may cover
+different components, weights, or distributions and must not be
+conflated. Review the actual upstream weight/license notices and
+conversion chain before marking commercial use or redistribution
+approved. The fixture remains `bundled: false`, `commercial: false`,
+`redistributable: false`, `license_review: pending`.
+Sources:
+- https://huggingface.co/ConceptualMachines/magda-sample-tagger
+- https://huggingface.co/laion/clap-htsat-unfused
+- https://github.com/LAION-AI/CLAP/blob/main/LICENSE
+
+The next CI run must pass on this hard-pinned candidate; this
+documentation does not itself constitute a completed release gate.

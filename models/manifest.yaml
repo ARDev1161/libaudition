@@ -26,7 +26,7 @@ models:
     purpose: ci-only inference fixture; AudioSet labels separately CC-BY-4.0
   # Unbundled CI-only fixtures. Repository-declared licenses are not a completed
   # legal/provenance review; commercial/redistribution approval is withheld.
-  # resolve/main is mutable even though each artifact has a checked SHA-256.
+  # Model source revisions are immutable; content hashes are also checked in CI.
   - id: sensevoice-small-int8-ci-model
     backend: sherpa-onnx
     task: automatic_speech_recognition
@@ -54,8 +54,8 @@ models:
   - id: clap-ci-audio-encoder
     backend: onnxruntime
     task: audio_text_embedding
-    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_audio.onnx
-    source_revision: UNPINNED-main
+    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/f24970352f239768aaad48cc8734fb298441a763/clap_audio.onnx
+    source_revision: f24970352f239768aaad48cc8734fb298441a763
     sha256: 3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332
     license: BSD-3-Clause
     license_review: pending
@@ -66,8 +66,8 @@ models:
   - id: clap-ci-text-encoder
     backend: onnxruntime
     task: audio_text_embedding
-    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_text.onnx
-    source_revision: UNPINNED-main
+    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/f24970352f239768aaad48cc8734fb298441a763/clap_text.onnx
+    source_revision: f24970352f239768aaad48cc8734fb298441a763
     sha256: c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf
     license: BSD-3-Clause
     license_review: pending
@@ -78,8 +78,8 @@ models:
   - id: clap-ci-tokenizer
     backend: onnxruntime
     task: audio_text_tokenizer
-    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/tokenizer.json
-    source_revision: UNPINNED-main
+    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/f24970352f239768aaad48cc8734fb298441a763/tokenizer.json
+    source_revision: f24970352f239768aaad48cc8734fb298441a763
     sha256: 4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a
     license: BSD-3-Clause
     license_review: pending
@@ -113,6 +113,18 @@ models:
     redistributable: false
     bundled: false
     purpose: ci-only Whisper decoder
+  - id: whisper-tiny-en-tokens-ci
+    backend: sherpa-onnx
+    task: automatic_speech_recognition_tokens
+    source: https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny.en/resolve/d026532c022fa99fd789d6b32446a1df7b6bfc43/tiny.en-tokens.txt
+    source_revision: d026532c022fa99fd789d6b32446a1df7b6bfc43
+    sha256: 306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only Whisper tokenizer; digest observed in successful CI #1528
   - id: nemo-titanet-small-ci
     backend: sherpa-onnx
     task: speaker_embedding

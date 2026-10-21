@@ -1320,23 +1320,12 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --no-tests=error --test-dir build-clap -R '^qt_self_test$' --output-on-failure
-      - name: Resolve immutable CLAP revision and download verified fixtures
+      - name: Download revision-pinned CLAP inference fixtures
         shell: bash
         run: |
           set -euo pipefail
-          # Temporary evidence capture: record the full upstream commit once.
-          # The next change will hard-pin this exact revision in CI and manifest.
-          clap_revision="$(
-            curl --fail --silent --show-error --location --retry 3 \
-              https://huggingface.co/api/models/ConceptualMachines/magda-sample-tagger/revision/main |
-              python3 -c 'import json, sys; print(json.load(sys.stdin)["sha"])'
-          )"
-          if [[ ! "$clap_revision" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid upstream CLAP commit SHA" >&2
-            exit 1
-          fi
-          echo "CLAP_UPSTREAM_COMMIT=$clap_revision"
-          clap_base="https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/$clap_revision"
+          # Exact upstream commit discovered and three digests verified by CI #1530.
+          clap_base="https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/f24970352f239768aaad48cc8734fb298441a763"
           curl --fail --location --retry 3 \
             --output "$PWD/build-clap/clap_audio.onnx" \
             "$clap_base/clap_audio.onnx?download=true"
