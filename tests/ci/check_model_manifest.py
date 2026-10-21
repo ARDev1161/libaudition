@@ -92,8 +92,23 @@ for entry in entries:
         errors.append(f"{name}: unverified license requires pending review")
     if review == "pending" and (entry.get("commercial") == "true" or entry.get("redistributable") == "true"):
         errors.append(f"{name}: pending review cannot grant model use or redistribution")
-    if review == "approved" and not entry.get("license_evidence"):
-        errors.append(f"{name}: approved review requires recorded license_evidence")
+    if review == "approved":
+        evidence = entry.get("license_evidence", "")
+        # Existence is a manifest consistency gate, not independent legal approval.
+        if not re.fullmatch(r"docs/legal/[A-Za-z0-9][A-Za-z0-9_.-]*\.md", evidence):
+            errors.append(f"{name}: approved review requires docs/legal/*.md license_evidence")
+        else:
+            repository_root = (manifest_path.parent.parent if manifest_path.parent.name == "models"
+                               else manifest_path.parent).resolve()
+            legal_root = (repository_root / "docs/legal").resolve()
+            try:
+                evidence_file = (repository_root / evidence).resolve(strict=True)
+                if (not evidence_file.is_relative_to(legal_root)
+                        or not evidence_file.is_file()
+                        or evidence_file.stat().st_size == 0):
+                    errors.append(f"{name}: license_evidence must be a nonempty repo-local legal file")
+            except (OSError, ValueError):
+                errors.append(f"{name}: license_evidence document does not exist")
     if entry.get("bundled") != "false":
         errors.append(f"{name}: CI fixture must explicitly be unbundled")
 if errors:

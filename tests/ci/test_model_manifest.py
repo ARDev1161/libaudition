@@ -12,13 +12,17 @@ OTHER = "b" * 64
 
 
 class ModelManifestAuditTests(unittest.TestCase):
-    def check(self, manifest, workflow, ok):
+    def check(self, manifest, workflow, ok, evidence_content=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             m = root / "manifest.yaml"
             w = root / "ci.yml"
             m.write_text(manifest, encoding="utf-8")
             w.write_text(workflow, encoding="utf-8")
+            if evidence_content is not None:
+                legal = root / "docs/legal"
+                legal.mkdir(parents=True)
+                (legal / "fixture-review.md").write_text(evidence_content, encoding="utf-8")
             result = subprocess.run(
                 [sys.executable, str(CHECKER), str(m), str(w)],
                 capture_output=True, text=True, check=False
@@ -169,7 +173,44 @@ class ModelManifestAuditTests(unittest.TestCase):
         approved = approved.replace("    license_review: approved\n",
                                     "    license_review: approved\n"
                                     "    license_evidence: docs/legal/fixture-review.md\n")
-        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", True)
+        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", True, evidence_content="# Review\\n")
+
+    def test_approved_review_missing_evidence_file(self):
+        approved = self.manifest(review="approved").replace(
+            "    license_review: approved\n",
+            "    license_review: approved\n"
+            "    license_evidence: docs/legal/fixture-review.md\n")
+        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_approved_review_empty_evidence_file(self):
+        approved = self.manifest(review="approved").replace(
+            "    license_review: approved\n",
+            "    license_review: approved\n"
+            "    license_evidence: docs/legal/fixture-review.md\n")
+        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False, evidence_content="")
+
+    def test_approved_review_rejects_url_evidence(self):
+        approved = self.manifest(review="approved").replace(
+            "    license_review: approved\n",
+            "    license_review: approved\n"
+            "    license_evidence: https://example.test/license\n")
+        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_approved_review_rejects_path_traversal(self):
+        approved = self.manifest(review="approved").replace(
+            "    license_review: approved\n",
+            "    license_review: approved\n"
+            "    license_evidence: docs/legal/../fixture-review.md\n")
+        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False, evidence_content="# Review\n")
+
+    def test_approved_review_rejects_nonlegal_path(self):
+        approved = self.manifest(review="approved").replace(
+            "    license_review: approved\n",
+            "    license_review: approved\n"
+            "    license_evidence: README.md\n")
+        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
     def test_unverified_license_cannot_be_approved(self):
         approved = self.manifest(license="UNVERIFIED", review="approved")

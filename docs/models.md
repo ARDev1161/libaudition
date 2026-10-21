@@ -11,8 +11,9 @@ fixtures**, not an approved set of distributable weights. Each fixture records
 Every entry has an explicit `license_review` state. `pending` requires
 `commercial: false` and `redistributable: false` even when the
 repository-declared license is permissive. An `approved` entry must include
-a recorded `license_evidence` reference; this is a manifest consistency
-guard, **not** independent legal verification. Silero and YAMNet are
+a nonempty, existing repository-local `docs/legal/*.md` `license_evidence`
+document; this is a manifest consistency guard, **not** independent legal
+verification or automatic permission to redistribute. Silero and YAMNet are
 currently marked pending rather than implying completed review.
 
 `source_revision: UNPINNED-main` explicitly denotes a mutable upstream
