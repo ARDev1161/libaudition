@@ -127,6 +127,14 @@ class ModelManifestAuditTests(unittest.TestCase):
     def test_filename_suffix_collision(self):
         self.check(self.manifest(), f"echo '{DIGEST}  model.onnx.backup' | sha256sum -c -\n", False)
 
+    def test_expected_name_only_in_extra_field(self):
+        self.check(self.manifest(),
+                   f"echo '{DIGEST}  wrong.onnx model.onnx' | sha256sum -c -\\n", False)
+
+    def test_expected_name_only_in_comment(self):
+        self.check(self.manifest(),
+                   f"echo '{DIGEST}  wrong.onnx # model.onnx' | sha256sum -c -\\n", False)
+
     def test_hash_in_comment(self):
         self.check(self.manifest(), f"# echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
