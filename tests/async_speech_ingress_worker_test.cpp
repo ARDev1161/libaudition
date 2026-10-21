@@ -151,6 +151,34 @@ TEST(AsyncSpeechIngressWorker, BoundedAcknowledgementMailboxResumesAfterDrain) {
     EXPECT_EQ(events[0].generation,events[1].generation);
 }
 
+// Shutdown must release a worker blocked by a full acknowledgement mailbox
+// even when the application cannot drain it (for example during teardown).
+TEST(AsyncSpeechIngressWorker, DestructorUnblocksFullAcknowledgementMailbox) {
+    WorkerVad vad{};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    const std::vector<float> pcm(4U,0.5F);
+    const auto start=std::chrono::steady_clock::now();
+    {
+        AsyncSpeechIngressWorker worker{speech,SpeechPcmIngressOptions{},1U};
+        ASSERT_EQ(worker.push(98U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+        ASSERT_TRUE(worker.retire(98U).has_value());
+        worker.closeInput();
+
+        // Bound occupies the only mailbox slot. Once retirement is
+        // processed, publishing Retired cannot finish without a drain.
+        for(int attempt=0;attempt<2000 &&
+            speech.statistics().retired_generations==0U;++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        ASSERT_EQ(speech.statistics().retired_generations,1U);
+        std::this_thread::sleep_for(std::chrono::milliseconds{20});
+        EXPECT_FALSE(worker.finished());
+        // Deliberately leave the acknowledgement mailbox undrained.
+    }
+    const auto elapsed=std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now()-start);
+    EXPECT_LT(elapsed.count(),5000);
+}
+
 TEST(AsyncSpeechIngressWorker, CloseWithoutInputReleasesWorker) {
     WorkerVad vad{};
     PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
