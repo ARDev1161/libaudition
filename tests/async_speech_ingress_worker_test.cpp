@@ -219,12 +219,22 @@ TEST(AsyncSpeechIngressWorker, FullMailboxAllowsNewSourceAdmissionUntilPcmCapaci
     EXPECT_EQ(events[0].epoch,*old_epoch);
     EXPECT_EQ(events[1].kind,Kind::Retired);
     EXPECT_EQ(events[1].epoch,*old_epoch);
-    bool found_new_bound=false;
-    for(const auto& event:events) {
-        if(event.source_id==302U && event.kind==Kind::Bound &&
-           event.epoch==*new_epoch) found_new_bound=true;
-    }
-    EXPECT_TRUE(found_new_bound);
+    // The queued old-source invalidation must precede the new binding,
+    // even when acknowledgements were stalled at capacity one.
+    ASSERT_EQ(events.size(),4U);
+    EXPECT_EQ(events[2].kind,Kind::Forgot);
+    EXPECT_EQ(events[2].source_id,302U);
+    EXPECT_LT(events[2].epoch,*new_epoch);
+    EXPECT_EQ(events[3].kind,Kind::Bound);
+    EXPECT_EQ(events[3].source_id,302U);
+    EXPECT_EQ(events[3].epoch,*new_epoch);
+    ASSERT_TRUE(events[0].generation.has_value());
+    ASSERT_TRUE(events[1].generation.has_value());
+    ASSERT_TRUE(events[3].generation.has_value());
+    EXPECT_EQ(events[0].generation,events[1].generation);
+    EXPECT_NE(events[0].generation,events[3].generation);
+    EXPECT_EQ(worker.inputStatistics().outstanding_source_slots,1U);
+    worker.forget(302U);
 }
 
 TEST(AsyncSpeechIngressWorker, CloseWithoutInputReleasesWorker) {
