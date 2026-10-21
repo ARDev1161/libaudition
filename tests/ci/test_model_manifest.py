@@ -79,7 +79,7 @@ class ModelManifestAuditTests(unittest.TestCase):
             "https://example.test/resolve/main/voice.tar.bz2",
             "https://github.com/example/project/releases/download/voices/voice.tar.bz2")
         self.check(manifest,
-                   f'echo "{DIGEST}  build/voice.tar.bz2" | sha256sum --check\\n',
+                   f'echo "{DIGEST}  build/voice.tar.bz2" | sha256sum --check\n',
                    True)
 
     def test_release_asset_archive_wrong_checksum(self):
@@ -88,7 +88,7 @@ class ModelManifestAuditTests(unittest.TestCase):
             "https://example.test/resolve/main/voice.tar.bz2",
             "https://github.com/example/project/releases/download/voices/voice.tar.bz2")
         self.check(manifest,
-                   f'echo "{OTHER}  build/voice.tar.bz2" | sha256sum --check\\n',
+                   f'echo "{OTHER}  build/voice.tar.bz2" | sha256sum --check\n',
                    False)
 
     def test_pinned_revision_valid(self):
