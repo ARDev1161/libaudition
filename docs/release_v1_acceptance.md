@@ -838,3 +838,33 @@ CTest regressions cover a dropout with the same ID, a dropout with
 a changed ID, and ghost tracks amid otherwise perfectly localized
 real-source hypotheses. This validates the evaluator, not the real
 array's tracking accuracy.
+
+## Cross-source track ID handoffs and legitimate long-gap ID reuse — 2026-10-22
+
+The offline scorer previously maintained the last matched track ID *per
+ground-truth source* but not the inverse mapping. If one real source
+ended and a different source appeared with the **same numeric ODAS
+track ID** on the next hop, both sources could retain perfect DOA,
+coverage and individual source ID-switch metrics. That immediate
+cross-source handoff was invisible.
+
+For each matched track ID, the scorer now remembers its most recent
+matched ground-truth `source_id` and hop. Assignment to a different
+source on the adjacent hop increments `cross_source_id_handoffs`.
+Assignment to a different source after **one or more intervening hops
+without that ID matched** increments the separate
+`cross_source_id_reuse_after_gap` diagnostic. Both are included per
+ground-truth interval and in the aggregate recording-quality report.
+This is based on independently annotated sources, not unassociated
+ghost tracks or numeric-ID uniqueness alone.
+
+The optional `LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS`
+parameter activates the real-corpus CI job and passes through CMake/
+CTest to `--max-adjacent-cross-source-id-handoffs`. A numerical
+threshold must be chosen using genuine corpus evidence; no default
+threshold is assumed. Reuse **after a gap** is diagnostic only,
+because reassigning a retired track ID can be valid tracker behavior.
+Always-on contract tests cover adjacent handoff between sequential
+sources, ID reuse after a long gap, stable multiple sources, and
+a genuine simultaneous two-source ID exchange. This does not replace
+independent spatial evaluation on physical recordings.

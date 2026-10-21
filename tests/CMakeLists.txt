@@ -265,6 +265,8 @@ set(LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION "" CACHE STRING
     "Optional maximum fraction of annotated silent hops with a track")
 set(LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION "" CACHE STRING
     "Optional maximum fraction of active hops containing unmatched ghost tracks")
+set(LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS "" CACHE STRING
+    "Optional maximum immediate track-ID handoffs between different real sources")
 if(TARGET audition::backend_odas AND LIBAUDITION_RESPEAKER_CORPUS_MANIFEST)
     if(NOT EXISTS "${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}")
         message(FATAL_ERROR "Real spatial corpus manifest not found: ${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}")
@@ -285,7 +287,8 @@ if(TARGET audition::backend_odas AND LIBAUDITION_RESPEAKER_CORPUS_MANIFEST)
             MAX_ADJACENT_ID_SWITCHES
             MIN_SIMULTANEOUS_TRACK_COVERAGE
             MAX_SILENT_FALSE_POSITIVE_FRACTION
-            MAX_ACTIVE_UNMATCHED_TRACK_FRACTION)
+            MAX_ACTIVE_UNMATCHED_TRACK_FRACTION
+            MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS)
         if(NOT "${LIBAUDITION_REAL_CORPUS_${_gate}}" STREQUAL "")
             string(TOLOWER "${_gate}" _arg)
             string(REPLACE "_" "-" _arg "${_arg}")

@@ -187,7 +187,8 @@ def main():
                         min_track_coverage=1.0, max_adjacent_id_switches=0,
                         min_simultaneous_track_coverage=1.0,
                         max_silent_false_positive_fraction=0.0,
-                        max_active_unmatched_track_fraction=None)
+                        max_active_unmatched_track_fraction=None,
+                        max_adjacent_cross_source_id_handoffs=None)
         defaults.update(overrides)
         return SimpleNamespace(**defaults)
 
@@ -208,6 +209,8 @@ def main():
     assert quality["simultaneous_track_coverage"] == 1
     assert quality["silent_hops"] == 2
     assert quality["silent_false_positive_hop_fraction"] == 0
+    assert quality["cross_source_id_handoffs"] == 0
+    assert quality["cross_source_id_reuse_after_gap"] == 0
     module.enforce_thresholds(metrics, quality, gates())
 
     def fails(segments, summary, options):
@@ -216,6 +219,83 @@ def main():
         except ValueError:
             return
         raise AssertionError("Invalid quality result unexpectedly passed acceptance")
+
+    # ID ownership can change between *different* annotated sources
+    # without triggering either source's own ID-switch counter. Detect
+    # handoffs across adjacent hops even when both sources were localized
+    # perfectly and they did not overlap in time.
+    sequential_sources = [
+        {"source_id": "a", "start_s": 0.0, "end_s": 0.024,
+         "azimuth_deg": 0},
+        {"source_id": "b", "start_s": 0.024, "end_s": 0.048,
+         "azimuth_deg": 90},
+    ]
+    sequential_manifest = sample()
+    sequential_manifest["recordings"][0]["intervals"] = sequential_sources
+    check_manifest(sequential_manifest, True)
+    adjacent_rows = ([trace(i, 41) for i in range(3)] +
+                     [trace(i, 41, 0, 1) for i in range(3, 6)])
+    transition_segments, transition_quality = module.evaluate(
+        adjacent_rows, sequential_sources, 8, 30, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in transition_segments)
+    assert transition_quality["adjacent_hop_id_switches"] == 0
+    assert transition_quality["track_reacquisitions"] == 0
+    assert transition_quality["cross_source_id_handoffs"] == 1
+    assert transition_quality["cross_source_id_reuse_after_gap"] == 0
+    assert transition_segments[0]["cross_source_id_handoffs"] == 0
+    assert transition_segments[1]["cross_source_id_handoffs"] == 1
+    baseline = gates(min_simultaneous_track_coverage=None)
+    module.enforce_thresholds(transition_segments, transition_quality, baseline)
+    fails(transition_segments, transition_quality,
+          gates(min_simultaneous_track_coverage=None,
+                max_adjacent_cross_source_id_handoffs=0))
+    module.enforce_thresholds(
+        transition_segments, transition_quality,
+        gates(min_simultaneous_track_coverage=None,
+              max_adjacent_cross_source_id_handoffs=1))
+
+    # Recycling the same integer ID after multiple unmatched hops is
+    # different from an adjacent source handoff and may be legitimate.
+    delayed_sources = [
+        sequential_sources[0],
+        {"source_id": "b", "start_s": 0.056, "end_s": 0.08,
+         "azimuth_deg": 90},
+    ]
+    delayed_manifest = sample()
+    delayed_manifest["recordings"][0]["intervals"] = delayed_sources
+    check_manifest(delayed_manifest, True)
+    delayed_rows = ([trace(i, 41) for i in range(3)] +
+                    [trace(i, 41, 0, 1) for i in range(7, 10)])
+    delayed_segments, delayed_quality = module.evaluate(
+        delayed_rows, delayed_sources, 12, 30, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in delayed_segments)
+    assert delayed_quality["cross_source_id_handoffs"] == 0
+    assert delayed_quality["cross_source_id_reuse_after_gap"] == 1
+    assert delayed_segments[1]["cross_source_id_reuse_after_gap"] == 1
+    assert delayed_quality["id_changes_after_gap"] == 0
+    module.enforce_thresholds(
+        delayed_segments, delayed_quality,
+        gates(min_simultaneous_track_coverage=None,
+              max_adjacent_cross_source_id_handoffs=0))
+
+    # Simultaneous sources exchanging track IDs cause *two* consecutive
+    # cross-source handoffs; the older per-source switch gate still fires.
+    simultaneous_swap = [dict(row) for row in clean]
+    for row in simultaneous_swap:
+        if row["hop"] == "5":
+            row["id"] = "20" if row["id"] == "10" else "10"
+    swapped_segments, swapped_quality = module.evaluate(
+        simultaneous_swap, two_sources, 8, 30, with_summary=True)
+    assert swapped_quality["adjacent_hop_id_switches"] == 2
+    assert swapped_quality["cross_source_id_handoffs"] == 2
+    assert swapped_quality["cross_source_id_reuse_after_gap"] == 0
+    fails(swapped_segments, swapped_quality,
+          gates(max_adjacent_id_switches=2,
+                max_adjacent_cross_source_id_handoffs=0))
+    module.enforce_thresholds(
+        swapped_segments, swapped_quality,
+        gates(max_adjacent_id_switches=2,
+              max_adjacent_cross_source_id_handoffs=2))
 
     noisy = clean + [trace(6, 99)]
     metrics, quality = module.evaluate(noisy, two_sources, 8, 30, with_summary=True)

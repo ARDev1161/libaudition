@@ -257,7 +257,9 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
         observed.setdefault(hop, []).append(row)
     state = [{"errors": [], "proposals": [], "covered": 0, "hops": 0,
               "identity_switches": 0, "reacquisitions": 0,
-              "track_reacquisitions": 0}
+              "track_reacquisitions": 0,
+              "cross_source_id_handoffs": 0,
+              "cross_source_id_reuse_after_gap": 0}
              for _ in intervals]
     active_hops = 0
     active_hops_with_unmatched_tracks = 0
@@ -269,6 +271,10 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
     silent_track_observations = 0
     last_id = {}
     last_seen_hop = {}
+    # Reverse identity history: detect when one ODAS track ID is assigned
+    # to *another* ground-truth source. Per-source switch metrics alone
+    # cannot detect this when two sources are active in sequence.
+    last_track_owner = {}
     for hop in range(total_hops):
         time_s = (hop + 0.5) * HOP / FS
         active = [(index, reference_direction(interval, time_s))
@@ -315,6 +321,18 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             # must share identity history. Index-keyed history resets at
             # interval boundaries and misses switches at those boundaries.
             source_id = intervals[reference_index].get("source_id", "default")
+            previous_owner = last_track_owner.get(track_id)
+            if previous_owner is not None:
+                previous_source, previous_hop = previous_owner
+                if previous_source != source_id:
+                    if previous_hop == hop - 1:
+                        item["cross_source_id_handoffs"] += 1
+                    else:
+                        # A track ID may legitimately be recycled after its
+                        # earlier owner disappears. Report it independently;
+                        # do not treat it as a default acceptance failure.
+                        item["cross_source_id_reuse_after_gap"] += 1
+            last_track_owner[track_id] = (source_id, hop)
             # Any gap in matched observations represents reacquisition,
             # even if the tracker safely reuses the original identity.
             # A changed ID after that gap is a separate, stronger error.
@@ -356,6 +374,8 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             "adjacent_hop_id_switches": item["identity_switches"],
             "id_changes_after_gap": item["reacquisitions"],
             "track_reacquisitions": item["track_reacquisitions"],
+            "cross_source_id_handoffs": item["cross_source_id_handoffs"],
+            "cross_source_id_reuse_after_gap": item["cross_source_id_reuse_after_gap"],
         })
     quality = {
         "active_hops": active_hops,
@@ -375,6 +395,10 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
         "adjacent_hop_id_switches": sum(item["identity_switches"] for item in state),
         "id_changes_after_gap": sum(item["reacquisitions"] for item in state),
         "track_reacquisitions": sum(item["track_reacquisitions"] for item in state),
+        "cross_source_id_handoffs": sum(
+            item["cross_source_id_handoffs"] for item in state),
+        "cross_source_id_reuse_after_gap": sum(
+            item["cross_source_id_reuse_after_gap"] for item in state),
         "max_association_error_deg": max_association_error_deg,
     }
     return (metrics, quality) if with_summary else metrics
@@ -410,6 +434,10 @@ def enforce_thresholds(segments, quality, options):
         value = quality["active_unmatched_track_hop_fraction"]
         check(value is not None and value <= active_limit,
               "Active unmatched-track acceptance failed")
+    handoff_limit = getattr(options, "max_adjacent_cross_source_id_handoffs", None)
+    if handoff_limit is not None:
+        check(quality["cross_source_id_handoffs"] <= handoff_limit,
+              "Cross-source track-ID handoff acceptance failed")
 
 
 def main():
@@ -425,6 +453,7 @@ def main():
     parser.add_argument("--min-simultaneous-track-coverage", type=float)
     parser.add_argument("--max-silent-false-positive-fraction", type=float)
     parser.add_argument("--max-active-unmatched-track-fraction", type=float)
+    parser.add_argument("--max-adjacent-cross-source-id-handoffs", type=int)
     parser.add_argument("--horizontal-sources", action="store_true")
     args = parser.parse_args()
     if args.max_median_error_deg is not None:
@@ -451,6 +480,9 @@ def main():
         check(math.isfinite(args.max_active_unmatched_track_fraction) and
               0 <= args.max_active_unmatched_track_fraction <= 1,
               "Invalid active unmatched-track threshold")
+    if args.max_adjacent_cross_source_id_handoffs is not None:
+        check(args.max_adjacent_cross_source_id_handoffs >= 0,
+              "Invalid cross-source ID handoff limit")
     check(args.runner.is_file(), "Missing ODAS runner")
     check(args.manifest.is_file(), "Missing corpus manifest")
     corpus = validate_manifest(args.manifest)

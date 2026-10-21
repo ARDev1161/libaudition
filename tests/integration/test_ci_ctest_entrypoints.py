@@ -89,6 +89,7 @@ class CiCTestEntrypointTests(unittest.TestCase):
             "LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE",
             "LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION",
             "LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION",
+            "LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS",
         }
         match = re.search(r"(?m)^    if: >-\n(.*?)(?=^    runs-on:)",
                           real_job, flags=re.DOTALL)
@@ -114,6 +115,14 @@ class CiCTestEntrypointTests(unittest.TestCase):
             "MAX_ACTIVE_UNMATCHED_TRACK_FRACTION; do", real_job)
         self.assertIn(
             "LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION:",
+            real_job)
+        self.assertIn(
+            "MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS", cmake)
+        self.assertIn(
+            "MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS MAX_ACTIVE_UNMATCHED_TRACK_FRACTION; do",
+            real_job)
+        self.assertIn(
+            "LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS:",
             real_job)
         for needle in (
             '${CORPUS_URL:?Set LIBAUDITION_REAL_CORPUS_URL',
