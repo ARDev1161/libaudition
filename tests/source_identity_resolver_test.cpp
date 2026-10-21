@@ -364,6 +364,80 @@ TEST(SourceIdentityResolver, CapacityFailureDoesNotReplaceActiveIdentity) {
     EXPECT_NE(replacement.source_id, original.source_id);
 }
 
+
+TEST(SourceIdentityResolver, CapacityRejectionDoesNotAdvanceClock) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    options.max_active_tracks = 1U;
+    options.max_recent_sources = 2U;
+    audition::HeuristicSourceIdentityResolver resolver{registry, options};
+
+    const auto original = resolver.observe(observation(1U, 10));
+    // A rejected newer input must not make the still-active track's next
+    // perfectly valid input look globally out of order.
+    EXPECT_THROW(
+        static_cast<void>(resolver.observe(observation(2U, 10'000))),
+        audition::Error);
+    const auto next = resolver.observe(observation(1U, 11));
+    EXPECT_EQ(next.source_id, original.source_id);
+    EXPECT_FALSE(next.newly_created);
+    resolver.endTrack(audition::SpatialTrackId{1U}, ts(12));
+    EXPECT_TRUE(resolver.observe(observation(2U, 13)).newly_created);
+}
+
+TEST(SourceIdentityResolver, RejectedAdmissionDoesNotEvictRecentSource) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    options.max_active_tracks = 1U;
+    options.max_recent_sources = 3U;
+    options.max_reacquisition_age = audition::Duration{100};
+    audition::HeuristicSourceIdentityResolver resolver{registry, options};
+
+    auto earlier = observation(1U, 0);
+    earlier.position = position(1.0, 0.0, 0.0);
+    const auto known = resolver.observe(earlier);
+    resolver.endTrack(earlier.track_id, ts(1));
+
+    auto occupied = observation(2U, 2);
+    occupied.position = position(100.0, 0.0, 0.0);
+    static_cast<void>(resolver.observe(occupied));
+    EXPECT_THROW(
+        static_cast<void>(resolver.observe(observation(3U, 10'000))),
+        audition::Error);
+    // Failed admission must neither expire the first track's position
+    // evidence nor advance the global clock.
+    EXPECT_NO_THROW(
+        static_cast<void>(resolver.observe(observation(2U, 3))));
+    resolver.endTrack(occupied.track_id, ts(4));
+
+    auto recovered = observation(3U, 5);
+    recovered.position = earlier.position;
+    const auto match = resolver.observe(recovered);
+    EXPECT_FALSE(match.newly_created);
+    EXPECT_EQ(match.source_id, known.source_id);
+}
+
+TEST(SourceIdentityResolver, ExtremeTimestampSpanCannotOverflowSourceAge) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    options.max_reacquisition_age = audition::Duration{100};
+    audition::HeuristicSourceIdentityResolver resolver{registry, options};
+
+    constexpr auto first_time = std::numeric_limits<std::int64_t>::min() + 10;
+    constexpr auto last_time = std::numeric_limits<std::int64_t>::max() - 10;
+    auto original = observation(1U, first_time);
+    original.position = position(2.0, 0.0, 0.0);
+    const auto old_source = resolver.observe(original);
+    resolver.endTrack(original.track_id, ts(first_time + 1));
+
+    auto new_track = observation(2U, last_time);
+    new_track.position = original.position;
+    const auto newer = resolver.observe(new_track);
+    EXPECT_TRUE(newer.newly_created);
+    EXPECT_NE(newer.source_id, old_source.source_id);
+    EXPECT_EQ(registry.list().size(), 2U);
+}
+
 TEST(SourceIdentityResolver, RejectsZeroTrackAndInvalidFingerprintVectors) {
     audition::InMemoryAcousticSourceRegistry registry;
     audition::HeuristicSourceIdentityResolver resolver{registry};

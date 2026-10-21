@@ -46,3 +46,21 @@ The coordinator does not retain historical track-ID bindings after
 forward explicitly or retain the resolved `SpatialTrack` used to create them.
 This avoids ambiguous association if a tracker later reuses the same numeric
 track ID.
+
+## Resolver timestamp and source-aging safety
+
+The `HeuristicSourceIdentityResolver` clock now advances only after an
+accepted observation or a completed `endTrack()`. A rejected *new*
+track (for example, when `max_active_tracks` is full) does not advance
+the global timestamp or evict recent identity candidates. Otherwise,
+a later observation from an already active track could be incorrectly
+rejected as out-of-order after an unrelated capacity error, and nearby
+geometry-backed reidentification could be lost.
+
+Source ages are computed with unsigned 64-bit elapsed nanoseconds after
+the monotonic timestamp check. This avoids signed subtraction overflow
+when source lifetimes span the extreme negative and positive values
+of the signed timestamp representation. Both changes have deterministic
+CTest regressions for capacity rejection, cache preservation, and
+extreme timestamp intervals. This does **not** make the resolver
+thread-safe; callers must still serialize lifecycle operations.

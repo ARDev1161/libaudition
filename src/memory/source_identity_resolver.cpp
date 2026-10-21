@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -254,8 +255,8 @@ void HeuristicSourceIdentityResolver::reset() {
     recent_sources_.clear();
 }
 
-void HeuristicSourceIdentityResolver::validateAndAdvanceTimestamp(
-    Timestamp timestamp) {
+void HeuristicSourceIdentityResolver::validateTimestamp(
+    Timestamp timestamp) const {
     if (last_timestamp_.has_value()) {
         if (!timestamp.comparableWith(*last_timestamp_)) {
             throw Error{
@@ -268,13 +269,12 @@ void HeuristicSourceIdentityResolver::validateAndAdvanceTimestamp(
                 "Source identity observations must be globally time ordered"};
         }
     }
-    last_timestamp_ = timestamp;
 }
 
 void HeuristicSourceIdentityResolver::pruneRecentSources(
     Timestamp timestamp) {
-    const std::int64_t max_age_ns =
-        options_.max_reacquisition_age.nanoseconds();
+    const auto max_age_ns = static_cast<std::uint64_t>(
+        options_.max_reacquisition_age.nanoseconds());
 
     const auto sourceIsActive = [this](AcousticSourceId source_id) {
         for (const auto& item : active_tracks_) {
@@ -286,8 +286,12 @@ void HeuristicSourceIdentityResolver::pruneRecentSources(
     };
 
     for (auto it = recent_sources_.begin(); it != recent_sources_.end();) {
-        const std::int64_t age_ns =
-            timestamp.nanoseconds() - it->second.last_seen.nanoseconds();
+        // Global timestamps are validated as monotonically increasing.
+        // Unsigned subtraction computes the full elapsed interval even
+        // across INT64_MIN -> INT64_MAX without signed-overflow UB.
+        const auto age_ns =
+            static_cast<std::uint64_t>(timestamp.nanoseconds()) -
+            static_cast<std::uint64_t>(it->second.last_seen.nanoseconds());
         if (!sourceIsActive(it->first) && age_ns > max_age_ns) {
             it = recent_sources_.erase(it);
         } else {
@@ -360,14 +364,14 @@ void HeuristicSourceIdentityResolver::maybeStoreFingerprint(
 SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
     const SourceIdentityObservation& observation) {
     validateObservation(observation);
-    validateAndAdvanceTimestamp(observation.timestamp);
-    pruneRecentSources(observation.timestamp);
+    validateTimestamp(observation.timestamp);
 
     const auto active = active_tracks_.find(observation.track_id);
     if (active != active_tracks_.end()) {
         active->second.last_seen = observation.timestamp;
         updateSourceState(active->second.source_id, observation);
         maybeStoreFingerprint(active->second.source_id, observation);
+        last_timestamp_ = observation.timestamp;
         return {
             active->second.source_id,
             Probability::one(),
@@ -375,10 +379,14 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
     }
 
     if (active_tracks_.size() >= options_.max_active_tracks) {
+        // Do not advance the epoch clock or evict recent sources on a
+        // refused admission. Active tracks may still submit older samples.
         throw Error{
             ErrorCode::InvalidState,
             "Source identity resolver active-track capacity exceeded"};
     }
+
+    pruneRecentSources(observation.timestamp);
 
     const auto sourceIsActive = [this](AcousticSourceId source_id) {
         for (const auto& item : active_tracks_) {
@@ -446,9 +454,9 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
         const auto state_it = recent_sources_.find(profile.source_id);
         if (state_it != recent_sources_.end()) {
             const SourceState& state = state_it->second;
-            const std::int64_t age_ns =
-                observation.timestamp.nanoseconds() -
-                state.last_seen.nanoseconds();
+            const auto age_ns =
+                static_cast<std::uint64_t>(observation.timestamp.nanoseconds()) -
+                static_cast<std::uint64_t>(state.last_seen.nanoseconds());
             const double recency = std::clamp(
                 1.0 -
                     static_cast<double>(age_ns) /
@@ -551,6 +559,7 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
         TrackBinding{source_id, observation.timestamp});
     updateSourceState(source_id, observation);
     maybeStoreFingerprint(source_id, observation);
+    last_timestamp_ = observation.timestamp;
 
     return {source_id, confidence, newly_created};
 }
@@ -564,11 +573,12 @@ void HeuristicSourceIdentityResolver::endTrack(
             "endTrack requires a valid track ID"};
     }
 
-    validateAndAdvanceTimestamp(timestamp);
+    validateTimestamp(timestamp);
     pruneRecentSources(timestamp);
 
     const auto it = active_tracks_.find(track_id);
     if (it == active_tracks_.end()) {
+        last_timestamp_ = timestamp;
         return;
     }
 
@@ -581,6 +591,7 @@ void HeuristicSourceIdentityResolver::endTrack(
     }
 
     pruneRecentSources(timestamp);
+    last_timestamp_ = timestamp;
 }
 
 }  // namespace audition
