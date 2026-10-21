@@ -114,6 +114,8 @@ for entry in entries:
         errors.append(f"{name}: unverified license requires pending review")
     if review == "pending" and (entry.get("commercial") == "true" or entry.get("redistributable") == "true"):
         errors.append(f"{name}: pending review cannot grant model use or redistribution")
+    if review == "approved" and (revision.startswith("UNPINNED-") or "/resolve/main/" in source):
+        errors.append(f"{name}: approved fixture requires immutable source revision")
     if review == "approved":
         evidence = entry.get("license_evidence", "")
         # Existence is a manifest consistency gate, not independent legal approval.
