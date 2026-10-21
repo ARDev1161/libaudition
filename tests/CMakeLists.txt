@@ -46,6 +46,9 @@ if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
     endif()
 endif()
 
+# Python is needed before any Python-backed CTest registration.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 # Model manifest consistency is a core packaging contract: run locally and
 # in every CI CTest build, without requiring real-model dependencies.
 add_test(NAME ci_model_manifest_regressions COMMAND
