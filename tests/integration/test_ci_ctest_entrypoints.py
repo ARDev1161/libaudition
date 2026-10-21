@@ -89,12 +89,12 @@ class CiCTestEntrypointTests(unittest.TestCase):
             "LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE",
             "LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION",
         }
-        match = re.search(r"(?m)^    if: >-\\n(.*?)(?=^    runs-on:)",
+        match = re.search(r"(?m)^    if: >-\n(.*?)(?=^    runs-on:)",
                           real_job, flags=re.DOTALL)
         self.assertIsNotNone(match, "Real-corpus job requires a folded activation guard")
         guard = match.group(1)
         terms = set(re.findall(
-            r"vars\\.(LIBAUDITION_REAL_CORPUS_[A-Z0-9_]+)\\s*!=\\s*''",
+            r"vars\.(LIBAUDITION_REAL_CORPUS_[A-Z0-9_]+)\s*!=\s*''",
             guard))
         self.assertEqual(terms, required_settings,
                          "Every real-corpus variable must activate the CI job")
