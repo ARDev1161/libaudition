@@ -228,6 +228,40 @@ private:
 };
 }
 
+// Capture-side admission must remain independent of a stalled VAD worker.
+// This is the key nonblocking-ingress property of the separate #54 worker.
+TEST(AsyncSpeechIngressWorker, AdmissionContinuesWhileVadIsBlocked) {
+    auto gate=std::make_shared<PausedVadGate>();
+    PausedVad vad{gate};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    SpeechPcmIngressOptions options{};
+    options.max_sources=2U;
+    options.max_pending_chunks=2U;
+    options.max_pending_samples=8U;
+    options.max_chunk_samples=4U;
+    AsyncSpeechIngressWorker worker{speech,options};
+    const std::vector<float> pcm(4U,0.5F);
+    ASSERT_EQ(worker.push(201U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    for(int i=0;i<2000 && !gate->entered.load();++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!gate->entered.load()) {
+        gate->resume.store(true);
+        FAIL() << "VAD did not enter the test gate";
+        return;
+    }
+    // No runtime VAD mutex can be held by the capture-facing push().
+    EXPECT_EQ(worker.push(202U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    EXPECT_EQ(worker.push(202U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    EXPECT_EQ(worker.push(202U,audioBlock(pcm)),SpeechPcmAdmission::RejectedCapacity);
+    gate->resume.store(true);
+    worker.closeInput();
+    for(int i=0;i<2000 && !worker.finished();++i) {
+        (void)worker.drainAcknowledgements();
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_TRUE(worker.finished());
+}
+
 TEST(AsyncSpeechIngressWorker, StaleVadFailurePreservesReusedPcmAndRetirement) {
     auto gate=std::make_shared<PausedVadGate>();
     PausedVad vad{gate};
