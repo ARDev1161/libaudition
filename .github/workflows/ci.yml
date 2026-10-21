@@ -866,7 +866,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build-sherpa/sensevoice
-          base=https://huggingface.co/nocmt/SenseVoiceSmall-INT8-ONNX/resolve/main
+          base=https://huggingface.co/praxis-app/praxis-models/resolve/307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7/sense-voice
           curl --fail --location --retry 3 \
             -o build-sherpa/sensevoice/model.int8.onnx \
             "$base/model.int8.onnx"

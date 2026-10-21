@@ -642,3 +642,18 @@ Before commercial distribution, inspect the original FunAudioLLM license
 and its applicability to the repackaged weights; record reviewed text and
 attribution obligations. Do not promote the fixture to `approved`
 based only on the derivative repository's license metadata.
+
+## Pinned SenseVoice CI mirror — 2026-10-21
+
+The SenseVoice CI-only model and tokenizer now download from the
+`praxis-app/praxis-models` immutable Hugging Face commit
+`307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7`, paths `sense-voice/model.int8.onnx` and
+`sense-voice/tokens.txt`. That commit explicitly records both files'
+SHA-256 digests matching the previous `nocmt` fixture values. The CI
+continues to verify both downloaded files against those exact digests.
+Source: https://huggingface.co/praxis-app/praxis-models/commit/307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7
+
+**Important:** this is a separately maintained *mirror*, not a verified
+commit of the original `nocmt` repository. The upstream identity and
+licensing review remain pending; the fixture is unbundled and not
+approved for redistribution. CLAP still uses `resolve/main`.

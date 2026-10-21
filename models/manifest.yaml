@@ -30,8 +30,8 @@ models:
   - id: sensevoice-small-int8-ci-model
     backend: sherpa-onnx
     task: automatic_speech_recognition
-    source: https://huggingface.co/nocmt/SenseVoiceSmall-INT8-ONNX/resolve/main/model.int8.onnx
-    source_revision: UNPINNED-main
+    source: https://huggingface.co/praxis-app/praxis-models/resolve/307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7/sense-voice/model.int8.onnx
+    source_revision: 307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7
     sha256: c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51
     license: Apache-2.0
     license_review: pending
@@ -42,8 +42,8 @@ models:
   - id: sensevoice-small-int8-ci-tokens
     backend: sherpa-onnx
     task: automatic_speech_recognition_tokens
-    source: https://huggingface.co/nocmt/SenseVoiceSmall-INT8-ONNX/resolve/main/tokens.txt
-    source_revision: UNPINNED-main
+    source: https://huggingface.co/praxis-app/praxis-models/resolve/307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7/sense-voice/tokens.txt
+    source_revision: 307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7
     sha256: f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc
     license: Apache-2.0
     license_review: pending
