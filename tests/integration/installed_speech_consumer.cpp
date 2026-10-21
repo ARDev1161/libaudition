@@ -164,7 +164,9 @@ bool verifyInstalledSpeech() {
         auto async_results=poll(async_runtime,1U);
         if (async_results.size()!=1U ||
             async_results[0].track_id!=31U ||
-            async_results[0].transcript.text!="31:4")
+            async_results[0].transcript.text!="31:4" ||
+            async_results[0].audio_start_sample!=0U ||
+            async_results[0].audio_end_sample!=4U)
             return false;
         return true;
     } catch (...) {
