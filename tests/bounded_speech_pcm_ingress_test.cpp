@@ -17,6 +17,86 @@ AudioView block(const std::vector<float>& v, std::uint64_t seq = 0U) {
 }
 } // namespace
 
+
+TEST(BoundedSpeechPcmIngress, AtomicAdmissionRetainsCorrectEpochWhenIdReused) {
+    BoundedSpeechPcmIngress ingress{};
+    const std::vector<float> pcm(4U,0.5F);
+    std::promise<void> accepted;
+    std::promise<void> resume;
+    auto restart=resume.get_future();
+    auto producer=std::async(std::launch::async,[&]() {
+        const auto receipt=ingress.pushWithEpoch(22U,block(pcm));
+        accepted.set_value();
+        restart.wait(); // Another producer may forget/reuse the same ID.
+        return std::make_pair(receipt,ingress.sourceEpoch(22U));
+    });
+    accepted.get_future().wait();
+    const auto old_epoch=ingress.sourceEpoch(22U);
+    ASSERT_TRUE(old_epoch.has_value());
+    ingress.forget(22U);
+    const auto reused=ingress.pushWithEpoch(22U,block(pcm,2U));
+    ASSERT_EQ(reused.admission,SpeechPcmAdmission::Accepted);
+    ASSERT_TRUE(reused.epoch.has_value());
+    EXPECT_GT(*reused.epoch,*old_epoch);
+    resume.set_value();
+    const auto [receipt,late_lookup]=producer.get();
+    ASSERT_EQ(receipt.admission,SpeechPcmAdmission::Accepted);
+    ASSERT_TRUE(receipt.epoch.has_value());
+    EXPECT_EQ(receipt.epoch,old_epoch);
+    // The previously used two-call API would return the new ID's epoch.
+    EXPECT_EQ(late_lookup,reused.epoch);
+    EXPECT_NE(receipt.epoch,late_lookup);
+    const auto forgotten=ingress.tryPop();
+    ASSERT_TRUE(forgotten.has_value());
+    EXPECT_EQ(forgotten->kind,SpeechPcmIngressEvent::Kind::Forget);
+    const auto actual=ingress.tryPop();
+    ASSERT_TRUE(actual.has_value());
+    EXPECT_EQ(actual->kind,SpeechPcmIngressEvent::Kind::Audio);
+    EXPECT_EQ(actual->epoch,reused.epoch);
+    EXPECT_FALSE(ingress.tryPop().has_value());
+}
+
+TEST(BoundedSpeechPcmIngress, AtomicAdmissionReturnsNoEpochOnRefusalOrEmptyInput) {
+    SpeechPcmIngressOptions limits{};
+    limits.max_sources=1U;
+    limits.max_pending_chunks=1U;
+    limits.max_pending_samples=4U;
+    limits.max_chunk_samples=4U;
+    BoundedSpeechPcmIngress ingress{limits};
+    const std::vector<float> pcm(4U,0.5F);
+    const std::vector<float> empty{};
+    const auto no_op=ingress.pushWithEpoch(7U,block(empty));
+    EXPECT_EQ(no_op.admission,SpeechPcmAdmission::Accepted);
+    EXPECT_FALSE(no_op.epoch.has_value());
+    EXPECT_FALSE(ingress.sourceEpoch(7U).has_value());
+    const auto accepted=ingress.pushWithEpoch(7U,block(pcm));
+    ASSERT_EQ(accepted.admission,SpeechPcmAdmission::Accepted);
+    ASSERT_TRUE(accepted.epoch.has_value());
+    EXPECT_EQ(accepted.epoch,ingress.sourceEpoch(7U));
+    const auto other=ingress.pushWithEpoch(8U,block(pcm));
+    EXPECT_EQ(other.admission,SpeechPcmAdmission::RejectedSourceLimit);
+    EXPECT_FALSE(other.epoch.has_value());
+    const auto overflow=ingress.pushWithEpoch(7U,block(pcm));
+    EXPECT_EQ(overflow.admission,SpeechPcmAdmission::RejectedCapacity);
+    EXPECT_FALSE(overflow.epoch.has_value());
+    const auto replacement=ingress.pushWithEpoch(7U,block(pcm));
+    ASSERT_EQ(replacement.admission,SpeechPcmAdmission::Accepted);
+    ASSERT_TRUE(replacement.epoch.has_value());
+    EXPECT_GT(*replacement.epoch,*accepted.epoch);
+    const auto retired=ingress.retireWithEpoch(7U);
+    EXPECT_EQ(retired,replacement.epoch);
+    const auto denied=ingress.pushWithEpoch(7U,block(pcm));
+    EXPECT_EQ(denied.admission,SpeechPcmAdmission::RejectedRetiring);
+    EXPECT_FALSE(denied.epoch.has_value());
+    ingress.close();
+    const auto closed=ingress.pushWithEpoch(7U,block(pcm));
+    EXPECT_EQ(closed.admission,SpeechPcmAdmission::Closed);
+    EXPECT_FALSE(closed.epoch.has_value());
+    const auto closed_empty=ingress.pushWithEpoch(7U,block(empty));
+    EXPECT_EQ(closed_empty.admission,SpeechPcmAdmission::Closed);
+    EXPECT_FALSE(closed_empty.epoch.has_value());
+}
+
 TEST(BoundedSpeechPcmIngress, DeliversOrderedOwnedAudioAndPreservesOtherSources) {
     SpeechPcmIngressOptions limits{};
     limits.max_pending_chunks=4U;

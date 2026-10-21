@@ -3,8 +3,12 @@
 `AsyncSpeechIngressWorker` is the explicit C++17 scheduling adapter
 between producer PCM and the existing `PerSourceSpeechRuntime`.
 
-A capture producer calls `push(source_id, AudioView)` and records the
-accepted `sourceEpoch(source_id)` alongside its **RecordingId**.
+A capture producer calls `pushWithEpoch(source_id, AudioView)` and
+associates the returned `SpeechPcmAdmissionResult::epoch` with its
+**RecordingId** only for a nonempty accepted block. Admission and epoch
+are atomic with respect to `forget()` / `retire()` / ID reuse. Calling
+the legacy `push()` and then separately querying `sourceEpoch()` is
+not safe when source lifecycle calls can race on another thread.
 The separate worker owns the execution of VAD `push()`, `retire()`
 and `forget()`, preserving the FIFO audio/retirement order established
 by `BoundedSpeechPcmIngress`. The worker emits `Bound`, `Retired`,

@@ -32,6 +32,13 @@ enum class SpeechPcmAdmission {
     Accepted, RejectedCapacity, RejectedSourceLimit, RejectedRetiring, Closed
 };
 
+// The epoch comes from the same admission lock as the queued Audio event.
+// A separate push() then sourceEpoch() lookup can observe a reused source.
+struct SpeechPcmAdmissionResult {
+    SpeechPcmAdmission admission{SpeechPcmAdmission::Closed};
+    std::optional<std::uint64_t> epoch{};
+};
+
 struct SpeechPcmIngressEvent {
     enum class Kind { Audio, Forget, Retire };
     Kind kind{Kind::Audio};
@@ -75,7 +82,14 @@ public:
     BoundedSpeechPcmIngress(const BoundedSpeechPcmIngress&) = delete;
     BoundedSpeechPcmIngress& operator=(const BoundedSpeechPcmIngress&) = delete;
 
-    SpeechPcmAdmission push(std::uint64_t source_id, AudioView audio) {
+    [[nodiscard]] SpeechPcmAdmission push(std::uint64_t source_id, AudioView audio) {
+        return pushWithEpoch(source_id,audio).admission;
+    }
+
+    // Returns the epoch tagged onto this exact admitted Audio event.
+    // Rejection and empty no-op admission do not carry a source epoch.
+    [[nodiscard]] SpeechPcmAdmissionResult pushWithEpoch(
+        std::uint64_t source_id, AudioView audio) {
         if (audio.format().sample_rate_hz != options_.sample_rate_hz ||
             audio.format().channel_count != 1U ||
             audio.format().layout != AudioLayout::Interleaved ||
@@ -88,23 +102,23 @@ public:
         if (!audio.sampleCount()) {
             // Even a no-op admission must observe close() atomically.
             std::lock_guard<std::mutex> lock{mutex_};
-            return closed_ ? SpeechPcmAdmission::Closed
-                           : SpeechPcmAdmission::Accepted;
+            return {closed_ ? SpeechPcmAdmission::Closed
+                            : SpeechPcmAdmission::Accepted,std::nullopt};
         }
         // Allocate/copy outside the queue lock; never call a model here.
         std::vector<float> copy(audio.data(),audio.data()+audio.sampleCount());
         std::lock_guard<std::mutex> lock{mutex_};
-        if (closed_) return SpeechPcmAdmission::Closed;
+        if (closed_) return {SpeechPcmAdmission::Closed,std::nullopt};
         // A retired source cannot restart until its FIFO retirement
         // control has been handed to the serialized VAD worker.
         if (retiring_.count(source_id)) {
             ++rejected_;
-            return SpeechPcmAdmission::RejectedRetiring;
+            return {SpeechPcmAdmission::RejectedRetiring,std::nullopt};
         }
         auto existing=sources_.find(source_id);
         if (existing==sources_.end() && !hasSourceSlotLocked(source_id)) {
             ++rejected_;
-            return SpeechPcmAdmission::RejectedSourceLimit;
+            return {SpeechPcmAdmission::RejectedSourceLimit,std::nullopt};
         }
         if (pending_audio_chunks_>=options_.max_pending_chunks ||
             copy.size()>options_.max_pending_samples-pending_samples_) {
@@ -112,7 +126,7 @@ public:
             // Existing source loses continuity. Also discard its buffered
             // audio to prevent a partial phrase spanning the dropped call.
             if (existing!=sources_.end()) invalidateLocked(source_id);
-            return SpeechPcmAdmission::RejectedCapacity;
+            return {SpeechPcmAdmission::RejectedCapacity,std::nullopt};
         }
         if (existing==sources_.end()) {
             const auto epoch=next_epoch_++;
@@ -129,7 +143,7 @@ public:
         ++pending_audio_chunks_;
         ++accepted_;
         cv_.notify_one();
-        return SpeechPcmAdmission::Accepted;
+        return {SpeechPcmAdmission::Accepted,existing->second};
     }
 
     // Append a FIFO control *behind all accepted audio* for this source.

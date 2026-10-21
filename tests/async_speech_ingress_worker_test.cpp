@@ -59,6 +59,36 @@ PerSourceSpeechOptions speechOptions() {
 }
 } // namespace
 
+
+TEST(AsyncSpeechIngressWorker, AtomicAdmissionEpochMatchesRetirementAndAcks) {
+    WorkerVad vad{};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    AsyncSpeechIngressWorker worker{speech};
+    const std::vector<float> voiced(4U,0.5F);
+    const auto admitted=worker.pushWithEpoch(62U,audioBlock(voiced));
+    ASSERT_EQ(admitted.admission,SpeechPcmAdmission::Accepted);
+    ASSERT_TRUE(admitted.epoch.has_value());
+    const auto retirement=worker.retire(62U);
+    ASSERT_EQ(retirement,admitted.epoch);
+    worker.closeInput();
+    for(int attempt=0;attempt<1000 && !worker.finished();++attempt)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    ASSERT_TRUE(worker.finished());
+    bool bound=false,retired=false;
+    for(const auto& ack:worker.drainAcknowledgements()) {
+        EXPECT_EQ(ack.source_id,62U);
+        EXPECT_EQ(ack.epoch,admitted.epoch);
+        if(ack.kind==AsyncSpeechIngressWorker::Acknowledgement::Kind::Bound)
+            bound=true;
+        else if(ack.kind==AsyncSpeechIngressWorker::Acknowledgement::Kind::Retired)
+            retired=true;
+        else
+            ADD_FAILURE() << "Unexpected worker acknowledgement";
+    }
+    EXPECT_TRUE(bound);
+    EXPECT_TRUE(retired);
+}
+
 TEST(AsyncSpeechIngressWorker, DeferredRecordingRetireSavesLastUtterance) {
     WorkerVad vad{};
     PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};

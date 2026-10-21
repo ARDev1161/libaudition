@@ -543,13 +543,14 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     }
 #if LIBAUDITION_DEMO_HAS_SHERPA
                     if (speech_worker) {
-                        const auto admission=speech_worker->push(
+                        // Associate the WAV with the exact admitted PCM epoch.
+                        // A separate sourceEpoch() lookup can see a reused ID.
+                        const auto admission=speech_worker->pushWithEpoch(
                             sourceId,separated.audio.view());
-                        if (admission==audition::SpeechPcmAdmission::Accepted) {
-                            const auto epoch=speech_worker->sourceEpoch(sourceId);
+                        if (admission.admission==audition::SpeechPcmAdmission::Accepted) {
                             const auto recording_id=recordings.recordingId(sourceId);
-                            if (epoch && recording_id)
-                                epoch_recordings[{sourceId,*epoch}]=*recording_id;
+                            if (admission.epoch && recording_id)
+                                epoch_recordings[{sourceId,*admission.epoch}]=*recording_id;
                         }
                     }
 #endif

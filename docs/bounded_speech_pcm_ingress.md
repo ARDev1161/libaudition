@@ -11,6 +11,16 @@ The producer does not run VAD or ASR. It still performs bounded
 validation/copying and acquires a mutex: this is not a hard real-time
 nonblocking or zero-allocation guarantee.
 
+When the capture client needs to correlate an admitted block with a
+recording, use `pushWithEpoch(source_id, audio)`, which returns
+`SpeechPcmAdmissionResult {admission, epoch}`. The epoch is assigned
+under the same lock as the queued PCM. Only nonempty accepted blocks
+have an epoch. Rejects and empty accepted no-ops return `nullopt`.
+The old `push()` remains available for clients that only need status.
+Do not use a separate `push()` then `sourceEpoch()` pair for
+per-block identity: concurrent `forget()` and numeric ID reuse can
+cause that second lookup to observe the wrong generation.
+
 Limits (defaults): 16 outstanding source identities (active producers or
 awaiting worker-side Forget/Retire), 256 queued audio chunks, 256,000
 queued audio samples and 16,000 samples per chunk. Both chunk-count and total

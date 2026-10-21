@@ -61,6 +61,11 @@ public:
     [[nodiscard]] SpeechPcmAdmission push(std::uint64_t source_id, AudioView audio) {
         return ingress_.push(source_id,audio);
     }
+    // Capture-facing admission and the exact queued source epoch are atomic.
+    [[nodiscard]] SpeechPcmAdmissionResult pushWithEpoch(
+        std::uint64_t source_id, AudioView audio) {
+        return ingress_.pushWithEpoch(source_id,audio);
+    }
     [[nodiscard]] std::optional<std::uint64_t> sourceEpoch(
         std::uint64_t source_id) const {
         return ingress_.sourceEpoch(source_id);
