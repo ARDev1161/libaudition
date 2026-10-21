@@ -53,28 +53,28 @@ class ModelManifestAuditTests(unittest.TestCase):
         self.check(self.manifest(), f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", True)
 
     def test_missing_schema_version(self):
-        self.check(self.manifest().replace("schema_version: 1\\n", ""),
-                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\\n", False)
+        self.check(self.manifest().replace("schema_version: 1\n", ""),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
     def test_unknown_schema_version(self):
         self.check(self.manifest().replace("schema_version: 1", "schema_version: 2"),
-                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\\n", False)
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
     def test_duplicate_models_section(self):
-        self.check(self.manifest() + "models:\\n",
-                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\\n", False)
+        self.check(self.manifest() + "models:\n",
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
     def test_unknown_model_field(self):
-        self.check(self.manifest() + "    unchecked_fixture: true\\n",
-                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\\n", False)
+        self.check(self.manifest() + "    unchecked_fixture: true\n",
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
     def test_misindented_checksum_field(self):
         self.check(self.manifest().replace("    sha256:", "   sha256:"),
-                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\\n", False)
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
     def test_unregistered_yaml_model_entry(self):
-        self.check(self.manifest() + "  - source: https://example.test/rogue.onnx\\n",
-                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\\n", False)
+        self.check(self.manifest() + "  - source: https://example.test/rogue.onnx\n",
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
     def test_missing_digest(self):
         self.check(self.manifest(), f"echo '{OTHER}  model.onnx' | sha256sum -c -\n", False)
@@ -153,11 +153,11 @@ class ModelManifestAuditTests(unittest.TestCase):
 
     def test_expected_name_only_in_extra_field(self):
         self.check(self.manifest(),
-                   f"echo '{DIGEST}  wrong.onnx model.onnx' | sha256sum -c -\\n", False)
+                   f"echo '{DIGEST}  wrong.onnx model.onnx' | sha256sum -c -\n", False)
 
     def test_expected_name_only_in_comment(self):
         self.check(self.manifest(),
-                   f"echo '{DIGEST}  wrong.onnx # model.onnx' | sha256sum -c -\\n", False)
+                   f"echo '{DIGEST}  wrong.onnx # model.onnx' | sha256sum -c -\n", False)
 
     def test_shell_variable_path(self):
         self.check(self.manifest(),
@@ -219,7 +219,7 @@ class ModelManifestAuditTests(unittest.TestCase):
         approved = approved.replace("    license_review: approved\n",
                                     "    license_review: approved\n"
                                     "    license_evidence: docs/legal/fixture-review.md\n")
-        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", True, evidence_content="# Review\\n")
+        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", True, evidence_content="# Review\n")
 
     def test_approved_review_missing_evidence_file(self):
         approved = self.manifest(review="approved").replace(
