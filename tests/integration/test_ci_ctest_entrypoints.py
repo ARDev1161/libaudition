@@ -73,6 +73,46 @@ class CiCTestEntrypointTests(unittest.TestCase):
         end = workflow.index("  odas-backend:\n", start)
         real_job = workflow[start:end]
         self.assertEqual(real_job.count("    runs-on: ubuntu-latest"), 1)
+
+        # Any configured corpus setting must enable the optional gate,
+        # including additional threshold-only configurations. A partial
+        # configuration then fails at the missing required-input checks
+        # instead of quietly skipping the real recording test.
+        required_settings = {
+            "LIBAUDITION_REAL_CORPUS_URL",
+            "LIBAUDITION_REAL_CORPUS_SHA256",
+            "LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG",
+            "LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE",
+            "LIBAUDITION_REAL_CORPUS_MAX_P90_ERROR_DEG",
+            "LIBAUDITION_REAL_CORPUS_MAX_ASSOCIATION_ERROR_DEG",
+            "LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES",
+            "LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE",
+            "LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION",
+        }
+        match = re.search(r"(?m)^    if: >-\\n(.*?)(?=^    runs-on:)",
+                          real_job, flags=re.DOTALL)
+        self.assertIsNotNone(match, "Real-corpus job requires a folded activation guard")
+        guard = match.group(1)
+        terms = set(re.findall(
+            r"vars\\.(LIBAUDITION_REAL_CORPUS_[A-Z0-9_]+)\\s*!=\\s*''",
+            guard))
+        self.assertEqual(terms, required_settings,
+                         "Every real-corpus variable must activate the CI job")
+        self.assertEqual(guard.count("||"), len(required_settings) - 1,
+                         "Corpus settings must be joined as logical OR")
+        for name in required_settings:
+            # A single configured value must turn the gate on.
+            configured = {key: (key == name) for key in required_settings}
+            self.assertTrue(any(configured[key] for key in terms),
+                            f"Partial configuration for {name} was skipped")
+        for needle in (
+            '${CORPUS_URL:?Set LIBAUDITION_REAL_CORPUS_URL',
+            '${CORPUS_SHA256:?Set LIBAUDITION_REAL_CORPUS_SHA256',
+            '${LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG:?',
+            '${LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE:?',
+        ):
+            self.assertIn(needle, real_job)
+
         self.assertIn(
             "run: ctest --no-tests=error --test-dir build-real-odas "
             "-R '^audio_real_respeaker_corpus$' --output-on-failure",

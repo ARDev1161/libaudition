@@ -750,3 +750,21 @@ runner summary field, for its scoring denominator. Tests exercise
 valid multi-source observations, forged/truncated summaries and
 duplicate source identity. No synthetic fixture is counted as
 real-world acoustic acceptance.
+
+## Real spatial corpus CI partial-configuration guard — 2026-10-21
+
+The conditional `real-spatial-corpus` GitHub Actions job formerly
+activated for URL, SHA-256 and two mandatory quality thresholds only.
+Setting *only* one of the five additional quality thresholds (P90,
+association gate, track-ID switches, simultaneous source coverage,
+silence false positives) could leave that job **SKIPPED** without
+rejecting the incomplete quality-gate configuration.
+
+The workflow now activates when **any of the nine corpus settings**
+is nonempty, while still requiring the corpus URL, archive SHA-256,
+median angular-error gate, and minimum track coverage in the job.
+The always-on `ci_ctest_entrypoints_selftest` checks the activation
+predicate and mandatory-input checks, including every single-variable
+partial configuration. With no corpus settings, the real corpus job
+remains explicitly skipped; synthetic recordings still do not count
+as physical-array accuracy evidence.

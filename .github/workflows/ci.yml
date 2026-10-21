@@ -498,8 +498,20 @@ jobs:
 
   real-spatial-corpus:
     # Runs only when a published, checksum-pinned real corpus is configured.
-    # Missing part of the configuration is a failure, never a fake green pass.
-    if: ${{ vars.LIBAUDITION_REAL_CORPUS_URL != '' || vars.LIBAUDITION_REAL_CORPUS_SHA256 != '' || vars.LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG != '' || vars.LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE != '' }}
+    # Every corpus setting enables the gate; missing required URL, digest or
+    # core accuracy thresholds then fail closed instead of silently skipping.
+    if: >-
+      ${{
+        vars.LIBAUDITION_REAL_CORPUS_URL != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_SHA256 != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_P90_ERROR_DEG != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_ASSOCIATION_ERROR_DEG != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION != ''
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
