@@ -509,3 +509,39 @@ The sibling #54 remains divergent and unmerged. Source-generation-relative
 sample offsets exist in the current #59 public header, but equivalence of
 #54/#59 offset origins and the Qt WAV timeline under gaps and source reuse
 remains a separate acceptance item. The v1.0 P0 integration gate remains OPEN.
+
+## PR #54 versus stacked #55–#59: integration decision (2026-10-21, CI #1514)
+
+**Reviewed inputs:** PR #54 head `13e440114a9f03220a96112eecdccd1d71f07478`;
+PR #55 head `314ad57287fa3d2a1ea62764170e6619cce00460`;
+PR #59 head `ef796c7e9360c0ee966dc162ab454073a2936aa9`,
+[CI #1514](https://github.com/ARDev1161/libaudition/actions/runs/39607676598)
+(25 PASS, 1 SKIP: `real-spatial-corpus`).
+
+**Do not merge/cherry-pick #54 wholesale.** Its independent
+`SourceSpeechRuntime` introduces another public runtime API and changes the
+Qt/ALSA capture integration. The stacked branch instead uses
+`PerSourceSpeechRuntime` plus `AsyncSpeechIngressWorker` and
+`BoundedSpeechPcmIngress`. Both isolate capture from VAD/ASR work, but
+the ownership and failure semantics are not interchangeable.
+
+| Concern | #54 | #59 | Acceptance action |
+| --- | --- | --- | --- |
+| Capture thread | `SourceSpeechRuntime::push` enqueues PCM for a dedicated VAD worker | `AsyncSpeechIngressWorker::push` enqueues PCM; its worker invokes synchronous per-source VAD; ASR runs separately | Keep #59's capture boundary; maintain stalled-VAD and full-mailbox admission regressions |
+| Queue limits | Bounded PCM chunks, ASR segments and events | Bounded PCM chunks/samples, source slots, ASR retirement and acknowledgement mailbox | Audit overload observability and exact source reset; do not equate limits or drop policies |
+| Source invalidation | `forget` invalidates queued/in-flight generations | Explicit ingress epochs, worker `Forgot/Bound/Retired/Error` acknowledgements, generation-aware retirement | Preserve epoch-specific invalidation and ID-reuse tests |
+| Timing | Source-local `audio_start_sample`/`audio_end_sample` on transcript events | Source-local sample offsets, capture clock and WAV timeline mapping | Independently compare offsets after dropped PCM and reused IDs |
+| WAV lifecycle | #54 Qt integration differs; no direct replacement for current deferred WAV acknowledgement contract | RecordingId-keyed `retireDeferred`, `acknowledgeRetired`, `completeGeneration` | Keep existing old/new WAV isolation and capacity-recovery regressions |
+| Public API | `SourceSpeechRuntime`, `SourceSpeechOptions`, `SourceTranscriptEvent` | `PerSourceSpeechRuntime`, `AsyncSpeechIngressWorker` | No parallel public runtime API in v1 without explicit migration design |
+
+**Integration recommendation:** retain #55–#59 as the integration candidate,
+and use #54 as a source of targeted behavior and tests, not an independent
+second implementation. Any behavior copied from #54 must first have a
+red/green regression against #59, with explicit sample-offset, source-reuse,
+bounded-queue and shutdown semantics. This is an architecture review, **not**
+proof that every #54 behavior is already covered.
+
+**Still open:** compare #54's full Qt ALSA capture and error-reporting paths
+line-by-line against the current adapter; validate long-running overload
+latency with actual capture; run a unified candidate CI after the stacked PRs
+are integrated; measure real labeled audio and resolve model licensing.
