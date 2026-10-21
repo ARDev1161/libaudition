@@ -1101,3 +1101,44 @@ TEST(AsyncSpeechIngressWorker, DeferredRetireWithoutGenerationKeepsReusedWav) {
     EXPECT_EQ(new_saved.speech().front().text,"new-source-survived");
     std::filesystem::remove_all(root);
 }
+
+TEST(AsyncSpeechIngressWorker, DeferredRetireRejectsForeignAsrGenerationWithoutMutation) {
+    const auto root=std::filesystem::temp_directory_path() /
+        ("audition-retire-foreign-generation-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    const auto old_wav=root/"old.wav";
+    const auto new_wav=root/"new.wav";
+    const Timestamp origin{1000000000LL,{ClockDomain::Monotonic,17U}};
+    recording::SourceRecordingSession recordings{};
+    recordings.begin(91U,5001U,old_wav,16000U,origin);
+    ASSERT_EQ(recordings.retireDeferred(91U),5001U);
+    recordings.begin(91U,5002U,new_wav,16000U,origin);
+    recordings.bindRecordingAsr(5002U,6002U);
+    // A stale retirement acknowledgement must not steal the new WAV's
+    // generation. The old pending retirement must remain recoverable.
+    EXPECT_THROW(recordings.acknowledgeRetired(5001U,6002U),std::invalid_argument);
+    EXPECT_EQ(recordings.pendingRetirements(),1U);
+    EXPECT_EQ(recordings.boundAsrGenerations(),1U);
+    EXPECT_EQ(recordings.recordingId(91U),std::optional<RecordingId>{5002U});
+    recordings.acknowledgeRetired(5001U,std::nullopt);
+    EXPECT_EQ(recordings.pendingRetirements(),0U);
+    EXPECT_EQ(recordings.boundAsrGenerations(),1U);
+    SourceSpeechResult result{};
+    result.track_id=91U;
+    result.generation=6002U;
+    result.transcript.text="foreign-generation-rejected";
+    result.start_time=origin;
+    result.end_time=Timestamp{1010000000LL,origin.clock()};
+    recordings.addSpeech(result);
+    recordings.retire(91U,6002U);
+    recordings.completeGeneration(6002U);
+    EXPECT_EQ(recordings.retainedRecordings(),0U);
+    EXPECT_TRUE(readRecordingTimelineJson(
+        std::filesystem::path{old_wav.string()+".json"}).speech().empty());
+    const auto new_saved=readRecordingTimelineJson(
+        std::filesystem::path{new_wav.string()+".json"});
+    ASSERT_EQ(new_saved.speech().size(),1U);
+    EXPECT_EQ(new_saved.speech().front().text,"foreign-generation-rejected");
+    std::filesystem::remove_all(root);
+}
