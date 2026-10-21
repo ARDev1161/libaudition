@@ -62,6 +62,13 @@ add_test(NAME ci_model_manifest_audit COMMAND
 set_tests_properties(ci_model_manifest_audit PROPERTIES
     LABELS "ci-contract;model-provenance;python" TIMEOUT 30)
 
+# Offline regression for apt-get update returning success without a PPA index.
+add_test(NAME ci_gtsam_install_retry COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/ci/test_gtsam_install_retry.py")
+set_tests_properties(ci_gtsam_install_retry PROPERTIES
+    LABELS "ci-contract;dependency;python" TIMEOUT 30)
+
 # The corpus format, reference association and lossless WAV importer are
 # independent of ODAS and physical microphone geometry. Validate these
 # contracts in every CTest-enabled build, including the minimal core.
