@@ -217,7 +217,7 @@ sibling #54 tests have been replayed against that implementation.
 | Source ID reuse and stale ASR | Generation invalidation on `forget` | Epoch-aware `Bound/Forgot/Retired/Error` acknowledgements; `VadFailureCancelsGenerationAndAllowsReusedSource` | Check end-to-end late-ASR cancellation in the actual Qt recording lifecycle |
 | Flush final utterance | #54 has no public retire-with-generation contract | `DeferredRecordingRetireSavesLastUtterance` and `FifoRetirePreservesFinalUtteranceAndGeneration` | Preserve retirement acknowledgements and explicit `releaseRetired` ownership in public examples |
 | Event/mailbox bounds | `max_events`, `max_queued_segments` | `BoundedAcknowledgementMailboxResumesAfterDrain`; runtime has `max_pending_segments` and result eviction accounting | Document that a non-draining consumer can stall the worker; no unconditional realtime guarantee |
-| Timestamps | #54 transcript events carry `audio_start_sample` / `audio_end_sample` | #55 results carry `Timestamp start_time/end_time`; PCM ingress preserves capture timestamp and sequence number | Verify origin clock, chunk continuity, sample-offset conversion and clock-domain mismatch tests before calling behavior equivalent |
+| Timestamps | #54 transcript events carry source-local sample offsets | #59 `SourceSpeechResult` carries both clock-identified `Timestamp` boundaries and half-open `audio_start_sample` / `audio_end_sample` offsets relative to its source generation; ingress preserves capture timestamps | Verify origin clock, gaps/reuse, and recording-WAV offset alignment before claiming end-to-end parity |
 | Exceptions and recovery | Worker isolation, per-source status | `TimestampOverflowDropsQueuedPcm` and `VadFailureCancelsGenerationAndAllowsReusedSource` | Compare all #54 cancellation/exception cases and retain any missing regressions |
 
 **Provisional integration choice:** retain the richer generation/retirement
@@ -244,11 +244,12 @@ A direct review of their public headers and the #59 async adapter establishes:
   not source-compatible contracts.
 - **Time origin:** #54 exposes source-local `audio_start_sample` and
   `audio_end_sample` offsets. #59 exposes clock-identified `Timestamp`
-  boundaries and carries the capture timestamp through its ingress.
-  Fixed 160-sample/10-ms frame replay is covered on the #59 branch by
-  `FixedVadFramesPreserveSourceLocalSampleOffsets`, but a public sample-offset
-  conversion contract has **not** been established. Avoid claiming exact
-  parity for callers requiring absolute sample counters.
+  boundaries **and** public half-open `audio_start_sample` / `audio_end_sample`
+  offsets measured from the start of each source generation. The ingress
+  preserves capture timestamps. `FixedVadFramesPreserveSourceLocalSampleOffsets`
+  covers fixed 160-sample/10-ms frame replay. Absolute recording-WAV offset
+  alignment, clock-domain conversion, gap handling and equivalence to #54's
+  counter origin are **not** proven by this test.
 - **Source reuse:** #54 invalidates old generation results on `forget()`.
   #59 distinguishes ingress epoch from ASR generation, with explicit
   `Bound/Forgot/Retired/Error` acknowledgements and `releaseRetired()`
@@ -306,17 +307,17 @@ Direct header comparison of sibling #54 against current #59 (descendant of
 | --- | --- | --- | --- |
 | Capture ingestion | `push(source_id, AudioView) -> bool`, VAD and ASR run on dedicated workers | `PerSourceSpeechRuntime::push() -> void` executes VAD on caller; `AsyncSpeechIngressWorker::push() -> SpeechPcmAdmission` is the bounded capture adapter | Keep adapter mandatory for capture; do not alias the two public APIs |
 | Per-source counters | `received_samples`, `completed_segments`, `dropped_chunks`, `dropped_segments`, `last_transcript` | `trackStatus()` now exposes `received_samples`, `queued_segments`, `dropped_segments`; `inputStatistics()` reports ingress outcomes, `statistics()` reports global completed/dropped/evicted ASR results | Partial parity only: no single per-source last-transcript or completed-segment snapshot; dropped-chunk accounting is at ingress rather than the runtime |
-| Speech time coordinates | `audio_start_sample` and `audio_end_sample` are source-local uint64 sample offsets | `SourceSpeechResult` carries clock-identified `Timestamp start_time/end_time` | **Unresolved public API requirement:** do not claim equivalent absolute sample-offset reporting; define origin/conversion if clients require it |
+| Speech time coordinates | `audio_start_sample` and `audio_end_sample` are source-local uint64 sample offsets | `SourceSpeechResult` has `Timestamp start_time/end_time` **and** source-generation-relative half-open `audio_start_sample` / `audio_end_sample` offsets | **Partial parity:** verify #54 vs #59 origin, gap/reuse semantics, and alignment with physically recorded WAV samples; no absolute cross-generation counter guarantee |
 | Source reuse | `forget()` invalidates queued/in-flight generation | ingress epoch and ASR generation are separate; `Bound/Forgot/Retired/Error` acknowledgements, explicit retired-generation release | Delayed Forgot/reused WAV epoch regression is green in CI #1462; still verify complete cancellation behavior on integrated RC |
 | End of source | `forget()` discards work; no public retire/flush acknowledgement | `retire()` can flush final utterance; acknowledgement mailbox is bounded and **must be drained** | Preserve richer #55/#59 lifecycle; document consumer responsibility |
 
 **Decision for the candidate design (not a merge/closure decision):**
 prefer #55/#59 plus `AsyncSpeechIngressWorker` for capture-facing consumers,
-with the explicit caveat that it does not implement #54's public source-local
-sample-offset API. #54 must remain open until consumers confirm whether
-source-local sample offsets and per-source last-transcript snapshots are
-required, and parity tests for those requirements are written or a deliberate
-breaking change is documented. Do not cherry-pick or merge #54 wholesale.
+noting that #59 now exposes source-generation-relative sample offsets but
+not necessarily the same absolute counter origin as #54. #54 must remain open
+until recording alignment, gap/reuse semantics, per-source last-transcript
+snapshots and status counters are reconciled by tests or documented as
+intentional API differences. Do not cherry-pick or merge #54 wholesale.
 
 The #59 branch currently has a successful CI #1464 on
 `e72c2707dc64c20be5913dc1ebdeff897b1c840d` after retrying one
@@ -455,8 +456,8 @@ model provenance/licensing P0 gate complete based on a green workflow alone.
 | CLAP audio/text/tokenizer | `ci.yml` CLAP | **Not pinned** (`resolve/main`) | SHA-256 for all three files | Resolve immutable commit and licensing |
 | AASIST ONNX | `ci.yml` AASIST | Hugging Face commit `16774d458d86d2a021ae31646c1bf66a5331b53e` | SHA-256 | Recorded as unbundled CI fixture; license review pending |
 
-The manifest now inventories **11 unbundled CI-only artifacts**, including
-Whisper encoder/decoder, NeMo and AASIST. This corrects the earlier
+The manifest now inventories **13 unbundled CI-only artifacts**, including
+Whisper encoder/decoder, NeMo, AASIST, GTCRN and Piper. This corrects the earlier
 "not recorded" entries; it does **not** close licensing or immutable-source
 verification. CI #1491 (commit `6b2e6d539d9716122c4527a3da8025e19aec962d`)
 passed 25/26 jobs including Ubuntu/macOS static/shared independent
@@ -480,3 +481,31 @@ infer permission from public availability.
 **Current integration evidence:** CI #1479 on `96eae742` passed 25 jobs,
 with `real-spatial-corpus` skipped. This validates the stacked PR #59
 snapshot only, not real-audio accuracy or the final v1.0 candidate.
+
+## P0 checkpoint — 2026-10-21, CI #1501
+
+PR #59 head `25fc3706773249d1bd823982c8f90a3944428712` passed
+[CI #1501](https://github.com/ARDev1161/libaudition/actions/runs/39574087513):
+**25 successful jobs, zero failed, one skipped** (`real-spatial-corpus`).
+The passing jobs include Linux/macOS build-test, sanitizers, model-backed
+checks, and independent installed C++17 consumers on both platforms with
+static and shared builds. This is evidence for the **stacked feature branch**,
+not a unified release candidate or calibrated real-acoustic performance.
+
+The `models/manifest.yaml` inventory contains **13** unbundled fixtures;
+the #1501 commit also enforces existing nonempty repository-local legal
+evidence for an `approved` model review. This is structural validation,
+**not** independent legal approval.
+
+**Open integrity gap:** `tiny.en-tokens.txt` is downloaded from the pinned
+Whisper revision but CI currently checks only nonempty content. The matching
+encoder and decoder ONNX files are SHA-256 verified. Before claiming complete
+fixture byte integrity, obtain and independently verify the tokenizer digest,
+add its exact-file checksum check to the workflow, and inventory it in the
+manifest. Do **not** fabricate a digest or equate pinned URL + nonempty file
+with checksum verification.
+
+The sibling #54 remains divergent and unmerged. Source-generation-relative
+sample offsets exist in the current #59 public header, but equivalence of
+#54/#59 offset origins and the Qt WAV timeline under gaps and source reuse
+remains a separate acceptance item. The v1.0 P0 integration gate remains OPEN.

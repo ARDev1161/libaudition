@@ -4,7 +4,7 @@ Model weights and associated tokenizers have licensing and provenance independen
 of their inference runtimes. Publicly downloadable assets are not automatically
 approved for commercial use or redistribution.
 
-The checked-in `models/manifest.yaml` currently inventories **unbundled CI
+The checked-in `models/manifest.yaml` currently inventories **13 unbundled CI
 fixtures**, not an approved set of distributable weights. Each fixture records
 `id`, `task`, `backend`, `source`, `source_revision`, `sha256`,
 `license`, `commercial`, `redistributable`, `bundled` and `purpose`.
@@ -48,3 +48,14 @@ distribution. The Piper archive may contain voice and eSpeak-related assets
 with distinct license obligations; inspect its contents before any packaging.
 The GitHub release URLs use release tags rather than immutable asset IDs;
 their source revisions remain explicitly unverified.
+
+### Whisper tokenizer integrity gap
+
+The Sherpa real-Whisper CI job fetches `tiny.en-tokens.txt` from the same
+pinned Hugging Face revision as its encoder and decoder. The ONNX files are
+checked against fixed SHA-256 values, but the tokenizer currently has only
+a nonempty-file check and is not separately listed in the 13-entry manifest.
+This is **not** an integrity guarantee. Before promoting the model fixture
+provenance gate, independently determine and verify its SHA-256, register
+the tokenizer as its own unbundled, license-pending artifact, and enforce the
+exact digest/filename in CI. No tokenizer hash is claimed here.
