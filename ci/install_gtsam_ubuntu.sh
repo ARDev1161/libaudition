@@ -16,22 +16,23 @@ install_source_fallback() {
     libboost-thread-dev libboost-program-options-dev libboost-date-time-dev \
     libboost-timer-dev libboost-chrono-dev libboost-regex-dev
 
-  local temp_dir actual
-  temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/libaudition-gtsam.XXXXXXXX")
-  trap 'rm -rf "${temp_dir}"' EXIT
+  local actual
+  # Must outlive the function: EXIT traps execute after local variables expire.
+  GTSAM_SOURCE_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/libaudition-gtsam.XXXXXXXX")
+  trap 'rm -rf "${GTSAM_SOURCE_TMPDIR}"' EXIT
   git clone --quiet --depth 1 --branch "${GTSAM_TAG}" \
-    https://github.com/borglab/gtsam.git "${temp_dir}/source"
-  actual=$(git -C "${temp_dir}/source" rev-parse HEAD)
+    https://github.com/borglab/gtsam.git "${GTSAM_SOURCE_TMPDIR}/source"
+  actual=$(git -C "${GTSAM_SOURCE_TMPDIR}/source" rev-parse HEAD)
   if [[ "${actual}" != "${GTSAM_COMMIT}" ]]; then
     echo "GTSAM source revision mismatch: expected ${GTSAM_COMMIT}, got ${actual}" >&2
     return 1
   fi
-  cmake -S "${temp_dir}/source" -B "${temp_dir}/build" -G Ninja \
+  cmake -S "${GTSAM_SOURCE_TMPDIR}/source" -B "${GTSAM_SOURCE_TMPDIR}/build" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
     -DGTSAM_BUILD_TESTS=OFF -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
     -DGTSAM_BUILD_UNSTABLE=OFF -DGTSAM_BUILD_PYTHON=OFF \
     -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF -DGTSAM_USE_SYSTEM_EIGEN=ON
-  cmake --build "${temp_dir}/build" --parallel 2 --target install
+  cmake --build "${GTSAM_SOURCE_TMPDIR}/build" --parallel 2 --target install
   ldconfig
   echo "Installed pinned source GTSAM ${GTSAM_TAG}" >&2
 }
