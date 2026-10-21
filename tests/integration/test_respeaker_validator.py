@@ -152,6 +152,32 @@ def main():
     assert gap_segments[1]["id_changes_after_gap"] == 1
     assert gap_quality["adjacent_hop_id_switches"] == 0
     assert gap_quality["id_changes_after_gap"] == 1
+    assert gap_quality["track_reacquisitions"] == 1
+    assert gap_segments[1]["track_reacquisitions"] == 1
+
+    # The same track ID after a dropout is *still* a reacquisition,
+    # but is not an identity change. These are different diagnostics.
+    reused_rows = [dict(row) for row in gapped_rows]
+    for row in reused_rows:
+        row["id"] = "10"
+    reused_segments, reused_quality = module.evaluate(
+        reused_rows, gapped_source, 6, with_summary=True)
+    assert reused_quality["track_reacquisitions"] == 1
+    assert reused_quality["id_changes_after_gap"] == 0
+    assert reused_quality["adjacent_hop_id_switches"] == 0
+    assert reused_segments[0]["track_reacquisitions"] == 0
+    assert reused_segments[1]["track_reacquisitions"] == 1
+
+    # Continuous annotation but a missed hop is likewise a reacquisition
+    # even if the same ID appears on both sides of the dropout.
+    dropout = [dict(hop=i, kind="track", id="10",
+                    x="1", y="0", z="0") for i in (0, 1, 3, 4, 5)]
+    dropout_metrics, dropout_quality = module.evaluate(
+        dropout, [{"source_id": "speaker", "start_s": 0.0,
+                   "end_s": 0.048, "azimuth_deg": 0}], 6, with_summary=True)
+    assert dropout_quality["track_reacquisitions"] == 1
+    assert dropout_quality["id_changes_after_gap"] == 0
+    assert dropout_metrics[0]["track_coverage"] == 5 / 6
 
     # Ground-truth quantitative acceptance covers overlapping sources and
     # otherwise silent hops, not just median DOA of whichever tracks exist.
@@ -160,7 +186,8 @@ def main():
         defaults = dict(max_median_error_deg=10.0, max_p90_error_deg=20.0,
                         min_track_coverage=1.0, max_adjacent_id_switches=0,
                         min_simultaneous_track_coverage=1.0,
-                        max_silent_false_positive_fraction=0.0)
+                        max_silent_false_positive_fraction=0.0,
+                        max_active_unmatched_track_fraction=None)
         defaults.update(overrides)
         return SimpleNamespace(**defaults)
 
@@ -197,6 +224,27 @@ def main():
     fails(metrics, quality, gates())
     module.enforce_thresholds(
         metrics, quality, gates(max_silent_false_positive_fraction=0.5))
+
+    # A correct source with extra ghost tracks in *active* hops passed all
+    # former DOA/coverage/silence gates. Score those ghosts independently.
+    ghost_rows = clean + [trace(0, 99, 0, 1), trace(3, 99, -1, 0)]
+    ghost_segments, ghost_quality = module.evaluate(
+        ghost_rows, two_sources, 8, 30, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in ghost_segments)
+    assert ghost_quality["silent_false_positive_hop_fraction"] == 0
+    assert ghost_quality["active_hops"] == 6
+    assert ghost_quality["active_hops_with_unmatched_tracks"] == 2
+    assert ghost_quality["active_unmatched_track_observations"] == 2
+    assert ghost_quality["active_unmatched_track_hop_fraction"] == 2 / 6
+    # The old gates still pass because the new limit is opt-in until
+    # its threshold is calibrated from real recordings.
+    module.enforce_thresholds(ghost_segments, ghost_quality, gates())
+    fails(ghost_segments, ghost_quality,
+          gates(max_active_unmatched_track_fraction=0.0))
+    module.enforce_thresholds(
+        ghost_segments, ghost_quality,
+        gates(max_active_unmatched_track_fraction=2 / 6))
+    assert quality["active_unmatched_track_hop_fraction"] == 0
 
     switched = [dict(row) for row in clean]
     for row in switched:

@@ -88,6 +88,7 @@ class CiCTestEntrypointTests(unittest.TestCase):
             "LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES",
             "LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE",
             "LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION",
+            "LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION",
         }
         match = re.search(r"(?m)^    if: >-\n(.*?)(?=^    runs-on:)",
                           real_job, flags=re.DOTALL)
@@ -105,6 +106,15 @@ class CiCTestEntrypointTests(unittest.TestCase):
             configured = {key: (key == name) for key in required_settings}
             self.assertTrue(any(configured[key] for key in terms),
                             f"Partial configuration for {name} was skipped")
+        # The optional ghost-track quality limit must be passed end-to-end:
+        # repository variable -> workflow env -> CMake -> CTest CLI.
+        self.assertIn(
+            "MAX_ACTIVE_UNMATCHED_TRACK_FRACTION", cmake)
+        self.assertIn(
+            "MAX_ACTIVE_UNMATCHED_TRACK_FRACTION; do", real_job)
+        self.assertIn(
+            "LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION:",
+            real_job)
         for needle in (
             '${CORPUS_URL:?Set LIBAUDITION_REAL_CORPUS_URL',
             '${CORPUS_SHA256:?Set LIBAUDITION_REAL_CORPUS_SHA256',

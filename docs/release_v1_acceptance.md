@@ -806,3 +806,35 @@ after divergence. Both have full DOA coverage, but only the actual
 swap must violate a zero-ID-switch acceptance gate. This protects
 the integrity of the evaluator; it is not real-world tracking
 performance evidence.
+
+## Real-corpus ghost tracks and source reacquisition diagnostics — 2026-10-22
+
+The previous spatial quality gates measured correct reference-track
+coverage, DOA error and tracks during fully silent hops. They **did
+not penalize spurious extra tracks while one or more annotated sources
+were active**. A correct source plus ghost tracks could pass those gates.
+
+The evaluator now records `active_hops`,
+`active_hops_with_unmatched_tracks`,
+`active_unmatched_track_observations`, and
+`active_unmatched_track_hop_fraction`. A track counts as unmatched
+when it is left out of the angle-gated, one-to-one assignment to
+independently annotated sources. The optional calibrated
+`LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION`
+variable is wired through GitHub Actions, CMake and CTest to the
+`--max-active-unmatched-track-fraction` acceptance limit. The CI job
+activates if this setting alone is provided; partially configured
+datasets still fail closed. No universal threshold is invented:
+the new limit remains optional until measured on real data. Existing
+silent-hop false-positive limits remain independent.
+
+`track_reacquisitions` now separately counts recovery after one or
+more missed matched hops, **whether or not the ODAS track ID changes**.
+The existing `id_changes_after_gap` still counts only recoveries
+with changed IDs, and `adjacent_hop_id_switches` remains a distinct
+continuity metric. Per-interval and aggregated report fields enable
+downstream analysis without altering existing field meanings. Offline
+CTest regressions cover a dropout with the same ID, a dropout with
+a changed ID, and ghost tracks amid otherwise perfectly localized
+real-source hypotheses. This validates the evaluator, not the real
+array's tracking accuracy.

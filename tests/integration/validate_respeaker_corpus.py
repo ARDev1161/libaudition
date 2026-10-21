@@ -256,8 +256,12 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
               "Non-unit or nonfinite direction")
         observed.setdefault(hop, []).append(row)
     state = [{"errors": [], "proposals": [], "covered": 0, "hops": 0,
-              "identity_switches": 0, "reacquisitions": 0}
+              "identity_switches": 0, "reacquisitions": 0,
+              "track_reacquisitions": 0}
              for _ in intervals]
+    active_hops = 0
+    active_hops_with_unmatched_tracks = 0
+    active_unmatched_track_observations = 0
     simultaneous_hops = 0
     fully_associated_hops = 0
     silent_hops = 0
@@ -278,6 +282,7 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
                 silent_hops_with_tracks += 1
                 silent_track_observations += len(tracks)
             continue
+        active_hops += 1
         proposals = [row for row in data if row["kind"] == "proposal"]
         # At an exact DOA tie (e.g. crossed trajectories) preserve
         # continuity of the preceding hop instead of letting CSV row
@@ -291,6 +296,13 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             [a for _, a in active], tracks, max_association_error_deg,
             preferred_ids=preferred_ids)
         proposal_matches = associate([a for _, a in active], proposals)
+        # Coverage measures found references, not all reported tracks.
+        # An additional ghost track in a hop with one real source should
+        # not disappear merely because that source was matched correctly.
+        unmatched = len(tracks) - len(track_matches)
+        active_unmatched_track_observations += unmatched
+        if unmatched:
+            active_hops_with_unmatched_tracks += 1
         for index, _ in active:
             state[index]["hops"] += 1
         for index, observation_index, error in track_matches:
@@ -303,6 +315,11 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             # must share identity history. Index-keyed history resets at
             # interval boundaries and misses switches at those boundaries.
             source_id = intervals[reference_index].get("source_id", "default")
+            # Any gap in matched observations represents reacquisition,
+            # even if the tracker safely reuses the original identity.
+            # A changed ID after that gap is a separate, stronger error.
+            if source_id in last_seen_hop and last_seen_hop[source_id] < hop - 1:
+                item["track_reacquisitions"] += 1
             if source_id in last_id and last_id[source_id] != track_id:
                 if last_seen_hop[source_id] == hop - 1:
                     item["identity_switches"] += 1
@@ -338,8 +355,14 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             "track_error_samples": len(item["errors"]),
             "adjacent_hop_id_switches": item["identity_switches"],
             "id_changes_after_gap": item["reacquisitions"],
+            "track_reacquisitions": item["track_reacquisitions"],
         })
     quality = {
+        "active_hops": active_hops,
+        "active_hops_with_unmatched_tracks": active_hops_with_unmatched_tracks,
+        "active_unmatched_track_observations": active_unmatched_track_observations,
+        "active_unmatched_track_hop_fraction": (
+            active_hops_with_unmatched_tracks / active_hops if active_hops else None),
         "active_simultaneous_hops": simultaneous_hops,
         "fully_associated_simultaneous_hops": fully_associated_hops,
         "simultaneous_track_coverage": (
@@ -351,6 +374,7 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             silent_hops_with_tracks / silent_hops if silent_hops else None),
         "adjacent_hop_id_switches": sum(item["identity_switches"] for item in state),
         "id_changes_after_gap": sum(item["reacquisitions"] for item in state),
+        "track_reacquisitions": sum(item["track_reacquisitions"] for item in state),
         "max_association_error_deg": max_association_error_deg,
     }
     return (metrics, quality) if with_summary else metrics
@@ -381,6 +405,11 @@ def enforce_thresholds(segments, quality, options):
         value = quality["silent_false_positive_hop_fraction"]
         check(value is not None and value <= options.max_silent_false_positive_fraction,
               "Silent false-positive acceptance failed")
+    active_limit = getattr(options, "max_active_unmatched_track_fraction", None)
+    if active_limit is not None:
+        value = quality["active_unmatched_track_hop_fraction"]
+        check(value is not None and value <= active_limit,
+              "Active unmatched-track acceptance failed")
 
 
 def main():
@@ -395,6 +424,7 @@ def main():
     parser.add_argument("--max-adjacent-id-switches", type=int)
     parser.add_argument("--min-simultaneous-track-coverage", type=float)
     parser.add_argument("--max-silent-false-positive-fraction", type=float)
+    parser.add_argument("--max-active-unmatched-track-fraction", type=float)
     parser.add_argument("--horizontal-sources", action="store_true")
     args = parser.parse_args()
     if args.max_median_error_deg is not None:
@@ -417,6 +447,10 @@ def main():
         check(math.isfinite(args.max_silent_false_positive_fraction) and
               0 <= args.max_silent_false_positive_fraction <= 1,
               "Invalid silent false-positive threshold")
+    if args.max_active_unmatched_track_fraction is not None:
+        check(math.isfinite(args.max_active_unmatched_track_fraction) and
+              0 <= args.max_active_unmatched_track_fraction <= 1,
+              "Invalid active unmatched-track threshold")
     check(args.runner.is_file(), "Missing ODAS runner")
     check(args.manifest.is_file(), "Missing corpus manifest")
     corpus = validate_manifest(args.manifest)
