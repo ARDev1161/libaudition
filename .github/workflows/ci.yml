@@ -1320,19 +1320,32 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --no-tests=error --test-dir build-clap -R '^qt_self_test$' --output-on-failure
-      - name: Download pinned CLAP inference fixtures
+      - name: Resolve immutable CLAP revision and download verified fixtures
         shell: bash
         run: |
           set -euo pipefail
+          # Temporary evidence capture: record the full upstream commit once.
+          # The next change will hard-pin this exact revision in CI and manifest.
+          clap_revision="$(
+            curl --fail --silent --show-error --location --retry 3 \
+              https://huggingface.co/api/models/ConceptualMachines/magda-sample-tagger/revision/main |
+              python3 -c 'import json, sys; print(json.load(sys.stdin)["sha"])'
+          )"
+          if [[ ! "$clap_revision" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid upstream CLAP commit SHA" >&2
+            exit 1
+          fi
+          echo "CLAP_UPSTREAM_COMMIT=$clap_revision"
+          clap_base="https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/$clap_revision"
           curl --fail --location --retry 3 \
             --output "$PWD/build-clap/clap_audio.onnx" \
-            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_audio.onnx?download=true"
+            "$clap_base/clap_audio.onnx?download=true"
           curl --fail --location --retry 3 \
             --output "$PWD/build-clap/clap_text.onnx" \
-            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_text.onnx?download=true"
+            "$clap_base/clap_text.onnx?download=true"
           curl --fail --location --retry 3 \
             --output "$PWD/build-clap/tokenizer.json" \
-            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/tokenizer.json?download=true"
+            "$clap_base/tokenizer.json?download=true"
           echo "3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332  $PWD/build-clap/clap_audio.onnx" | sha256sum --check
           echo "c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf  $PWD/build-clap/clap_text.onnx" | sha256sum --check
           echo "4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a  $PWD/build-clap/tokenizer.json" | sha256sum --check
