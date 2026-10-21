@@ -222,19 +222,21 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
         try:
             hop = int(row["hop"])
             coords = [float(row[axis]) for axis in ("x", "y", "z")]
-            if row["kind"] == "track":
-                track_id = int(row["id"])
-                check(track_id >= 0, "Invalid track identity")
-                # A track ID represents one physical hypothesis at a hop.
-                # Two CSV rows with this ID cannot cover two different
-                # annotated sources, even if their directions differ.
-                check((hop, track_id) not in seen_track_ids,
-                      "Duplicate track ID in one spatial hop")
-                seen_track_ids.add((hop, track_id))
+            kind = row["kind"]
+            track_id = int(row["id"]) if kind == "track" else None
         except (TypeError, ValueError, KeyError) as exc:
             raise ValueError("Malformed spatial trace row") from exc
+        # Domain validation must occur outside the parsing exception
+        # handler or its specific failure becomes a generic parse error.
         check(0 <= hop < total_hops, "Observation outside recording")
-        check(row["kind"] in ("track", "proposal"), "Unknown observation kind")
+        check(kind in ("track", "proposal"), "Unknown observation kind")
+        if kind == "track":
+            check(track_id >= 0, "Invalid track identity")
+            # An ID represents one hypothesis per hop, not several
+            # independent sources with distinct directions.
+            check((hop, track_id) not in seen_track_ids,
+                  "Duplicate track ID in one spatial hop")
+            seen_track_ids.add((hop, track_id))
         norm = sum(value * value for value in coords)
         check(all(math.isfinite(value) for value in coords) and
               math.isfinite(norm) and abs(norm - 1.0) <= 0.01,
