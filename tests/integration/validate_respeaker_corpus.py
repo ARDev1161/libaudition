@@ -183,6 +183,33 @@ def associate(references, observations):
             associate_with_indices(references, observations)]
 
 
+
+def validate_runner_trace(summary, frames, rows):
+    """Reject incomplete or internally contradictory offline runner evidence.
+
+    Check the *measured* WAV length instead of trusting the runner's own
+    hop counter as the denominator for quality metrics. Require trace
+    cardinalities to match the counts emitted by the C++ runner, so a
+    truncated CSV cannot accidentally improve reported false positives.
+    """
+    check(isinstance(summary, dict) and
+          summary.get("schema") == "libaudition.offline-integration.v1",
+          "Unexpected ODAS runner summary schema")
+    expected = {
+        "input_frames": frames,
+        "sample_rate_hz": FS,
+        "hops": frames // HOP,
+        "track_observations": sum(row.get("kind") == "track" for row in rows),
+        "potential_observations": sum(row.get("kind") == "proposal" for row in rows),
+        "recorder_drops": 0,
+    }
+    check(type(frames) is int and frames > 0 and frames % HOP == 0,
+          "Invalid WAV frame count for spatial scoring")
+    for field, value in expected.items():
+        check(type(summary.get(field)) is int and summary[field] == value,
+              "ODAS runner summary/trace mismatch: " + field)
+
+
 def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
              with_summary=False):
     """Angle-gated, one-to-one reference matching and recording diagnostics."""
@@ -190,12 +217,20 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
     check(math.isfinite(max_association_error_deg) and
           0 <= max_association_error_deg <= 180, "Invalid association gate")
     observed = {}
+    seen_track_ids = set()
     for row in rows:
         try:
             hop = int(row["hop"])
             coords = [float(row[axis]) for axis in ("x", "y", "z")]
             if row["kind"] == "track":
-                check(int(row["id"]) >= 0, "Invalid track identity")
+                track_id = int(row["id"])
+                check(track_id >= 0, "Invalid track identity")
+                # A track ID represents one physical hypothesis at a hop.
+                # Two CSV rows with this ID cannot cover two different
+                # annotated sources, even if their directions differ.
+                check((hop, track_id) not in seen_track_ids,
+                      "Duplicate track ID in one spatial hop")
+                seen_track_ids.add((hop, track_id))
         except (TypeError, ValueError, KeyError) as exc:
             raise ValueError("Malformed spatial trace row") from exc
         check(0 <= hop < total_hops, "Observation outside recording")
@@ -394,13 +429,11 @@ def main():
         check(run.returncode == 0,
               "ODAS runner failed for " + rec["id"] + ": " + run.stderr[-2000:])
         summary = json.loads((dest / "summary.json").read_text())
-        check(summary["input_frames"] == frames and summary["sample_rate_hz"] == FS,
-              "Runner summary inconsistent with source WAV")
-        check(summary["recorder_drops"] == 0, "Dropped source recording frames")
         with (dest / "observations.csv").open(newline="") as stream:
             rows = list(csv.DictReader(stream))
+        validate_runner_trace(summary, frames, rows)
         segments, quality = evaluate(
-            rows, rec["intervals"], summary["hops"],
+            rows, rec["intervals"], frames // HOP,
             args.max_association_error_deg, with_summary=True)
         item = {"id": rec["id"], "wav_sha256": rec["sha256"],
                 "segments": segments, "summary": summary, "quality": quality,

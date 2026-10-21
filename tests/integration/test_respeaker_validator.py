@@ -156,6 +156,49 @@ def main():
     fails(metrics, quality, gates())
     module.enforce_thresholds(metrics, quality, gates(max_adjacent_id_switches=1))
 
+
+    # Identical track IDs cannot be scored as two independently resolved
+    # sources in the same hop, even with two different unit directions.
+    duplicated_ids = clean + [trace(2, 10, 0, 1)]
+    try:
+        module.evaluate(duplicated_ids, two_sources, 8, 30)
+    except ValueError as error:
+        assert "Duplicate track ID" in str(error)
+    else:
+        raise AssertionError("Duplicate per-hop track ID inflated coverage")
+    # The same track ID in a later hop is normal tracking, not duplication.
+    assert module.evaluate([trace(0, 10), trace(1, 10)],
+                           two_sources[:1], 8)[0]["track_coverage"] == 2 / 6
+
+    # The real-corpus gate must not trust a cropped or forged hop count.
+    # A truncated CSV must not hide silent-hop false positives either.
+    valid_summary = {
+        "schema": "libaudition.offline-integration.v1",
+        "input_frames": 8 * module.HOP, "sample_rate_hz": module.FS,
+        "hops": 8, "track_observations": len(clean),
+        "potential_observations": 0, "recorder_drops": 0,
+    }
+    module.validate_runner_trace(valid_summary, 8 * module.HOP, clean)
+    def bad_trace(summary, rows=clean):
+        try:
+            module.validate_runner_trace(summary, 8 * module.HOP, rows)
+        except ValueError:
+            return
+        raise AssertionError("Corrupt ODAS summary/trace accepted")
+    for change in (
+        {"hops": 6},
+        {"hops": 9},
+        {"input_frames": 7 * module.HOP},
+        {"sample_rate_hz": 8000},
+        {"track_observations": len(clean) - 1},
+        {"potential_observations": 1},
+        {"recorder_drops": 1},
+        {"hops": True},
+        {"schema": "unrecognized"},
+    ):
+        bad_trace({**valid_summary, **change})
+    bad_trace(valid_summary, clean[:-1])
+
     # A 60-degree outlier leaves the median at zero; P90 must catch it.
     outlier = [dict(row) for row in clean]
     outlier[0] = trace(0, 10, 0.5, 0.8660254037844386)

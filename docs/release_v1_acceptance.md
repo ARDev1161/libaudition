@@ -730,3 +730,23 @@ validator without killing the capture loop. Regression tests read a
 persisted sidecar with independent same-window labels and verify bad
 scores do not reserve identities or contaminate subsequent valid
 results. This is deterministic unit coverage, not a real-device test.
+
+## Spatial corpus scoring integrity — 2026-10-21
+
+The optional real spatial corpus job remains **SKIPPED** until an
+independently annotated, checksum-pinned multi-channel corpus and
+calibrated thresholds are configured. This is not evidence of
+measured localization accuracy.
+
+The always-on `audio_respeaker_manifest_selftest` now checks two
+failure modes in the real-corpus scoring path: duplicate observations
+for the same track ID within one ODAS hop (which could otherwise count
+as independent sources), and mismatches between WAV frame count,
+expected 128-frame hops, C++ runner counters, and CSV observation
+cardinalities (which could otherwise skew DOA coverage or false
+positive metrics). The real evaluator checks these conditions before
+calculating thresholds and uses `WAV_frames / 128`, not an unchecked
+runner summary field, for its scoring denominator. Tests exercise
+valid multi-source observations, forged/truncated summaries and
+duplicate source identity. No synthetic fixture is counted as
+real-world acoustic acceptance.
