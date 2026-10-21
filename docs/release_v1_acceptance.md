@@ -545,3 +545,31 @@ proof that every #54 behavior is already covered.
 line-by-line against the current adapter; validate long-running overload
 latency with actual capture; run a unified candidate CI after the stacked PRs
 are integrated; measure real labeled audio and resolve model licensing.
+
+## Integrated-stack CI checkpoint — 2026-10-21, #1518
+
+PR #59 head `776f276feb0c764b4169bb3d885e78a7ae5a2697` passed
+[CI #1518](https://github.com/ARDev1161/libaudition/actions/runs/39622674895):
+**25 successful jobs, zero failed, one skipped** (`real-spatial-corpus`).
+The checks include independent installed-package C++17 consumers on Linux
+and macOS in static/shared configurations, sanitizers, Qt and optional
+backends. This is a passing **stacked feature-branch** snapshot, not a
+merged or tagged release candidate.
+
+The new bounded-PCM regressions cover repeated overload invalidation
+without loss of another source's accepted audio, and source-slot recovery
+after FIFO retirement while rejecting stale epoch cancellation. These are
+deterministic contract tests; they do not establish physical capture
+latency, sustained overload quality, or real-microphone accuracy.
+
+CI #1517 initially failed before compiling the GTSAM backend because
+Launchpad PPA returned HTTP 503 and `apt` could not locate `libgtsam-dev`.
+The next commit `776f276` introduced a dedicated installation retry script
+and offline regression tests; #1518 passed. Do not interpret the #1517
+external dependency outage as an algorithm failure.
+
+**P0 remains OPEN:** choose and verify a single integrated release
+candidate, close the unverified model-provenance/license items, and
+document unsupported platforms and unmeasured real-audio performance.
+Do not merge to `main`, bump the version, or tag v1.0 based on this
+feature-branch CI result.
