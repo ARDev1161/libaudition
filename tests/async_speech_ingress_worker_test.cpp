@@ -179,6 +179,54 @@ TEST(AsyncSpeechIngressWorker, DestructorUnblocksFullAcknowledgementMailbox) {
     EXPECT_LT(elapsed.count(),5000);
 }
 
+// A saturated acknowledgement mailbox must not make capture-side admission
+// wait for the consumer, even when source IDs are retired and reused.
+TEST(AsyncSpeechIngressWorker, FullMailboxAllowsNewSourceAdmissionUntilPcmCapacity) {
+    WorkerVad vad{};
+    PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
+    SpeechPcmIngressOptions cfg{};
+    cfg.max_sources=2U;
+    cfg.max_pending_chunks=4U;
+    cfg.max_pending_samples=16U;
+    cfg.max_chunk_samples=4U;
+    AsyncSpeechIngressWorker worker{speech,cfg,1U};
+    const std::vector<float> pcm(4U,0.5F);
+    ASSERT_EQ(worker.push(301U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto old_epoch=worker.sourceEpoch(301U);
+    ASSERT_TRUE(old_epoch.has_value());
+    ASSERT_EQ(worker.retire(301U),old_epoch);
+    for(int i=0;i<2000 && speech.statistics().retired_generations==0U;++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    ASSERT_EQ(speech.statistics().retired_generations,1U);
+    // Bound fills the single mailbox slot; the worker blocks publishing Retired.
+    ASSERT_EQ(worker.push(302U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    worker.forget(302U);
+    ASSERT_EQ(worker.push(302U,audioBlock(pcm)),SpeechPcmAdmission::Accepted);
+    const auto new_epoch=worker.sourceEpoch(302U);
+    ASSERT_TRUE(new_epoch.has_value());
+    worker.closeInput();
+    std::vector<AsyncSpeechIngressWorker::Acknowledgement> events;
+    for(int i=0;i<2000 && (!worker.finished() || events.size()<5U);++i) {
+        auto batch=worker.drainAcknowledgements();
+        for(auto& item:batch) events.push_back(std::move(item));
+        if(!worker.finished() || events.size()<5U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(worker.finished());
+    using Kind=AsyncSpeechIngressWorker::Acknowledgement::Kind;
+    ASSERT_GE(events.size(),4U);
+    EXPECT_EQ(events[0].kind,Kind::Bound);
+    EXPECT_EQ(events[0].epoch,*old_epoch);
+    EXPECT_EQ(events[1].kind,Kind::Retired);
+    EXPECT_EQ(events[1].epoch,*old_epoch);
+    bool found_new_bound=false;
+    for(const auto& event:events) {
+        if(event.source_id==302U && event.kind==Kind::Bound &&
+           event.epoch==*new_epoch) found_new_bound=true;
+    }
+    EXPECT_TRUE(found_new_bound);
+}
+
 TEST(AsyncSpeechIngressWorker, CloseWithoutInputReleasesWorker) {
     WorkerVad vad{};
     PerSourceSpeechRuntime speech{vad,std::make_shared<WorkerAsr>(),speechOptions()};
