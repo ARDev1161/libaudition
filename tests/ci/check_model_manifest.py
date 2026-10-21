@@ -16,20 +16,37 @@ if len(sys.argv) not in (1, 3):
 manifest = manifest_path.read_text(encoding="utf-8")
 workflow = workflow_path.read_text(encoding="utf-8")
 
+# This is intentionally a constrained, dependency-free YAML subset. Never
+# silently ignore unknown keys, indentation or extra model records: doing so
+# would allow a fixture to escape the checksum and licensing audit.
 entries = []
 current = None
-for line in manifest.splitlines():
+schema_count = 0
+models_count = 0
+for number, line in enumerate(manifest.splitlines(), 1):
+    if not line.strip() or line.lstrip().startswith("#"):
+        continue
+    if line == "schema_version: 1":
+        schema_count += 1
+        continue
+    if line == "models:":
+        models_count += 1
+        continue
     match = re.fullmatch(r"  - id: ([a-zA-Z0-9_.-]+)", line)
-    if match:
+    if match and models_count == 1:
         current = {"id": match.group(1)}
         entries.append(current)
         continue
     field = re.fullmatch(r"    (sha256|source_revision|source|ci_filename|bundled|backend|task|license|license_review|license_evidence|commercial|redistributable|purpose): (.+)", line)
-    if field and current is not None:
+    if field and current is not None and models_count == 1:
         if field.group(1) in current:
             raise SystemExit(f"Duplicate {field.group(1)} in {current['id']}")
         current[field.group(1)] = field.group(2).strip()
+        continue
+    raise SystemExit(f"Unsupported model manifest syntax at line {number}: {line!r}")
 
+if schema_count != 1 or models_count != 1:
+    raise SystemExit("Model manifest requires exactly one schema_version: 1 and models: section")
 if not entries:
     raise SystemExit("No registered model fixtures")
 seen = set()
