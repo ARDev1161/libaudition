@@ -784,3 +784,25 @@ The always-on `audio_respeaker_manifest_selftest` checks a stable
 source across adjacent segments, a boundary switch, and a new track ID
 after a silent annotation gap. This strengthens test scoring
 integrity but does not replace acoustic validation on real recordings.
+
+## Crossing source trajectories: deterministic spatial ID metrics — 2026-10-21
+
+The existing per-hop directional assignment maximized one-to-one
+coverage and minimized total DOA error, but **exact ties** between
+two crossing source trajectories were resolved by observation row
+order. That could manufacture one or more adjacent-hop track-ID
+switches in the ground-truth scoring report even when ODAS retained
+the same IDs across the crossing.
+
+For tracked observations only, the scorer now uses the previous
+**adjacent-hop** identity as a third, *strict tie-breaker*, after match
+count and total angular error. It never prefers ID continuity over a
+geometrically lower-error assignment, and no prior preference is used
+after a gap. The proposal/SSL path remains angular-only.
+
+A deterministic CI selftest covers crossing trajectories with
+reversed observation order at their meeting, and a genuine ID swap
+after divergence. Both have full DOA coverage, but only the actual
+swap must violate a zero-ID-switch acceptance gate. This protects
+the integrity of the evaluator; it is not real-world tracking
+performance evidence.

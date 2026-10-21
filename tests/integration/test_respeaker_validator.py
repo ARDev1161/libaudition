@@ -2,6 +2,7 @@
 """Contract checks for corpus reference parsing, independent of hardware."""
 import importlib.util
 import json
+import math
 import tempfile
 from pathlib import Path
 
@@ -248,6 +249,63 @@ def main():
     ):
         bad_trace({**valid_summary, **change})
     bad_trace(valid_summary, clean[:-1])
+
+
+    # Two distinct moving sources meet at exactly 0 degrees on hop 2.
+    # The runner can emit their rows in either order. At identical
+    # directional cost, continuity of the previous ID should decide,
+    # not CSV ordering. Once trajectories diverge, geometry takes priority.
+    crossing = [
+        {"source_id": "left_to_right", "start_s": 0.0, "end_s": 0.04,
+         "azimuth_start_deg": -60.0, "azimuth_end_deg": 60.0},
+        {"source_id": "right_to_left", "start_s": 0.0, "end_s": 0.04,
+         "azimuth_start_deg": 60.0, "azimuth_end_deg": -60.0},
+    ]
+    crossing_manifest = sample()
+    crossing_manifest["recordings"][0]["intervals"] = crossing
+    check_manifest(crossing_manifest, True)
+
+    def crossing_row(hop, ident, source):
+        at = (hop + 0.5) * module.HOP / module.FS
+        angle = math.radians(module.reference_azimuth(crossing[source], at))
+        return trace(hop, ident, math.cos(angle), math.sin(angle))
+
+    crossing_rows = []
+    for hop in range(5):
+        pair = [crossing_row(hop, 10, 0), crossing_row(hop, 20, 1)]
+        if hop == 2:
+            pair.reverse()  # Real output order may vary at a crossing.
+        crossing_rows.extend(pair)
+    crossing_metrics, crossing_quality = module.evaluate(
+        crossing_rows, crossing, 5, 20, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in crossing_metrics)
+    assert crossing_quality["simultaneous_track_coverage"] == 1
+    assert crossing_quality["adjacent_hop_id_switches"] == 0
+    assert crossing_quality["id_changes_after_gap"] == 0
+    module.enforce_thresholds(crossing_metrics, crossing_quality, gates())
+
+    # An actual ID swap after crossing must NOT be hidden by continuity:
+    # exact directional matching outranks the prior-hop ID preference.
+    actual_swap = [dict(row) for row in crossing_rows]
+    for row in actual_swap:
+        if int(row["hop"]) >= 3:
+            row["id"] = "20" if row["id"] == "10" else "10"
+    swapped_metrics, swapped_quality = module.evaluate(
+        actual_swap, crossing, 5, 20, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in swapped_metrics)
+    assert swapped_quality["adjacent_hop_id_switches"] == 2
+    fails(swapped_metrics, swapped_quality, gates())
+    module.enforce_thresholds(
+        swapped_metrics, swapped_quality, gates(max_adjacent_id_switches=2))
+
+    # Direct assignment contract: geometric error still overrides
+    # preferred IDs, and a missing history leaves the old API usable.
+    opposite = [crossing_row(0, 20, 0), crossing_row(0, 10, 1)]
+    expected = [module.reference_direction(src, 0.004) for src in crossing]
+    geometric = module.associate_with_indices(
+        expected, opposite, 20, preferred_ids=[10, 20])
+    assert [opposite[idx]["id"] for _, idx, _ in geometric] == ["20", "10"]
+    assert len(module.associate_with_indices(expected, opposite)) == 2
 
     # A 60-degree outlier leaves the median at zero; P90 must catch it.
     outlier = [dict(row) for row in clean]

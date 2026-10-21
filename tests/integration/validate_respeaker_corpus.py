@@ -149,33 +149,46 @@ def reference_azimuth(interval, time_s):
     return (start + fraction * delta + 180) % 360 - 180
 
 
-def associate_with_indices(references, observations, max_error_deg=180.0):
-    """Minimum summed angular error, distinct observations per reference.
+def associate_with_indices(references, observations, max_error_deg=180.0,
+                           preferred_ids=None):
+    """Maximize distinct matches, minimize angular error, then ID disruption.
 
-    Returns (reference-index, error) pairs; unmatched references are not
-    scored as successful coverage. Small ODAS source counts make an exact
-    dynamic-programming assignment inexpensive.
+    Only an *exact* total-angular-error tie may be resolved using last-hop
+    track IDs. Geometrically better assignments always win, including
+    genuine identity swaps after moving sources cross. Without a previous
+    ID, the deterministic source/observation order still breaks ties.
+    Returns (reference-index, observation-index, error) triples.
     """
+    check(preferred_ids is None or len(preferred_ids) == len(references),
+          "Preferred track identity count differs from references")
     if not observations or not references:
         return []
+    if preferred_ids is None:
+        preferred_ids = [None] * len(references)
     from functools import lru_cache
     errors = [[angular_error(row, angle) for row in observations]
               for angle in references]
     @lru_cache(None)
     def solve(ref_index, occupied):
         if ref_index == len(references):
-            return (0, 0.0, ())
+            return (0, 0.0, 0, ())
         best = solve(ref_index + 1, occupied)
         for index in range(len(observations)):
             if occupied & (1 << index) or errors[ref_index][index] > max_error_deg:
                 continue
-            count, cost, pairs = solve(ref_index + 1, occupied | (1 << index))
+            count, cost, switches, pairs = solve(
+                ref_index + 1, occupied | (1 << index))
+            previous = preferred_ids[ref_index]
+            changed = int(previous is not None and
+                          int(observations[index]["id"]) != previous)
             candidate = (count + 1, cost + errors[ref_index][index],
+                         switches + changed,
                          ((ref_index, index, errors[ref_index][index]),) + pairs)
-            if (candidate[0], -candidate[1]) > (best[0], -best[1]):
+            if (candidate[0], -candidate[1], -candidate[2]) > (
+                    best[0], -best[1], -best[2]):
                 best = candidate
         return best
-    return list(solve(0, 0)[2])
+    return list(solve(0, 0)[3])
 
 
 def associate(references, observations):
@@ -266,8 +279,17 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
                 silent_track_observations += len(tracks)
             continue
         proposals = [row for row in data if row["kind"] == "proposal"]
+        # At an exact DOA tie (e.g. crossed trajectories) preserve
+        # continuity of the preceding hop instead of letting CSV row
+        # order manufacture an ID switch. No angular-error tradeoff.
+        preferred_ids = [
+            last_id.get(intervals[index].get("source_id", "default"))
+            if last_seen_hop.get(intervals[index].get("source_id", "default"))
+               == hop - 1 else None
+            for index, _ in active]
         track_matches = associate_with_indices(
-            [a for _, a in active], tracks, max_association_error_deg)
+            [a for _, a in active], tracks, max_association_error_deg,
+            preferred_ids=preferred_ids)
         proposal_matches = associate([a for _, a in active], proposals)
         for index, _ in active:
             state[index]["hops"] += 1
