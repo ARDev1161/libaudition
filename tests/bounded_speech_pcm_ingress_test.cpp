@@ -507,3 +507,44 @@ TEST(BoundedSpeechPcmIngress, ExplicitForgetCancelsAnUnprocessedRetirement) {
     EXPECT_FALSE(ingress.tryPop().has_value());
     EXPECT_EQ(ingress.push(56U,block(audio)),SpeechPcmAdmission::Accepted);
 }
+
+TEST(BoundedSpeechPcmIngress, RepeatedOverflowCoalescesForgetAndPreservesPeerAudio) {
+    SpeechPcmIngressOptions limits{};
+    limits.max_sources=2U;
+    limits.max_pending_chunks=2U;
+    limits.max_pending_samples=16U;
+    limits.max_chunk_samples=8U;
+    BoundedSpeechPcmIngress ingress{limits};
+    const std::vector<float> audio(8U,0.3F);
+    ASSERT_EQ(ingress.push(10U,block(audio,1U)),SpeechPcmAdmission::Accepted);
+    ASSERT_EQ(ingress.push(11U,block(audio,2U)),SpeechPcmAdmission::Accepted);
+    const auto old_epoch=ingress.sourceEpoch(10U);
+    ASSERT_TRUE(old_epoch.has_value());
+    EXPECT_EQ(ingress.push(10U,block(audio,3U)),
+              SpeechPcmAdmission::RejectedCapacity);
+    // The invalidated source can be admitted again, but the peer's
+    // accepted chunk must survive repeated overload on the reused ID.
+    ASSERT_EQ(ingress.push(10U,block(audio,4U)),SpeechPcmAdmission::Accepted);
+    const auto new_epoch=ingress.sourceEpoch(10U);
+    ASSERT_TRUE(new_epoch.has_value());
+    EXPECT_NE(*new_epoch,*old_epoch);
+    EXPECT_EQ(ingress.push(10U,block(audio,5U)),
+              SpeechPcmAdmission::RejectedCapacity);
+    const auto stats=ingress.statistics();
+    EXPECT_EQ(stats.pending_chunks,1U);
+    EXPECT_EQ(stats.pending_samples,8U);
+    EXPECT_EQ(stats.pending_invalidations,1U);
+    EXPECT_EQ(stats.invalidated_chunks,2U);
+    EXPECT_EQ(stats.rejected_chunks,2U);
+    auto forgotten=ingress.tryPop();
+    ASSERT_TRUE(forgotten.has_value());
+    EXPECT_EQ(forgotten->kind,SpeechPcmIngressEvent::Kind::Forget);
+    EXPECT_EQ(forgotten->source_id,10U);
+    auto peer=ingress.tryPop();
+    ASSERT_TRUE(peer.has_value());
+    EXPECT_EQ(peer->kind,SpeechPcmIngressEvent::Kind::Audio);
+    EXPECT_EQ(peer->source_id,11U);
+    EXPECT_EQ(peer->audio.sequenceNumber(),2U);
+    EXPECT_FALSE(ingress.tryPop().has_value());
+    EXPECT_EQ(ingress.statistics().pending_samples,0U);
+}
