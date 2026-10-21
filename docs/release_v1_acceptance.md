@@ -584,3 +584,36 @@ remain permitted with explicitly unverified revisions; this validation does
 **not** independently establish a model license or an upstream revision's
 provenance. SenseVoice and CLAP remain unpinned and unapproved, and the
 Whisper tokenizer still needs an independently verified SHA-256.
+
+## External model-card cross-check — 2026-10-21
+
+Reviewed the public upstream model cards for the two currently mutable
+Hugging Face fixture repositories:
+
+- `nocmt/SenseVoiceSmall-INT8-ONNX` lists `model.int8.onnx` SHA-256
+  `c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51`
+  and `tokens.txt` SHA-256
+  `f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc`.
+  Both match the manifest. The card declares Apache-2.0 and describes a
+  sherpa-onnx-compatible repackaging of SenseVoiceSmall.
+  Source: https://huggingface.co/nocmt/SenseVoiceSmall-INT8-ONNX
+- `ConceptualMachines/magda-sample-tagger` lists
+  `clap_audio.onnx` SHA-256
+  `3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332`,
+  `clap_text.onnx` SHA-256
+  `c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf`,
+  and `tokenizer.json` SHA-256
+  `4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a`.
+  All match the manifest. The card declares BSD-3-Clause and describes
+  exports from LAION CLAP with a RoBERTa tokenizer.
+  Source: https://huggingface.co/ConceptualMachines/magda-sample-tagger
+
+**Evidence boundary:** this confirms consistency with publisher-provided
+model-card digests and declared licenses; it is *not* independent licensing
+approval, independent byte verification, or immutable revision pinning.
+Both remain `license_review: pending`, `commercial: false`,
+`redistributable: false`, `bundled: false`. The workflow still downloads
+from `resolve/main`. Obtain full 40-character immutable upstream commits
+and verify the same five SHA-256 digests at those revisions before updating
+the manifest and workflow together. Do not infer commit IDs from abbreviated
+web-page history entries.
