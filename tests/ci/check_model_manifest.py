@@ -24,7 +24,7 @@ for line in manifest.splitlines():
         current = {"id": match.group(1)}
         entries.append(current)
         continue
-    field = re.fullmatch(r"    (sha256|source_revision|source|bundled|backend|task|license|license_review|commercial|redistributable|purpose): (.+)", line)
+    field = re.fullmatch(r"    (sha256|source_revision|source|bundled|backend|task|license|license_review|license_evidence|commercial|redistributable|purpose): (.+)", line)
     if field and current is not None:
         if field.group(1) in current:
             raise SystemExit(f"Duplicate {field.group(1)} in {current['id']}")
@@ -83,8 +83,15 @@ for entry in entries:
     for field in ("commercial", "redistributable"):
         if entry.get(field) not in ("true", "false"):
             errors.append(f"{name}: invalid {field}")
-    if entry.get("license") == "UNVERIFIED" and entry.get("license_review") != "pending":
+    review = entry.get("license_review")
+    if review not in ("pending", "approved"):
+        errors.append(f"{name}: license_review must be pending or approved")
+    if entry.get("license") == "UNVERIFIED" and review != "pending":
         errors.append(f"{name}: unverified license requires pending review")
+    if review == "pending" and (entry.get("commercial") == "true" or entry.get("redistributable") == "true"):
+        errors.append(f"{name}: pending review cannot grant model use or redistribution")
+    if review == "approved" and not entry.get("license_evidence"):
+        errors.append(f"{name}: approved review requires recorded license_evidence")
     if entry.get("bundled") != "false":
         errors.append(f"{name}: CI fixture must explicitly be unbundled")
 if errors:

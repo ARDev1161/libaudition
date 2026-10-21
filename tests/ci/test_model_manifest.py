@@ -103,5 +103,41 @@ class ModelManifestAuditTests(unittest.TestCase):
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
 
+    def test_pending_review_cannot_claim_commercial_permission(self):
+        self.check(self.manifest(commercial="true"),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_pending_review_cannot_claim_redistribution_permission(self):
+        self.check(self.manifest().replace("redistributable: false",
+                                           "redistributable: true"),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_missing_review_is_rejected(self):
+        self.check(self.manifest().replace("    license_review: pending\n", ""),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_unknown_review_state_is_rejected(self):
+        self.check(self.manifest(review="unknown"),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_approved_review_requires_evidence(self):
+        self.check(self.manifest(review="approved"),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+    def test_approved_review_with_evidence(self):
+        approved = self.manifest(review="approved", commercial="true")
+        approved = approved.replace("    license_review: approved\n",
+                                    "    license_review: approved\n"
+                                    "    license_evidence: docs/legal/fixture-review.md\n")
+        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", True)
+
+    def test_unverified_license_cannot_be_approved(self):
+        approved = self.manifest(license="UNVERIFIED", review="approved")
+        approved = approved.replace("    license_review: approved\n",
+                                    "    license_review: approved\n"
+                                    "    license_evidence: docs/legal/fixture-review.md\n")
+        self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
+
+
 if __name__ == "__main__":
     unittest.main()

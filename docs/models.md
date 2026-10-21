@@ -8,7 +8,12 @@ The checked-in `models/manifest.yaml` currently inventories **unbundled CI
 fixtures**, not an approved set of distributable weights. Each fixture records
 `id`, `task`, `backend`, `source`, `source_revision`, `sha256`,
 `license`, `commercial`, `redistributable`, `bundled` and `purpose`.
-Some entries additionally use `license_review: pending`.
+Every entry has an explicit `license_review` state. `pending` requires
+`commercial: false` and `redistributable: false` even when the
+repository-declared license is permissive. An `approved` entry must include
+a recorded `license_evidence` reference; this is a manifest consistency
+guard, **not** independent legal verification. Silero and YAMNet are
+currently marked pending rather than implying completed review.
 
 `source_revision: UNPINNED-main` explicitly denotes a mutable upstream
 reference. A SHA-256 check protects against silently accepting changed content,
