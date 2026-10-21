@@ -49,9 +49,6 @@ for entry in entries:
         if "ci_filename" in entry and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", filename):
             errors.append(f"{name}: ci_filename must be a safe basename")
         digest_pattern = re.compile(r"(?<![0-9a-f])" + digest + r"(?![0-9a-f])")
-        filename_pattern = re.compile(
-            r"(?<![A-Za-z0-9_.-])" + re.escape(filename) + r"(?=['\"\s]|$)"
-        )
         checks = []
         for line in workflow.splitlines():
             if line.lstrip().startswith("#"):
@@ -60,8 +57,12 @@ for entry in entries:
                 continue
             producer = line.split("|", 1)[0]
             found = digest_pattern.search(producer)
-            if found and filename_pattern.search(producer[found.end():]):
-                checks.append(line)
+            if found:
+                # Match the checksum operand, not an unrelated later mention.
+                operand = producer[found.end():]
+                match = re.match(r"\\s+([^\\s'\\\"]+)", operand)
+                if match and Path(match.group(1)).name == filename:
+                    checks.append(line)
         if not checks:
             errors.append(f"{name}: SHA-256 not checked with filename {filename}")
     if not entry.get("source") or not entry.get("source_revision"):
