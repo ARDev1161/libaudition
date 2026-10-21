@@ -843,6 +843,8 @@ jobs:
           echo "0ce578b827c94a961aacb8fa14b02f096504b337e5c94be37c36238cbe3e8bc6  build-sherpa/whisper/tiny.en-encoder.int8.onnx" | sha256sum --check
           echo "06c0e6ff6348d427e51839219d1c886c18cfdf411e629e33f5e1679bff9c1527  build-sherpa/whisper/tiny.en-decoder.int8.onnx" | sha256sum --check
           test -s build-sherpa/whisper/tiny.en-tokens.txt
+          # Evidence capture only: this is not an independently pinned checksum gate.
+          sha256sum build-sherpa/whisper/tiny.en-tokens.txt | tee build-sherpa/whisper/tiny.en-tokens.observed.sha256
           curl --fail --location --retry 3 \
             --output build-sherpa/nemo_en_titanet_small.onnx \
             https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/2b697b2/nemo_en_titanet_small.onnx
@@ -1178,6 +1180,7 @@ jobs:
           name: real-speech-model-integration
           path: |
             build-sherpa/audio-fixtures/real-speech-report.txt
+            build-sherpa/whisper/tiny.en-tokens.observed.sha256
             build-sherpa/audio-fixtures/asr-quality.json
             build-sherpa/audio-fixtures/gtcrn-report.txt
             build-sherpa/audio-fixtures/gtcrn-model.sha256
