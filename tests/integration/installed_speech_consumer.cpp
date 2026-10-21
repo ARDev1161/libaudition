@@ -2,6 +2,7 @@
 // No access to libaudition's source tree, GTest, Qt or model weights.
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <audition/speech/bounded_speech_pcm_ingress.hpp>
+#include <audition/speech/async_speech_ingress_worker.hpp>
 #include <algorithm>
 #include <chrono>
 #include <memory>
@@ -124,7 +125,48 @@ bool verifyInstalledSpeech() {
             reused[0].transcript.text!="21:4" ||
             reused[0].generation==*retired)
             return false;
-        return runtime.statistics().completed_segments==3U;
+        if (runtime.statistics().completed_segments!=3U) return false;
+        // Exercise the installed async adapter, not just the underlying
+        // synchronous runtime and standalone PCM queue.
+        audition::PerSourceSpeechRuntime async_runtime{
+            vad,std::make_shared<TestAsr>(),options};
+        {
+            audition::AsyncSpeechIngressWorker worker{async_runtime};
+            if (worker.push(31U,chunk(voice))!=audition::SpeechPcmAdmission::Accepted ||
+                worker.push(31U,chunk(silence))!=audition::SpeechPcmAdmission::Accepted)
+                return false;
+            const auto retired_epoch=worker.retire(31U);
+            if (!retired_epoch) return false;
+            bool bound_seen=false;
+            bool retired_seen=false;
+            std::optional<std::uint64_t> bound_generation;
+            for (int attempt=0;attempt<3000 && !retired_seen;++attempt) {
+                for (const auto& ack:worker.drainAcknowledgements()) {
+                    if (ack.source_id!=31U || ack.epoch!=*retired_epoch ||
+                        ack.kind==audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Error)
+                        return false;
+                    if (ack.kind==audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Bound) {
+                        bound_seen=true;
+                        bound_generation=ack.generation;
+                    }
+                    if (ack.kind==audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Retired) {
+                        retired_seen=true;
+                        if (!ack.generation || ack.generation!=bound_generation)
+                            return false;
+                    }
+                }
+                if (!retired_seen)
+                    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            }
+            if (!bound_seen || !retired_seen) return false;
+            worker.closeInput();
+        }
+        auto async_results=poll(async_runtime,1U);
+        if (async_results.size()!=1U ||
+            async_results[0].track_id!=31U ||
+            async_results[0].transcript.text!="31:4")
+            return false;
+        return true;
     } catch (...) {
         return false;
     }
