@@ -82,7 +82,7 @@ public:
     BoundedSpeechPcmIngress(const BoundedSpeechPcmIngress&) = delete;
     BoundedSpeechPcmIngress& operator=(const BoundedSpeechPcmIngress&) = delete;
 
-    [[nodiscard]] SpeechPcmAdmission push(std::uint64_t source_id, AudioView audio) {
+    SpeechPcmAdmission push(std::uint64_t source_id, AudioView audio) {
         return pushWithEpoch(source_id,audio).admission;
     }
 
