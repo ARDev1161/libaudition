@@ -215,7 +215,8 @@ class ModelManifestAuditTests(unittest.TestCase):
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
     def test_approved_review_with_evidence(self):
-        approved = self.manifest(review="approved", commercial="true")
+        approved = self.manifest(review="approved", commercial="true",
+                                 revision="deadbeef", source_ref="deadbeef")
         approved = approved.replace("    license_review: approved\n",
                                     "    license_review: approved\n"
                                     "    license_evidence: docs/legal/fixture-review.md\n")
