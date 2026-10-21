@@ -224,7 +224,7 @@ void validateOptions(const HeuristicSourceIdentityResolverOptions& options) {
         total_weight += weight;
     }
 
-    if (total_weight <= 0.0) {
+    if (!finite(total_weight) || total_weight <= 0.0) {
         throw Error{
             ErrorCode::InvalidArgument,
             "At least one identity evidence weight must be positive"};
