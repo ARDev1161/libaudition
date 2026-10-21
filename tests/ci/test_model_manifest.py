@@ -295,5 +295,17 @@ class ModelManifestAuditTests(unittest.TestCase):
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
                    True, evidence_content="License review evidence")
 
+    def test_approved_release_asset_rejects_unverified_identity(self):
+        manifest = self.manifest(name="voice.tar.bz2",
+                                 revision="github-release-tts-models-UNVERIFIED",
+                                 review="approved")
+        manifest = manifest.replace(
+            "https://example.test/resolve/main/voice.tar.bz2",
+            "https://github.com/example/project/releases/download/voices/voice.tar.bz2")
+        manifest += "    license_evidence: docs/legal/fixture-review.md\n"
+        self.check(manifest,
+                   f"echo '{DIGEST}  voice.tar.bz2' | sha256sum -c -\n",
+                   False, evidence_content="# Review\n")
+
 if __name__ == "__main__":
     unittest.main()
