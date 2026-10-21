@@ -64,3 +64,25 @@ of the signed timestamp representation. Both changes have deterministic
 CTest regressions for capacity rejection, cache preservation, and
 extreme timestamp intervals. This does **not** make the resolver
 thread-safe; callers must still serialize lifecycle operations.
+
+## Resolver recovery when an external source registry throws
+
+The resolver now calls potentially throwing source-registry operations
+(`list`, `find`, `addFingerprint`, `create`) before changing its own
+track bindings and recent spatial evidence. An active-track fingerprint
+write or lookup failure leaves the previous track geometry, identity,
+and timestamp intact. A new-track fingerprint failure likewise does
+not install an active binding. Expired recent geometry is ignored
+during candidate scoring and only pruned when an observation commits,
+so a failed registry lookup cannot permanently evict previous
+geometry evidence.
+
+This provides a **registry-error exception guarantee for transient
+resolver state**, not an atomic transaction spanning the external
+registry: if `create()` succeeds and a later fingerprint write fails,
+a persistent source profile can remain without an active track.
+The `IAcousticSourceRegistry` contract currently exposes no deletion,
+rollback, or transactional create-and-fingerprint operation. The
+regression tests intentionally acknowledge this limitation rather
+than claiming full external rollback. The resolver remains
+single-thread-owned.

@@ -368,9 +368,12 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
 
     const auto active = active_tracks_.find(observation.track_id);
     if (active != active_tracks_.end()) {
+        // Registry::find/addFingerprint can throw. Do not update the
+        // active binding, cached geometry, or global clock until the
+        // durable fingerprint operation has returned successfully.
+        maybeStoreFingerprint(active->second.source_id, observation);
         active->second.last_seen = observation.timestamp;
         updateSourceState(active->second.source_id, observation);
-        maybeStoreFingerprint(active->second.source_id, observation);
         last_timestamp_ = observation.timestamp;
         return {
             active->second.source_id,
@@ -386,8 +389,9 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
             "Source identity resolver active-track capacity exceeded"};
     }
 
-    pruneRecentSources(observation.timestamp);
-
+    // Do not prune transient geometry before registry list/create/find/
+    // addFingerprint calls, any of which may throw. Expired geometry is
+    // excluded from association below and pruned upon successful commit.
     const auto sourceIsActive = [this](AcousticSourceId source_id) {
         for (const auto& item : active_tracks_) {
             if (item.second.source_id == source_id) {
@@ -452,7 +456,12 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
         }
 
         const auto state_it = recent_sources_.find(profile.source_id);
-        if (state_it != recent_sources_.end()) {
+        if (state_it != recent_sources_.end() &&
+            static_cast<std::uint64_t>(observation.timestamp.nanoseconds()) -
+                static_cast<std::uint64_t>(
+                    state_it->second.last_seen.nanoseconds()) <=
+                static_cast<std::uint64_t>(
+                    options_.max_reacquisition_age.nanoseconds())) {
             const SourceState& state = state_it->second;
             const auto age_ns =
                 static_cast<std::uint64_t>(observation.timestamp.nanoseconds()) -
@@ -554,11 +563,15 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
         newly_created = true;
     }
 
+    // A registry failure must not bind the new track, update geometry,
+    // or advance the clock. A successful create() may leave a persistent
+    // orphan if a later registry call fails: IAcousticSourceRegistry has
+    // no delete/transaction operation, so only transient state is atomic.
+    maybeStoreFingerprint(source_id, observation);
     active_tracks_.emplace(
         observation.track_id,
         TrackBinding{source_id, observation.timestamp});
     updateSourceState(source_id, observation);
-    maybeStoreFingerprint(source_id, observation);
     last_timestamp_ = observation.timestamp;
 
     return {source_id, confidence, newly_created};

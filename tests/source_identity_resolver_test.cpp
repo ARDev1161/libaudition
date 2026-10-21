@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -45,7 +46,136 @@ audition::PositionEstimate position(double x, double y, double z) {
     return result;
 }
 
+// Inject registry faults to exercise the resolver's recovery after
+// persistent state APIs reject an observation.
+class FaultingRegistry final : public audition::IAcousticSourceRegistry {
+public:
+    audition::AcousticSourceId create() override {
+        if (fail_create) throw std::runtime_error{"injected registry create failure"};
+        return inner.create();
+    }
+
+    void addFingerprint(
+        audition::AcousticSourceId id,
+        audition::SourceFingerprint value) override {
+        if (fail_add) throw std::runtime_error{"injected fingerprint write failure"};
+        inner.addFingerprint(id, std::move(value));
+    }
+
+    void associateSpeaker(
+        audition::AcousticSourceId id,
+        audition::SpeakerId speaker_id) override {
+        inner.associateSpeaker(id, speaker_id);
+    }
+
+    std::optional<audition::AcousticSourceProfile> find(
+        audition::AcousticSourceId id) const override {
+        if (fail_find) throw std::runtime_error{"injected registry find failure"};
+        return inner.find(id);
+    }
+
+    std::vector<audition::AcousticSourceProfile> list() const override {
+        if (fail_list) throw std::runtime_error{"injected registry list failure"};
+        return inner.list();
+    }
+
+    audition::InMemoryAcousticSourceRegistry inner{};
+    bool fail_create{false};
+    bool fail_add{false};
+    bool fail_find{false};
+    bool fail_list{false};
+};
+
 }  // namespace
+
+TEST(SourceIdentityResolver, FailedActiveFingerprintWritePreservesGeometryAndClock) {
+    for (const bool fail_on_find : {false, true}) {
+        FaultingRegistry registry;
+        audition::HeuristicSourceIdentityResolver resolver{registry};
+        auto original = observation(1U, 10);
+        original.position = position(2.0, 0.0, 0.0);
+        const auto known = resolver.observe(original);
+
+        auto failed = observation(1U, 1'000);
+        failed.position = position(40.0, 0.0, 0.0);
+        failed.fingerprint = fingerprint("model-a", {1.0F, 0.0F});
+        registry.fail_find = fail_on_find;
+        registry.fail_add = !fail_on_find;
+        EXPECT_THROW(static_cast<void>(resolver.observe(failed)),
+                     std::runtime_error);
+        registry.fail_find = false;
+        registry.fail_add = false;
+
+        // Failure must not advance the global clock nor replace the
+        // previous geometry used for post-retirement reacquisition.
+        EXPECT_NO_THROW(resolver.endTrack(original.track_id, ts(11)));
+        auto recovered = observation(2U, 12);
+        recovered.position = original.position;
+        const auto decision = resolver.observe(recovered);
+        EXPECT_FALSE(decision.newly_created);
+        EXPECT_EQ(decision.source_id, known.source_id);
+        EXPECT_EQ(registry.inner.list().size(), 1U);
+    }
+}
+
+TEST(SourceIdentityResolver, FailedNewFingerprintWriteDoesNotBindTrack) {
+    FaultingRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    auto failed = observation(91U, 100);
+    failed.fingerprint = fingerprint("model-b", {1.0F, 0.0F});
+    registry.fail_add = true;
+    EXPECT_THROW(static_cast<void>(resolver.observe(failed)),
+                 std::runtime_error);
+    registry.fail_add = false;
+
+    // The first create() cannot be undone by the registry interface,
+    // but the rejected track must NOT survive in resolver active state.
+    auto retry = observation(91U, 99);
+    const auto accepted = resolver.observe(retry);
+    EXPECT_TRUE(accepted.newly_created);
+    EXPECT_TRUE(accepted.source_id.valid());
+    EXPECT_EQ(registry.inner.list().size(), 2U);
+    const auto same = resolver.observe(observation(91U, 101));
+    EXPECT_EQ(same.source_id, accepted.source_id);
+    EXPECT_FALSE(same.newly_created);
+}
+
+TEST(SourceIdentityResolver, FailedRegistryListDoesNotEvictRecentGeometry) {
+    FaultingRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions opts{};
+    opts.max_reacquisition_age = audition::Duration{100};
+    audition::HeuristicSourceIdentityResolver resolver{registry, opts};
+
+    auto first = observation(1U, 0);
+    first.position = position(3.0, 0.0, 0.0);
+    const auto original = resolver.observe(first);
+    resolver.endTrack(first.track_id, ts(1));
+
+    registry.fail_list = true;
+    EXPECT_THROW(
+        static_cast<void>(resolver.observe(observation(2U, 10'000))),
+        std::runtime_error);
+    registry.fail_list = false;
+    auto near = observation(2U, 2);
+    near.position = first.position;
+    const auto reacquired = resolver.observe(near);
+    EXPECT_FALSE(reacquired.newly_created);
+    EXPECT_EQ(reacquired.source_id, original.source_id);
+    EXPECT_EQ(registry.inner.list().size(), 1U);
+}
+
+TEST(SourceIdentityResolver, FailedCreateDoesNotAdvanceClockOrBindTrack) {
+    FaultingRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    registry.fail_create = true;
+    EXPECT_THROW(
+        static_cast<void>(resolver.observe(observation(4U, 500))),
+        std::runtime_error);
+    registry.fail_create = false;
+    const auto accepted = resolver.observe(observation(4U, 1));
+    EXPECT_TRUE(accepted.newly_created);
+    EXPECT_EQ(registry.inner.list().size(), 1U);
+}
 
 TEST(SourceIdentityResolver, CreatesSourceAndKeepsActiveTrackContinuity) {
     audition::InMemoryAcousticSourceRegistry registry;
