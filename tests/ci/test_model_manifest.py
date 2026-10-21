@@ -268,3 +268,17 @@ class ModelManifestAuditTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_approved_fixture_cannot_use_mutable_main_revision(self):
+        manifest = self.manifest(review="approved")
+        manifest += "    license_evidence: docs/legal/fixture-review.md\n"
+        self.check(manifest,
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False, evidence_content="License review evidence")
+
+    def test_approved_fixture_accepts_immutable_revision_with_evidence(self):
+        manifest = self.manifest(review="approved", revision="deadbeef", source_ref="deadbeef")
+        manifest += "    license_evidence: docs/legal/fixture-review.md\n"
+        self.check(manifest,
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   True, evidence_content="License review evidence")
