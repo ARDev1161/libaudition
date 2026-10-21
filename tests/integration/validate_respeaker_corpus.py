@@ -277,13 +277,17 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             item["covered"] += 1
             item["errors"].append(error)
             track_id = int(tracks[observation_index]["id"])
-            if reference_index in last_id and last_id[reference_index] != track_id:
-                if last_seen_hop[reference_index] == hop - 1:
+            # Consecutive annotated segments of the same physical source
+            # must share identity history. Index-keyed history resets at
+            # interval boundaries and misses switches at those boundaries.
+            source_id = intervals[reference_index].get("source_id", "default")
+            if source_id in last_id and last_id[source_id] != track_id:
+                if last_seen_hop[source_id] == hop - 1:
                     item["identity_switches"] += 1
                 else:
                     item["reacquisitions"] += 1
-            last_id[reference_index] = track_id
-            last_seen_hop[reference_index] = hop
+            last_id[source_id] = track_id
+            last_seen_hop[source_id] = hop
         for index, error in proposal_matches:
             state[active[index][0]]["proposals"].append(error)
         if len(active) >= 2:

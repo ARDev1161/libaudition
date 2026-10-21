@@ -768,3 +768,19 @@ predicate and mandatory-input checks, including every single-variable
 partial configuration. With no corpus settings, the real corpus job
 remains explicitly skipped; synthetic recordings still do not count
 as physical-array accuracy evidence.
+
+## Spatial source identity across annotated segments — 2026-10-21
+
+The corpus scorer previously keyed track-ID history by **interval index**.
+If ground truth split one physical `source_id` into successive intervals,
+a track switch exactly at the annotation boundary was invisible; changes
+after an annotated gap were likewise not reported as reacquisitions.
+The scorer now maintains last matched ODAS track ID and last matched
+hop **by `source_id`**, across its intervals. Segment-level switch
+and reacquisition counters are charged to the interval where the new
+ID is observed. Independent source IDs remain isolated.
+
+The always-on `audio_respeaker_manifest_selftest` checks a stable
+source across adjacent segments, a boundary switch, and a new track ID
+after a silent annotation gap. This strengthens test scoring
+integrity but does not replace acoustic validation on real recordings.

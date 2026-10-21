@@ -102,6 +102,56 @@ def main():
     result = module.evaluate(interrupted, source, 10)[0]
     assert result["adjacent_hop_id_switches"] == 0
     assert result["id_changes_after_gap"] == 1
+    # Annotation boundaries must not reset one physical source's track-ID
+    # history. Segments are independent DOA windows, not new speaker IDs.
+    one_source_split = [
+        {"source_id": "speaker", "start_s": 0.0, "end_s": 0.024,
+         "azimuth_deg": 0},
+        {"source_id": "speaker", "start_s": 0.024, "end_s": 0.048,
+         "azimuth_deg": 0},
+    ]
+    split_manifest = sample()
+    split_manifest["recordings"][0]["intervals"] = one_source_split
+    check_manifest(split_manifest, True)
+
+    unchanged_id = [dict(hop=i, kind="track", id="10",
+                         x="1", y="0", z="0") for i in range(6)]
+    stable_segments, stable_quality = module.evaluate(
+        unchanged_id, one_source_split, 6, with_summary=True)
+    assert len(stable_segments) == 2
+    assert all(s["track_coverage"] == 1 for s in stable_segments)
+    assert stable_quality["adjacent_hop_id_switches"] == 0
+
+    boundary_switch = [dict(row) for row in unchanged_id]
+    for row in boundary_switch[3:]:
+        row["id"] = "20"
+    split_segments, split_quality = module.evaluate(
+        boundary_switch, one_source_split, 6, with_summary=True)
+    assert split_segments[0]["adjacent_hop_id_switches"] == 0
+    assert split_segments[1]["adjacent_hop_id_switches"] == 1
+    assert split_quality["adjacent_hop_id_switches"] == 1
+    assert split_quality["id_changes_after_gap"] == 0
+
+    # Across an actual annotation gap, the same source's new track ID is
+    # reacquisition, not an adjacent-hop identity switch.
+    gapped_source = [
+        {"source_id": "speaker", "start_s": 0.0, "end_s": 0.016,
+         "azimuth_deg": 0},
+        {"source_id": "speaker", "start_s": 0.032, "end_s": 0.048,
+         "azimuth_deg": 0},
+    ]
+    gap_manifest = sample()
+    gap_manifest["recordings"][0]["intervals"] = gapped_source
+    check_manifest(gap_manifest, True)
+    gapped_rows = [dict(hop=i, kind="track", id=str(track_id),
+                        x="1", y="0", z="0")
+                   for i, track_id in [(0, 10), (1, 10), (4, 20), (5, 20)]]
+    gap_segments, gap_quality = module.evaluate(
+        gapped_rows, gapped_source, 6, with_summary=True)
+    assert gap_segments[1]["id_changes_after_gap"] == 1
+    assert gap_quality["adjacent_hop_id_switches"] == 0
+    assert gap_quality["id_changes_after_gap"] == 1
+
     # Ground-truth quantitative acceptance covers overlapping sources and
     # otherwise silent hops, not just median DOA of whichever tracks exist.
     from types import SimpleNamespace
