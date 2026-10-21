@@ -60,8 +60,12 @@ for entry in entries:
             if found:
                 # Match the checksum operand, not an unrelated later mention.
                 operand = producer[found.end():]
-                match = re.match(r"\s+([A-Za-z0-9_./-]+)", operand)
-                if match and Path(match.group(1)).name == filename:
+                # CI can construct checksum paths with shell variables and
+                # adjacent quote fragments. Compare the first checksum
+                # operand after removing quote delimiters, not later text.
+                record = operand.replace(chr(39), "").replace(chr(34), "").strip()
+                checked_path = record.split(maxsplit=1)[0] if record else ""
+                if Path(checked_path).name == filename:
                     checks.append(line)
         if not checks:
             errors.append(f"{name}: SHA-256 not checked with filename {filename}")

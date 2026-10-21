@@ -135,6 +135,20 @@ class ModelManifestAuditTests(unittest.TestCase):
         self.check(self.manifest(),
                    f"echo '{DIGEST}  wrong.onnx # model.onnx' | sha256sum -c -\\n", False)
 
+    def test_shell_variable_path(self):
+        self.check(self.manifest(),
+                   f'echo "{DIGEST}  $PWD/build/model.onnx" | sha256sum --check\n', True)
+
+    def test_concatenated_quoted_shell_path(self):
+        self.check(self.manifest(),
+                   f"""echo '{DIGEST}  '"$RUNNER_TEMP/build/model.onnx" | sha256sum --check\n""", True)
+
+    def test_shell_variable_wrong_basename(self):
+        self.check(self.manifest(),
+                   f'echo "{DIGEST}  $PWD/build/wrong.onnx" | sha256sum --check # model.onnx\n', False)
+
+
+
     def test_hash_in_comment(self):
         self.check(self.manifest(), f"# echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
