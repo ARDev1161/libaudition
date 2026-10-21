@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Fail CI when registered model fixture digests drift from workflow checks.
+"""Audit CI model checksums and curl download sources against the registry.
 
-Only validates manifest/workflow consistency, not upstream provenance or licensing.
+Static workflow consistency is not independent upstream provenance or legal review.
 """
 from pathlib import Path
 from urllib.parse import urlsplit
 import re
+import shlex
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,6 +50,87 @@ if schema_count != 1 or models_count != 1:
     raise SystemExit("Model manifest requires exactly one schema_version: 1 and models: section")
 if not entries:
     raise SystemExit("No registered model fixtures")
+
+def workflow_download_sources(text):
+    """Statically trace direct curl downloads; do not execute workflow shell."""
+    downloads = {}
+    variables = {}
+    loops = {}
+    continuation = ""
+    variable_pattern = re.compile(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)")
+
+    def expand(value, choices):
+        for _ in range(4):
+            changed = variable_pattern.sub(
+                lambda m: choices.get(m.group(1) or m.group(2),
+                                      variables.get(m.group(1) or m.group(2), m.group(0))),
+                value)
+            if changed == value:
+                break
+            value = changed
+        return value
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("- name:") or line.startswith("- uses:"):
+            variables.clear()
+            loops.clear()
+        if not line or line.startswith("#"):
+            continue
+        if line.endswith("\\"):
+            continuation += line[:-1] + " "
+            continue
+        command = continuation + line
+        continuation = ""
+        loop = re.fullmatch(r"for ([A-Za-z_]\w*) in ([A-Za-z0-9_.\s-]+); do", command)
+        if loop:
+            loops[loop.group(1)] = loop.group(2).split()
+            continue
+        if command == "done":
+            loops.clear()
+            continue
+        assignment = re.fullmatch(r"([A-Za-z_]\w*)=(.+)", command)
+        if assignment:
+            try:
+                value = shlex.split(assignment.group(2))
+                if len(value) == 1:
+                    variables[assignment.group(1)] = value[0]
+            except ValueError:
+                pass
+            continue
+        if not command.startswith("curl "):
+            continue
+        try:
+            args = shlex.split(command, comments=True)
+        except ValueError:
+            continue
+        output = None
+        for i, arg in enumerate(args):
+            if arg in ("-o", "--output") and i + 1 < len(args):
+                output = args[i + 1]
+            elif arg.startswith("--output="):
+                output = arg.split("=", 1)[1]
+        if not output or len(args) < 2:
+            continue
+        url = args[-1]
+        # Expand simple shell for-loops (e.g. YAMNet's $file download).
+        choices = [{}]
+        for name, values in loops.items():
+            if "$" + name in url or "$" + name in output or " + name + " in url:
+                choices = [dict(choice, **{name: value})
+                           for choice in choices for value in values]
+        for choice in choices:
+            resolved_url = expand(url, choice)
+            parsed = urlsplit(resolved_url)
+            if parsed.scheme != "https" or not parsed.netloc:
+                continue
+            filename = Path(expand(output, choice)).name
+            canonical = f"{parsed.scheme}://{parsed.netloc.lower()}{parsed.path}"
+            downloads.setdefault(filename, set()).add(canonical)
+    return downloads
+
+
+downloads = workflow_download_sources(workflow)
 seen = set()
 errors = []
 for entry in entries:
@@ -86,6 +168,10 @@ for entry in entries:
                     checks.append(line)
         if not checks:
             errors.append(f"{name}: SHA-256 not checked with filename {filename}")
+        expected = urlsplit(entry.get("source", ""))
+        canonical = f"{expected.scheme}://{expected.netloc.lower()}{expected.path}"
+        if canonical not in downloads.get(filename, set()):
+            errors.append(f"{name}: workflow curl download for {filename} does not match manifest source")
     if not entry.get("source") or not entry.get("source_revision"):
         errors.append(f"{name}: missing source or source_revision")
     source = entry.get("source", "")
@@ -140,4 +226,4 @@ for entry in entries:
 if errors:
     print("\n".join(errors), file=sys.stderr)
     raise SystemExit(1)
-print(f"Validated {len(entries)} unbundled model fixture digests against CI workflow")
+print(f"Validated {len(entries)} unbundled model fixture digests and download URLs against CI workflow")

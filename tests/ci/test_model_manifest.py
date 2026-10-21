@@ -2,6 +2,8 @@
 """Black-box positive and negative cases for CI model-manifest audit."""
 from pathlib import Path
 import subprocess
+import re
+from urllib.parse import urlsplit
 import sys
 import tempfile
 import unittest
@@ -12,12 +14,19 @@ OTHER = "b" * 64
 
 
 class ModelManifestAuditTests(unittest.TestCase):
-    def check(self, manifest, workflow, ok, evidence_content=None):
+    def check(self, manifest, workflow, ok, evidence_content=None, add_download=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             m = root / "manifest.yaml"
             w = root / "ci.yml"
             m.write_text(manifest, encoding="utf-8")
+            if add_download:
+                source = re.search(r"^    source: (.+)$", manifest, re.MULTILINE)
+                alias = re.search(r"^    ci_filename: (.+)$", manifest, re.MULTILINE)
+                if source:
+                    filename = alias.group(1) if alias else Path(urlsplit(source.group(1)).path).name
+                    workflow = (f'curl --fail --output "build/{filename}" "{source.group(1)}"\n'
+                                + workflow)
             w.write_text(workflow, encoding="utf-8")
             if evidence_content is not None:
                 legal = root / "docs/legal"
@@ -306,6 +315,55 @@ class ModelManifestAuditTests(unittest.TestCase):
         self.check(manifest,
                    f"echo '{DIGEST}  voice.tar.bz2' | sha256sum -c -\n",
                    False, evidence_content="# Review\n")
+
+
+    def test_missing_download_source(self):
+        self.check(self.manifest(),
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False, add_download=False)
+
+    def test_wrong_download_host_same_filename_and_digest(self):
+        self.check(self.manifest(),
+                   f"curl -o build/model.onnx https://mirror.test/resolve/main/model.onnx\n"
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False, add_download=False)
+
+    def test_wrong_download_revision_same_filename_and_digest(self):
+        self.check(self.manifest(revision="deadbeef", source_ref="deadbeef"),
+                   f"curl -o build/model.onnx https://example.test/resolve/main/model.onnx\n"
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False, add_download=False)
+
+    def test_download_url_with_query_is_accepted(self):
+        self.check(self.manifest(),
+                   f'curl -o build/model.onnx "https://example.test/resolve/main/model.onnx?download=true"\n'
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   True, add_download=False)
+
+    def test_download_base_variable_and_multiline_curl(self):
+        self.check(self.manifest(revision="deadbeef", source_ref="deadbeef"),
+                   'base="https://example.test/resolve/deadbeef"\n'
+                   'curl --fail --location \\\n'
+                   '  --output "$PWD/build/model.onnx" \\\n'
+                   '  "$base/model.onnx"\n'
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   True, add_download=False)
+
+    def test_download_for_loop_expansion(self):
+        self.check(self.manifest(),
+                   'for file in model.onnx labels.csv; do\n'
+                   '  curl --fail -o "build/$file" "https://example.test/resolve/main/$file"\n'
+                   'done\n'
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   True, add_download=False)
+
+    def test_download_alias_wrong_source_is_rejected(self):
+        manifest = self.manifest(name="original.tar.bz2")
+        manifest += "    ci_filename: renamed.tar.bz2\n"
+        self.check(manifest,
+                   "curl -o build/renamed.tar.bz2 https://example.test/resolve/main/other.tar.bz2\n"
+                   f"echo '{DIGEST}  renamed.tar.bz2' | sha256sum -c -\n",
+                   False, add_download=False)
 
 if __name__ == "__main__":
     unittest.main()
