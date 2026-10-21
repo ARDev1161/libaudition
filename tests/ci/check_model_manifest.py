@@ -112,7 +112,12 @@ def workflow_download_sources(text):
                 output = arg.split("=", 1)[1]
         if not output or len(args) < 2:
             continue
-        url = args[-1]
+        # curl accepts --output before or after the URL (YAMNet uses the latter).
+        urls = [arg for arg in args[1:]
+                if urlsplit(expand(arg, {})).scheme == "https"]
+        if not urls:
+            continue
+        url = urls[-1]
         # Expand simple shell for-loops (e.g. YAMNet's $file download).
         choices = [{}]
         for name, values in loops.items():

@@ -357,6 +357,15 @@ class ModelManifestAuditTests(unittest.TestCase):
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
                    True, add_download=False)
 
+    def test_download_url_before_output_in_loop(self):
+        self.check(self.manifest(),
+                   'for file in model.onnx labels.csv; do\n'
+                   '  curl --fail "https://example.test/resolve/main/$file" \\\n'
+                   '    --output "$RUNNER_TEMP/models/$file"\n'
+                   'done\n'
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   True, add_download=False)
+
     def test_download_alias_wrong_source_is_rejected(self):
         manifest = self.manifest(name="original.tar.bz2")
         manifest += "    ci_filename: renamed.tar.bz2\n"
