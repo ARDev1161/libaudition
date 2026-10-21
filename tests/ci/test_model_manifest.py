@@ -266,9 +266,6 @@ class ModelManifestAuditTests(unittest.TestCase):
         self.check(approved, f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n", False)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
     def test_approved_fixture_cannot_use_mutable_main_revision(self):
         manifest = self.manifest(review="approved")
         manifest += "    license_evidence: docs/legal/fixture-review.md\n"
@@ -282,3 +279,6 @@ if __name__ == "__main__":
         self.check(manifest,
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
                    True, evidence_content="License review evidence")
+
+if __name__ == "__main__":
+    unittest.main()
