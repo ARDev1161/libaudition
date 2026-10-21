@@ -1059,3 +1059,45 @@ TEST(AsyncSpeechIngressWorker, DelayedForgetPreservesReusedEpochAndWavAnnotation
     EXPECT_EQ(recordings.retainedRecordings(),0U);
     std::filesystem::remove_all(root);
 }
+
+TEST(AsyncSpeechIngressWorker, DeferredRetireWithoutGenerationKeepsReusedWav) {
+    const auto root=std::filesystem::temp_directory_path() /
+        ("audition-retire-no-generation-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    const auto old_wav=root/"old.wav";
+    const auto new_wav=root/"new.wav";
+    const Timestamp origin{1000000000LL,{ClockDomain::Monotonic,17U}};
+    recording::SourceRecordingSession recordings{};
+    recordings.begin(91U,3001U,old_wav,16000U,origin);
+    ASSERT_EQ(recordings.retireDeferred(91U),3001U);
+    recordings.begin(91U,3002U,new_wav,16000U,origin);
+    recordings.bindRecordingAsr(3002U,4002U);
+    EXPECT_EQ(recordings.pendingRetirements(),1U);
+    // A failed or capacity-rejected old retirement has no ASR generation.
+    // Persist only the old WAV, without closing the reused source.
+    recordings.acknowledgeRetired(3001U,std::nullopt);
+    EXPECT_TRUE(recordings.active(91U));
+    EXPECT_EQ(recordings.recordingId(91U),std::optional<RecordingId>{3002U});
+    EXPECT_EQ(recordings.boundAsrGenerations(),1U);
+    EXPECT_EQ(recordings.pendingRetirements(),0U);
+    EXPECT_EQ(recordings.retainedRecordings(),1U);
+    const auto old_saved=readRecordingTimelineJson(
+        std::filesystem::path{old_wav.string()+".json"});
+    EXPECT_TRUE(old_saved.speech().empty());
+    SourceSpeechResult result{};
+    result.track_id=91U;
+    result.generation=4002U;
+    result.transcript.text="new-source-survived";
+    result.start_time=origin;
+    result.end_time=Timestamp{1010000000LL,origin.clock()};
+    recordings.addSpeech(result);
+    recordings.retire(91U,4002U);
+    recordings.completeGeneration(4002U);
+    EXPECT_EQ(recordings.retainedRecordings(),0U);
+    const auto new_saved=readRecordingTimelineJson(
+        std::filesystem::path{new_wav.string()+".json"});
+    ASSERT_EQ(new_saved.speech().size(),1U);
+    EXPECT_EQ(new_saved.speech().front().text,"new-source-survived");
+    std::filesystem::remove_all(root);
+}
