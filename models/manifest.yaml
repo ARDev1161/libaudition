@@ -154,6 +154,7 @@ models:
     backend: sherpa-onnx
     task: text_to_speech
     source: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-low-int8.tar.bz2
+    ci_filename: piper-amy-low-int8.tar.bz2
     source_revision: github-release-tts-models-UNVERIFIED
     sha256: 93070ac9fadf512e56c46bdd0c5d2ce96b424fdc4e683d560167410bd2c4df7d
     license: UNVERIFIED

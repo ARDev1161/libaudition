@@ -82,6 +82,28 @@ class ModelManifestAuditTests(unittest.TestCase):
                    f'echo "{DIGEST}  build/voice.tar.bz2" | sha256sum --check\n',
                    True)
 
+    def test_download_alias_requires_explicit_mapping(self):
+        self.check(self.manifest(name="voice.tar.bz2"),
+                   f'echo "{DIGEST}  build/renamed.tar.bz2" | sha256sum --check\n', False)
+
+    def test_download_alias_matches_checked_filename(self):
+        manifest = self.manifest(name="voice.tar.bz2")
+        manifest += "    ci_filename: renamed.tar.bz2\n"
+        self.check(manifest,
+                   f'echo "{DIGEST}  build/renamed.tar.bz2" | sha256sum --check\n', True)
+
+    def test_download_alias_wrong_digest(self):
+        manifest = self.manifest(name="voice.tar.bz2")
+        manifest += "    ci_filename: renamed.tar.bz2\n"
+        self.check(manifest,
+                   f'echo "{OTHER}  build/renamed.tar.bz2" | sha256sum --check\n', False)
+
+    def test_download_alias_rejects_path(self):
+        manifest = self.manifest(name="voice.tar.bz2")
+        manifest += "    ci_filename: ../renamed.tar.bz2\n"
+        self.check(manifest,
+                   f'echo "{DIGEST}  build/renamed.tar.bz2" | sha256sum --check\n', False)
+
     def test_release_asset_archive_wrong_checksum(self):
         manifest = self.manifest(name="voice.tar.bz2", revision="github-release-UNVERIFIED")
         manifest = manifest.replace(

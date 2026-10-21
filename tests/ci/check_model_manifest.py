@@ -24,7 +24,7 @@ for line in manifest.splitlines():
         current = {"id": match.group(1)}
         entries.append(current)
         continue
-    field = re.fullmatch(r"    (sha256|source_revision|source|bundled|backend|task|license|license_review|license_evidence|commercial|redistributable|purpose): (.+)", line)
+    field = re.fullmatch(r"    (sha256|source_revision|source|ci_filename|bundled|backend|task|license|license_review|license_evidence|commercial|redistributable|purpose): (.+)", line)
     if field and current is not None:
         if field.group(1) in current:
             raise SystemExit(f"Duplicate {field.group(1)} in {current['id']}")
@@ -45,7 +45,9 @@ for entry in entries:
     else:
         # Require a digest to appear with its expected filename on the same
         # checksum command line, not merely somewhere in the workflow.
-        filename = Path(urlsplit(entry.get("source", "")).path).name
+        filename = entry.get("ci_filename", Path(urlsplit(entry.get("source", "")).path).name)
+        if "ci_filename" in entry and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", filename):
+            errors.append(f"{name}: ci_filename must be a safe basename")
         digest_pattern = re.compile(r"(?<![0-9a-f])" + digest + r"(?![0-9a-f])")
         filename_pattern = re.compile(
             r"(?<![A-Za-z0-9_.-])" + re.escape(filename) + r"(?=['\"\s]|$)"
