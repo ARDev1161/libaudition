@@ -46,6 +46,19 @@ if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
     endif()
 endif()
 
+# Model manifest consistency is a core packaging contract: run locally and
+# in every CI CTest build, without requiring real-model dependencies.
+add_test(NAME ci_model_manifest_regressions COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/ci/test_model_manifest.py")
+set_tests_properties(ci_model_manifest_regressions PROPERTIES
+    LABELS "ci-contract;model-provenance;python" TIMEOUT 30)
+add_test(NAME ci_model_manifest_audit COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/ci/check_model_manifest.py")
+set_tests_properties(ci_model_manifest_audit PROPERTIES
+    LABELS "ci-contract;model-provenance;python" TIMEOUT 30)
+
 # The corpus format, reference association and lossless WAV importer are
 # independent of ODAS and physical microphone geometry. Validate these
 # contracts in every CTest-enabled build, including the minimal core.
