@@ -1176,3 +1176,50 @@ TEST(AsyncSpeechIngressWorker, RecordingCapacityRecoversAfterDeferredRetireFallb
         std::filesystem::path{new_wav.string()+".json"}).speech().empty());
     std::filesystem::remove_all(root);
 }
+
+TEST(AsyncSpeechIngressWorker, DeferredRetireRetainsOldAsrAfterSourceReuse) {
+    const auto root=std::filesystem::temp_directory_path() /
+        ("audition-retire-asr-reuse-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    const Timestamp origin{1000000000LL,{ClockDomain::Monotonic,17U}};
+    const auto old_wav=root/"old.wav";
+    const auto new_wav=root/"new.wav";
+    recording::SourceRecordingSession recordings{};
+    recordings.begin(91U,8001U,old_wav,16000U,origin);
+    ASSERT_EQ(recordings.retireDeferred(91U),8001U);
+    recordings.begin(91U,8002U,new_wav,16000U,origin);
+    recordings.bindRecordingAsr(8002U,9002U);
+    // The late old retirement is matched by RecordingId, not source ID.
+    recordings.acknowledgeRetired(8001U,9001U);
+    EXPECT_EQ(recordings.pendingRetirements(),1U);
+    EXPECT_EQ(recordings.boundAsrGenerations(),2U);
+    EXPECT_EQ(recordings.recordingId(91U),std::optional<RecordingId>{8002U});
+    SourceSpeechResult old_result{};
+    old_result.track_id=91U;
+    old_result.generation=9001U;
+    old_result.transcript.text="old-utterance";
+    old_result.start_time=origin;
+    old_result.end_time=Timestamp{1010000000LL,origin.clock()};
+    recordings.addSpeech(old_result);
+    SourceSpeechResult new_result=old_result;
+    new_result.generation=9002U;
+    new_result.transcript.text="new-utterance";
+    recordings.addSpeech(new_result);
+    recordings.completeGeneration(9001U);
+    EXPECT_EQ(recordings.pendingRetirements(),0U);
+    EXPECT_TRUE(recordings.active(91U));
+    EXPECT_EQ(recordings.boundAsrGenerations(),1U);
+    recordings.retire(91U,9002U);
+    recordings.completeGeneration(9002U);
+    EXPECT_EQ(recordings.retainedRecordings(),0U);
+    const auto old_saved=readRecordingTimelineJson(
+        std::filesystem::path{old_wav.string()+".json"});
+    const auto new_saved=readRecordingTimelineJson(
+        std::filesystem::path{new_wav.string()+".json"});
+    ASSERT_EQ(old_saved.speech().size(),1U);
+    ASSERT_EQ(new_saved.speech().size(),1U);
+    EXPECT_EQ(old_saved.speech().front().text,"old-utterance");
+    EXPECT_EQ(new_saved.speech().front().text,"new-utterance");
+    std::filesystem::remove_all(root);
+}
