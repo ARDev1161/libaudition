@@ -1,6 +1,8 @@
 #include <audition/audio/recording_timeline_json.hpp>
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <cstdint>
@@ -8,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -281,6 +284,59 @@ TEST(RecordingTimelineJson, FileSidecarWriteAndReadRoundTripsEscapedText) {
     ASSERT_EQ(output.sounds().size(), 1U);
     EXPECT_DOUBLE_EQ(output.sounds()[0].confidence, 0.75);
     std::filesystem::remove(path);
+}
+
+
+TEST(RecordingTimelineJson, ConcurrentWritersDoNotShareStagingFiles) {
+    namespace fs=std::filesystem;
+    const auto root=fs::temp_directory_path() /
+        ("libaudition-sidecar-concurrent-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(root);
+    const auto path=root/"shared.json";
+    const auto stale=fs::path{path.string()+".tmp"};
+    {
+        std::ofstream out(stale);
+        out << "legacy-temporary-owned-by-another-writer";
+    }
+    constexpr int writers=6;
+    constexpr int rounds=12;
+    std::atomic<int> failures{0};
+    std::vector<std::thread> threads;
+    for(int index=0;index<writers;++index) {
+        threads.emplace_back([&,index] {
+            try {
+                const auto id=static_cast<audition::RecordingId>(index+1);
+                audition::RecordingTimeline timeline{id,16000U};
+                timeline.add(audition::TimelineSpeechEvent{
+                    id,0U,16000U,std::string(12000U,static_cast<char>('A'+index)),"en"});
+                for(int n=0;n<rounds;++n)
+                    audition::writeRecordingTimelineJson(path,timeline);
+            } catch (...) { ++failures; }
+        });
+    }
+    for(auto& thread:threads) thread.join();
+    EXPECT_EQ(failures.load(),0);
+    const auto last=audition::readRecordingTimelineJson(path);
+    ASSERT_GE(last.recordingId(),1U);
+    ASSERT_LE(last.recordingId(),static_cast<std::uint64_t>(writers));
+    ASSERT_EQ(last.speech().size(),1U);
+    EXPECT_EQ(last.speech()[0].text,
+              std::string(12000U,static_cast<char>('A'+last.recordingId()-1U)));
+    std::ifstream old(stale);
+    std::string preserved;
+    std::getline(old,preserved);
+    EXPECT_EQ(preserved,"legacy-temporary-owned-by-another-writer");
+
+    // A rename failure must not leave staging directories behind.
+    const auto invalid=root/"existing-directory.json";
+    fs::create_directory(invalid);
+    audition::RecordingTimeline sample{123U,16000U};
+    EXPECT_THROW(audition::writeRecordingTimelineJson(invalid,sample),
+                 std::filesystem::filesystem_error);
+    for(const auto& item:fs::directory_iterator(root))
+        EXPECT_NE(item.path().filename().string().find(".libaudition-sidecar-"),0U);
+    fs::remove_all(root);
 }
 
 TEST(RecordingTimelineJson, AcceptsMaxUint64RecordingIdentity) {

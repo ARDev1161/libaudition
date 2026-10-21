@@ -39,3 +39,17 @@ counter instead of throwing into the capture/recording owner loop.
 The underlying `RecordingTimeline` retains strict score validation.
 Invalid scores do not reserve a deduplication key. Annotation
 limits and text-byte budgets still apply.
+
+## Concurrent JSON sidecar writes
+
+`writeRecordingTimelineJson()` now reserves a unique directory next to
+the destination and writes the complete JSON inside it before rename.
+This prevents concurrent producers from using the same predictable
+`<file>.tmp` staging path and truncating one another's in-progress
+documents. The staging directory is cleaned on success and on error,
+and a legacy `.tmp` file is not touched. Simultaneous writes to the
+same destination are **last-rename-wins**, not a merge; clients needing
+ordered history must coordinate writer ownership. Atomic rename
+does not guarantee power-loss durability without an explicit fsync
+policy. A CTest regression covers concurrent writers, preserved
+legacy temporary data, and cleanup after a failed publication.
