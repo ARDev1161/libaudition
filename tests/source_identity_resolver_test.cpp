@@ -1156,6 +1156,27 @@ TEST(SourceIdentityResolver, RangeRefinesPositionAnchoredCandidateRanking) {
     EXPECT_EQ(selected.source_id, strong_source.source_id);
 }
 
+TEST(SourceIdentityResolver, PositionReacquisitionSurvivesDirectionDisabled) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    options.fingerprint_weight = 0.0;
+    options.position_weight = 1.0;
+    options.range_weight = 0.0;
+    options.direction_weight = 0.0;
+    audition::HeuristicSourceIdentityResolver resolver{registry, options};
+
+    auto first = observation(1U, 10);
+    first.position = position(1.0, 2.0, 3.0);
+    const auto initial = resolver.observe(first);
+    resolver.endTrack(first.track_id, ts(11));
+
+    auto later = observation(2U, 12);
+    later.position = first.position;
+    const auto recovered = resolver.observe(later);
+    EXPECT_FALSE(recovered.newly_created);
+    EXPECT_EQ(recovered.source_id, initial.source_id);
+}
+
 TEST(SourceIdentityResolver, DirectionRefinesPositionAnchoredCandidateRanking) {
     audition::InMemoryAcousticSourceRegistry registry;
     audition::HeuristicSourceIdentityResolverOptions options{};
