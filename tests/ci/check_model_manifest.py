@@ -60,7 +60,7 @@ for entry in entries:
             if found:
                 # Match the checksum operand, not an unrelated later mention.
                 operand = producer[found.end():]
-                match = re.match(r"\\s+([^\\s'\\\"]+)", operand)
+                match = re.match(r"\s+([A-Za-z0-9_./-]+)", operand)
                 if match and Path(match.group(1)).name == filename:
                     checks.append(line)
         if not checks:
