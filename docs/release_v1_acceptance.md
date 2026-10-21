@@ -449,11 +449,20 @@ model provenance/licensing P0 gate complete based on a green workflow alone.
 | --- | --- | --- | --- | --- |
 | Silero VAD | `ci.yml` sherpa | GitHub release asset ID recorded in `models/manifest.yaml` | SHA-256 | Listed in manifest; verify upstream licensing before redistribution |
 | YAMNet ONNX | `ci.yml` YAMNet | Hugging Face commit `f25b741c2f0bdc6d7e6db24b5fddda23347dbafd` | SHA-256 | Listed in manifest; label-map attribution separate |
-| Whisper tiny.en INT8 | `ci.yml` sherpa | Hugging Face commit `d026532c022fa99fd789d6b32446a1df7b6bfc43` | SHA-256 per ONNX | Not yet recorded in manifest |
-| NeMo speaker embedding | `ci.yml` sherpa | Hugging Face revision `2b697b2` | SHA-256 | Not yet recorded in manifest |
+| Whisper tiny.en INT8 | `ci.yml` sherpa | Hugging Face commit `d026532c022fa99fd789d6b32446a1df7b6bfc43` | SHA-256 per ONNX | Recorded as unbundled CI fixture; license review pending |
+| NeMo speaker embedding | `ci.yml` sherpa | Hugging Face revision `2b697b2` | SHA-256 | Recorded as unbundled CI fixture; license review pending |
 | SenseVoiceSmall INT8 | `ci.yml` sherpa | **Not pinned** (`resolve/main`) | SHA-256 model + tokens | Resolve immutable commit and licensing |
 | CLAP audio/text/tokenizer | `ci.yml` CLAP | **Not pinned** (`resolve/main`) | SHA-256 for all three files | Resolve immutable commit and licensing |
-| AASIST ONNX | `ci.yml` AASIST | Hugging Face commit `16774d458d86d2a021ae31646c1bf66a5331b53e` | SHA-256 | Not yet recorded in manifest |
+| AASIST ONNX | `ci.yml` AASIST | Hugging Face commit `16774d458d86d2a021ae31646c1bf66a5331b53e` | SHA-256 | Recorded as unbundled CI fixture; license review pending |
+
+The manifest now inventories **11 unbundled CI-only artifacts**, including
+Whisper encoder/decoder, NeMo and AASIST. This corrects the earlier
+"not recorded" entries; it does **not** close licensing or immutable-source
+verification. CI #1491 (commit `6b2e6d539d9716122c4527a3da8025e19aec962d`)
+passed 25/26 jobs including Ubuntu/macOS static/shared independent
+installed-package consumers, CTest, sanitizers and model jobs;
+`real-spatial-corpus` was skipped. These are **feature-branch results**,
+not acceptance evidence on one integrated release candidate.
 
 Additional external archives and datasets in the sherpa jobs are checked
 in some cases against pinned digests, but some steps only **print** the
