@@ -548,3 +548,41 @@ TEST(BoundedSpeechPcmIngress, RepeatedOverflowCoalescesForgetAndPreservesPeerAud
     EXPECT_FALSE(ingress.tryPop().has_value());
     EXPECT_EQ(ingress.statistics().pending_samples,0U);
 }
+
+TEST(BoundedSpeechPcmIngress, RetiringSourceSlotRecoversWithoutInvalidatingNewSource) {
+    SpeechPcmIngressOptions limits{};
+    limits.max_sources=1U;
+    limits.max_pending_chunks=2U;
+    limits.max_pending_samples=16U;
+    limits.max_chunk_samples=8U;
+    BoundedSpeechPcmIngress ingress{limits};
+    const std::vector<float> audio(8U,0.4F);
+    ASSERT_EQ(ingress.push(70U,block(audio,1U)),SpeechPcmAdmission::Accepted);
+    const auto retired_epoch=ingress.retireWithEpoch(70U);
+    ASSERT_TRUE(retired_epoch.has_value());
+    EXPECT_EQ(ingress.push(71U,block(audio,2U)),
+              SpeechPcmAdmission::RejectedSourceLimit);
+    EXPECT_EQ(ingress.statistics().pending_retirements,1U);
+    auto old_audio=ingress.tryPop();
+    ASSERT_TRUE(old_audio.has_value());
+    EXPECT_EQ(old_audio->kind,SpeechPcmIngressEvent::Kind::Audio);
+    EXPECT_EQ(old_audio->source_id,70U);
+    auto retired=ingress.tryPop();
+    ASSERT_TRUE(retired.has_value());
+    EXPECT_EQ(retired->kind,SpeechPcmIngressEvent::Kind::Retire);
+    EXPECT_EQ(retired->epoch,*retired_epoch);
+    EXPECT_EQ(ingress.statistics().pending_retirements,0U);
+    ASSERT_EQ(ingress.push(71U,block(audio,3U)),SpeechPcmAdmission::Accepted);
+    const auto new_epoch=ingress.sourceEpoch(71U);
+    ASSERT_TRUE(new_epoch.has_value());
+    EXPECT_NE(*new_epoch,*retired_epoch);
+    EXPECT_FALSE(ingress.forgetIfEpoch(70U,*retired_epoch));
+    EXPECT_EQ(ingress.statistics().pending_chunks,1U);
+    auto new_audio=ingress.tryPop();
+    ASSERT_TRUE(new_audio.has_value());
+    EXPECT_EQ(new_audio->kind,SpeechPcmIngressEvent::Kind::Audio);
+    EXPECT_EQ(new_audio->source_id,71U);
+    EXPECT_EQ(new_audio->epoch,*new_epoch);
+    EXPECT_EQ(new_audio->audio.sequenceNumber(),3U);
+    EXPECT_FALSE(ingress.tryPop().has_value());
+}
