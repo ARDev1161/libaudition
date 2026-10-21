@@ -26,15 +26,38 @@ class CiCTestEntrypointTests(unittest.TestCase):
     def test_ci_does_not_directly_invoke_test_runners(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         # Python scoring assertions belong to add_test(), not ad-hoc commands.
-        self.assertNotRegex(
-            workflow,
+        runner_pattern = (
             r"(?m)^\s*(?:python3?|[^\s]+/python)\s+"
-            r"tests/(?:integration/)?(?:score_|test_)[\w-]+\.py\b")
+            r"tests/(?:integration/|ci/)?(?:score_|test_|check_)[\w-]+\.py\b"
+        )
+        self.assertNotRegex(workflow, runner_pattern)
+        # Mutation guards: both manifest entrypoints must be rejected if
+        # accidentally reintroduced as direct shell invocations.
+        for command in ("python3 tests/ci/test_model_manifest.py",
+                        "python3 tests/ci/check_model_manifest.py"):
+            self.assertRegex("run: |\n    " + command, runner_pattern)
         # Executable test binaries must likewise be invoked by CTest.
         self.assertNotRegex(
             workflow,
             r"(?m)^\s*(?:\./)?build[\w/-]*/tests/"
             r"\w[\w.-]*(?:\s|$)")
+
+    def test_manifest_audit_is_an_early_ctest_gate(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        cmake = TEST_CMAKE.read_text(encoding="utf-8")
+        build_test = workflow.split("  build-test:\n", 1)[1].split(
+            "\n  cpp-coverage:\n", 1)[0]
+        configure = build_test.index("      - name: Configure\n")
+        audit = build_test.index("      - name: Audit CI model fixture manifest via CTest\n")
+        build = build_test.index("      - name: Build\n")
+        self.assertLess(configure, audit)
+        self.assertLess(audit, build)
+        self.assertIn(
+            "ctest --no-tests=error --test-dir build/ci "
+            "-R '^ci_model_manifest_(regressions|audit)$' --output-on-failure",
+            build_test)
+        for name in ("ci_model_manifest_regressions", "ci_model_manifest_audit"):
+            self.assertIn("add_test(NAME " + name, cmake)
 
     def test_heavy_corpus_workflow_uses_ctest_for_selftests(self):
         workflow = CORPUS_WORKFLOW.read_text(encoding="utf-8")

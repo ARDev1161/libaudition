@@ -21,13 +21,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check Ninja
         run: ninja --version
-      - name: Audit CI model fixture manifest
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          python3 tests/ci/test_model_manifest.py
-          python3 tests/ci/check_model_manifest.py
       - name: Configure
         run: cmake --preset ci
+      - name: Audit CI model fixture manifest via CTest
+        if: matrix.os == 'ubuntu-latest'
+        run: ctest --no-tests=error --test-dir build/ci -R '^ci_model_manifest_(regressions|audit)$' --output-on-failure
       - name: Build
         run: cmake --build --preset ci --parallel
       - name: Test
