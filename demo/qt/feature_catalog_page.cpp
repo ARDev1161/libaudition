@@ -1,5 +1,6 @@
 #include "feature_catalog_page.hpp"
 
+#include <QAbstractItemView>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
