@@ -63,8 +63,9 @@ it never shows a model-only capability as physically verified.
    real-model Qt test cases and successful CI #1608 evidence; pinned-model
    jobs prove a subset of GUI paths. Other Sherpa subpanels, true simultaneous
    physical device capture and deployment-specific quality remain untested.
-   The new temporal scalar/event/episode GUI tests require **new exact-head
-   CI**, not merely a previous green result.
+   The temporal scalar/event/episode GUI tests passed on exact code HEAD
+   `a95e465` in [CI #1616](https://github.com/ARDev1161/libaudition/actions/runs/39768223220).
+   Subsequent release-document changes require fresh exact-HEAD CI.
 5. Hardware microphone, model-accuracy and target embedded latency tests are
    separate evidence. They remain NOT MEASURED until independently verified.
 
