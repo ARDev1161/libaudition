@@ -84,6 +84,7 @@ for SPL/range calibration, temporal smoothing, persistent source identity,
 ./build/examples/libaudition_temporal_cli
 ./build/examples/libaudition_temporal_events_cli
 ./build/examples/libaudition_temporal_association_cli
+./build/examples/libaudition_registries_cli
 ```
 
 See [`docs/cli_examples.md`](docs/cli_examples.md) for arguments and expected
