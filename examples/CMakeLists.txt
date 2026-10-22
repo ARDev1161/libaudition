@@ -30,7 +30,16 @@ target_link_libraries(libaudition_pipeline_cli PRIVATE
     audition::pipeline)
 libaudition_configure_target(libaudition_pipeline_cli)
 
+add_executable(libaudition_temporal_cli temporal_patterns_cli.cpp)
+target_link_libraries(libaudition_temporal_cli PRIVATE audition::core)
+libaudition_configure_target(libaudition_temporal_cli)
+
 if(LIBAUDITION_BUILD_TESTS)
+    add_test(NAME cli-temporal-patterns-smoke
+        COMMAND libaudition_temporal_cli)
+    set_tests_properties(cli-temporal-patterns-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "temporal=ok")
+
     add_test(NAME cli-spl-range-smoke
         COMMAND libaudition_spl_cli -40 -20 94 80)
     set_tests_properties(cli-spl-range-smoke PROPERTIES
