@@ -45,18 +45,111 @@
         "LIBAUDITION_WITH_SPDLOG": "OFF",
         "LIBAUDITION_FETCH_DEPENDENCIES": "OFF"
       }
+    },
+    {
+      "name": "full-demo",
+      "displayName": "Full Qt demo + all software backends (except GTSAM)",
+      "description": "Linux Qt6 development profile with all optional audio, speech and model adapters; GTSAM and device-specific accelerators remain opt-in.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/full-demo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BUILD_TESTING": "ON",
+        "LIBAUDITION_BUILD_TESTS": "ON",
+        "LIBAUDITION_BUILD_EXAMPLES": "ON",
+        "LIBAUDITION_BUILD_QT_DEMO": "ON",
+        "LIBAUDITION_BUILD_DOCS": "ON",
+        "LIBAUDITION_WITH_SPDLOG": "ON",
+        "LIBAUDITION_WITH_ODAS": "ON",
+        "LIBAUDITION_WITH_LIBSAMPLERATE": "ON",
+        "LIBAUDITION_WITH_WEBRTC_AEC3": "ON",
+        "LIBAUDITION_WITH_SHERPA": "ON",
+        "LIBAUDITION_SHERPA_ENABLE_TTS": "ON",
+        "LIBAUDITION_WITH_YAMNET": "ON",
+        "LIBAUDITION_WITH_EFFICIENTAT": "ON",
+        "LIBAUDITION_WITH_CLAP": "ON",
+        "LIBAUDITION_WITH_AASIST": "ON",
+        "LIBAUDITION_WITH_WORLD": "ON",
+        "LIBAUDITION_WITH_GTSAM": "OFF",
+        "LIBAUDITION_SHERPA_ENABLE_GPU": "OFF",
+        "LIBAUDITION_SHERPA_ENABLE_DIRECTML": "OFF",
+        "LIBAUDITION_SHERPA_ENABLE_RKNN": "OFF",
+        "LIBAUDITION_SHERPA_ENABLE_AXERA": "OFF",
+        "LIBAUDITION_SHERPA_ENABLE_AXCL": "OFF",
+        "LIBAUDITION_SHERPA_ENABLE_ASCEND_NPU": "OFF",
+        "LIBAUDITION_SHERPA_ENABLE_QNN": "OFF",
+        "LIBAUDITION_SHERPA_ENABLE_SPACEMIT": "OFF",
+        "LIBAUDITION_DEMO_FETCH_YAMNET_MODEL": "ON",
+        "LIBAUDITION_DEMO_FETCH_SPEECH_MODELS": "ON",
+        "LIBAUDITION_FETCH_DEPENDENCIES": "ON",
+        "LIBAUDITION_WARNINGS_AS_ERRORS": "ON",
+        "LIBAUDITION_REGISTER_MODEL_TOOL_TESTS": "OFF",
+        "LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS": "OFF",
+        "LIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE": "OFF"
+      }
+    },
+    {
+      "name": "full-demo-no-model-download",
+      "displayName": "Full Qt demo (manual model files)",
+      "inherits": "full-demo",
+      "binaryDir": "${sourceDir}/build/full-demo-no-model-download",
+      "cacheVariables": {
+        "LIBAUDITION_DEMO_FETCH_YAMNET_MODEL": "OFF",
+        "LIBAUDITION_DEMO_FETCH_SPEECH_MODELS": "OFF"
+      }
     }
   ],
   "buildPresets": [
-    {"name": "dev", "configurePreset": "dev"},
-    {"name": "ci", "configurePreset": "ci"},
-    {"name": "minimal", "configurePreset": "minimal"}
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci"
+    },
+    {
+      "name": "minimal",
+      "configurePreset": "minimal"
+    },
+    {
+      "name": "full-demo",
+      "configurePreset": "full-demo",
+      "jobs": 4
+    },
+    {
+      "name": "full-demo-no-model-download",
+      "configurePreset": "full-demo-no-model-download",
+      "jobs": 4
+    }
   ],
   "testPresets": [
     {
       "name": "ci",
       "configurePreset": "ci",
-      "output": {"outputOnFailure": true}
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "full-demo",
+      "configurePreset": "full-demo",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 4
+      }
+    },
+    {
+      "name": "full-demo-no-model-download",
+      "configurePreset": "full-demo-no-model-download",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 4
+      }
     }
   ]
 }
