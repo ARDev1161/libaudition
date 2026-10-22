@@ -10,6 +10,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSpinBox>
+#include <QStringList>
 #include <QVBoxLayout>
 #include <QWidget>
 
