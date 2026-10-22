@@ -25,6 +25,66 @@ cmake --build build-qt -j
 ./build-qt/demo/qt/libaudition_qt_demo
 ```
 
+## RC feature catalog and temporal patterns
+
+The **Feature catalog** top-level tab contains a searchable inventory of core
+DSP, spatial identity/fusion, recording, classifier, speech and temporal
+capabilities. Select a row and click **Open selected demo tab**, or
+double-click it, to navigate to the nearest existing runner. Its mode column
+distinguishes interactive demonstrations, optional model/hardware backends and
+**API + CTest only** features. A catalog link is not itself an implementation
+of an otherwise unsupported graphical control.
+
+The **Temporal patterns** tab runs four library algorithms directly, with
+editable one-dimensional scalar feature frames, event-onset times, motif
+window length and normalized DTW-cost threshold. Press **Run temporal
+examples** to calculate median recurrence period/jitter, window-to-window
+DTW alignment, best disjoint offline motif and per-source streaming template
+matches. All input is synthetic feature evidence; this is not a frontend
+that extracts audio features from WAV or a quality benchmark. Invalid input
+is reported in the output box without crashing the demo.
+
+The same page now includes a **Hungarian event association** panel with an
+editable observation-by-track cost matrix. Each line represents one
+observation, each number is the nonnegative cost of linking that
+observation to the corresponding track, and `x` excludes the edge.
+Set the track count and unmatched-observation penalty, then click
+**Assign observations to tracks**. The output reports one-to-one
+assignments, unmatched track IDs and total cost. The default matrix
+assigns 0→0 and 1→1 while leaving observation 2 unmatched, cost 2.3.
+No source identities or real-world probabilities are inferred from
+these illustrative costs.
+
+The headless self-test additionally checks crossed pairings, forbidden
+edges, a low unmatched penalty and error reporting for invalid costs.
+
+The **Scalar changes and acoustic event lifecycle** panel below the
+Hungarian example lets you enter one-dimensional feature values and
+classification scores (separate sequences), plus start/stop thresholds.
+It executes the real `TemporalScalarAnalyzer` (CUSUM),
+`TemporalAcousticEventDetector` (consecutive-score hysteresis) and
+`EventEpisodeAssociator` (persistent-source event episodes).
+The default input produces one upward scalar change, one event start
+and one event end. The output displays source-local occurrence and episode
+IDs. You can set scores low enough to suppress an event or submit invalid
+values to observe error handling; the UI never pretends to infer scores
+from the supplied scalar feature values.
+
+For backend-model validation by exact CI job and test name, see
+[Qt model validation matrix](qt_model_validation_matrix.md). Only some
+optional panels have pinned-model GUI tests. Passing a backend CTest
+does not prove every GUI workflow.
+
+Run the hardware-independent smoke test:
+
+```sh
+ctest --no-tests=error --test-dir build-qt -R '^qt_self_test$' --output-on-failure
+```
+
+The Qt self-test executes real temporal algorithms, Hungarian assignment,
+scalar event transitions and catalog filtering; see [CLI examples](cli_examples.md)
+for their dependency-light counterparts.
+
 ## Tabs
 
 ### Acoustic scene (3D ODAS Studio-style viewer)

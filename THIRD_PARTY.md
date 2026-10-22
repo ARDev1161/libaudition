@@ -87,6 +87,21 @@ retained in `LICENSES/WORLD.txt`. WORLD is linked privately into the optional
 backend and no WORLD type appears in libaudition public APIs. The upstream
 README states that the WORLD algorithms are patent-free.
 
-Planned permissive backends also include GTSAM (BSD) and selected permissively
-licensed model artifacts. Code licenses and model-artifact licenses are audited
-separately.
+The optional GTSAM 4.2 spatial fusion adapter is implemented and tested in CI.
+It uses the GTSAM package supplied by the consuming build environment;
+GTSAM is **not** bundled as a library source archive in the default
+libaudition distribution. The backend is opt-in via
+`LIBAUDITION_WITH_GTSAM=ON`; distribution of a combined binary must satisfy
+the specific upstream GTSAM package's license and notice obligations.
+See `docs/backends/gtsam.md`. CI build success is not itself a license audit.
+
+Code licenses and model-artifact licenses are audited separately. All
+14 models currently listed in `models/manifest.yaml` are marked
+`bundled: false`, `license_review: pending`,
+`commercial: false` and `redistributable: false`. These fields
+express *withheld approval*, not a legal conclusion that every model
+is noncommercial. CI may fetch weights temporarily to exercise optional
+backends; their presence in CI must never be read as redistribution
+permission. The original SenseVoiceSmall weight license provenance
+remains unresolved (upstream FunASR model license vs repackaging
+metadata). Keep the weights unbundled pending an independent review.

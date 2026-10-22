@@ -3,6 +3,8 @@
 
 #include "acoustic_scene_page.hpp"
 #include "backend_workbench.hpp"
+#include "temporal_patterns_page.hpp"
+#include "feature_catalog_page.hpp"
 #include "wav_io.hpp"
 
 #include <audition/audition.hpp>
@@ -167,7 +169,7 @@ QWidget* requireTab(QTabWidget* tabs, const char* name) {
 
 void verifyWorkbench(QWidget* root) {
     auto* appTabs = qobject_cast<QTabWidget*>(root);
-    if (appTabs == nullptr || appTabs->count() != 10) {
+    if (appTabs == nullptr || appTabs->count() != 12) {
         throw std::runtime_error{"Qt self-test: unexpected application tab count"};
     }
     for (const char* name : {
@@ -180,9 +182,98 @@ void verifyWorkbench(QWidget* root) {
              "AcousticEvent",
              "Pipeline",
              "Backend workbench",
-             "Backends"}) {
+             "Backends",
+             "Temporal patterns",
+             "Feature catalog"}) {
         static_cast<void>(requireTab(appTabs, name));
     }
+
+    auto* temporalPage = requireTab(appTabs, "Temporal patterns");
+    auto* runTemporal = temporalPage->findChild<QPushButton*>("temporalRun");
+    auto* temporalOutput = temporalPage->findChild<QPlainTextEdit*>("temporalDemoOutput");
+    if (!runTemporal || !temporalOutput)
+        throw std::runtime_error{"Qt self-test: temporal controls missing"};
+    runTemporal->click();
+    if (!temporalOutput->toPlainText().contains("periodic=yes") ||
+        !temporalOutput->toPlainText().contains("motif: found") ||
+        !temporalOutput->toPlainText().contains("stream: matches=3"))
+        throw std::runtime_error{"Qt self-test: temporal algorithm demonstration failed"};
+    auto* assignRun = temporalPage->findChild<QPushButton*>("temporalAssignmentRun");
+    auto* assignMatrix = temporalPage->findChild<QPlainTextEdit*>("temporalAssignmentMatrix");
+    auto* assignOutput = temporalPage->findChild<QPlainTextEdit*>("temporalAssignmentOutput");
+    auto* assignPenalty = temporalPage->findChild<QDoubleSpinBox*>("temporalAssignmentPenalty");
+    if (!assignRun || !assignMatrix || !assignOutput || !assignPenalty)
+        throw std::runtime_error{"Qt self-test: Hungarian assignment controls missing"};
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("0->0, 1->1, 2->unmatched") ||
+        !assignOutput->toPlainText().contains("cost=2.3"))
+        throw std::runtime_error{"Qt self-test: baseline assignment failed"};
+    assignMatrix->setPlainText(QStringLiteral("4 0.2\n0.1 4"));
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("0->1, 1->0"))
+        throw std::runtime_error{"Qt self-test: crossed assignment failed"};
+    assignMatrix->setPlainText(QStringLiteral("x 0.1\nx x"));
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("0->1, 1->unmatched") ||
+        !assignOutput->toPlainText().contains("unmatched_tracks=0"))
+        throw std::runtime_error{"Qt self-test: forbidden assignment failed"};
+    assignPenalty->setValue(0.2);
+    assignMatrix->setPlainText(QStringLiteral("0.4 x"));
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("0->unmatched"))
+        throw std::runtime_error{"Qt self-test: unmatched penalty failed"};
+    assignMatrix->setPlainText(QStringLiteral("-1 0.1"));
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("error:"))
+        throw std::runtime_error{"Qt self-test: invalid assignment not rejected"};
+    assignMatrix->setPlainText(QStringLiteral("0.2 5\n4 0.1\nx x"));
+    assignPenalty->setValue(2.0);
+    assignRun->click();
+
+    auto* eventRun = temporalPage->findChild<QPushButton*>("temporalEventRun");
+    auto* eventScores = temporalPage->findChild<QPlainTextEdit*>("temporalScoreInput");
+    auto* eventScalars = temporalPage->findChild<QPlainTextEdit*>("temporalScalarInput");
+    auto* eventStart = temporalPage->findChild<QDoubleSpinBox*>("temporalEventStartThreshold");
+    auto* eventStop = temporalPage->findChild<QDoubleSpinBox*>("temporalEventStopThreshold");
+    auto* eventOutput = temporalPage->findChild<QPlainTextEdit*>("temporalEventOutput");
+    if (!eventRun || !eventScores || !eventScalars || !eventStart ||
+        !eventStop || !eventOutput)
+        throw std::runtime_error{"Qt self-test: temporal event controls missing"};
+    eventRun->click();
+    if (!eventOutput->toPlainText().contains("scalar: positive=1 negative=0") ||
+        !eventOutput->toPlainText().contains("hysteresis: starts=1 ends=1 active=0") ||
+        !eventOutput->toPlainText().contains("episode=1"))
+        throw std::runtime_error{"Qt self-test: scalar/event/episode demonstration failed"};
+    eventScores->setPlainText(QStringLiteral("0.1 0.1 0.1 0.1"));
+    eventRun->click();
+    if (!eventOutput->toPlainText().contains("starts=0 ends=0 active=0"))
+        throw std::runtime_error{"Qt self-test: low-score suppression failed"};
+    eventScores->setPlainText(QStringLiteral("0.8 0.9 0.1 0.1"));
+    eventStart->setValue(0.20);
+    eventStop->setValue(0.40);
+    eventRun->click();
+    if (!eventOutput->toPlainText().contains("error:"))
+        throw std::runtime_error{"Qt self-test: inverted hysteresis accepted"};
+    eventStart->setValue(0.70);
+    eventScalars->setPlainText(QStringLiteral("0 nan 3"));
+    eventRun->click();
+    if (!eventOutput->toPlainText().contains("error:"))
+        throw std::runtime_error{"Qt self-test: invalid scalar accepted"};
+    eventScalars->setPlainText(QStringLiteral("0 0 3 3 3"));
+    eventRun->click();
+
+    auto* catalogPage = requireTab(appTabs, "Feature catalog");
+    auto* catalog = catalogPage->findChild<QTableWidget*>("capabilityTable");
+    auto* catalogSearch = catalogPage->findChild<QLineEdit*>("capabilitySearch");
+    if (!catalog || catalog->rowCount()<35 || !catalogSearch)
+        throw std::runtime_error{"Qt self-test: incomplete capability catalog"};
+    catalogSearch->setText("DTW");
+    int visible=0;
+    for (int row=0;row<catalog->rowCount();++row)
+        if(!catalog->isRowHidden(row)) ++visible;
+    if(visible!=1)
+        throw std::runtime_error{"Qt self-test: catalog search not functional"};
+    catalogSearch->clear();
 
     auto* backendPage = requireTab(appTabs, "Backend workbench");
     auto* backends = backendPage->findChild<QTabWidget*>();
@@ -361,8 +452,10 @@ DemoWindow::DemoWindow(QWidget* parent)
     tabs->addTab(scrollPage(createIdentityTab()), "Source identity");
     tabs->addTab(scrollPage(createEventsTab()), "AcousticEvent");
     tabs->addTab(scrollPage(createPipelineTab()), "Pipeline");
+    tabs->addTab(scrollPage(createTemporalPatternsPage()), "Temporal patterns");
     tabs->addTab(scrollPage(createBackendWorkbench(tabs)), "Backend workbench");
     tabs->addTab(scrollPage(createCapabilitiesTab()), "Backends");
+    tabs->addTab(scrollPage(createFeatureCatalogPage(tabs)), "Feature catalog");
     setCentralWidget(tabs);
 }
 

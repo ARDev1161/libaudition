@@ -1,9 +1,7 @@
 # libaudition v1.0 release acceptance gate
 
 This is a **release decision checklist**, not a declaration of readiness.
-The library currently declares version `0.5.0` in the root CMake project.
-Features in draft/stacked PRs, including the TMP-04 branch, must not be
-described as released from `main` until integrated and retested together.
+On 2026-10-22, PRs #52, #53, #55, #57, #58 and #59 were merged into `main` (last merge commit `8371a1f0335049032bab62ae81f48d2c641bc03d`). Sibling PRs #54 and #60 were closed as superseded after reviewing their source and tests. The separate `release/v1.0.0-rc1` branch prepares pre-release metadata; **the final combined RC CI has not yet been verified and no RC tag has been created**. See [current RC status](release_v1_rc1.md). Historical audit sections below describe their own earlier checkpoints, not today's open-PR state.
 
 ## Scope of the first stable release
 

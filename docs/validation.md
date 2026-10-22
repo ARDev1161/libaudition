@@ -10,7 +10,7 @@ The v0.5 release line is validated in CI with:
 - GoogleTest unit and deterministic scenario suites,
 - AddressSanitizer + UndefinedBehaviorSanitizer coverage for the default dependency-free build,
 - clean install/export followed by a separate C++17 downstream consumer using
-  `find_package(libaudition 0.5.0 EXACT CONFIG REQUIRED)`,
+  `find_package(libaudition 1.0.0 EXACT CONFIG REQUIRED)`,
 - dedicated backend build/test/install/downstream-consumer jobs for ODAS,
   libsamplerate, WebRTC AEC3, sherpa speech, sherpa TTS, CLAP, AASIST, WORLD,
   and GTSAM.

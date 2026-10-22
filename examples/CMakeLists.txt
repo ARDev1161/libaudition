@@ -30,7 +30,90 @@ target_link_libraries(libaudition_pipeline_cli PRIVATE
     audition::pipeline)
 libaudition_configure_target(libaudition_pipeline_cli)
 
+add_executable(libaudition_temporal_cli temporal_patterns_cli.cpp)
+target_link_libraries(libaudition_temporal_cli PRIVATE audition::core)
+libaudition_configure_target(libaudition_temporal_cli)
+
+add_executable(libaudition_temporal_events_cli temporal_events_cli.cpp)
+target_link_libraries(libaudition_temporal_events_cli PRIVATE audition::core audition::pipeline)
+libaudition_configure_target(libaudition_temporal_events_cli)
+
+add_executable(libaudition_temporal_association_cli temporal_association_cli.cpp)
+target_link_libraries(libaudition_temporal_association_cli PRIVATE audition::core)
+libaudition_configure_target(libaudition_temporal_association_cli)
+
+add_executable(libaudition_registries_cli registries_cli.cpp)
+target_link_libraries(libaudition_registries_cli PRIVATE
+    audition::memory audition::model)
+libaudition_configure_target(libaudition_registries_cli)
+
+add_executable(libaudition_factory_registry_cli factory_registry_cli.cpp)
+target_link_libraries(libaudition_factory_registry_cli PRIVATE audition::core audition::interfaces)
+libaudition_configure_target(libaudition_factory_registry_cli)
+
+add_executable(libaudition_recording_replay_cli recording_replay_cli.cpp)
+target_link_libraries(libaudition_recording_replay_cli PRIVATE audition::io)
+libaudition_configure_target(libaudition_recording_replay_cli)
+
 if(LIBAUDITION_BUILD_TESTS)
+    add_test(NAME cli-recording-export-replay-smoke
+        COMMAND libaudition_recording_replay_cli --self-test)
+    set_tests_properties(cli-recording-export-replay-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "recording-export-replay=ok")
+    add_test(NAME cli-factory-registry-smoke COMMAND libaudition_factory_registry_cli)
+    set_tests_properties(cli-factory-registry-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "factory=ok")
+    add_test(NAME cli-factory-registry-unknown COMMAND libaudition_factory_registry_cli --unknown)
+    set_tests_properties(cli-factory-registry-unknown PROPERTIES
+        PASS_REGULAR_EXPRESSION "factory-unknown=blocked")
+    add_test(NAME cli-factory-registry-duplicate COMMAND libaudition_factory_registry_cli --duplicate)
+    set_tests_properties(cli-factory-registry-duplicate PROPERTIES
+        PASS_REGULAR_EXPRESSION "factory-duplicate=blocked")
+    add_test(NAME cli-registries-smoke
+        COMMAND libaudition_registries_cli)
+    set_tests_properties(cli-registries-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "registries=ok")
+
+    add_test(NAME cli-temporal-association-smoke
+        COMMAND libaudition_temporal_association_cli)
+    set_tests_properties(cli-temporal-association-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "temporal-association=ok")
+
+    # Parameterized Hungarian demonstration: crossed tracks, forbidden edges,
+    # and a cost/penalty tradeoff. Failures must not be accepted as smoke passes.
+    add_test(NAME cli-temporal-association-crossed
+        COMMAND libaudition_temporal_association_cli --scenario crossed)
+    set_tests_properties(cli-temporal-association-crossed PROPERTIES
+        PASS_REGULAR_EXPRESSION "scenario=crossed assignment=0->1,1->0")
+    add_test(NAME cli-temporal-association-gated
+        COMMAND libaudition_temporal_association_cli --scenario gated)
+    set_tests_properties(cli-temporal-association-gated PROPERTIES
+        PASS_REGULAR_EXPRESSION "scenario=gated assignment=0->1,1->unmatched")
+    add_test(NAME cli-temporal-association-penalty-match
+        COMMAND libaudition_temporal_association_cli --scenario penalty --penalty 2)
+    set_tests_properties(cli-temporal-association-penalty-match PROPERTIES
+        PASS_REGULAR_EXPRESSION "scenario=penalty assignment=0->0")
+    add_test(NAME cli-temporal-association-penalty-unmatched
+        COMMAND libaudition_temporal_association_cli --scenario penalty --penalty 0.2)
+    set_tests_properties(cli-temporal-association-penalty-unmatched PROPERTIES
+        PASS_REGULAR_EXPRESSION "scenario=penalty assignment=0->unmatched")
+    add_test(NAME cli-temporal-association-unknown-scenario
+        COMMAND libaudition_temporal_association_cli --scenario unknown)
+    set_tests_properties(cli-temporal-association-unknown-scenario PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME cli-temporal-association-invalid-penalty
+        COMMAND libaudition_temporal_association_cli --scenario penalty --penalty nan)
+    set_tests_properties(cli-temporal-association-invalid-penalty PROPERTIES WILL_FAIL TRUE)
+
+    add_test(NAME cli-temporal-events-smoke
+        COMMAND libaudition_temporal_events_cli)
+    set_tests_properties(cli-temporal-events-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "temporal-events=ok")
+
+    add_test(NAME cli-temporal-patterns-smoke
+        COMMAND libaudition_temporal_cli)
+    set_tests_properties(cli-temporal-patterns-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "temporal=ok")
+
     add_test(NAME cli-spl-range-smoke
         COMMAND libaudition_spl_cli -40 -20 94 80)
     set_tests_properties(cli-spl-range-smoke PROPERTIES

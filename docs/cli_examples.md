@@ -13,6 +13,74 @@ cmake --build build -j
 
 The executables are created under `build/examples/`.
 
+## Temporal recurrence, DTW and acoustic motifs (RC)
+
+```sh
+./build/examples/libaudition_temporal_cli
+./build/examples/libaudition_temporal_cli 1 2 3 1 2 3 1 2 3
+./build/examples/libaudition_temporal_cli --help
+```
+
+The default deterministic demonstration uses separate event onsets at 0/100/200/300 ms
+and a repeated scalar feature pattern `1,2,3`. It exercises the **real**
+`RecurrenceAnalyzer`, `DynamicTimeWarping`, `AcousticMotifFinder` and
+`StreamingPatternMatcher`, printing `recurrence_period_ms`,
+`dtw_normalized_cost`, `motif`, `stream_matches`, and `temporal=ok`.
+Supply between 6 and 64 finite feature values to experiment with a different
+stream; no model weights or microphone device are needed.
+
+Only the built-in fixture is asserted to have three streaming matches and
+a zero-cost motif. User-provided features can legitimately have no repeated motif.
+The corresponding `cli-temporal-patterns-smoke` test runs under CTest.
+This demonstrates feature-sequence processing, **not** detector accuracy on audio.
+
+## Temporal change detection and event lifecycle (RC)
+
+```sh
+./build/examples/libaudition_temporal_events_cli
+```
+
+Runs a deterministic *two-stage source-scoped pipeline*: an EMA/CUSUM
+`TemporalScalarAnalyzer` detects one positive activity change, then
+`TemporalAcousticEventDetector` emits Started/Ended transitions after
+classifier-score hysteresis, and `EventEpisodeAssociator` retains a stable
+persistent-source episode across those transitions. The output includes
+`scalar_positive_changes=1`, `event_starts=1 event_ends=1` and
+`temporal-events=ok`. This command is checked by
+`cli-temporal-events-smoke` under CTest. It uses synthetic scores and
+does not measure acoustic classification accuracy.
+
+## Interval relations, spatial-time gating and Hungarian assignment (RC)
+
+```sh
+./build/examples/libaudition_temporal_association_cli
+```
+
+A deterministic association example demonstrates **Allen interval relations**,
+distance/time spatial gating, **diagonal** covariance Mahalanobis compatibility,
+and Hungarian minimum-cost one-to-one matching with forbidden edges and an
+unmatched observation. Expected summary is
+`interval_relation=meets`, `spatial_gate=accepted`,
+`mahalanobis_gate=accepted`, `assignment=0->0,1->1,2->unmatched`,
+and `temporal-association=ok`. The `cli-temporal-association-smoke` CTest
+checks execution. The example does not establish a physical source identity
+or validate full covariance models.
+
+## Persistent source, speaker, sound prototype and model registries (RC)
+
+```sh
+./build/examples/libaudition_registries_cli
+```
+
+Creates independent in-memory acoustic-source and speaker identities, links
+them, indexes two synthetic sound prototypes, uses cosine matching to retrieve
+the closest prototype and registers model metadata without loading an ONNX
+artifact. This covers `InMemoryAcousticSourceRegistry`,
+`InMemorySpeakerRegistry`, `InMemorySoundPrototypeRegistry`,
+`CosineSoundPrototypeMatcher` and `InMemoryModelRegistry` through their
+public APIs. Expected ending: `registries=ok`. No model weights, biometric
+enrollment or external network requests are involved.
+
 ## SPL calibration and range prior
 
 ```bash

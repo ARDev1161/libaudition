@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(libaudition VERSION 0.5.0 LANGUAGES CXX)
+project(libaudition VERSION 1.0.0 LANGUAGES CXX)
+# CMake package versions are numeric; the public C++ API records prerelease identity.
+set(LIBAUDITION_PUBLIC_VERSION "${PROJECT_VERSION}-rc.1")
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -156,7 +158,8 @@ if(BUILD_TESTING AND LIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE)
             --prefix "${LIBAUDITION_PACKAGE_SMOKE_PREFIX}"
             --cmake "${CMAKE_COMMAND}"
             --generator "${CMAKE_GENERATOR}"
-            --version "${PROJECT_VERSION}")
+            --version "${PROJECT_VERSION}"
+            --public-version "${LIBAUDITION_PUBLIC_VERSION}")
     set_tests_properties(installed_package_cpp17_consumer PROPERTIES
         LABELS "installed-package;package-consumer" TIMEOUT 180)
     if(LIBAUDITION_WITH_SHERPA)
@@ -167,6 +170,7 @@ if(BUILD_TESTING AND LIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE)
                 --cmake "${CMAKE_COMMAND}"
                 --generator "${CMAKE_GENERATOR}"
                 --version "${PROJECT_VERSION}"
+            --public-version "${LIBAUDITION_PUBLIC_VERSION}"
                 --backend sherpa)
         set_tests_properties(installed_package_sherpa_cpp17_consumer PROPERTIES
             LABELS "installed-package;package-consumer;sherpa"
