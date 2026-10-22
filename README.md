@@ -107,6 +107,12 @@ AcousticEvent and synthetic-pipeline tabs, plus a real WAV/model backend
 workbench for enabled WORLD, AASIST, CLAP, Sherpa VAD/ASR/TTS and ODAS
 adapters. The **Temporal patterns** tab runs recurrence, DTW, motif discovery, per-source streaming matching and editable Hungarian assignment, scalar change detection and event hysteresis on synthetic feature sequences; the searchable **Feature catalog** identifies which other algorithms have interactive runners versus API/CTest-only interfaces. Disabled adapters remain visible with their required CMake option.
 
+For a repeatable **full-featured Qt Creator configuration**, use the
+[`full-demo` CMake preset](docs/full_demo_build.md) (and its
+`full-demo-no-model-download` variant). This enables all supported software
+backends except externally installed GTSAM and hardware-specific accelerators;
+ordinary minimal and CI presets remain lean.
+
 See [`docs/qt_demo.md`](docs/qt_demo.md).
 
 ## Consume from CMake
