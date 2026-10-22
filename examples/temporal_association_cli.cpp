@@ -5,6 +5,7 @@
 
 #include <audition/core/time.hpp>
 
+#include <cstdint>
 #include <exception>
 #include <iostream>
 #include <optional>
