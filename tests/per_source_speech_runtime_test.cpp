@@ -1,5 +1,6 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <chrono>
 #include <atomic>
 #include <memory>
@@ -7,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 using namespace audition;
 namespace {
@@ -44,6 +46,33 @@ AudioView chunk(const std::vector<float>& values) {
     return AudioView{values.data(),values.size(),
         {16000U,1U,AudioLayout::Interleaved},Timestamp{}};
 }
+}
+TEST(PerSourceSpeechRuntime, CountersAreSourceLocalAndResetOnReuse) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples=4U;
+    options.pre_roll_samples=0U;
+    options.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),options};
+    const std::vector<float> voice(4U,0.5F), quiet(4U,0.0F);
+    runtime.push(41U,chunk(voice));
+    runtime.push(42U,chunk(quiet));
+    EXPECT_EQ(runtime.trackStatus(41U).received_samples,4U);
+    EXPECT_EQ(runtime.trackStatus(42U).received_samples,4U);
+    runtime.push(41U,chunk(quiet));
+    EXPECT_EQ(runtime.trackStatus(41U).received_samples,8U);
+    EXPECT_EQ(runtime.trackStatus(41U).queued_segments,1U);
+    EXPECT_EQ(runtime.trackStatus(41U).dropped_segments,0U);
+    EXPECT_EQ(runtime.trackStatus(42U).queued_segments,0U);
+    runtime.forget(41U);
+    EXPECT_FALSE(runtime.trackStatus(41U).exists);
+    runtime.push(41U,chunk(voice));
+    EXPECT_EQ(runtime.trackStatus(41U).received_samples,4U);
+    EXPECT_EQ(runtime.trackStatus(41U).queued_segments,0U);
+    EXPECT_EQ(runtime.trackStatus(42U).received_samples,4U);
+    runtime.reset();
+    EXPECT_FALSE(runtime.trackStatus(41U).exists);
+    EXPECT_FALSE(runtime.trackStatus(42U).exists);
 }
 TEST(PerSourceSpeechRuntime, IndependentlySegmentsTwoTracksAndRunsAsyncAsr) {
     ThresholdVad vad;
@@ -493,6 +522,12 @@ TEST(PerSourceSpeechRuntime, RejectsInvalidConstructorLimits) {
     options.max_pending_segments = 0U;
     reject(options);
     options = {};
+    options.max_input_chunk_samples = 16001U;
+    reject(options);
+    options = {};
+    options.max_retired_generations = 0U;
+    reject(options);
+    options = {};
     options.min_speech_samples = 0U;
     reject(options);
     options = {};
@@ -893,6 +928,8 @@ TEST(PerSourceSpeechRuntime, BoundedAsrQueueDropsOverflowAndRecovers) {
     ASSERT_EQ(results.size(), 1U);
     EXPECT_EQ(results[0].track_id, 302U);
     EXPECT_EQ(runtime.statistics().dropped_segments, 2U);
+    EXPECT_EQ(runtime.statistics().evicted_results, 1U);
+    EXPECT_EQ(runtime.statistics().buffered_results, 0U);
     EXPECT_EQ(runtime.statistics().pending_segments, 0U);
     runtime.push(303U, chunk(voice));
     runtime.push(303U, chunk(quiet));
@@ -967,4 +1004,420 @@ TEST(PerSourceSpeechRuntime, PartialPostRollDiscardedOnResetWithoutGhostSegment)
     EXPECT_EQ(results[0].transcript.text, "71:9");
     EXPECT_EQ(results[0].generation, *after);
     EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+}
+
+TEST(PerSourceSpeechRuntime, UnpolledTranscriptsStayBoundedAndExposeEvictions) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.max_pending_segments=2U;
+    opts.min_speech_samples=1U;
+    opts.max_segment_samples=4U;
+    opts.pre_roll_samples=0U;
+    opts.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    const std::vector<float> speech(4U,0.5F);
+    constexpr std::size_t completed_count=8U;
+    for (std::size_t i=0;i<completed_count;++i) {
+        runtime.push(409U,chunk(speech)); // segment cap completes the utterance
+        bool completed=false;
+        for (int spin=0;spin<1500;++spin) {
+            if (runtime.statistics().completed_segments==i+1U) {
+                completed=true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        ASSERT_TRUE(completed) << "ASR completion "<<i;
+        const auto stats=runtime.statistics();
+        EXPECT_EQ(stats.pending_segments,0U);
+        EXPECT_EQ(stats.buffered_results,std::min(i+1U,opts.max_pending_segments));
+        EXPECT_EQ(stats.evicted_results,
+                  (i+1U>opts.max_pending_segments)
+                      ? i+1U-opts.max_pending_segments : 0U);
+    }
+    const auto held=runtime.takeResults();
+    ASSERT_EQ(held.size(),opts.max_pending_segments);
+    EXPECT_EQ(held[0].track_id,409U);
+    EXPECT_EQ(held[1].track_id,409U);
+    EXPECT_NE(held[0].transcript.segment_id,held[1].transcript.segment_id);
+    EXPECT_EQ(runtime.statistics().buffered_results,0U);
+    EXPECT_EQ(runtime.statistics().evicted_results,completed_count-2U);
+
+    runtime.push(409U,chunk(speech));
+    bool recovered=false;
+    for (int spin=0;spin<1500;++spin) {
+        if (runtime.statistics().completed_segments==completed_count+1U) {
+            recovered=true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(recovered);
+    const auto latest=runtime.takeResults();
+    ASSERT_EQ(latest.size(),1U);
+    EXPECT_EQ(latest.front().transcript.text,"409:4");
+    EXPECT_EQ(runtime.statistics().evicted_results,completed_count-2U);
+}
+
+namespace {
+class BudgetAsr final : public IAsrEngine {
+public:
+    BackendInfo backendInfo() const override { return {"budget-asr", "1"}; }
+    AsrCapabilities capabilities() const override { return {}; }
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        Transcript result{};
+        result.segment_id = segment.segment_id;
+        const auto id = segment.track_id->value();
+        if (id == 700U) result.text = std::string(9U, 'x');
+        else if (id == 701U) result.tokens.push_back({std::string(9U, 't'), {}, {}, {}});
+        else if (id == 702U) {
+            result.words.push_back({"a", {}, {}, {}});
+            result.words.push_back({"b", {}, {}, {}});
+        } else {
+            result.text = "ok";
+            result.language = "en";
+        }
+        return result;
+    }
+};
+}
+
+TEST(PerSourceSpeechRuntime, BoundedTranscriptBytesAndItemsPreserveOtherSources) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples = 4U;
+    opts.pre_roll_samples = 0U;
+    opts.post_roll_samples = 0U;
+    opts.max_result_text_bytes = 8U;
+    opts.max_result_items = 1U;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<BudgetAsr>(), opts};
+    const std::vector<float> speech(4U, 0.5F), silence(4U, 0.F);
+    for (const auto id : {700U, 701U, 702U, 703U}) {
+        runtime.push(id, chunk(speech));
+        runtime.push(id, chunk(silence));
+    }
+    bool settled = false;
+    for (int spin = 0; spin < 1500; ++spin) {
+        const auto stats = runtime.statistics();
+        if (stats.completed_segments + stats.dropped_segments == 4U) {
+            settled = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(settled);
+    const auto results = runtime.takeResults();
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_EQ(results.front().track_id, 703U);
+    EXPECT_EQ(results.front().transcript.text, "ok");
+    EXPECT_EQ(runtime.statistics().completed_segments, 1U);
+    EXPECT_EQ(runtime.statistics().dropped_segments, 3U);
+    EXPECT_EQ(runtime.statistics().evicted_results, 0U);
+    ASSERT_TRUE(runtime.statistics().last_error.has_value());
+    EXPECT_EQ(*runtime.statistics().last_error,
+              "ASR transcript exceeds configured result budget");
+    runtime.push(703U, chunk(speech));
+    runtime.push(703U, chunk(silence));
+    const auto recovered = awaitSpeech(runtime, 1U);
+    ASSERT_EQ(recovered.size(), 1U);
+    EXPECT_EQ(recovered.front().track_id, 703U);
+}
+
+TEST(PerSourceSpeechRuntime, RejectsZeroTranscriptBudgets) {
+    ThresholdVad vad;
+    const auto asr = std::make_shared<MockAsr>();
+    PerSourceSpeechOptions opts{};
+    opts.max_result_text_bytes = 0U;
+    EXPECT_THROW((PerSourceSpeechRuntime{vad, asr, opts}), std::invalid_argument);
+    opts = {};
+    opts.max_result_items = 0U;
+    EXPECT_THROW((PerSourceSpeechRuntime{vad, asr, opts}), std::invalid_argument);
+}
+
+TEST(PerSourceSpeechRuntime, RetiredGenerationCapacityIsBoundedAndRetryIsTransactional) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.max_retired_generations=1U;
+    opts.min_speech_samples=4U;
+    opts.pre_roll_samples=0U;
+    opts.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    const std::vector<float> quiet(4U,0.0F), voice(4U,0.5F);
+
+    runtime.push(501U,chunk(quiet));
+    const auto first=runtime.retire(501U);
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(runtime.statistics().retired_generations,1U);
+
+    runtime.push(502U,chunk(voice));
+    const auto second_generation=runtime.activeGeneration(502U);
+    ASSERT_TRUE(second_generation.has_value());
+    EXPECT_FALSE(runtime.retire(502U).has_value());
+    EXPECT_EQ(runtime.activeGeneration(502U),second_generation);
+    EXPECT_EQ(runtime.trackStatus(502U).buffered_samples,4U);
+    EXPECT_EQ(runtime.statistics().pending_segments,0U);
+    EXPECT_EQ(runtime.statistics().retired_generations,1U);
+
+    const auto ready=runtime.drainReady();
+    EXPECT_TRUE(ready.results.empty());
+    ASSERT_EQ(ready.ready_retired_generations.size(),1U);
+    EXPECT_EQ(ready.ready_retired_generations.front(),*first);
+    runtime.releaseRetired(*first);
+    EXPECT_EQ(runtime.statistics().retired_generations,0U);
+
+    const auto second=runtime.retire(502U);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(*second,*second_generation);
+    const auto result=awaitSpeech(runtime,1U);
+    ASSERT_EQ(result.size(),1U);
+    EXPECT_EQ(result.front().generation,*second);
+    EXPECT_EQ(result.front().transcript.text,"502:4");
+    const auto settled=runtime.drainReady();
+    ASSERT_EQ(settled.ready_retired_generations.size(),1U);
+    EXPECT_EQ(settled.ready_retired_generations.front(),*second);
+    runtime.releaseRetired(*second);
+    EXPECT_EQ(runtime.statistics().retired_generations,0U);
+
+    // Repeated retirement/release must not consume capacity permanently.
+    for (std::uint64_t id=503U;id<535U;++id) {
+        runtime.push(id,chunk(quiet));
+        const auto gen=runtime.retire(id);
+        ASSERT_TRUE(gen.has_value()) << "id="<<id;
+        EXPECT_EQ(runtime.statistics().retired_generations,1U);
+        runtime.releaseRetired(*gen);
+        EXPECT_EQ(runtime.statistics().retired_generations,0U);
+    }
+}
+
+TEST(PerSourceSpeechRuntime, FullRetirementTableCanDiscardVanishedSourceSafely) {
+    ThresholdVad vad;
+    auto slow=std::make_shared<SlowAsr>();
+    PerSourceSpeechOptions cfg{};
+    cfg.max_retired_generations=1U;
+    cfg.min_speech_samples=4U;
+    cfg.pre_roll_samples=0U;
+    cfg.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,slow,cfg};
+    const std::vector<float> voice(4U,0.5F),silence(4U,0.0F);
+    runtime.push(610U,chunk(voice));
+    runtime.push(610U,chunk(silence));
+    for (int spin=0;spin<1000 && !slow->entered.load();++spin)
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    if (!slow->entered.load()) {
+        slow->release.store(true);
+        FAIL() << "ASR worker did not begin";
+        return;
+    }
+    const auto first=runtime.retire(610U);
+    ASSERT_TRUE(first.has_value());
+    runtime.push(611U,chunk(voice));
+    const auto second=runtime.activeGeneration(611U);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_FALSE(runtime.retire(611U).has_value());
+    const auto attempted_drain=runtime.drainReady();
+    EXPECT_TRUE(attempted_drain.ready_retired_generations.empty());
+    EXPECT_EQ(runtime.activeGeneration(611U),second);
+    // Consumer's explicit loss fallback must not cancel earlier ASR.
+    runtime.forget(611U);
+    EXPECT_FALSE(runtime.activeGeneration(611U).has_value());
+    EXPECT_EQ(runtime.statistics().retired_generations,1U);
+    slow->release.store(true);
+    bool ready=false;
+    for (int spin=0;spin<1000;++spin) {
+        auto drained=runtime.drainReady();
+        if (!drained.ready_retired_generations.empty()) {
+            ASSERT_EQ(drained.ready_retired_generations.size(),1U);
+            EXPECT_EQ(drained.ready_retired_generations.front(),*first);
+            ASSERT_EQ(drained.results.size(),1U);
+            EXPECT_EQ(drained.results.front().generation,*first);
+            ready=true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_TRUE(ready);
+    runtime.releaseRetired(*first);
+    EXPECT_EQ(runtime.statistics().retired_generations,0U);
+    runtime.push(611U,chunk(voice));
+    const auto fresh=runtime.activeGeneration(611U);
+    ASSERT_TRUE(fresh.has_value());
+    EXPECT_NE(*fresh,*second);
+    runtime.push(611U,chunk(silence));
+    const auto recovered=awaitSpeech(runtime,1U);
+    ASSERT_EQ(recovered.size(),1U);
+    EXPECT_EQ(recovered.front().generation,*fresh);
+    EXPECT_EQ(recovered.front().transcript.text,"2");
+}
+
+TEST(PerSourceSpeechRuntime, OversizedInputChunkPreservesExistingAndUnseenSources) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions cfg{};
+    cfg.max_input_chunk_samples=8U;
+    cfg.min_speech_samples=4U;
+    cfg.max_segment_samples=64U;
+    cfg.pre_roll_samples=0U;
+    cfg.post_roll_samples=0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),cfg};
+    const std::vector<float> voice(4U,0.5F),quiet(4U,0.0F);
+    const std::vector<float> too_long(9U,0.5F);
+    runtime.push(510U,chunk(voice));
+    const auto generation=runtime.activeGeneration(510U);
+    ASSERT_TRUE(generation.has_value());
+    EXPECT_EQ(runtime.trackStatus(510U).buffered_samples,4U);
+    EXPECT_THROW(runtime.push(510U,chunk(too_long)),std::length_error);
+    EXPECT_THROW(runtime.push(511U,chunk(too_long)),std::length_error);
+    EXPECT_EQ(runtime.activeGeneration(510U),generation);
+    EXPECT_EQ(runtime.trackStatus(510U).buffered_samples,4U);
+    EXPECT_FALSE(runtime.activeGeneration(511U).has_value());
+    EXPECT_FALSE(runtime.trackStatus(511U).exists);
+    EXPECT_EQ(runtime.statistics().completed_segments,0U);
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+    runtime.push(510U,chunk(quiet));
+    const auto done=awaitSpeech(runtime,1U);
+    ASSERT_EQ(done.size(),1U);
+    EXPECT_EQ(done.front().generation,*generation);
+    EXPECT_EQ(done.front().transcript.text,"510:4");
+    EXPECT_NO_THROW(runtime.push(512U,chunk(std::vector<float>(8U,0.0F))));
+    EXPECT_TRUE(runtime.trackStatus(512U).exists);
+
+    // Unspecified limit equals one second at the configured sample rate.
+    PerSourceSpeechRuntime standard{vad,std::make_shared<MockAsr>()};
+    const std::vector<float> default_too_long(16001U,0.5F);
+    EXPECT_THROW(standard.push(513U,chunk(default_too_long)),std::length_error);
+    EXPECT_FALSE(standard.activeGeneration(513U).has_value());
+}
+
+namespace {
+class ConstrainedVad final : public IVoiceActivityDetector {
+public:
+    explicit ConstrainedVad(AudioRequirements requirements)
+        : requirements_(std::move(requirements)) {}
+    BackendInfo backendInfo() const override { return {"constrained-vad","1"}; }
+    AudioRequirements audioRequirements() const override { return requirements_; }
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<ThresholdSession>();
+    }
+private:
+    AudioRequirements requirements_{};
+};
+class ConstrainedAsr final : public IAsrEngine {
+public:
+    explicit ConstrainedAsr(AudioRequirements requirements)
+        : requirements_(std::move(requirements)) {}
+    BackendInfo backendInfo() const override { return {"constrained-asr","1"}; }
+    AsrCapabilities capabilities() const override {
+        AsrCapabilities capabilities{};
+        capabilities.audio=requirements_;
+        return capabilities;
+    }
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        Transcript result{};
+        result.segment_id=segment.segment_id;
+        result.text="compatible";
+        return result;
+    }
+private:
+    AudioRequirements requirements_{};
+};
+} // namespace
+
+TEST(PerSourceSpeechRuntime, RejectsIncompatibleVadAndAsrAudioCapabilities) {
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples=4U;
+    options.pre_roll_samples=0U;
+    options.post_roll_samples=0U;
+    const auto good=AudioRequirements{};
+    ConstrainedVad good_vad{good};
+    const auto good_asr=std::make_shared<ConstrainedAsr>(good);
+    const auto fails_vad=[&](AudioRequirements requirement) {
+        ConstrainedVad vad{std::move(requirement)};
+        EXPECT_THROW((PerSourceSpeechRuntime{vad,good_asr,options}),
+                     std::invalid_argument);
+    };
+    const auto fails_asr=[&](AudioRequirements requirement) {
+        auto asr=std::make_shared<ConstrainedAsr>(std::move(requirement));
+        EXPECT_THROW((PerSourceSpeechRuntime{good_vad,asr,options}),
+                     std::invalid_argument);
+    };
+    AudioRequirements wrong_rate{};
+    wrong_rate.supported_sample_rates_hz={8000U,48000U};
+    fails_vad(wrong_rate);
+    fails_asr(wrong_rate);
+
+    AudioRequirements stereo_only{};
+    stereo_only.min_channels=2U;
+    stereo_only.max_channels=2U;
+    fails_vad(stereo_only);
+    fails_asr(stereo_only);
+
+    AudioRequirements planar_only{};
+    planar_only.supported_layouts={AudioLayout::Planar};
+    fails_vad(planar_only);
+    fails_asr(planar_only);
+
+    AudioRequirements invalid_range{};
+    invalid_range.max_channels=0U;
+    fails_vad(invalid_range);
+    fails_asr(invalid_range);
+
+    // Explicit matching capabilities must still construct successfully.
+    AudioRequirements matching{};
+    matching.supported_sample_rates_hz={16000U};
+    matching.supported_layouts={AudioLayout::Interleaved};
+    ConstrainedVad matching_vad{matching};
+    auto matching_asr=std::make_shared<ConstrainedAsr>(matching);
+    PerSourceSpeechRuntime runtime{matching_vad,matching_asr,options};
+    const std::vector<float> voice(4U,0.5F),silence(4U,0.0F);
+    runtime.push(772U,chunk(voice));
+    runtime.push(772U,chunk(silence));
+    const auto results=awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results.front().transcript.text,"compatible");
+}
+
+TEST(PerSourceSpeechRuntime, SourceLocalSampleOffsetsIncludeRollAndResetOnReuse) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples=1U;
+    opts.pre_roll_samples=2U;
+    opts.post_roll_samples=3U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    const std::vector<float> quiet(2U,0.0F), voice(4U,0.5F);
+    runtime.push(91U,chunk(quiet));
+    runtime.push(91U,chunk(voice));
+    runtime.push(91U,chunk(quiet));
+    runtime.push(91U,chunk(quiet));
+    const auto first=awaitSpeech(runtime,1U);
+    ASSERT_EQ(first.size(),1U);
+    EXPECT_EQ(first[0].audio_start_sample,0U);
+    EXPECT_EQ(first[0].audio_end_sample,9U);
+    runtime.forget(91U);
+    runtime.push(91U,chunk(voice));
+    runtime.push(91U,chunk(quiet));
+    runtime.push(91U,chunk(quiet));
+    const auto second=awaitSpeech(runtime,1U);
+    ASSERT_EQ(second.size(),1U);
+    EXPECT_EQ(second[0].audio_start_sample,0U);
+    EXPECT_EQ(second[0].audio_end_sample,7U);
+    EXPECT_NE(first[0].generation,second[0].generation);
+}
+
+TEST(PerSourceSpeechRuntime, SourceLocalOffsetsSurviveSegmentCap) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples=1U;
+    opts.pre_roll_samples=0U;
+    opts.post_roll_samples=0U;
+    opts.max_segment_samples=5U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    runtime.push(92U,chunk(std::vector<float>(12U,0.5F)));
+    runtime.push(92U,chunk(std::vector<float>(2U,0.0F)));
+    const auto results=awaitSpeech(runtime,3U);
+    ASSERT_EQ(results.size(),3U);
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,5U);
+    EXPECT_EQ(results[1].audio_start_sample,5U);
+    EXPECT_EQ(results[1].audio_end_sample,10U);
+    EXPECT_EQ(results[2].audio_start_sample,10U);
+    EXPECT_EQ(results[2].audio_end_sample,12U);
 }

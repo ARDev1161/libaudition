@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -223,7 +224,7 @@ void validateOptions(const HeuristicSourceIdentityResolverOptions& options) {
         total_weight += weight;
     }
 
-    if (total_weight <= 0.0) {
+    if (!finite(total_weight) || total_weight <= 0.0) {
         throw Error{
             ErrorCode::InvalidArgument,
             "At least one identity evidence weight must be positive"};
@@ -254,8 +255,8 @@ void HeuristicSourceIdentityResolver::reset() {
     recent_sources_.clear();
 }
 
-void HeuristicSourceIdentityResolver::validateAndAdvanceTimestamp(
-    Timestamp timestamp) {
+void HeuristicSourceIdentityResolver::validateTimestamp(
+    Timestamp timestamp) const {
     if (last_timestamp_.has_value()) {
         if (!timestamp.comparableWith(*last_timestamp_)) {
             throw Error{
@@ -268,13 +269,12 @@ void HeuristicSourceIdentityResolver::validateAndAdvanceTimestamp(
                 "Source identity observations must be globally time ordered"};
         }
     }
-    last_timestamp_ = timestamp;
 }
 
 void HeuristicSourceIdentityResolver::pruneRecentSources(
     Timestamp timestamp) {
-    const std::int64_t max_age_ns =
-        options_.max_reacquisition_age.nanoseconds();
+    const auto max_age_ns = static_cast<std::uint64_t>(
+        options_.max_reacquisition_age.nanoseconds());
 
     const auto sourceIsActive = [this](AcousticSourceId source_id) {
         for (const auto& item : active_tracks_) {
@@ -286,8 +286,12 @@ void HeuristicSourceIdentityResolver::pruneRecentSources(
     };
 
     for (auto it = recent_sources_.begin(); it != recent_sources_.end();) {
-        const std::int64_t age_ns =
-            timestamp.nanoseconds() - it->second.last_seen.nanoseconds();
+        // Global timestamps are validated as monotonically increasing.
+        // Unsigned subtraction computes the full elapsed interval even
+        // across INT64_MIN -> INT64_MAX without signed-overflow UB.
+        const auto age_ns =
+            static_cast<std::uint64_t>(timestamp.nanoseconds()) -
+            static_cast<std::uint64_t>(it->second.last_seen.nanoseconds());
         if (!sourceIsActive(it->first) && age_ns > max_age_ns) {
             it = recent_sources_.erase(it);
         } else {
@@ -360,14 +364,17 @@ void HeuristicSourceIdentityResolver::maybeStoreFingerprint(
 SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
     const SourceIdentityObservation& observation) {
     validateObservation(observation);
-    validateAndAdvanceTimestamp(observation.timestamp);
-    pruneRecentSources(observation.timestamp);
+    validateTimestamp(observation.timestamp);
 
     const auto active = active_tracks_.find(observation.track_id);
     if (active != active_tracks_.end()) {
+        // Registry::find/addFingerprint can throw. Do not update the
+        // active binding, cached geometry, or global clock until the
+        // durable fingerprint operation has returned successfully.
+        maybeStoreFingerprint(active->second.source_id, observation);
         active->second.last_seen = observation.timestamp;
         updateSourceState(active->second.source_id, observation);
-        maybeStoreFingerprint(active->second.source_id, observation);
+        last_timestamp_ = observation.timestamp;
         return {
             active->second.source_id,
             Probability::one(),
@@ -375,11 +382,16 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
     }
 
     if (active_tracks_.size() >= options_.max_active_tracks) {
+        // Do not advance the epoch clock or evict recent sources on a
+        // refused admission. Active tracks may still submit older samples.
         throw Error{
             ErrorCode::InvalidState,
             "Source identity resolver active-track capacity exceeded"};
     }
 
+    // Do not prune transient geometry before registry list/create/find/
+    // addFingerprint calls, any of which may throw. Expired geometry is
+    // excluded from association below and pruned upon successful commit.
     const auto sourceIsActive = [this](AcousticSourceId source_id) {
         for (const auto& item : active_tracks_) {
             if (item.second.source_id == source_id) {
@@ -405,6 +417,7 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
     std::optional<Candidate> best{};
 
     const bool use_query_fingerprint =
+        options_.fingerprint_weight > 0.0 &&
         observation.fingerprint.has_value() &&
         observation.fingerprint->quality.value() >=
             options_.min_fingerprint_quality;
@@ -439,16 +452,21 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
                 weighted_score +=
                     options_.fingerprint_weight * fingerprint_score;
                 available_weight += options_.fingerprint_weight;
-                fingerprint_anchor = true;
+                fingerprint_anchor = options_.fingerprint_weight > 0.0;
             }
         }
 
         const auto state_it = recent_sources_.find(profile.source_id);
-        if (state_it != recent_sources_.end()) {
+        if (state_it != recent_sources_.end() &&
+            static_cast<std::uint64_t>(observation.timestamp.nanoseconds()) -
+                static_cast<std::uint64_t>(
+                    state_it->second.last_seen.nanoseconds()) <=
+                static_cast<std::uint64_t>(
+                    options_.max_reacquisition_age.nanoseconds())) {
             const SourceState& state = state_it->second;
-            const std::int64_t age_ns =
-                observation.timestamp.nanoseconds() -
-                state.last_seen.nanoseconds();
+            const auto age_ns =
+                static_cast<std::uint64_t>(observation.timestamp.nanoseconds()) -
+                static_cast<std::uint64_t>(state.last_seen.nanoseconds());
             const double recency = std::clamp(
                 1.0 -
                     static_cast<double>(age_ns) /
@@ -471,7 +489,7 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
                     weighted_score +=
                         options_.position_weight * score;
                     available_weight += options_.position_weight;
-                    position_anchor = true;
+                    position_anchor = options_.position_weight > 0.0;
                 }
             }
 
@@ -491,18 +509,22 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
                 }
             }
 
-            const double angle = directionAngle(
-                observation.direction.direction,
-                state.direction->direction);
-            if (finite(angle) &&
-                angle <= options_.max_direction_angle_rad) {
-                const double score =
-                    (1.0 -
-                     angle / options_.max_direction_angle_rad) *
-                    recency;
-                weighted_score +=
-                    options_.direction_weight * score;
-                available_weight += options_.direction_weight;
+            // Some backends cannot estimate direction for every frame.
+            // Missing direction must not invalidate position/fingerprint evidence.
+            if (state.direction.has_value()) {
+                const double angle = directionAngle(
+                    observation.direction.direction,
+                    state.direction->direction);
+                if (finite(angle) &&
+                    angle <= options_.max_direction_angle_rad) {
+                    const double score =
+                        (1.0 -
+                         angle / options_.max_direction_angle_rad) *
+                        recency;
+                    weighted_score +=
+                        options_.direction_weight * score;
+                    available_weight += options_.direction_weight;
+                }
             }
         }
 
@@ -543,14 +565,33 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
         confidence = Probability::from(best->score);
     } else {
         source_id = registry_->create();
+        // A third-party registry may violate its create() contract. Never
+        // admit an invalid or recycled ID: that could alias two active tracks
+        // or silently overwrite another persistent source's geometry.
+        const bool reused_id =
+            sourceIsActive(source_id) ||
+            std::any_of(profiles.begin(), profiles.end(),
+                        [source_id](const AcousticSourceProfile& profile) {
+                            return profile.source_id == source_id;
+                        });
+        if (!source_id.valid() || reused_id) {
+            throw Error{
+                ErrorCode::InvalidState,
+                "Source registry created an invalid or existing source ID"};
+        }
         newly_created = true;
     }
 
+    // A registry failure must not bind the new track, update geometry,
+    // or advance the clock. A successful create() may leave a persistent
+    // orphan if a later registry call fails: IAcousticSourceRegistry has
+    // no delete/transaction operation, so only transient state is atomic.
+    maybeStoreFingerprint(source_id, observation);
     active_tracks_.emplace(
         observation.track_id,
         TrackBinding{source_id, observation.timestamp});
     updateSourceState(source_id, observation);
-    maybeStoreFingerprint(source_id, observation);
+    last_timestamp_ = observation.timestamp;
 
     return {source_id, confidence, newly_created};
 }
@@ -564,11 +605,12 @@ void HeuristicSourceIdentityResolver::endTrack(
             "endTrack requires a valid track ID"};
     }
 
-    validateAndAdvanceTimestamp(timestamp);
+    validateTimestamp(timestamp);
     pruneRecentSources(timestamp);
 
     const auto it = active_tracks_.find(track_id);
     if (it == active_tracks_.end()) {
+        last_timestamp_ = timestamp;
         return;
     }
 
@@ -581,6 +623,7 @@ void HeuristicSourceIdentityResolver::endTrack(
     }
 
     pruneRecentSources(timestamp);
+    last_timestamp_ = timestamp;
 }
 
 }  // namespace audition

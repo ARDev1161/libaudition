@@ -23,11 +23,16 @@ jobs:
         run: ninja --version
       - name: Configure
         run: cmake --preset ci
+      - name: Audit CI model fixture manifest via CTest
+        if: matrix.os == 'ubuntu-latest'
+        run: ctest --no-tests=error --test-dir build/ci -R '^ci_model_manifest_(regressions|audit)$' --output-on-failure
       - name: Build
         run: cmake --build --preset ci --parallel
       - name: Test
         run: ctest --no-tests=error --preset ci
-
+      - name: Report temporal allocation probes
+        if: matrix.os == 'ubuntu-latest'
+        run: ctest --test-dir build/ci --no-tests=error --verbose -R '^temporal_(streaming|motif)_allocation_probe$'
 
   cpp-coverage:
     runs-on: ubuntu-latest
@@ -176,7 +181,7 @@ jobs:
       - name: Audit actual EfficientAT and YAMNet AudioSet vocabularies
         run: |
           curl --fail --location --retry 3 --silent --show-error \
-            "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/yamnet_class_map.csv" \
+            "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741c2f0bdc6d7e6db24b5fddda23347dbafd/yamnet_class_map.csv" \
             --output "$RUNNER_TEMP/yamnet_class_map.csv"
           ctest --no-tests=error --test-dir build-efficientat-real -R '^real_audioset_vocabulary_audit$' --output-on-failure
       - name: Export genuine mn10_as and dymn10_as weights and compare ONNX logits
@@ -198,9 +203,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/yamnet"
           for file in yamnet.onnx yamnet_class_map.csv; do
             curl --fail --location --retry 3 --silent --show-error \
-              "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741/$file" \
+              "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741c2f0bdc6d7e6db24b5fddda23347dbafd/$file" \
               --output "$RUNNER_TEMP/yamnet/$file"
           done
+          # Git LFS oid from the immutable upstream revision; fail before inference.
+          echo 'd3835ffbbd4a1bb3e777f0ca217b5007907f5171dd5d17c4236b95b2af8f908e  '"$RUNNER_TEMP/yamnet/yamnet.onnx" | sha256sum --check
       - name: Validate YAMNet C++/ONNX parity and malformed label maps through CTest
         run: ctest --no-tests=error --test-dir build-efficientat-real -R '^real_yamnet_(onnx_cpp_parity_(short|long)|label_rejection)$' --output-on-failure --parallel 2
       - name: Real YAMNet quick/refined WAV replay (not raw mock PCM)
@@ -298,9 +305,17 @@ jobs:
         run: cmake --install build-efficientat --prefix "$PWD/install-efficientat"
 
   installed-package:
-    runs-on: ubuntu-latest
+    name: installed-package (${{ matrix.os }}, shared=${{ matrix.shared }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        shared: ["OFF", "ON"]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check installed-consumer Python harness syntax
+        run: python3 -m py_compile tests/integration/verify_installed_package.py
       - name: Configure dependency-free install
         run: >-
           cmake -S . -B build-install -G Ninja
@@ -309,6 +324,7 @@ jobs:
           -DLIBAUDITION_BUILD_TESTS=OFF
           -DLIBAUDITION_REGISTER_INSTALLED_PACKAGE_SMOKE=ON
           -DLIBAUDITION_PACKAGE_SMOKE_PREFIX=$PWD/install-default
+          -DBUILD_SHARED_LIBS=${{ matrix.shared }}
           -DLIBAUDITION_BUILD_EXAMPLES=OFF
           -DLIBAUDITION_FETCH_DEPENDENCIES=OFF
           -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
@@ -316,7 +332,7 @@ jobs:
         run: cmake --build build-install --parallel
       - name: Install
         run: cmake --install build-install --prefix "$PWD/install-default"
-      - name: Verify installed C++17 consumer through CTest
+      - name: Verify independent installed C++17 consumer through CTest
         run: ctest --test-dir build-install -R '^installed_package_cpp17_consumer$' --output-on-failure --no-tests=error
 
   sanitizers:
@@ -480,8 +496,22 @@ jobs:
 
   real-spatial-corpus:
     # Runs only when a published, checksum-pinned real corpus is configured.
-    # Missing part of the configuration is a failure, never a fake green pass.
-    if: ${{ vars.LIBAUDITION_REAL_CORPUS_URL != '' || vars.LIBAUDITION_REAL_CORPUS_SHA256 != '' || vars.LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG != '' || vars.LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE != '' }}
+    # Every corpus setting enables the gate; missing required URL, digest or
+    # core accuracy thresholds then fail closed instead of silently skipping.
+    if: >-
+      ${{
+        vars.LIBAUDITION_REAL_CORPUS_URL != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_SHA256 != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_P90_ERROR_DEG != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_ASSOCIATION_ERROR_DEG != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION != '' ||
+        vars.LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS != ''
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -494,6 +524,8 @@ jobs:
       LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES: ${{ vars.LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES }}
       LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE: ${{ vars.LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE }}
       LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION: ${{ vars.LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION }}
+      LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION: ${{ vars.LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION }}
+      LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS: ${{ vars.LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS }}
     steps:
       - uses: actions/checkout@v4
       - name: Install real ODAS test prerequisites
@@ -516,7 +548,7 @@ jobs:
           : "${LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG:?Set calibrated median DOA error gate}"
           : "${LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE:?Set calibrated track coverage gate}"
           args=()
-          for gate in MAX_P90_ERROR_DEG MAX_ASSOCIATION_ERROR_DEG MAX_ADJACENT_ID_SWITCHES MIN_SIMULTANEOUS_TRACK_COVERAGE MAX_SILENT_FALSE_POSITIVE_FRACTION; do
+          for gate in MAX_P90_ERROR_DEG MAX_ASSOCIATION_ERROR_DEG MAX_ADJACENT_ID_SWITCHES MIN_SIMULTANEOUS_TRACK_COVERAGE MAX_SILENT_FALSE_POSITIVE_FRACTION MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS MAX_ACTIVE_UNMATCHED_TRACK_FRACTION; do
             name="LIBAUDITION_REAL_CORPUS_${gate}"
             if [[ -n "${!name:-}" ]]; then
               args+=("-D${name}=${!name}")
@@ -824,7 +856,9 @@ jobs:
             "$whisper/tiny.en-tokens.txt"
           echo "0ce578b827c94a961aacb8fa14b02f096504b337e5c94be37c36238cbe3e8bc6  build-sherpa/whisper/tiny.en-encoder.int8.onnx" | sha256sum --check
           echo "06c0e6ff6348d427e51839219d1c886c18cfdf411e629e33f5e1679bff9c1527  build-sherpa/whisper/tiny.en-decoder.int8.onnx" | sha256sum --check
-          test -s build-sherpa/whisper/tiny.en-tokens.txt
+          # Digest observed in the successful #1528 real-model job at the pinned
+          # Hugging Face revision; enforce it on every subsequent download.
+          echo "306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930  build-sherpa/whisper/tiny.en-tokens.txt" | sha256sum --check
           curl --fail --location --retry 3 \
             --output build-sherpa/nemo_en_titanet_small.onnx \
             https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/2b697b2/nemo_en_titanet_small.onnx
@@ -848,7 +882,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build-sherpa/sensevoice
-          base=https://huggingface.co/nocmt/SenseVoiceSmall-INT8-ONNX/resolve/main
+          base=https://huggingface.co/praxis-app/praxis-models/resolve/307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7/sense-voice
           curl --fail --location --retry 3 \
             -o build-sherpa/sensevoice/model.int8.onnx \
             "$base/model.int8.onnx"
@@ -1160,6 +1194,7 @@ jobs:
           name: real-speech-model-integration
           path: |
             build-sherpa/audio-fixtures/real-speech-report.txt
+            build-sherpa/whisper/tiny.en-tokens.observed.sha256
             build-sherpa/audio-fixtures/asr-quality.json
             build-sherpa/audio-fixtures/gtcrn-report.txt
             build-sherpa/audio-fixtures/gtcrn-model.sha256
@@ -1299,18 +1334,21 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --no-tests=error --test-dir build-clap -R '^qt_self_test$' --output-on-failure
-      - name: Download pinned CLAP inference fixtures
+      - name: Download revision-pinned CLAP inference fixtures
         shell: bash
         run: |
+          set -euo pipefail
+          # Exact upstream commit discovered and three digests verified by CI #1530.
+          clap_base="https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/f24970352f239768aaad48cc8734fb298441a763"
           curl --fail --location --retry 3 \
             --output "$PWD/build-clap/clap_audio.onnx" \
-            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_audio.onnx?download=true"
+            "$clap_base/clap_audio.onnx?download=true"
           curl --fail --location --retry 3 \
             --output "$PWD/build-clap/clap_text.onnx" \
-            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/clap_text.onnx?download=true"
+            "$clap_base/clap_text.onnx?download=true"
           curl --fail --location --retry 3 \
             --output "$PWD/build-clap/tokenizer.json" \
-            "https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/main/tokenizer.json?download=true"
+            "$clap_base/tokenizer.json?download=true"
           echo "3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332  $PWD/build-clap/clap_audio.onnx" | sha256sum --check
           echo "c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf  $PWD/build-clap/clap_text.onnx" | sha256sum --check
           echo "4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a  $PWD/build-clap/tokenizer.json" | sha256sum --check
@@ -1566,16 +1604,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install GTSAM 4.2
         run: |
-          sudo apt-get update
-          sudo apt-get install -y software-properties-common ninja-build libtbb-dev qtbase5-dev
-          sudo add-apt-repository -y ppa:borglab/gtsam-release-4.2
-          sudo apt-get update
-          # Launchpad intermittently returns HTTP 503 for the pinned PPA
-          # packages. Retry transient download errors, but never skip or
-          # silently pass a failed GTSAM installation.
-          sudo apt-get -o Acquire::Retries=5 \
-            -o Acquire::https::Timeout=45 \
-            install -y libgtsam-dev
+          sudo bash ci/install_gtsam_ubuntu.sh
       - name: Configure GTSAM spatial fusion backend
         run: >-
           cmake -S . -B build-gtsam -G Ninja

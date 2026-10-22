@@ -7,7 +7,171 @@ models:
     source_revision: github-release-asset-271935959
     sha256: 9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6
     license: MIT
-    commercial: true
-    redistributable: true
+    license_review: pending
+    commercial: false
+    redistributable: false
     bundled: false
     purpose: ci-only inference fixture
+  - id: yamnet-onnx-ci-fixture
+    backend: onnxruntime
+    task: audio_event_classification
+    source: https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741c2f0bdc6d7e6db24b5fddda23347dbafd/yamnet.onnx
+    source_revision: f25b741c2f0bdc6d7e6db24b5fddda23347dbafd
+    sha256: d3835ffbbd4a1bb3e777f0ca217b5007907f5171dd5d17c4236b95b2af8f908e
+    license: Apache-2.0
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only inference fixture; AudioSet labels separately CC-BY-4.0
+  # Unbundled CI-only fixtures. Repository-declared licenses are not a completed
+  # legal/provenance review; commercial/redistribution approval is withheld.
+  # Model source revisions are immutable; content hashes are also checked in CI.
+  - id: sensevoice-small-int8-ci-model
+    backend: sherpa-onnx
+    task: automatic_speech_recognition
+    source: https://huggingface.co/praxis-app/praxis-models/resolve/307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7/sense-voice/model.int8.onnx
+    source_revision: 307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7
+    sha256: c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51
+    license: Apache-2.0
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only inference fixture; approval flags withheld pending provenance review
+  - id: sensevoice-small-int8-ci-tokens
+    backend: sherpa-onnx
+    task: automatic_speech_recognition_tokens
+    source: https://huggingface.co/praxis-app/praxis-models/resolve/307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7/sense-voice/tokens.txt
+    source_revision: 307c8bf4ddcd5cbd489ea18fba9c0adcfe906cc7
+    sha256: f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc
+    license: Apache-2.0
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only tokenizer fixture; approval flags withheld pending provenance review
+  - id: clap-ci-audio-encoder
+    backend: onnxruntime
+    task: audio_text_embedding
+    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/f24970352f239768aaad48cc8734fb298441a763/clap_audio.onnx
+    source_revision: f24970352f239768aaad48cc8734fb298441a763
+    sha256: 3f42f71e555b62709910b6efa66fa5879f00d9571874b12b0fa674f82dbfe332
+    license: BSD-3-Clause
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only CLAP audio encoder; approval withheld pending provenance review
+  - id: clap-ci-text-encoder
+    backend: onnxruntime
+    task: audio_text_embedding
+    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/f24970352f239768aaad48cc8734fb298441a763/clap_text.onnx
+    source_revision: f24970352f239768aaad48cc8734fb298441a763
+    sha256: c07b27204836877d5b615c103685b66ea8f21bc6b5b70a572be356125423a8bf
+    license: BSD-3-Clause
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only CLAP text encoder; approval withheld pending provenance review
+  - id: clap-ci-tokenizer
+    backend: onnxruntime
+    task: audio_text_tokenizer
+    source: https://huggingface.co/ConceptualMachines/magda-sample-tagger/resolve/f24970352f239768aaad48cc8734fb298441a763/tokenizer.json
+    source_revision: f24970352f239768aaad48cc8734fb298441a763
+    sha256: 4fd1d86b4f5b53f40a609fcd11c1f34024b735f870a07439d70202b98493661a
+    license: BSD-3-Clause
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only CLAP tokenizer; approval withheld pending provenance review
+  # Additional CI-only models with immutable source revisions and SHA-256.
+  # Licensing/provenance has NOT been independently reviewed; no approval implied.
+  - id: whisper-tiny-en-int8-encoder-ci
+    backend: sherpa-onnx
+    task: automatic_speech_recognition
+    source: https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny.en/resolve/d026532c022fa99fd789d6b32446a1df7b6bfc43/tiny.en-encoder.int8.onnx
+    source_revision: d026532c022fa99fd789d6b32446a1df7b6bfc43
+    sha256: 0ce578b827c94a961aacb8fa14b02f096504b337e5c94be37c36238cbe3e8bc6
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only Whisper encoder
+  - id: whisper-tiny-en-int8-decoder-ci
+    backend: sherpa-onnx
+    task: automatic_speech_recognition
+    source: https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny.en/resolve/d026532c022fa99fd789d6b32446a1df7b6bfc43/tiny.en-decoder.int8.onnx
+    source_revision: d026532c022fa99fd789d6b32446a1df7b6bfc43
+    sha256: 06c0e6ff6348d427e51839219d1c886c18cfdf411e629e33f5e1679bff9c1527
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only Whisper decoder
+  - id: whisper-tiny-en-tokens-ci
+    backend: sherpa-onnx
+    task: automatic_speech_recognition_tokens
+    source: https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny.en/resolve/d026532c022fa99fd789d6b32446a1df7b6bfc43/tiny.en-tokens.txt
+    source_revision: d026532c022fa99fd789d6b32446a1df7b6bfc43
+    sha256: 306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only Whisper tokenizer; digest observed in successful CI #1528
+  - id: nemo-titanet-small-ci
+    backend: sherpa-onnx
+    task: speaker_embedding
+    source: https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/2b697b2/nemo_en_titanet_small.onnx
+    source_revision: 2b697b2
+    sha256: ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only speaker embedding model
+  - id: aasist-onnx-ci
+    backend: onnxruntime
+    task: audio_spoof_detection
+    source: https://huggingface.co/SpeechAntiSpoofingBenchmarks/AASIST/resolve/16774d458d86d2a021ae31646c1bf66a5331b53e/aasist.onnx
+    source_revision: 16774d458d86d2a021ae31646c1bf66a5331b53e
+    sha256: 130e536266b7c537f9a13029e1612a9f392fd1cc827783683b6d1c062a3db5e1
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only spoofing model
+
+  - id: gtcrn-simple-ci
+    backend: sherpa-onnx
+    task: speech_enhancement
+    source: https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx
+    source_revision: github-release-speech-enhancement-models-UNVERIFIED
+    sha256: e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only GTCRN enhancement fixture; release asset identity not independently pinned
+  - id: piper-amy-low-int8-ci
+    backend: sherpa-onnx
+    task: text_to_speech
+    source: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-low-int8.tar.bz2
+    ci_filename: piper-amy-low-int8.tar.bz2
+    source_revision: github-release-tts-models-UNVERIFIED
+    sha256: 93070ac9fadf512e56c46bdd0c5d2ce96b424fdc4e683d560167410bd2c4df7d
+    license: UNVERIFIED
+    license_review: pending
+    commercial: false
+    redistributable: false
+    bundled: false
+    purpose: ci-only Piper TTS archive; bundled voice/espeak components require separate license audit

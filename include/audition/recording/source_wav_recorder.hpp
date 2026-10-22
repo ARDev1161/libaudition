@@ -39,12 +39,16 @@ public:
     };
     SourceWavRecorder(std::filesystem::path dir, std::uint32_t rate,
                       std::uint64_t budget = 256ULL * 1024 * 1024,
-                      std::size_t queue_limit = 256)
+                      std::size_t queue_limit = 256,
+                      std::size_t max_completed_entries = 256,
+                      std::size_t max_outstanding_recordings = 64)
         : dir_(std::move(dir)), rate_(rate), budget_(budget),
-          queue_limit_(queue_limit) {
+          queue_limit_(queue_limit), max_completed_entries_(max_completed_entries),
+          max_outstanding_recordings_(max_outstanding_recordings) {
         std::error_code ec;
         std::filesystem::create_directories(dir_, ec);
-        enabled_ = !ec && rate_ != 0 && queue_limit_ != 0;
+        enabled_ = !ec && rate_ != 0 && queue_limit_ != 0 &&
+                   max_outstanding_recordings_ != 0;
         if (enabled_) worker_ = std::thread([this] { run(); });
     }
     ~SourceWavRecorder() { closeAll(); }
@@ -63,6 +67,13 @@ public:
             if (!enabled_ || stopping_) { ++dropped_; return report; }
             auto found = live_.find(track_id);
             if (found == live_.end()) {
+                // Include pending Close operations, not only active sources:
+                // the close-command queue is otherwise unbounded by PCM.
+                if (outstanding_recordings_ >= max_outstanding_recordings_) {
+                    ++dropped_;
+                    ++admission_drops_;
+                    return report;
+                }
                 Entry meta;
                 meta.track_id = track_id;
                 meta.recording_id = ++next_id_;
@@ -71,6 +82,7 @@ public:
                 meta.active = true;
                 entries_[meta.recording_id] = meta;
                 found = live_.emplace(track_id, meta.recording_id).first;
+                ++outstanding_recordings_;
             }
             auto& entry = entries_.at(found->second);
             report.recording_id = entry.recording_id;
@@ -119,9 +131,10 @@ public:
             auto it = live_.find(track_id);
             if (it == live_.end()) return;
             auto id = it->second;
+            // Enqueue first so allocation failure cannot strand the source.
+            queue_.push_back({Command::Close, id, 0, {}});
             live_.erase(it);
             entries_[id].active = false;
-            queue_.push_back({Command::Close, id, 0, {}});
             cv_.notify_one();
         } catch (...) { ++dropped_; }
     }
@@ -153,7 +166,29 @@ public:
         return out;
     }
     [[nodiscard]] std::uint64_t dropped() const noexcept { return dropped_.load(); }
+    [[nodiscard]] std::uint64_t admissionDrops() const noexcept {
+        return admission_drops_.load();
+    }
+    [[nodiscard]] std::size_t outstandingRecordings() const {
+        std::lock_guard<std::mutex> lock(mu_);
+        return outstanding_recordings_;
+    }
+    [[nodiscard]] std::uint64_t historyEvicted() const {
+        std::lock_guard<std::mutex> lock(mu_);
+        return history_evicted_;
+    }
 private:
+    // Called under mu_ only after the worker processes Close. Queued audio
+    // and the live source map can no longer reference this completed entry.
+    void rememberCompletedLocked(std::uint64_t id) {
+        if (outstanding_recordings_ != 0) --outstanding_recordings_;
+        completed_ids_.push_back(id);
+        while (completed_ids_.size() > max_completed_entries_) {
+            entries_.erase(completed_ids_.front());
+            completed_ids_.pop_front();
+            ++history_evicted_;
+        }
+    }
     struct Command {
         enum Kind { Audio, Close } kind{Audio};
         std::uint64_t id{0};
@@ -187,7 +222,14 @@ private:
                 meta = entries_[cmd.id];
             }
             try {
-                if (failedFiles.count(cmd.id)) continue;
+                if (failedFiles.count(cmd.id)) {
+                    if (cmd.kind == Command::Close) {
+                        failedFiles.erase(cmd.id);
+                        std::lock_guard<std::mutex> lock(mu_);
+                        rememberCompletedLocked(cmd.id);
+                    }
+                    continue;
+                }
                 const auto ensureFile = [&]() -> File& {
                     auto it = files.find(cmd.id);
                     if (it == files.end()) {
@@ -208,6 +250,7 @@ private:
                     files.erase(cmd.id);
                     std::lock_guard<std::mutex> lock(mu_);
                     entries_.at(cmd.id).samples = written;
+                    rememberCompletedLocked(cmd.id);
                     continue;
                 }
                 auto& f = ensureFile();
@@ -225,6 +268,11 @@ private:
                     entries_[cmd.id].error = e.what();
                 }
                 files.erase(cmd.id);
+                if (cmd.kind == Command::Close) {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    rememberCompletedLocked(cmd.id);
+                    failedFiles.erase(cmd.id);
+                }
             } catch (...) {
                 ++dropped_;
                 failedFiles.insert(cmd.id);
@@ -233,6 +281,11 @@ private:
                     entries_[cmd.id].error = "Unknown WAV I/O failure";
                 }
                 files.erase(cmd.id);
+                if (cmd.kind == Command::Close) {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    rememberCompletedLocked(cmd.id);
+                    failedFiles.erase(cmd.id);
+                }
             }
         }
         for (auto& p : files) {
@@ -243,7 +296,12 @@ private:
     std::uint32_t rate_;
     std::uint64_t budget_, pending_bytes_{0}, next_id_{0};
     std::size_t queue_limit_;
+    std::size_t max_completed_entries_;
+    std::size_t max_outstanding_recordings_;
+    std::size_t outstanding_recordings_{0};
     std::size_t pending_audio_{0};
+    std::uint64_t history_evicted_{0};
+    std::deque<std::uint64_t> completed_ids_{};
     mutable std::mutex mu_;
     std::condition_variable cv_;
     std::deque<Command> queue_;
@@ -251,6 +309,7 @@ private:
     std::map<std::uint64_t, Entry> entries_;
     std::thread worker_;
     std::atomic<std::uint64_t> dropped_{0};
+    std::atomic<std::uint64_t> admission_drops_{0};
     bool enabled_{false}, stopping_{false};
 };
 } // namespace audition::recording

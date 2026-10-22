@@ -1,27 +1,69 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
 namespace audition {
+namespace {
+// Subtract instead of summing untrusted lengths: avoids size_t overflow.
+// VAD and ASR must agree on the mono input shape before any worker starts.
+// Empty sample-rate capabilities follow the AudioRequirements any-rate contract.
+bool acceptsMonoInterleaved(const AudioRequirements& requirements,
+                             std::uint32_t sample_rate) {
+    const auto& rates = requirements.supported_sample_rates_hz;
+    return (rates.empty() ||
+            std::find(rates.begin(), rates.end(), sample_rate) != rates.end()) &&
+           requirements.min_channels <= 1U &&
+           requirements.max_channels >= 1U &&
+           std::find(requirements.supported_layouts.begin(),
+                     requirements.supported_layouts.end(),
+                     AudioLayout::Interleaved) != requirements.supported_layouts.end();
+}
+bool transcriptWithinBudget(const Transcript& transcript,
+                            std::size_t bytes, std::size_t items) noexcept {
+    if (transcript.tokens.size() > items ||
+        transcript.words.size() > items - transcript.tokens.size()) return false;
+    const auto consume = [&bytes](const std::string& value) {
+        if (value.size() > bytes) return false;
+        bytes -= value.size();
+        return true;
+    };
+    if (!consume(transcript.text) || !consume(transcript.language)) return false;
+    for (const auto& token : transcript.tokens)
+        if (!consume(token.text)) return false;
+    for (const auto& word : transcript.words)
+        if (!consume(word.text)) return false;
+    return true;
+}
+} // namespace
 
 PerSourceSpeechRuntime::PerSourceSpeechRuntime(
     const IVoiceActivityDetector& vad, std::shared_ptr<const IAsrEngine> asr,
     PerSourceSpeechOptions options)
     : vad_(vad), asr_(std::move(asr)), options_(options) {
     if (!asr_ || !options_.sample_rate_hz || !options_.max_sources ||
-        !options_.max_pending_segments || !options_.min_speech_samples ||
+        !options_.max_pending_segments || !options_.max_retired_generations ||
+        !options_.min_speech_samples ||
+        !options_.max_result_text_bytes || !options_.max_result_items ||
         options_.max_segment_samples < options_.min_speech_samples ||
         options_.pre_roll_samples > options_.max_segment_samples ||
         options_.post_roll_samples > options_.max_segment_samples) {
         throw std::invalid_argument{"Invalid per-source speech runtime configuration"};
     }
-    const auto rates = vad_.audioRequirements().supported_sample_rates_hz;
-    if (!rates.empty() &&
-        std::find(rates.begin(), rates.end(), options_.sample_rate_hz) == rates.end()) {
-        throw std::invalid_argument{"VAD does not support configured sample rate"};
-    }
+    // Bound synchronous inspection and VAD work per call. Longer source
+    // audio must be divided into contiguous chunks by the application.
+    if (options_.max_input_chunk_samples == 0U)
+        options_.max_input_chunk_samples = options_.sample_rate_hz;
+    if (options_.max_input_chunk_samples > options_.sample_rate_hz)
+        throw std::invalid_argument{"Speech input chunk limit exceeds one second"};
+    if (!acceptsMonoInterleaved(vad_.audioRequirements(),
+                                options_.sample_rate_hz))
+        throw std::invalid_argument{"VAD does not accept mono interleaved speech PCM at configured rate"};
+    if (!acceptsMonoInterleaved(asr_->capabilities().audio,
+                                options_.sample_rate_hz))
+        throw std::invalid_argument{"ASR does not accept mono interleaved speech PCM at configured rate"};
     worker_ = std::thread{[this] { workerLoop(); }};
 }
 
@@ -39,6 +81,7 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
     if (track.voiced_samples >= options_.min_speech_samples) {
         if (jobs_.size() >= options_.max_pending_segments) {
             ++dropped_;
+            ++track.dropped_segments;
         } else {
             SpeechSegment segment{};
             segment.segment_id = SpeechSegmentId{next_segment_++};
@@ -46,16 +89,21 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
             segment.audio = AudioBuffer{std::move(track.speech),
                 {options_.sample_rate_hz, 1U, AudioLayout::Interleaved},
                 track.start_time};
-            jobs_.push_back({id, track.generation, std::move(segment)});
+            jobs_.push_back({id, track.generation, std::move(segment),
+                             track.start_sample});
+            ++track.queued_segments;
             ++pending_by_generation_[track.generation];
             cv_.notify_one();
         }
     }
+    track.start_sample += track.speech.size();
     track.speech.clear();
     track.voiced_samples = 0U;
 }
 
 void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
+    if (audio.sampleCount() > options_.max_input_chunk_samples)
+        throw std::length_error{"Speech PCM chunk exceeds configured input capacity"};
     if (audio.sampleCount() == 0U) return;
     if (!audio.data() || audio.format().sample_rate_hz != options_.sample_rate_hz ||
         audio.format().channel_count != 1U ||
@@ -120,6 +168,11 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         ++dropped_;
         return;
     }
+    const auto accepted = static_cast<std::uint64_t>(audio.sampleCount());
+    const auto remaining = std::numeric_limits<std::uint64_t>::max() -
+                           track.received_samples;
+    const auto chunk_start = track.received_samples;
+    track.received_samples += std::min(accepted, remaining);
     track.speech_active = active;
     const auto advanceTime = [&](std::size_t sample_offset) {
         const auto ns = static_cast<std::int64_t>(
@@ -143,6 +196,8 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
                 static_cast<double>(track.pre_roll.size()) * 1000000000.0 /
                 static_cast<double>(options_.sample_rate_hz));
             track.start_time = audio.captureTime().advancedBy(Duration{-pre_ns});
+            track.start_sample = chunk_start -
+                std::min<std::uint64_t>(chunk_start, track.pre_roll.size());
             track.speech.insert(track.speech.end(),
                 track.pre_roll.begin(), track.pre_roll.end());
             track.pre_roll.clear();
@@ -161,6 +216,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
                 // Continue in the same capture chunk; no samples may be
                 // dropped at a max-duration boundary.
                 track.start_time = advanceTime(offset);
+                track.start_sample = chunk_start + offset;
                 track.trailing_silence_samples = 0U;
             }
         }
@@ -192,6 +248,11 @@ std::optional<std::uint64_t> PerSourceSpeechRuntime::retire(std::uint64_t id) {
     std::lock_guard<std::mutex> guard{mutex_};
     auto it = tracks_.find(id);
     if (it == tracks_.end()) return std::nullopt;
+    // Keep the existing source fully live if retirement metadata is full;
+    // the client can drain/release generations and retry, or forget it.
+    // Check BEFORE queuing its final speech or mutating the active track.
+    if (retired_generations_.size() >= options_.max_retired_generations)
+        return std::nullopt;
     const auto generation = it->second.generation;
     if (!it->second.speech.empty()) queueSegment(id, it->second);
     retired_generations_.insert(generation);
@@ -287,7 +348,8 @@ std::vector<SourceSpeechResult> PerSourceSpeechRuntime::takeResults() {
 
 SourceSpeechStatistics PerSourceSpeechRuntime::statistics() const {
     std::lock_guard<std::mutex> guard{mutex_};
-    return {completed_, dropped_, jobs_.size(), error_};
+    return {completed_, dropped_, jobs_.size(), error_,
+            results_.size(), evicted_results_, retired_generations_.size()};
 }
 
 SourceSpeechTrackStatus PerSourceSpeechRuntime::trackStatus(
@@ -296,7 +358,9 @@ SourceSpeechTrackStatus PerSourceSpeechRuntime::trackStatus(
     const auto it = tracks_.find(track_id);
     if (it == tracks_.end()) return {};
     return {true, it->second.speech_active, it->second.speech.size(),
-            it->second.voiced_samples, it->second.error};
+            it->second.voiced_samples, it->second.error,
+            it->second.received_samples, it->second.queued_segments,
+            it->second.dropped_segments};
 }
 
 void PerSourceSpeechRuntime::workerLoop() {
@@ -316,15 +380,24 @@ void PerSourceSpeechRuntime::workerLoop() {
             if ((current != tracks_.end() &&
                  current->second.generation == job.generation) ||
                 retired_generations_.count(job.generation) != 0) {
-                results_.push_back({job.track_id, job.generation, std::move(transcript),
-                    job.segment.audio.captureTime(),
-                    job.segment.audio.captureTime().advancedBy(job.segment.audio.duration())});
-                // Prevent unbounded accumulation when application does not poll.
-                if (results_.size() > options_.max_pending_segments) {
-                    results_.erase(results_.begin());
+                if (!transcriptWithinBudget(transcript,
+                        options_.max_result_text_bytes, options_.max_result_items)) {
+                    error_ = "ASR transcript exceeds configured result budget";
                     ++dropped_;
+                } else {
+                    results_.push_back({job.track_id, job.generation, std::move(transcript),
+                        job.segment.audio.captureTime(),
+                        job.segment.audio.captureTime().advancedBy(job.segment.audio.duration()),
+                        job.start_sample,
+                        job.start_sample + job.segment.audio.samples().size()});
+                    // Prevent unbounded accumulation when application does not poll.
+                    if (results_.size() > options_.max_pending_segments) {
+                        results_.erase(results_.begin());
+                        ++dropped_;
+                        ++evicted_results_;
+                    }
+                    ++completed_;
                 }
-                ++completed_;
             }
             completeJobLocked(job.generation);
         } catch (const std::exception& e) {

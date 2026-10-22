@@ -46,6 +46,29 @@ if(LIBAUDITION_REGISTER_MODEL_TOOL_TESTS)
     endif()
 endif()
 
+# Python is needed before any Python-backed CTest registration.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+# Model manifest consistency is a core packaging contract: run locally and
+# in every CI CTest build, without requiring real-model dependencies.
+add_test(NAME ci_model_manifest_regressions COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/ci/test_model_manifest.py")
+set_tests_properties(ci_model_manifest_regressions PROPERTIES
+    LABELS "ci-contract;model-provenance;python" TIMEOUT 30)
+add_test(NAME ci_model_manifest_audit COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/ci/check_model_manifest.py")
+set_tests_properties(ci_model_manifest_audit PROPERTIES
+    LABELS "ci-contract;model-provenance;python" TIMEOUT 30)
+
+# Offline regression for apt-get update returning success without a PPA index.
+add_test(NAME ci_gtsam_install_retry COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/ci/test_gtsam_install_retry.py")
+set_tests_properties(ci_gtsam_install_retry PROPERTIES
+    LABELS "ci-contract;dependency;python" TIMEOUT 30)
+
 # The corpus format, reference association and lossless WAV importer are
 # independent of ODAS and physical microphone geometry. Validate these
 # contracts in every CTest-enabled build, including the minimal core.
@@ -102,6 +125,11 @@ add_executable(libaudition_tests
     temporal_hungarian_oracle_test.cpp
     temporal_mahalanobis_stability_test.cpp
     temporal_numeric_boundaries_test.cpp
+    temporal_recurrence_test.cpp
+    temporal_dtw_test.cpp
+    temporal_motif_test.cpp
+    temporal_streaming_pattern_test.cpp
+    temporal_streaming_benchmark_test.cpp
     acoustic_pipeline_scenario_test.cpp
     level_range_prior_test.cpp
     spl_calibration_test.cpp
@@ -114,7 +142,9 @@ add_executable(libaudition_tests
     speech_contracts_test.cpp
     speaker_contracts_test.cpp
     classification_runtime_test.cpp
-    per_source_speech_runtime_test.cpp)
+    per_source_speech_runtime_test.cpp
+    bounded_speech_pcm_ingress_test.cpp
+    async_speech_ingress_worker_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces
@@ -233,6 +263,10 @@ set(LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE "" CACHE STRING
     "Optional minimum fully associated simultaneous-source hop fraction")
 set(LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION "" CACHE STRING
     "Optional maximum fraction of annotated silent hops with a track")
+set(LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION "" CACHE STRING
+    "Optional maximum fraction of active hops containing unmatched ghost tracks")
+set(LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS "" CACHE STRING
+    "Optional maximum immediate track-ID handoffs between different real sources")
 if(TARGET audition::backend_odas AND LIBAUDITION_RESPEAKER_CORPUS_MANIFEST)
     if(NOT EXISTS "${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}")
         message(FATAL_ERROR "Real spatial corpus manifest not found: ${LIBAUDITION_RESPEAKER_CORPUS_MANIFEST}")
@@ -252,7 +286,9 @@ if(TARGET audition::backend_odas AND LIBAUDITION_RESPEAKER_CORPUS_MANIFEST)
             MAX_ASSOCIATION_ERROR_DEG
             MAX_ADJACENT_ID_SWITCHES
             MIN_SIMULTANEOUS_TRACK_COVERAGE
-            MAX_SILENT_FALSE_POSITIVE_FRACTION)
+            MAX_SILENT_FALSE_POSITIVE_FRACTION
+            MAX_ACTIVE_UNMATCHED_TRACK_FRACTION
+            MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS)
         if(NOT "${LIBAUDITION_REAL_CORPUS_${_gate}}" STREQUAL "")
             string(TOLOWER "${_gate}" _arg)
             string(REPLACE "_" "-" _arg "${_arg}")
@@ -960,3 +996,32 @@ add_test(NAME algorithm_coverage_contract
 set_tests_properties(algorithm_coverage_contract PROPERTIES
     LABELS "coverage-audit;ci-contract"
     TIMEOUT 60)
+
+# Standalone allocation probe: global operator new overrides must not leak
+# into the GoogleTest executable or other backends.
+add_executable(temporal_streaming_allocation_probe
+    temporal_streaming_allocation_probe.cpp)
+target_compile_features(temporal_streaming_allocation_probe PRIVATE cxx_std_17)
+target_include_directories(temporal_streaming_allocation_probe PRIVATE
+    "${PROJECT_SOURCE_DIR}/include")
+add_test(NAME temporal_streaming_allocation_probe
+    COMMAND temporal_streaming_allocation_probe)
+set_tests_properties(temporal_streaming_allocation_probe PROPERTIES
+    LABELS "temporal;benchmark;allocation" TIMEOUT 90)
+# Surface the probe's diagnostic metric in successful CTest runs so it
+# is visible in hosted CI logs without verbose output for the full suite.
+set_tests_properties(temporal_streaming_allocation_probe PROPERTIES
+    PASS_REGULAR_EXPRESSION "temporal-stream-allocations")
+
+# Standalone motif profiler: keep global operator new overrides isolated
+# from the core GoogleTest executable and optional model backends.
+add_executable(temporal_motif_allocation_probe
+    temporal_motif_allocation_probe.cpp)
+target_compile_features(temporal_motif_allocation_probe PRIVATE cxx_std_17)
+target_include_directories(temporal_motif_allocation_probe PRIVATE
+    "${PROJECT_SOURCE_DIR}/include")
+add_test(NAME temporal_motif_allocation_probe
+    COMMAND temporal_motif_allocation_probe)
+set_tests_properties(temporal_motif_allocation_probe PROPERTIES
+    LABELS "temporal;benchmark;allocation" TIMEOUT 90
+    PASS_REGULAR_EXPRESSION "temporal-motif-allocations")

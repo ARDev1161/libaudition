@@ -27,7 +27,8 @@ See [`docs/specification.md`](docs/specification.md) and
 Start with the [test-family maintenance map](docs/test_maintenance_map.md) to
 find existing CTest suites and know what each group proves. For full commands
 see [CTest suites](docs/ctest_suites.md); for evidence by algorithm see
-[coverage matrix](docs/algorithm_test_matrix.md).
+[coverage matrix](docs/algorithm_test_matrix.md). For stable-release
+criteria, see the [v1.0 acceptance gate](docs/release_v1_acceptance.md).
 
 ## Build
 

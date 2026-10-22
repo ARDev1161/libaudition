@@ -1,6 +1,7 @@
 #include "alsa_live_capture.hpp"
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
+#include "speech_epoch_recording_cleanup.hpp"
 #include <audition/recording/source_wav_recorder.hpp>
 #include <audition/recording/source_recording_session.hpp>
 #include <audition/dsp/streaming_level_meter.hpp>
@@ -13,6 +14,7 @@
 #include <audition/backends/sherpa/vad.hpp>
 #include <audition/backends/sherpa/offline_asr.hpp>
 #include <audition/speech/per_source_speech_runtime.hpp>
+#include <audition/speech/async_speech_ingress_worker.hpp>
 #endif
 
 #if LIBAUDITION_DEMO_HAS_ALSA
@@ -270,6 +272,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_SHERPA
         std::unique_ptr<audition::SherpaVad> speech_vad;
         std::unique_ptr<audition::PerSourceSpeechRuntime> speech_runtime;
+        std::unique_ptr<audition::AsyncSpeechIngressWorker> speech_worker;
         std::map<std::uint64_t, std::string> transcripts;
         if (config.transcribe_sources) {
             audition::SherpaVadOptions vad_options{};
@@ -290,6 +293,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             pipeline_options.sample_rate_hz = config.sample_rate_hz;
             speech_runtime = std::make_unique<audition::PerSourceSpeechRuntime>(
                 *speech_vad, std::move(asr), pipeline_options);
+            audition::SpeechPcmIngressOptions ingress_options{};
+            ingress_options.sample_rate_hz = config.sample_rate_hz;
+            ingress_options.max_chunk_samples =
+                std::min<std::size_t>(config.hop_size, config.sample_rate_hz);
+            speech_worker = std::make_unique<audition::AsyncSpeechIngressWorker>(
+                *speech_runtime, ingress_options);
         }
 #else
         if (config.transcribe_sources) {
@@ -302,6 +311,56 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             std::filesystem::temp_directory_path() / "libaudition-recordings" /
                 ("session-" + std::to_string(session_stamp)), config.sample_rate_hz};
         audition::recording::SourceRecordingSession recordings;
+        // Track only active ODAS generations denied a timeline. Retrying
+        // midway through a WAV would shift its annotation clock origin.
+        std::map<std::uint64_t, std::uint64_t> skipped_annotation_recordings;
+        std::uint64_t annotation_recordings_skipped = 0;
+#if LIBAUDITION_DEMO_HAS_SHERPA
+        using SpeechEpochKey = std::pair<std::uint64_t, std::uint64_t>;
+        std::map<SpeechEpochKey, audition::RecordingId> epoch_recordings;
+        // Worker Forget can cancel an unconsumed FIFO Retire. Keep the
+        // affected deferred WAV identities so they can be finalized.
+        std::set<audition::RecordingId> deferred_ack_recordings;
+        std::uint64_t retirement_capacity_drops = 0;
+        std::uint64_t speech_worker_errors = 0;
+        std::string last_speech_worker_error;
+        const auto drainSpeechAcks = [&]() {
+            if (!speech_worker) return;
+            for (const auto& event : speech_worker->drainAcknowledgements()) {
+                const SpeechEpochKey key{event.source_id,event.epoch};
+                const auto mapped = epoch_recordings.find(key);
+                switch (event.kind) {
+                case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Bound:
+                    if (mapped!=epoch_recordings.end() && event.generation)
+                        recordings.bindRecordingAsr(mapped->second,*event.generation);
+                    break;
+                case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Retired:
+                    if (mapped!=epoch_recordings.end()) {
+                        recordings.acknowledgeRetired(mapped->second,event.generation);
+                        deferred_ack_recordings.erase(mapped->second);
+                        epoch_recordings.erase(mapped);
+                    }
+                    if (!event.generation) ++retirement_capacity_drops;
+                    break;
+                case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Forgot:
+                    if (event.generation)
+                        recordings.cancelGeneration(*event.generation);
+                    // Only epochs older than this invalidation may be removed.
+                    // A new Bound may already have been applied for this ID.
+                    clearForgottenSpeechRecordingEpochs(
+                        epoch_recordings,deferred_ack_recordings,recordings,
+                        event.source_id,event.epoch);
+                    break;
+                case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Error:
+                    if (event.generation)
+                        recordings.cancelGeneration(*event.generation);
+                    ++speech_worker_errors;
+                    last_speech_worker_error=event.error.substr(0,200);
+                    break;
+                }
+            }
+        };
+#endif
         const auto drainClassification = [&]() {
             if (!classifier) return;
             for (const auto& [sourceId, event] : classifier->takeCompleted()) {
@@ -313,23 +372,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     event.probability, event.stage);
             }
         };
-        const auto retireSource = [&](std::uint64_t trackId) {
-            if (classifier) classifier->forget(trackId);
-            recorder.retire(trackId);
-#if LIBAUDITION_DEMO_HAS_SHERPA
-            std::optional<std::uint64_t> generation;
-            if (speech_runtime) {
-                generation = speech_runtime->retire(trackId);
-                transcripts.erase(trackId);
-            }
-            recordings.retire(trackId, generation);
-#else
-            recordings.retire(trackId, std::nullopt);
-#endif
-        };
 #if LIBAUDITION_DEMO_HAS_SHERPA
         const auto drainAsr = [&]() {
             if (!speech_runtime) return;
+            // The capture producer owns recordings. Apply worker generation
+            // acknowledgements before consuming ASR results or retiring JSON.
+            drainSpeechAcks();
             auto batch = speech_runtime->drainReady();
             for (auto& result : batch.results) {
                 recordings.addSpeech(result);
@@ -345,6 +393,33 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             }
         };
 #endif
+        const auto retireSource = [&](std::uint64_t trackId) {
+            skipped_annotation_recordings.erase(trackId);
+            if (classifier) classifier->forget(trackId);
+            recorder.retire(trackId);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            if (speech_worker) {
+                // FIFO Retire remains behind accepted audio. The ASR
+                // generation is acknowledged later, by WAV recording ID.
+                const auto epoch=speech_worker->retire(trackId);
+                if (epoch) {
+                    const auto recording_id=recordings.retireDeferred(trackId);
+                    if (recording_id) {
+                        epoch_recordings[{trackId,*epoch}]=*recording_id;
+                        deferred_ack_recordings.insert(*recording_id);
+                    }
+                } else {
+                    // No PCM was admitted to the worker for this lifecycle.
+                    recordings.retire(trackId,std::nullopt);
+                }
+                transcripts.erase(trackId);
+            } else {
+                recordings.retire(trackId,std::nullopt);
+            }
+#else
+            recordings.retire(trackId, std::nullopt);
+#endif
+        };
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -444,11 +519,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     const auto sourceId = separated.track_id.value();
                     const auto recorded = recorder.append(sourceId, separated.audio.samples());
                     if (recorded.recording_id != 0) {
-                        if (!recordings.active(sourceId)) {
-                            if (auto entry = recorder.activeEntry(sourceId))
-                                recordings.begin(sourceId, entry->recording_id,
-                                    entry->path, config.sample_rate_hz,
-                                    separated.audio.captureTime());
+                        if (!recordings.active(sourceId) &&
+                            skipped_annotation_recordings.count(sourceId) == 0) {
+                            if (auto entry = recorder.activeEntry(sourceId)) {
+                                // Keep WAV, audio capture and inference
+                                // running when annotation memory is full.
+                                if (!recordings.tryBegin(sourceId, entry->recording_id,
+                                        entry->path, config.sample_rate_hz,
+                                        separated.audio.captureTime())) {
+                                    skipped_annotation_recordings.emplace(
+                                        sourceId, entry->recording_id);
+                                    ++annotation_recordings_skipped;
+                                }
+                            }
                         }
                         if (recorded.lost_samples != 0)
                             recordings.addGap(sourceId, recorded.start_sample +
@@ -459,11 +542,16 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                          separated.audio.samples(), hops);
                     }
 #if LIBAUDITION_DEMO_HAS_SHERPA
-                    if (speech_runtime) {
-                        speech_runtime->push(separated.track_id.value(),
-                                             separated.audio.view());
-                        if (const auto gen = speech_runtime->activeGeneration(sourceId))
-                            recordings.bindAsr(sourceId, *gen);
+                    if (speech_worker) {
+                        // Associate the WAV with the exact admitted PCM epoch.
+                        // A separate sourceEpoch() lookup can see a reused ID.
+                        const auto admission=speech_worker->pushWithEpoch(
+                            sourceId,separated.audio.view());
+                        if (admission.admission==audition::SpeechPcmAdmission::Accepted) {
+                            const auto recording_id=recordings.recordingId(sourceId);
+                            if (admission.epoch && recording_id)
+                                epoch_recordings[{sourceId,*admission.epoch}]=*recording_id;
+                        }
                     }
 #endif
                 }
@@ -567,7 +655,22 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 latest_.speech_status = "ASR completed=" +
                     std::to_string(stats.completed_segments) +
                     " queued=" + std::to_string(stats.pending_segments) +
-                    " dropped=" + std::to_string(stats.dropped_segments);
+                    " dropped=" + std::to_string(stats.dropped_segments) +
+                    " retired=" + std::to_string(stats.retired_generations) +
+                    " retire_capacity_drops=" +
+                    std::to_string(retirement_capacity_drops) +
+                    " worker_errors=" + std::to_string(speech_worker_errors);
+                if (speech_worker) {
+                    const auto input=speech_worker->inputStatistics();
+                    latest_.speech_status +=
+                        " PCM queued=" + std::to_string(input.pending_chunks) +
+                        " PCM dropped=" + std::to_string(input.rejected_chunks) +
+                        " PCM invalidated=" + std::to_string(input.invalidated_chunks) +
+                        " retire_wait=" + std::to_string(input.pending_retirements);
+                }
+                if (!last_speech_worker_error.empty())
+                    latest_.speech_status +=
+                        " | Speech worker: " + last_speech_worker_error;
                 if (!resultFrame.tracks.empty()) {
                     const auto id = resultFrame.tracks.front().track_id.value();
                     const auto source = speech_runtime->trackStatus(id);
@@ -587,7 +690,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #else
             latest_.speech_status = "Requires Sherpa";
 #endif
-            latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped());
+            const auto annotation_drops = recordings.droppedAnnotations();
+            latest_.speech_status += " | Sidecars skipped=" +
+                std::to_string(annotation_recordings_skipped);
+            latest_.speech_status += " | Annotations dropped: speech=" +
+                std::to_string(annotation_drops.speech) +
+                " sound=" + std::to_string(annotation_drops.sound) +
+                " gaps=" + std::to_string(annotation_drops.gaps);
+            latest_.speech_status += " | WAV dropped=" + std::to_string(recorder.dropped()) +
+                " | WAV admissions denied=" + std::to_string(recorder.admissionDrops()) +
+                " | WAV outstanding=" + std::to_string(recorder.outstandingRecordings()) +
+                " | WAV history pruned=" + std::to_string(recorder.historyEvicted());
             if (recordings.persistenceError())
                 latest_.speech_status += " | JSON error: " + *recordings.persistenceError();
             for (const auto& item : recorder.entries()) {
@@ -602,15 +715,16 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         source_lifecycle.clear([&](std::uint64_t id) { retireSource(id); });
 #if LIBAUDITION_DEMO_HAS_SHERPA
         if (speech_runtime) {
-            // The ASR worker is asynchronous; avoid blocking live capture.
-            // At stop, allow bounded time for final inference results.
+            // Stop accepting PCM, then drain FIFO VAD/retirement controls
+            // and async ASR completions on the recording-owner thread.
+            if (speech_worker) speech_worker->closeInput();
             const auto deadline = std::chrono::steady_clock::now() +
                                   std::chrono::seconds{10};
-            while (recordings.pendingRetirements() != 0 &&
+            while (((speech_worker && !speech_worker->finished()) ||
+                    recordings.pendingRetirements()!=0) &&
                    std::chrono::steady_clock::now() < deadline) {
                 drainAsr();
-                if (recordings.pendingRetirements() != 0)
-                    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+                std::this_thread::sleep_for(std::chrono::milliseconds{20});
             }
             drainAsr();
         }

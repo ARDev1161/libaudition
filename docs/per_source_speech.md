@@ -6,21 +6,56 @@ depend on ODAS, sherpa-onnx, ROS or Qt. Applications supply any
 `IVoiceActivityDetector` (which creates an independent `IVadSession`
 per source) and an `IAsrEngine` held by `std::shared_ptr<const ...>`.
 
-The capture thread calls `push(track_id, AudioView)` with the source's
-mono samples at the configured sample rate (16 kHz by default). Active VAD
-frames are concatenated until the VAD first becomes inactive. Completed
+The caller supplies source-local mono samples through
+`push(track_id, AudioView)` at the configured sample rate (16 kHz by
+default). **`push()` runs VAD synchronously while holding the runtime
+mutex**; it is not a nonblocking capture-thread guarantee. For devices with strict audio callback deadlines, invoke it from a separate
+processing worker fed by a bounded PCM queue. The opt-in Qt/ALSA adapter now
+uses `AsyncSpeechIngressWorker` to execute VAD away from ALSA capture,
+while `BoundedSpeechPcmIngress` provides source-aware admission, overflow
+`Forget` controls and FIFO `Retire` controls. The capture thread
+serializes worker acknowledgements with WAV/JSON persistence using
+`SourceRecordingSession::retireDeferred()` and
+`acknowledgeRetired()` (see [worker API](async_speech_ingress_worker.md)).
+This is not a measured audio-deadline guarantee: capture still performs
+bounded PCM copying, other algorithms and shared-lock operations. Active VAD frames are concatenated until the VAD
+first becomes inactive. Completed
 speech with at least `min_speech_samples` is moved into the bounded job
 queue. The ASR worker transcribes complete segments off the capture thread.
 The application drains results with `takeResults()`.
 
 Safety and lifecycle:
+- The recording-sidecar coordinator rejects ASR generation collisions before
+  changing active track state. Gap sample arithmetic is overflow-checked;
+  timestamp-to-sample conversion handles the full signed nanosecond domain
+  using checked integer arithmetic. Unrepresentable speech offsets are
+  discarded rather than written as wrapped sample indices;
+- Constructor rejects VAD **or ASR** backends that cannot consume the
+  configured sample rate, mono channel count, or interleaved PCM layout;
+  this is checked before launching the ASR worker and prevents silent
+  misconfiguration of independently selected models;
 - Independent VAD state and PCM accumulation for each source;
 - At most `max_sources` active source sessions and `max_pending_segments`
-  waiting jobs/results;
+  waiting jobs/results. Unreleased retired generations are separately capped
+  by `max_retired_generations` (default 64);
 - `max_segment_samples` caps speech buffers to prevent unbounded growth;
+- `max_input_chunk_samples` bounds synchronous `push()` work: zero resolves
+  to one second at the configured sample rate (16,000 mono samples by
+  default), and smaller nonzero limits are supported. Oversized chunks
+  raise `std::length_error` before VAD or source-state mutation. Split
+  longer input into contiguous blocks, and reset/forget on actual PCM loss;
 - `forget(track_id)` invalidates pending/inflight results from retired IDs;
 - `reset()` invalidates source generations and jobs after a discontinuity;
-- Per-runtime `statistics()` reports completions, losses, and last ASR error.
+- Per-runtime `statistics()` reports completions, losses, last ASR error,
+  the current unread transcript mailbox size (`buffered_results`), and
+  the number of evicted unread transcripts (`evicted_results`).
+  The output mailbox is independently bounded by `max_pending_segments`;
+  oldest unread results are discarded on overflow. The aggregate
+  `dropped_segments` includes queue failures and those evictions.
+  `evicted_results` excludes explicit cancellation via `forget()`/`reset()`.
+- Completed ASR outputs have a byte budget (16 KiB) and combined token/word
+  item budget (512) by default. Oversized outputs are dropped and counted;
+  these limits apply after model inference and do not bound backend memory.
 
 This is an **initial foundation**, not the complete low-latency ASR pipeline:
 VAD gates whole pushed chunks with configurable pre-roll and post-roll, but without
@@ -44,10 +79,12 @@ independent **Transcribe separated sources (Silero + SenseVoice)** checkbox.
 Choose existing local Silero VAD ONNX, SenseVoice ONNX and matching
 SenseVoice `tokens.txt`. The Qt demo **does not download these models**.
 
-For each ODAS SSS mono frame, the adapter pushes 16-kHz audio keyed by the
-ODAS numeric track ID. A separate VAD session gates each source, then offline
-ASR runs on a bounded worker queue. Completed transcriptions appear in the
-`Transcript` column of that same source row. On an ALSA overrun, ODAS reset,
+For each ODAS SSS mono frame, the adapter enqueues bounded 16-kHz PCM
+keyed by ODAS numeric track ID. An application-owned worker executes
+source-local VAD sessions; the separate ASR worker transcribes completed
+segments. Acknowledgements are matched to the original WAV recording ID,
+even after the numeric track ID is reused. Completed transcriptions appear
+in the `Transcript` column of the active source row. On an ALSA overrun, ODAS reset,
 or source retirement, earlier unfinished audio/jobs and cached text are
 invalidated to avoid misattributing speech to a reused track ID.
 
@@ -56,8 +93,8 @@ YAMNet can be enabled simultaneously, or the per-source ASR path alone may
 activate ODAS SSS. No ROS, cameras, radar or robot decisions are added to
 libaudition. VAD/ASR models are supplied by the application.
 
-Caveats: the first integration has a single shared offline ASR worker,
-no incremental partial transcript UI, and does not automatically download
+Caveats: the first integration has one serialized VAD processing worker
+and one shared offline ASR worker, no incremental partial transcript UI, and does not automatically download
 any third-party ASR model. It does not yet validate speech accuracy on real
 ODAS-separated conversations or prove real-time performance on the RK3588.
 
@@ -213,7 +250,28 @@ uses `drainReady()` to atomically collect results and finished generations;
 this avoids dropping an ASR result in the gap between separate polling calls.
 `activeGeneration(track_id)` validates current-source identity across reused
 numeric IDs. After consuming results and final sidecar persistence the consumer must call
-`releaseRetired(generation)` to free retirement state.
+`releaseRetired(generation)` to free retirement state. At the configured
+`max_retired_generations` cap, `retire(track_id)` returns `std::nullopt`
+**without modifying the active track or queuing its final segment**.
+Applications must check this return value, drain finished generations and
+release them before retrying, or explicitly `forget(track_id)` if audio can
+be discarded. `statistics().retired_generations` exposes the current
+metadata pressure. A caller that ignores rejected retirement cannot claim
+that its final utterance or sidecar was persisted.
+
+The Qt/ALSA demo now first drains completed ASR generations and retries
+`retire()` once when its retirement table is full. If earlier in-flight
+ASR still prevents retirement, it explicitly `forget()`s the vanished
+track so its state cannot survive into a reused numeric ODAS ID. The
+WAV/timeline sidecar persists without the unfinished final transcript,
+and live diagnostics increment `retire_capacity_drops`. This is an
+explicitly reported overload fallback, **not** lossless ASR retirement.
+
+Persisting a recording after this fallback now removes its obsolete
+`generation → recording` bindings, even if `bindAsr()` ran before the
+failed retirement. `SourceRecordingSession::boundAsrGenerations()` exposes
+binding pressure for diagnostics. Repeated fallback sidecar cycles must
+return that count to zero.
 
 The Qt capture adapter delays the retired recording's final JSON write until
 that generation has drained; ALSA xrun retirement uses the same mechanism.
@@ -256,3 +314,45 @@ rotated by the host before reaching the 4-GiB file limit. Out-of-disk errors
 and a process crash can still prevent the very last annotation save;
 full periodic journal durability and hardware SIGSEGV verification remain
 explicit acceptance work, not guarantees of this refactor.
+
+## Bounded annotation retention in long recordings
+
+`SourceRecordingSession` takes optional `SourceRecordingOptions`. By
+default each recording keeps up to 4096 speech events, 8192 sound events,
+4096 noncontiguous gap events and 1 MiB of retained annotation text.
+At most 64 active-plus-awaiting-ASR recording objects are kept at once.
+`SourceRecordingSession::tryBegin()` returns `false` for capacity refusal
+rather than throwing. Invalid source/recording identity still throws.
+The Qt/ALSA adapter treats a refused recording as WAV-only for the
+lifetime of that ODAS generation: it does not start a misaligned sidecar
+halfway into the WAV. `Sidecars skipped` tracks the losses in its live
+diagnostics. Capture, WAV writing and speech inference remain active.
+Missing sidecars after saturation are an explicit overload limitation.
+At-capacity adjacent gaps still merge, and duplicate classifier windows
+do not count again. Further events are discarded with source-wide
+`droppedAnnotations()` counters; earlier events remain intact in the
+versioned JSON sidecar. These limits do **not** constrain model inference
+memory or an independently constructed `RecordingTimeline`.
+
+
+## Bounded WAV recording history
+
+`SourceWavRecorder` retains up to 256 completed recording metadata entries
+by default (configurable fifth constructor argument). Active and
+queued-for-close recordings are never evicted. Pruning only removes old
+metadata from `entries()` and the Qt history: existing WAV files remain
+on disk. `historyEvicted()` reports the number pruned. Failed-file
+bookkeeping is cleared at Close, preventing indefinite accumulation
+after repeated disk errors. This cap does not bound disk usage or the
+number of simultaneously live sources.
+
+### Bounded outstanding WAV recordings
+
+The sixth `SourceWavRecorder` constructor argument limits the number of
+active, queued-for-close and worker-open recording IDs (default **64**).
+This also bounds outstanding Close commands: rejecting a new track returns
+`AppendReport.recording_id == 0` and increments `admissionDrops()`, but
+existing tracks continue to accept audio. Slots are released only after the
+worker processes Close, including a failed file; WAVs already written are
+not deleted. `outstandingRecordings()` and Qt diagnostics expose pressure.
+A zero outstanding limit disables recording. This does not set a disk quota.

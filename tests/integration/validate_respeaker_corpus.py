@@ -149,38 +149,78 @@ def reference_azimuth(interval, time_s):
     return (start + fraction * delta + 180) % 360 - 180
 
 
-def associate_with_indices(references, observations, max_error_deg=180.0):
-    """Minimum summed angular error, distinct observations per reference.
+def associate_with_indices(references, observations, max_error_deg=180.0,
+                           preferred_ids=None):
+    """Maximize distinct matches, minimize angular error, then ID disruption.
 
-    Returns (reference-index, error) pairs; unmatched references are not
-    scored as successful coverage. Small ODAS source counts make an exact
-    dynamic-programming assignment inexpensive.
+    Only an *exact* total-angular-error tie may be resolved using last-hop
+    track IDs. Geometrically better assignments always win, including
+    genuine identity swaps after moving sources cross. Without a previous
+    ID, the deterministic source/observation order still breaks ties.
+    Returns (reference-index, observation-index, error) triples.
     """
+    check(preferred_ids is None or len(preferred_ids) == len(references),
+          "Preferred track identity count differs from references")
     if not observations or not references:
         return []
+    if preferred_ids is None:
+        preferred_ids = [None] * len(references)
     from functools import lru_cache
     errors = [[angular_error(row, angle) for row in observations]
               for angle in references]
     @lru_cache(None)
     def solve(ref_index, occupied):
         if ref_index == len(references):
-            return (0, 0.0, ())
+            return (0, 0.0, 0, ())
         best = solve(ref_index + 1, occupied)
         for index in range(len(observations)):
             if occupied & (1 << index) or errors[ref_index][index] > max_error_deg:
                 continue
-            count, cost, pairs = solve(ref_index + 1, occupied | (1 << index))
+            count, cost, switches, pairs = solve(
+                ref_index + 1, occupied | (1 << index))
+            previous = preferred_ids[ref_index]
+            changed = int(previous is not None and
+                          int(observations[index]["id"]) != previous)
             candidate = (count + 1, cost + errors[ref_index][index],
+                         switches + changed,
                          ((ref_index, index, errors[ref_index][index]),) + pairs)
-            if (candidate[0], -candidate[1]) > (best[0], -best[1]):
+            if (candidate[0], -candidate[1], -candidate[2]) > (
+                    best[0], -best[1], -best[2]):
                 best = candidate
         return best
-    return list(solve(0, 0)[2])
+    return list(solve(0, 0)[3])
 
 
 def associate(references, observations):
     return [(ref, error) for ref, _, error in
             associate_with_indices(references, observations)]
+
+
+
+def validate_runner_trace(summary, frames, rows):
+    """Reject incomplete or internally contradictory offline runner evidence.
+
+    Check the *measured* WAV length instead of trusting the runner's own
+    hop counter as the denominator for quality metrics. Require trace
+    cardinalities to match the counts emitted by the C++ runner, so a
+    truncated CSV cannot accidentally improve reported false positives.
+    """
+    check(isinstance(summary, dict) and
+          summary.get("schema") == "libaudition.offline-integration.v1",
+          "Unexpected ODAS runner summary schema")
+    expected = {
+        "input_frames": frames,
+        "sample_rate_hz": FS,
+        "hops": frames // HOP,
+        "track_observations": sum(row.get("kind") == "track" for row in rows),
+        "potential_observations": sum(row.get("kind") == "proposal" for row in rows),
+        "recorder_drops": 0,
+    }
+    check(type(frames) is int and frames > 0 and frames % HOP == 0,
+          "Invalid WAV frame count for spatial scoring")
+    for field, value in expected.items():
+        check(type(summary.get(field)) is int and summary[field] == value,
+              "ODAS runner summary/trace mismatch: " + field)
 
 
 def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
@@ -190,24 +230,40 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
     check(math.isfinite(max_association_error_deg) and
           0 <= max_association_error_deg <= 180, "Invalid association gate")
     observed = {}
+    seen_track_ids = set()
     for row in rows:
         try:
             hop = int(row["hop"])
             coords = [float(row[axis]) for axis in ("x", "y", "z")]
-            if row["kind"] == "track":
-                check(int(row["id"]) >= 0, "Invalid track identity")
+            kind = row["kind"]
+            track_id = int(row["id"]) if kind == "track" else None
         except (TypeError, ValueError, KeyError) as exc:
             raise ValueError("Malformed spatial trace row") from exc
+        # Domain validation must occur outside the parsing exception
+        # handler or its specific failure becomes a generic parse error.
         check(0 <= hop < total_hops, "Observation outside recording")
-        check(row["kind"] in ("track", "proposal"), "Unknown observation kind")
+        check(kind in ("track", "proposal"), "Unknown observation kind")
+        if kind == "track":
+            check(track_id >= 0, "Invalid track identity")
+            # An ID represents one hypothesis per hop, not several
+            # independent sources with distinct directions.
+            check((hop, track_id) not in seen_track_ids,
+                  "Duplicate track ID in one spatial hop")
+            seen_track_ids.add((hop, track_id))
         norm = sum(value * value for value in coords)
         check(all(math.isfinite(value) for value in coords) and
               math.isfinite(norm) and abs(norm - 1.0) <= 0.01,
               "Non-unit or nonfinite direction")
         observed.setdefault(hop, []).append(row)
     state = [{"errors": [], "proposals": [], "covered": 0, "hops": 0,
-              "identity_switches": 0, "reacquisitions": 0}
+              "identity_switches": 0, "reacquisitions": 0,
+              "track_reacquisitions": 0,
+              "cross_source_id_handoffs": 0,
+              "cross_source_id_reuse_after_gap": 0}
              for _ in intervals]
+    active_hops = 0
+    active_hops_with_unmatched_tracks = 0
+    active_unmatched_track_observations = 0
     simultaneous_hops = 0
     fully_associated_hops = 0
     silent_hops = 0
@@ -215,6 +271,10 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
     silent_track_observations = 0
     last_id = {}
     last_seen_hop = {}
+    # Reverse identity history: detect when one ODAS track ID is assigned
+    # to *another* ground-truth source. Per-source switch metrics alone
+    # cannot detect this when two sources are active in sequence.
+    last_track_owner = {}
     for hop in range(total_hops):
         time_s = (hop + 0.5) * HOP / FS
         active = [(index, reference_direction(interval, time_s))
@@ -228,10 +288,27 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
                 silent_hops_with_tracks += 1
                 silent_track_observations += len(tracks)
             continue
+        active_hops += 1
         proposals = [row for row in data if row["kind"] == "proposal"]
+        # At an exact DOA tie (e.g. crossed trajectories) preserve
+        # continuity of the preceding hop instead of letting CSV row
+        # order manufacture an ID switch. No angular-error tradeoff.
+        preferred_ids = [
+            last_id.get(intervals[index].get("source_id", "default"))
+            if last_seen_hop.get(intervals[index].get("source_id", "default"))
+               == hop - 1 else None
+            for index, _ in active]
         track_matches = associate_with_indices(
-            [a for _, a in active], tracks, max_association_error_deg)
+            [a for _, a in active], tracks, max_association_error_deg,
+            preferred_ids=preferred_ids)
         proposal_matches = associate([a for _, a in active], proposals)
+        # Coverage measures found references, not all reported tracks.
+        # An additional ghost track in a hop with one real source should
+        # not disappear merely because that source was matched correctly.
+        unmatched = len(tracks) - len(track_matches)
+        active_unmatched_track_observations += unmatched
+        if unmatched:
+            active_hops_with_unmatched_tracks += 1
         for index, _ in active:
             state[index]["hops"] += 1
         for index, observation_index, error in track_matches:
@@ -240,13 +317,34 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             item["covered"] += 1
             item["errors"].append(error)
             track_id = int(tracks[observation_index]["id"])
-            if reference_index in last_id and last_id[reference_index] != track_id:
-                if last_seen_hop[reference_index] == hop - 1:
+            # Consecutive annotated segments of the same physical source
+            # must share identity history. Index-keyed history resets at
+            # interval boundaries and misses switches at those boundaries.
+            source_id = intervals[reference_index].get("source_id", "default")
+            previous_owner = last_track_owner.get(track_id)
+            if previous_owner is not None:
+                previous_source, previous_hop = previous_owner
+                if previous_source != source_id:
+                    if previous_hop == hop - 1:
+                        item["cross_source_id_handoffs"] += 1
+                    else:
+                        # A track ID may legitimately be recycled after its
+                        # earlier owner disappears. Report it independently;
+                        # do not treat it as a default acceptance failure.
+                        item["cross_source_id_reuse_after_gap"] += 1
+            last_track_owner[track_id] = (source_id, hop)
+            # Any gap in matched observations represents reacquisition,
+            # even if the tracker safely reuses the original identity.
+            # A changed ID after that gap is a separate, stronger error.
+            if source_id in last_seen_hop and last_seen_hop[source_id] < hop - 1:
+                item["track_reacquisitions"] += 1
+            if source_id in last_id and last_id[source_id] != track_id:
+                if last_seen_hop[source_id] == hop - 1:
                     item["identity_switches"] += 1
                 else:
                     item["reacquisitions"] += 1
-            last_id[reference_index] = track_id
-            last_seen_hop[reference_index] = hop
+            last_id[source_id] = track_id
+            last_seen_hop[source_id] = hop
         for index, error in proposal_matches:
             state[active[index][0]]["proposals"].append(error)
         if len(active) >= 2:
@@ -275,8 +373,16 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             "track_error_samples": len(item["errors"]),
             "adjacent_hop_id_switches": item["identity_switches"],
             "id_changes_after_gap": item["reacquisitions"],
+            "track_reacquisitions": item["track_reacquisitions"],
+            "cross_source_id_handoffs": item["cross_source_id_handoffs"],
+            "cross_source_id_reuse_after_gap": item["cross_source_id_reuse_after_gap"],
         })
     quality = {
+        "active_hops": active_hops,
+        "active_hops_with_unmatched_tracks": active_hops_with_unmatched_tracks,
+        "active_unmatched_track_observations": active_unmatched_track_observations,
+        "active_unmatched_track_hop_fraction": (
+            active_hops_with_unmatched_tracks / active_hops if active_hops else None),
         "active_simultaneous_hops": simultaneous_hops,
         "fully_associated_simultaneous_hops": fully_associated_hops,
         "simultaneous_track_coverage": (
@@ -288,6 +394,11 @@ def evaluate(rows, intervals, total_hops, max_association_error_deg=180.0,
             silent_hops_with_tracks / silent_hops if silent_hops else None),
         "adjacent_hop_id_switches": sum(item["identity_switches"] for item in state),
         "id_changes_after_gap": sum(item["reacquisitions"] for item in state),
+        "track_reacquisitions": sum(item["track_reacquisitions"] for item in state),
+        "cross_source_id_handoffs": sum(
+            item["cross_source_id_handoffs"] for item in state),
+        "cross_source_id_reuse_after_gap": sum(
+            item["cross_source_id_reuse_after_gap"] for item in state),
         "max_association_error_deg": max_association_error_deg,
     }
     return (metrics, quality) if with_summary else metrics
@@ -318,6 +429,15 @@ def enforce_thresholds(segments, quality, options):
         value = quality["silent_false_positive_hop_fraction"]
         check(value is not None and value <= options.max_silent_false_positive_fraction,
               "Silent false-positive acceptance failed")
+    active_limit = getattr(options, "max_active_unmatched_track_fraction", None)
+    if active_limit is not None:
+        value = quality["active_unmatched_track_hop_fraction"]
+        check(value is not None and value <= active_limit,
+              "Active unmatched-track acceptance failed")
+    handoff_limit = getattr(options, "max_adjacent_cross_source_id_handoffs", None)
+    if handoff_limit is not None:
+        check(quality["cross_source_id_handoffs"] <= handoff_limit,
+              "Cross-source track-ID handoff acceptance failed")
 
 
 def main():
@@ -332,6 +452,8 @@ def main():
     parser.add_argument("--max-adjacent-id-switches", type=int)
     parser.add_argument("--min-simultaneous-track-coverage", type=float)
     parser.add_argument("--max-silent-false-positive-fraction", type=float)
+    parser.add_argument("--max-active-unmatched-track-fraction", type=float)
+    parser.add_argument("--max-adjacent-cross-source-id-handoffs", type=int)
     parser.add_argument("--horizontal-sources", action="store_true")
     args = parser.parse_args()
     if args.max_median_error_deg is not None:
@@ -354,6 +476,13 @@ def main():
         check(math.isfinite(args.max_silent_false_positive_fraction) and
               0 <= args.max_silent_false_positive_fraction <= 1,
               "Invalid silent false-positive threshold")
+    if args.max_active_unmatched_track_fraction is not None:
+        check(math.isfinite(args.max_active_unmatched_track_fraction) and
+              0 <= args.max_active_unmatched_track_fraction <= 1,
+              "Invalid active unmatched-track threshold")
+    if args.max_adjacent_cross_source_id_handoffs is not None:
+        check(args.max_adjacent_cross_source_id_handoffs >= 0,
+              "Invalid cross-source ID handoff limit")
     check(args.runner.is_file(), "Missing ODAS runner")
     check(args.manifest.is_file(), "Missing corpus manifest")
     corpus = validate_manifest(args.manifest)
@@ -394,13 +523,11 @@ def main():
         check(run.returncode == 0,
               "ODAS runner failed for " + rec["id"] + ": " + run.stderr[-2000:])
         summary = json.loads((dest / "summary.json").read_text())
-        check(summary["input_frames"] == frames and summary["sample_rate_hz"] == FS,
-              "Runner summary inconsistent with source WAV")
-        check(summary["recorder_drops"] == 0, "Dropped source recording frames")
         with (dest / "observations.csv").open(newline="") as stream:
             rows = list(csv.DictReader(stream))
+        validate_runner_trace(summary, frames, rows)
         segments, quality = evaluate(
-            rows, rec["intervals"], summary["hops"],
+            rows, rec["intervals"], frames // HOP,
             args.max_association_error_deg, with_summary=True)
         item = {"id": rec["id"], "wav_sha256": rec["sha256"],
                 "segments": segments, "summary": summary, "quality": quality,

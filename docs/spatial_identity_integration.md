@@ -46,3 +46,53 @@ The coordinator does not retain historical track-ID bindings after
 forward explicitly or retain the resolved `SpatialTrack` used to create them.
 This avoids ambiguous association if a tracker later reuses the same numeric
 track ID.
+
+## Resolver timestamp and source-aging safety
+
+The `HeuristicSourceIdentityResolver` clock now advances only after an
+accepted observation or a completed `endTrack()`. A rejected *new*
+track (for example, when `max_active_tracks` is full) does not advance
+the global timestamp or evict recent identity candidates. Otherwise,
+a later observation from an already active track could be incorrectly
+rejected as out-of-order after an unrelated capacity error, and nearby
+geometry-backed reidentification could be lost.
+
+Source ages are computed with unsigned 64-bit elapsed nanoseconds after
+the monotonic timestamp check. This avoids signed subtraction overflow
+when source lifetimes span the extreme negative and positive values
+of the signed timestamp representation. Both changes have deterministic
+CTest regressions for capacity rejection, cache preservation, and
+extreme timestamp intervals. This does **not** make the resolver
+thread-safe; callers must still serialize lifecycle operations.
+
+## Resolver recovery when an external source registry throws
+
+The resolver now calls potentially throwing source-registry operations
+(`list`, `find`, `addFingerprint`, `create`) before changing its own
+track bindings and recent spatial evidence. An active-track fingerprint
+write or lookup failure leaves the previous track geometry, identity,
+and timestamp intact. A new-track fingerprint failure likewise does
+not install an active binding. Expired recent geometry is ignored
+during candidate scoring and only pruned when an observation commits,
+so a failed registry lookup cannot permanently evict previous
+geometry evidence.
+
+This provides a **registry-error exception guarantee for transient
+resolver state**, not an atomic transaction spanning the external
+registry: if `create()` succeeds and a later fingerprint write fails,
+a persistent source profile can remain without an active track.
+The `IAcousticSourceRegistry` contract currently exposes no deletion,
+rollback, or transactional create-and-fingerprint operation. The
+regression tests intentionally acknowledge this limitation rather
+than claiming full external rollback. The resolver remains
+single-thread-owned.
+
+## Defensive registry ID admission
+
+A custom `IAcousticSourceRegistry::create()` implementation must issue a
+valid new `AcousticSourceId`. The resolver rejects invalid IDs and IDs already
+present in the registry snapshot or bound to an active track. A rejected
+creation does not bind the track, update the transient geometry cache, or
+advance the resolver clock; deterministic fault-injection regressions exercise
+both invalid and reused IDs. The registry itself remains responsible for the
+atomicity of its persistent creation operation.

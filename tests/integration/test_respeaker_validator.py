@@ -2,6 +2,7 @@
 """Contract checks for corpus reference parsing, independent of hardware."""
 import importlib.util
 import json
+import math
 import tempfile
 from pathlib import Path
 
@@ -102,6 +103,82 @@ def main():
     result = module.evaluate(interrupted, source, 10)[0]
     assert result["adjacent_hop_id_switches"] == 0
     assert result["id_changes_after_gap"] == 1
+    # Annotation boundaries must not reset one physical source's track-ID
+    # history. Segments are independent DOA windows, not new speaker IDs.
+    one_source_split = [
+        {"source_id": "speaker", "start_s": 0.0, "end_s": 0.024,
+         "azimuth_deg": 0},
+        {"source_id": "speaker", "start_s": 0.024, "end_s": 0.048,
+         "azimuth_deg": 0},
+    ]
+    split_manifest = sample()
+    split_manifest["recordings"][0]["intervals"] = one_source_split
+    check_manifest(split_manifest, True)
+
+    unchanged_id = [dict(hop=i, kind="track", id="10",
+                         x="1", y="0", z="0") for i in range(6)]
+    stable_segments, stable_quality = module.evaluate(
+        unchanged_id, one_source_split, 6, with_summary=True)
+    assert len(stable_segments) == 2
+    assert all(s["track_coverage"] == 1 for s in stable_segments)
+    assert stable_quality["adjacent_hop_id_switches"] == 0
+
+    boundary_switch = [dict(row) for row in unchanged_id]
+    for row in boundary_switch[3:]:
+        row["id"] = "20"
+    split_segments, split_quality = module.evaluate(
+        boundary_switch, one_source_split, 6, with_summary=True)
+    assert split_segments[0]["adjacent_hop_id_switches"] == 0
+    assert split_segments[1]["adjacent_hop_id_switches"] == 1
+    assert split_quality["adjacent_hop_id_switches"] == 1
+    assert split_quality["id_changes_after_gap"] == 0
+
+    # Across an actual annotation gap, the same source's new track ID is
+    # reacquisition, not an adjacent-hop identity switch.
+    gapped_source = [
+        {"source_id": "speaker", "start_s": 0.0, "end_s": 0.016,
+         "azimuth_deg": 0},
+        {"source_id": "speaker", "start_s": 0.032, "end_s": 0.048,
+         "azimuth_deg": 0},
+    ]
+    gap_manifest = sample()
+    gap_manifest["recordings"][0]["intervals"] = gapped_source
+    check_manifest(gap_manifest, True)
+    gapped_rows = [dict(hop=i, kind="track", id=str(track_id),
+                        x="1", y="0", z="0")
+                   for i, track_id in [(0, 10), (1, 10), (4, 20), (5, 20)]]
+    gap_segments, gap_quality = module.evaluate(
+        gapped_rows, gapped_source, 6, with_summary=True)
+    assert gap_segments[1]["id_changes_after_gap"] == 1
+    assert gap_quality["adjacent_hop_id_switches"] == 0
+    assert gap_quality["id_changes_after_gap"] == 1
+    assert gap_quality["track_reacquisitions"] == 1
+    assert gap_segments[1]["track_reacquisitions"] == 1
+
+    # The same track ID after a dropout is *still* a reacquisition,
+    # but is not an identity change. These are different diagnostics.
+    reused_rows = [dict(row) for row in gapped_rows]
+    for row in reused_rows:
+        row["id"] = "10"
+    reused_segments, reused_quality = module.evaluate(
+        reused_rows, gapped_source, 6, with_summary=True)
+    assert reused_quality["track_reacquisitions"] == 1
+    assert reused_quality["id_changes_after_gap"] == 0
+    assert reused_quality["adjacent_hop_id_switches"] == 0
+    assert reused_segments[0]["track_reacquisitions"] == 0
+    assert reused_segments[1]["track_reacquisitions"] == 1
+
+    # Continuous annotation but a missed hop is likewise a reacquisition
+    # even if the same ID appears on both sides of the dropout.
+    dropout = [dict(hop=i, kind="track", id="10",
+                    x="1", y="0", z="0") for i in (0, 1, 3, 4, 5)]
+    dropout_metrics, dropout_quality = module.evaluate(
+        dropout, [{"source_id": "speaker", "start_s": 0.0,
+                   "end_s": 0.048, "azimuth_deg": 0}], 6, with_summary=True)
+    assert dropout_quality["track_reacquisitions"] == 1
+    assert dropout_quality["id_changes_after_gap"] == 0
+    assert dropout_metrics[0]["track_coverage"] == 5 / 6
+
     # Ground-truth quantitative acceptance covers overlapping sources and
     # otherwise silent hops, not just median DOA of whichever tracks exist.
     from types import SimpleNamespace
@@ -109,7 +186,9 @@ def main():
         defaults = dict(max_median_error_deg=10.0, max_p90_error_deg=20.0,
                         min_track_coverage=1.0, max_adjacent_id_switches=0,
                         min_simultaneous_track_coverage=1.0,
-                        max_silent_false_positive_fraction=0.0)
+                        max_silent_false_positive_fraction=0.0,
+                        max_active_unmatched_track_fraction=None,
+                        max_adjacent_cross_source_id_handoffs=None)
         defaults.update(overrides)
         return SimpleNamespace(**defaults)
 
@@ -130,6 +209,8 @@ def main():
     assert quality["simultaneous_track_coverage"] == 1
     assert quality["silent_hops"] == 2
     assert quality["silent_false_positive_hop_fraction"] == 0
+    assert quality["cross_source_id_handoffs"] == 0
+    assert quality["cross_source_id_reuse_after_gap"] == 0
     module.enforce_thresholds(metrics, quality, gates())
 
     def fails(segments, summary, options):
@@ -139,6 +220,83 @@ def main():
             return
         raise AssertionError("Invalid quality result unexpectedly passed acceptance")
 
+    # ID ownership can change between *different* annotated sources
+    # without triggering either source's own ID-switch counter. Detect
+    # handoffs across adjacent hops even when both sources were localized
+    # perfectly and they did not overlap in time.
+    sequential_sources = [
+        {"source_id": "a", "start_s": 0.0, "end_s": 0.024,
+         "azimuth_deg": 0},
+        {"source_id": "b", "start_s": 0.024, "end_s": 0.048,
+         "azimuth_deg": 90},
+    ]
+    sequential_manifest = sample()
+    sequential_manifest["recordings"][0]["intervals"] = sequential_sources
+    check_manifest(sequential_manifest, True)
+    adjacent_rows = ([trace(i, 41) for i in range(3)] +
+                     [trace(i, 41, 0, 1) for i in range(3, 6)])
+    transition_segments, transition_quality = module.evaluate(
+        adjacent_rows, sequential_sources, 8, 30, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in transition_segments)
+    assert transition_quality["adjacent_hop_id_switches"] == 0
+    assert transition_quality["track_reacquisitions"] == 0
+    assert transition_quality["cross_source_id_handoffs"] == 1
+    assert transition_quality["cross_source_id_reuse_after_gap"] == 0
+    assert transition_segments[0]["cross_source_id_handoffs"] == 0
+    assert transition_segments[1]["cross_source_id_handoffs"] == 1
+    baseline = gates(min_simultaneous_track_coverage=None)
+    module.enforce_thresholds(transition_segments, transition_quality, baseline)
+    fails(transition_segments, transition_quality,
+          gates(min_simultaneous_track_coverage=None,
+                max_adjacent_cross_source_id_handoffs=0))
+    module.enforce_thresholds(
+        transition_segments, transition_quality,
+        gates(min_simultaneous_track_coverage=None,
+              max_adjacent_cross_source_id_handoffs=1))
+
+    # Recycling the same integer ID after multiple unmatched hops is
+    # different from an adjacent source handoff and may be legitimate.
+    delayed_sources = [
+        sequential_sources[0],
+        {"source_id": "b", "start_s": 0.056, "end_s": 0.08,
+         "azimuth_deg": 90},
+    ]
+    delayed_manifest = sample()
+    delayed_manifest["recordings"][0]["intervals"] = delayed_sources
+    check_manifest(delayed_manifest, True)
+    delayed_rows = ([trace(i, 41) for i in range(3)] +
+                    [trace(i, 41, 0, 1) for i in range(7, 10)])
+    delayed_segments, delayed_quality = module.evaluate(
+        delayed_rows, delayed_sources, 12, 30, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in delayed_segments)
+    assert delayed_quality["cross_source_id_handoffs"] == 0
+    assert delayed_quality["cross_source_id_reuse_after_gap"] == 1
+    assert delayed_segments[1]["cross_source_id_reuse_after_gap"] == 1
+    assert delayed_quality["id_changes_after_gap"] == 0
+    module.enforce_thresholds(
+        delayed_segments, delayed_quality,
+        gates(min_simultaneous_track_coverage=None,
+              max_adjacent_cross_source_id_handoffs=0))
+
+    # Simultaneous sources exchanging track IDs cause *two* consecutive
+    # cross-source handoffs; the older per-source switch gate still fires.
+    simultaneous_swap = [dict(row) for row in clean]
+    for row in simultaneous_swap:
+        if row["hop"] == "5":
+            row["id"] = "20" if row["id"] == "10" else "10"
+    swapped_segments, swapped_quality = module.evaluate(
+        simultaneous_swap, two_sources, 8, 30, with_summary=True)
+    assert swapped_quality["adjacent_hop_id_switches"] == 2
+    assert swapped_quality["cross_source_id_handoffs"] == 2
+    assert swapped_quality["cross_source_id_reuse_after_gap"] == 0
+    fails(swapped_segments, swapped_quality,
+          gates(max_adjacent_id_switches=2,
+                max_adjacent_cross_source_id_handoffs=0))
+    module.enforce_thresholds(
+        swapped_segments, swapped_quality,
+        gates(max_adjacent_id_switches=2,
+              max_adjacent_cross_source_id_handoffs=2))
+
     noisy = clean + [trace(6, 99)]
     metrics, quality = module.evaluate(noisy, two_sources, 8, 30, with_summary=True)
     assert quality["silent_hops_with_tracks"] == 1
@@ -146,6 +304,27 @@ def main():
     fails(metrics, quality, gates())
     module.enforce_thresholds(
         metrics, quality, gates(max_silent_false_positive_fraction=0.5))
+
+    # A correct source with extra ghost tracks in *active* hops passed all
+    # former DOA/coverage/silence gates. Score those ghosts independently.
+    ghost_rows = clean + [trace(0, 99, 0, 1), trace(3, 99, -1, 0)]
+    ghost_segments, ghost_quality = module.evaluate(
+        ghost_rows, two_sources, 8, 30, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in ghost_segments)
+    assert ghost_quality["silent_false_positive_hop_fraction"] == 0
+    assert ghost_quality["active_hops"] == 6
+    assert ghost_quality["active_hops_with_unmatched_tracks"] == 2
+    assert ghost_quality["active_unmatched_track_observations"] == 2
+    assert ghost_quality["active_unmatched_track_hop_fraction"] == 2 / 6
+    # The old gates still pass because the new limit is opt-in until
+    # its threshold is calibrated from real recordings.
+    module.enforce_thresholds(ghost_segments, ghost_quality, gates())
+    fails(ghost_segments, ghost_quality,
+          gates(max_active_unmatched_track_fraction=0.0))
+    module.enforce_thresholds(
+        ghost_segments, ghost_quality,
+        gates(max_active_unmatched_track_fraction=2 / 6))
+    assert quality["active_unmatched_track_hop_fraction"] == 0
 
     switched = [dict(row) for row in clean]
     for row in switched:
@@ -155,6 +334,108 @@ def main():
     assert quality["adjacent_hop_id_switches"] == 1
     fails(metrics, quality, gates())
     module.enforce_thresholds(metrics, quality, gates(max_adjacent_id_switches=1))
+
+
+    # Identical track IDs cannot be scored as two independently resolved
+    # sources in the same hop, even with two different unit directions.
+    duplicated_ids = clean + [trace(2, 10, 0, 1)]
+    try:
+        module.evaluate(duplicated_ids, two_sources, 8, 30)
+    except ValueError as error:
+        assert "Duplicate track ID" in str(error)
+    else:
+        raise AssertionError("Duplicate per-hop track ID inflated coverage")
+    # The same track ID in a later hop is normal tracking, not duplication.
+    assert module.evaluate([trace(0, 10), trace(1, 10)],
+                           two_sources[:1], 8)[0]["track_coverage"] == 2 / 6
+
+    # The real-corpus gate must not trust a cropped or forged hop count.
+    # A truncated CSV must not hide silent-hop false positives either.
+    valid_summary = {
+        "schema": "libaudition.offline-integration.v1",
+        "input_frames": 8 * module.HOP, "sample_rate_hz": module.FS,
+        "hops": 8, "track_observations": len(clean),
+        "potential_observations": 0, "recorder_drops": 0,
+    }
+    module.validate_runner_trace(valid_summary, 8 * module.HOP, clean)
+    def bad_trace(summary, rows=clean):
+        try:
+            module.validate_runner_trace(summary, 8 * module.HOP, rows)
+        except ValueError:
+            return
+        raise AssertionError("Corrupt ODAS summary/trace accepted")
+    for change in (
+        {"hops": 6},
+        {"hops": 9},
+        {"input_frames": 7 * module.HOP},
+        {"sample_rate_hz": 8000},
+        {"track_observations": len(clean) - 1},
+        {"potential_observations": 1},
+        {"recorder_drops": 1},
+        {"hops": True},
+        {"schema": "unrecognized"},
+    ):
+        bad_trace({**valid_summary, **change})
+    bad_trace(valid_summary, clean[:-1])
+
+
+    # Two distinct moving sources meet at exactly 0 degrees on hop 2.
+    # The runner can emit their rows in either order. At identical
+    # directional cost, continuity of the previous ID should decide,
+    # not CSV ordering. Once trajectories diverge, geometry takes priority.
+    crossing = [
+        {"source_id": "left_to_right", "start_s": 0.0, "end_s": 0.04,
+         "azimuth_start_deg": -60.0, "azimuth_end_deg": 60.0},
+        {"source_id": "right_to_left", "start_s": 0.0, "end_s": 0.04,
+         "azimuth_start_deg": 60.0, "azimuth_end_deg": -60.0},
+    ]
+    crossing_manifest = sample()
+    crossing_manifest["recordings"][0]["intervals"] = crossing
+    check_manifest(crossing_manifest, True)
+
+    def crossing_row(hop, ident, source):
+        at = (hop + 0.5) * module.HOP / module.FS
+        angle = math.radians(module.reference_azimuth(crossing[source], at))
+        return trace(hop, ident, math.cos(angle), math.sin(angle))
+
+    crossing_rows = []
+    for hop in range(5):
+        pair = [crossing_row(hop, 10, 0), crossing_row(hop, 20, 1)]
+        if hop == 2:
+            pair.reverse()  # Real output order may vary at a crossing.
+        crossing_rows.extend(pair)
+    # Retain two genuine silent hops: quality acceptance must test its
+    # false-positive threshold rather than failing due to absent evidence.
+    crossing_metrics, crossing_quality = module.evaluate(
+        crossing_rows, crossing, 7, 20, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in crossing_metrics)
+    assert crossing_quality["simultaneous_track_coverage"] == 1
+    assert crossing_quality["adjacent_hop_id_switches"] == 0
+    assert crossing_quality["id_changes_after_gap"] == 0
+    module.enforce_thresholds(crossing_metrics, crossing_quality, gates())
+
+    # An actual ID swap after crossing must NOT be hidden by continuity:
+    # exact directional matching outranks the prior-hop ID preference.
+    actual_swap = [dict(row) for row in crossing_rows]
+    for row in actual_swap:
+        if int(row["hop"]) >= 3:
+            row["id"] = "20" if row["id"] == "10" else "10"
+    swapped_metrics, swapped_quality = module.evaluate(
+        actual_swap, crossing, 7, 20, with_summary=True)
+    assert all(s["track_coverage"] == 1 for s in swapped_metrics)
+    assert swapped_quality["adjacent_hop_id_switches"] == 2
+    fails(swapped_metrics, swapped_quality, gates())
+    module.enforce_thresholds(
+        swapped_metrics, swapped_quality, gates(max_adjacent_id_switches=2))
+
+    # Direct assignment contract: geometric error still overrides
+    # preferred IDs, and a missing history leaves the old API usable.
+    opposite = [crossing_row(0, 20, 0), crossing_row(0, 10, 1)]
+    expected = [module.reference_direction(src, 0.004) for src in crossing]
+    geometric = module.associate_with_indices(
+        expected, opposite, 20, preferred_ids=[10, 20])
+    assert [opposite[idx]["id"] for _, idx, _ in geometric] == ["20", "10"]
+    assert len(module.associate_with_indices(expected, opposite)) == 2
 
     # A 60-degree outlier leaves the median at zero; P90 must catch it.
     outlier = [dict(row) for row in clean]

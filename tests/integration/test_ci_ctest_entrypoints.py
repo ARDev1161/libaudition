@@ -26,15 +26,38 @@ class CiCTestEntrypointTests(unittest.TestCase):
     def test_ci_does_not_directly_invoke_test_runners(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         # Python scoring assertions belong to add_test(), not ad-hoc commands.
-        self.assertNotRegex(
-            workflow,
+        runner_pattern = (
             r"(?m)^\s*(?:python3?|[^\s]+/python)\s+"
-            r"tests/(?:integration/)?(?:score_|test_)[\w-]+\.py\b")
+            r"tests/(?:integration/|ci/)?(?:score_|test_|check_)[\w-]+\.py\b"
+        )
+        self.assertNotRegex(workflow, runner_pattern)
+        # Mutation guards: both manifest entrypoints must be rejected if
+        # accidentally reintroduced as direct shell invocations.
+        for command in ("python3 tests/ci/test_model_manifest.py",
+                        "python3 tests/ci/check_model_manifest.py"):
+            self.assertRegex("run: |\n    " + command, runner_pattern)
         # Executable test binaries must likewise be invoked by CTest.
         self.assertNotRegex(
             workflow,
             r"(?m)^\s*(?:\./)?build[\w/-]*/tests/"
             r"\w[\w.-]*(?:\s|$)")
+
+    def test_manifest_audit_is_an_early_ctest_gate(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        cmake = TEST_CMAKE.read_text(encoding="utf-8")
+        build_test = workflow.split("  build-test:\n", 1)[1].split(
+            "\n  cpp-coverage:\n", 1)[0]
+        configure = build_test.index("      - name: Configure\n")
+        audit = build_test.index("      - name: Audit CI model fixture manifest via CTest\n")
+        build = build_test.index("      - name: Build\n")
+        self.assertLess(configure, audit)
+        self.assertLess(audit, build)
+        self.assertIn(
+            "ctest --no-tests=error --test-dir build/ci "
+            "-R '^ci_model_manifest_(regressions|audit)$' --output-on-failure",
+            build_test)
+        for name in ("ci_model_manifest_regressions", "ci_model_manifest_audit"):
+            self.assertIn("add_test(NAME " + name, cmake)
 
     def test_heavy_corpus_workflow_uses_ctest_for_selftests(self):
         workflow = CORPUS_WORKFLOW.read_text(encoding="utf-8")
@@ -73,6 +96,65 @@ class CiCTestEntrypointTests(unittest.TestCase):
         end = workflow.index("  odas-backend:\n", start)
         real_job = workflow[start:end]
         self.assertEqual(real_job.count("    runs-on: ubuntu-latest"), 1)
+
+        # Any configured corpus setting must enable the optional gate,
+        # including additional threshold-only configurations. A partial
+        # configuration then fails at the missing required-input checks
+        # instead of quietly skipping the real recording test.
+        required_settings = {
+            "LIBAUDITION_REAL_CORPUS_URL",
+            "LIBAUDITION_REAL_CORPUS_SHA256",
+            "LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG",
+            "LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE",
+            "LIBAUDITION_REAL_CORPUS_MAX_P90_ERROR_DEG",
+            "LIBAUDITION_REAL_CORPUS_MAX_ASSOCIATION_ERROR_DEG",
+            "LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_ID_SWITCHES",
+            "LIBAUDITION_REAL_CORPUS_MIN_SIMULTANEOUS_TRACK_COVERAGE",
+            "LIBAUDITION_REAL_CORPUS_MAX_SILENT_FALSE_POSITIVE_FRACTION",
+            "LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION",
+            "LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS",
+        }
+        match = re.search(r"(?m)^    if: >-\n(.*?)(?=^    runs-on:)",
+                          real_job, flags=re.DOTALL)
+        self.assertIsNotNone(match, "Real-corpus job requires a folded activation guard")
+        guard = match.group(1)
+        terms = set(re.findall(
+            r"vars\.(LIBAUDITION_REAL_CORPUS_[A-Z0-9_]+)\s*!=\s*''",
+            guard))
+        self.assertEqual(terms, required_settings,
+                         "Every real-corpus variable must activate the CI job")
+        self.assertEqual(guard.count("||"), len(required_settings) - 1,
+                         "Corpus settings must be joined as logical OR")
+        for name in required_settings:
+            # A single configured value must turn the gate on.
+            configured = {key: (key == name) for key in required_settings}
+            self.assertTrue(any(configured[key] for key in terms),
+                            f"Partial configuration for {name} was skipped")
+        # The optional ghost-track quality limit must be passed end-to-end:
+        # repository variable -> workflow env -> CMake -> CTest CLI.
+        self.assertIn(
+            "MAX_ACTIVE_UNMATCHED_TRACK_FRACTION", cmake)
+        self.assertIn(
+            "MAX_ACTIVE_UNMATCHED_TRACK_FRACTION; do", real_job)
+        self.assertIn(
+            "LIBAUDITION_REAL_CORPUS_MAX_ACTIVE_UNMATCHED_TRACK_FRACTION:",
+            real_job)
+        self.assertIn(
+            "MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS", cmake)
+        self.assertIn(
+            "MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS MAX_ACTIVE_UNMATCHED_TRACK_FRACTION; do",
+            real_job)
+        self.assertIn(
+            "LIBAUDITION_REAL_CORPUS_MAX_ADJACENT_CROSS_SOURCE_ID_HANDOFFS:",
+            real_job)
+        for needle in (
+            '${CORPUS_URL:?Set LIBAUDITION_REAL_CORPUS_URL',
+            '${CORPUS_SHA256:?Set LIBAUDITION_REAL_CORPUS_SHA256',
+            '${LIBAUDITION_REAL_CORPUS_MAX_MEDIAN_ERROR_DEG:?',
+            '${LIBAUDITION_REAL_CORPUS_MIN_TRACK_COVERAGE:?',
+        ):
+            self.assertIn(needle, real_job)
+
         self.assertIn(
             "run: ctest --no-tests=error --test-dir build-real-odas "
             "-R '^audio_real_respeaker_corpus$' --output-on-failure",

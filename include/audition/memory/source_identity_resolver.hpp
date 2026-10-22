@@ -79,7 +79,7 @@ private:
         SourceState,
         StrongIdHash<AcousticSourceId>> recent_sources_{};
 
-    void validateAndAdvanceTimestamp(Timestamp timestamp);
+    void validateTimestamp(Timestamp timestamp) const;
     void pruneRecentSources(Timestamp timestamp);
     void updateSourceState(
         AcousticSourceId source_id,

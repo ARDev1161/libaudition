@@ -1,0 +1,47 @@
+# Asynchronous source speech worker
+
+`AsyncSpeechIngressWorker` is the explicit C++17 scheduling adapter
+between producer PCM and the existing `PerSourceSpeechRuntime`.
+
+A capture producer calls `pushWithEpoch(source_id, AudioView)` and
+associates the returned `SpeechPcmAdmissionResult::epoch` with its
+**RecordingId** only for a nonempty accepted block. Admission and epoch
+are atomic with respect to `forget()` / `retire()` / ID reuse. Calling
+the legacy `push()` and then separately querying `sourceEpoch()` is
+not safe when source lifecycle calls can race on another thread.
+The separate worker owns the execution of VAD `push()`, `retire()`
+and `forget()`, preserving the FIFO audio/retirement order established
+by `BoundedSpeechPcmIngress`. The worker emits `Bound`, `Retired`,
+`Forgot`, or `Error` acknowledgements, each with the source ID and
+ingress epoch. The producer must drain these notifications before
+draining ASR results and must apply them to the *exact* WAV RecordingId,
+never by a reused ODAS source number.
+
+For normal end of source, the producer calls `retire()` and, if
+accepted, `SourceRecordingSession::retireDeferred()`. After the worker
+acknowledges the ASR generation, the producer calls
+`SourceRecordingSession::acknowledgeRetired(recording_id, generation)`.
+It then drains ASR results and calls `completeGeneration()` once the
+retired generation has no in-flight work. A null generation persists a
+WAV-only sidecar. The producer uses `cancelGeneration()` for
+discontinuity acknowledgements.
+
+The acknowledgement mailbox has 256 entries by default and applies
+**worker-side backpressure** rather than silently dropping required
+retirement messages. Stopping/destroying an adapter bypasses mailbox
+backpressure so thread destruction cannot deadlock. Call
+`closeInput()`, drain acknowledgements until `finished()` and
+complete sidecars before destroying it; emergency destruction may lose
+unsent notifications, which must be treated as an overload/error.
+
+This is not a hard real-time implementation: producer calls validate
+and copy bounded PCM, acquire mutexes, and can allocate. The ASR model
+remains on the runtime's own independent worker. Hardware latency,
+accuracy and RK3588 deadlines must be measured separately.
+
+A delayed VAD/runtime failure is scoped to the ingress epoch of its
+already-dequeued PCM. If the producer has forgotten and reused the same
+numeric source ID, the worker reports the old-epoch error without invalidating
+the new epoch's PCM or FIFO retirement. The transport exposes
+`forgetIfEpoch(source_id, epoch)` for conditional worker cancellation; normal
+producer `forget(source_id)` still cancels the current source.

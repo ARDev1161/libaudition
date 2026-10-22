@@ -1,6 +1,9 @@
 #pragma once
 #include <audition/audio/recording_timeline.hpp>
 #include <audition/core/export.hpp>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <string_view>
 #include <iomanip>
 #include <filesystem>
@@ -79,18 +82,46 @@ inline std::string recordingTimelineToJson(const RecordingTimeline& timeline) {
     return out.str();
 }
 
-// Persist a sidecar without exposing half-written JSON to readers.
+// Publish a complete document using an exclusive staging directory beside
+// the destination. An old shared "<file>.tmp" allows concurrent writers to
+// truncate each other's pending data.
 inline void writeRecordingTimelineJson(const std::filesystem::path& file,
                                        const RecordingTimeline& timeline) {
-    const auto pending = std::filesystem::path{file.string() + ".tmp"};
+    static std::atomic<std::uint64_t> next_temp_id{0U};
+    std::filesystem::path staging;
+    for (unsigned attempt=0;attempt<16U;++attempt) {
+        const auto ticks=std::chrono::steady_clock::now()
+                             .time_since_epoch().count();
+        const auto serial=next_temp_id.fetch_add(1U,std::memory_order_relaxed);
+        const auto candidate=file.parent_path() /
+            (".libaudition-sidecar-" + std::to_string(ticks) +
+             "-" + std::to_string(serial));
+        if (std::filesystem::create_directory(candidate)) {
+            staging=candidate;
+            break;
+        }
+    }
+    if (staging.empty())
+        throw std::runtime_error("Cannot reserve timeline staging directory");
+
+    struct StagingCleanup {
+        std::filesystem::path path;
+        ~StagingCleanup() noexcept {
+            std::error_code ec;
+            std::filesystem::remove_all(path,ec);
+        }
+    } cleanup{staging};
+
+    const auto pending=staging / "timeline.json";
     {
-        std::ofstream stream(pending, std::ios::binary | std::ios::trunc);
+        std::ofstream stream(pending,std::ios::binary | std::ios::trunc);
         if (!stream) throw std::runtime_error("Cannot open timeline sidecar");
         stream << recordingTimelineToJson(timeline);
         stream.close();
         if (!stream) throw std::runtime_error("Cannot write timeline sidecar");
     }
-    std::filesystem::rename(pending, file);
+    // Staged on the same filesystem: readers see a complete JSON document.
+    std::filesystem::rename(pending,file);
 }
 
 // Strict library reader; applications do not need a Qt JSON parser.
