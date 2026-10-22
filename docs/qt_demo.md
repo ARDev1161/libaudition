@@ -58,6 +58,23 @@ these illustrative costs.
 The headless self-test additionally checks crossed pairings, forbidden
 edges, a low unmatched penalty and error reporting for invalid costs.
 
+The **Scalar changes and acoustic event lifecycle** panel below the
+Hungarian example lets you enter one-dimensional feature values and
+classification scores (separate sequences), plus start/stop thresholds.
+It executes the real `TemporalScalarAnalyzer` (CUSUM),
+`TemporalAcousticEventDetector` (consecutive-score hysteresis) and
+`EventEpisodeAssociator` (persistent-source event episodes).
+The default input produces one upward scalar change, one event start
+and one event end. The output displays source-local occurrence and episode
+IDs. You can set scores low enough to suppress an event or submit invalid
+values to observe error handling; the UI never pretends to infer scores
+from the supplied scalar feature values.
+
+For backend-model validation by exact CI job and test name, see
+[Qt model validation matrix](qt_model_validation_matrix.md). Only some
+optional panels have pinned-model GUI tests. Passing a backend CTest
+does not prove every GUI workflow.
+
 Run the hardware-independent smoke test:
 
 ```sh
