@@ -565,6 +565,20 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
         confidence = Probability::from(best->score);
     } else {
         source_id = registry_->create();
+        // A third-party registry may violate its create() contract. Never
+        // admit an invalid or recycled ID: that could alias two active tracks
+        // or silently overwrite another persistent source's geometry.
+        const bool reused_id =
+            sourceIsActive(source_id) ||
+            std::any_of(profiles.begin(), profiles.end(),
+                        [source_id](const AcousticSourceProfile& profile) {
+                            return profile.source_id == source_id;
+                        });
+        if (!source_id.valid() || reused_id) {
+            throw Error{
+                ErrorCode::InvalidState,
+                "Source registry created an invalid or existing source ID"};
+        }
         newly_created = true;
     }
 
