@@ -11,6 +11,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QStringList>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -19,6 +20,7 @@
 #include <cstdint>
 #include <exception>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
