@@ -733,8 +733,8 @@ quality or on-device ID assignment behavior.
 ```
 
 The Qt self-test exercises the real temporal runner and catalog filtering,
-not just whether their widgets exist. The matching CLI example is
-`libaudition_temporal_cli`; see [CLI examples](cli_examples.md).
+not just whether their widgets exist. The matching CLI examples are
+`libaudition_temporal_cli` and `libaudition_temporal_events_cli`; see [CLI examples](cli_examples.md).
 
 ## Tabs
 
