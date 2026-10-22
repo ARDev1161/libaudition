@@ -128,16 +128,25 @@ void selfTest() {
     replayAndValidate(temp.path);
     // Negative regression: a syntactically valid but wrong-rate sidecar
     // must not be accepted as a replay of the exported WAV.
-    audition::RecordingTimeline corrupted{101U, 8000U};
-    audition::writeRecordingTimelineJson(
-        sidecar(wav(temp.path, "source-generation-101.wav")), corrupted);
-    bool rejected = false;
+    const auto firstSidecar = sidecar(wav(temp.path, "source-generation-101.wav"));
+    const auto original = audition::readRecordingTimelineJson(firstSidecar);
+    audition::RecordingTimeline corrupted{original.recordingId(), 8000U};
+    for (const auto& event : original.speech()) corrupted.add(event);
+    for (const auto& event : original.sounds()) corrupted.add(event);
+    for (const auto& event : original.gaps()) corrupted.add(event);
+    require(corrupted.sounds().size() == original.sounds().size() &&
+                corrupted.gaps().size() == original.gaps().size() &&
+                corrupted.speech().size() == original.speech().size(),
+            "rate-only corruption unexpectedly changed annotations");
+    audition::writeRecordingTimelineJson(firstSidecar, corrupted);
+    bool rejectedRate = false;
     try {
         replayAndValidate(temp.path);
-    } catch (const std::runtime_error&) {
-        rejected = true;
+    } catch (const std::runtime_error& error) {
+        rejectedRate =
+            std::string{error.what()} == "sidecar/WAV sample rate mismatch";
     }
-    require(rejected, "sidecar/WAV rate mismatch was accepted");
+    require(rejectedRate, "sidecar/WAV rate mismatch was not specifically rejected");
     std::cout << "recording-export-replay=ok\n";
 }
 } // namespace
