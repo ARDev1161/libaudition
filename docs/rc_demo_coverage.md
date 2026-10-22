@@ -17,9 +17,9 @@ weights/devices instead of fabricating results.
 | Persistent acoustic-source resolution | Source identity | `libaudition_identity_cli` | `cli-identity-smoke` |
 | AcousticEvent lifecycle and assembling | AcousticEvent | `libaudition_event_cli` | `cli-event-smoke` |
 | Synthetic multi-stage acoustic routing | Pipeline | `libaudition_pipeline_cli` | `cli-pipeline-smoke` |
-| Scalar EMA/CUSUM change detection | Feature catalog points to temporal demos | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
-| Temporal hysteresis event lifecycle | Feature catalog; no dedicated Qt controls | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
-| Persistent-source event episode association | Feature catalog; no dedicated Qt controls | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
+| Scalar EMA/CUSUM change detection | Temporal patterns: editable scalar sequence | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
+| Temporal hysteresis event lifecycle | Temporal patterns: editable score sequence / thresholds | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
+| Persistent-source event episode association | Temporal patterns: episode identity timeline | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
 | Allen interval relations, spatial-time/covariance gate and Hungarian batch assignment | Temporal patterns has editable Hungarian cost matrix; interval/covariance gates remain CLI | `libaudition_temporal_association_cli` | `cli-temporal-association-smoke`, `cli-temporal-association-{crossed,gated,penalty-*}` |
 | Explicitly linked backend factory registry (mock classifier, no inference) | Feature catalog; API + CTest | `libaudition_factory_registry_cli` | `cli-factory-registry-{smoke,unknown,duplicate}` |
 | Source/speaker/sound prototype registries and model metadata | Feature catalog points to Source identity / Backends | `libaudition_registries_cli` | `cli-registries-smoke` |
@@ -37,7 +37,7 @@ weights/devices instead of fabricating results.
 | Recording WAV/JSON timeline, source retirement and replay | Acoustic scene / recording popups | `libaudition_recording_replay_cli --export/--replay` | `cli-recording-export-replay-smoke`, recording timeline/session tests |
 
 The optional backends are not built by the default dependency-light build.
-The catalog says **API + CTest only** for features without a direct GUI runner;
+The catalog identifies **API + CTest only** for features without a direct GUI runner;
 it never shows a model-only capability as physically verified.
 
 ## Explicit gaps to close or mark before RC acceptance
@@ -59,9 +59,12 @@ it never shows a model-only capability as physically verified.
    checks generation isolation, gap silence and rate consistency in CTest.
    Live ALSA/ODAS capture, asynchronous ASR timestamps and hardware loss
    accounting still require separate device-level verification.
-4. For optional real-model/backend panels, run the GUI on one fully provisioned
-   configuration and explicitly record which panels were checked. The
-   default core-only `qt_self_test` cannot prove model UI behavior.
+4. The [model validation matrix](qt_model_validation_matrix.md) records exact
+   real-model Qt test cases and successful CI #1608 evidence; pinned-model
+   jobs prove a subset of GUI paths. Other Sherpa subpanels, true simultaneous
+   physical device capture and deployment-specific quality remain untested.
+   The new temporal scalar/event/episode GUI tests require **new exact-head
+   CI**, not merely a previous green result.
 5. Hardware microphone, model-accuracy and target embedded latency tests are
    separate evidence. They remain NOT MEASURED until independently verified.
 
