@@ -79,6 +79,31 @@ if(LIBAUDITION_BUILD_TESTS)
     set_tests_properties(cli-temporal-association-smoke PROPERTIES
         PASS_REGULAR_EXPRESSION "temporal-association=ok")
 
+    # Parameterized Hungarian demonstration: crossed tracks, forbidden edges,
+    # and a cost/penalty tradeoff. Failures must not be accepted as smoke passes.
+    add_test(NAME cli-temporal-association-crossed
+        COMMAND libaudition_temporal_association_cli --scenario crossed)
+    set_tests_properties(cli-temporal-association-crossed PROPERTIES
+        PASS_REGULAR_EXPRESSION "scenario=crossed assignment=0->1,1->0")
+    add_test(NAME cli-temporal-association-gated
+        COMMAND libaudition_temporal_association_cli --scenario gated)
+    set_tests_properties(cli-temporal-association-gated PROPERTIES
+        PASS_REGULAR_EXPRESSION "scenario=gated assignment=0->1,1->unmatched")
+    add_test(NAME cli-temporal-association-penalty-match
+        COMMAND libaudition_temporal_association_cli --scenario penalty --penalty 2)
+    set_tests_properties(cli-temporal-association-penalty-match PROPERTIES
+        PASS_REGULAR_EXPRESSION "scenario=penalty assignment=0->0")
+    add_test(NAME cli-temporal-association-penalty-unmatched
+        COMMAND libaudition_temporal_association_cli --scenario penalty --penalty 0.2)
+    set_tests_properties(cli-temporal-association-penalty-unmatched PROPERTIES
+        PASS_REGULAR_EXPRESSION "scenario=penalty assignment=0->unmatched")
+    add_test(NAME cli-temporal-association-unknown-scenario
+        COMMAND libaudition_temporal_association_cli --scenario unknown)
+    set_tests_properties(cli-temporal-association-unknown-scenario PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME cli-temporal-association-invalid-penalty
+        COMMAND libaudition_temporal_association_cli --scenario penalty --penalty nan)
+    set_tests_properties(cli-temporal-association-invalid-penalty PROPERTIES WILL_FAIL TRUE)
+
     add_test(NAME cli-temporal-events-smoke
         COMMAND libaudition_temporal_events_cli)
     set_tests_properties(cli-temporal-events-smoke PROPERTIES

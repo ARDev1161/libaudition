@@ -20,7 +20,7 @@ weights/devices instead of fabricating results.
 | Scalar EMA/CUSUM change detection | Feature catalog points to temporal demos | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
 | Temporal hysteresis event lifecycle | Feature catalog; no dedicated Qt controls | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
 | Persistent-source event episode association | Feature catalog; no dedicated Qt controls | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
-| Allen interval relations, spatial-time/covariance gate and Hungarian batch assignment | Feature catalog; no dedicated Qt controls | `libaudition_temporal_association_cli` | `cli-temporal-association-smoke` |
+| Allen interval relations, spatial-time/covariance gate and Hungarian batch assignment | Feature catalog; no dedicated Qt controls | `libaudition_temporal_association_cli` | `cli-temporal-association-smoke`, `cli-temporal-association-{crossed,gated,penalty-*}` |
 | Explicitly linked backend factory registry (mock classifier, no inference) | Feature catalog; API + CTest | `libaudition_factory_registry_cli` | `cli-factory-registry-{smoke,unknown,duplicate}` |
 | Source/speaker/sound prototype registries and model metadata | Feature catalog points to Source identity / Backends | `libaudition_registries_cli` | `cli-registries-smoke` |
 | Recurrence / periodic event onset analysis | Temporal patterns | `libaudition_temporal_cli` | `qt_self_test`, `cli-temporal-patterns-smoke` |
@@ -42,10 +42,12 @@ it never shows a model-only capability as physically verified.
 
 ## Explicit gaps to close or mark before RC acceptance
 
-1. The deterministic `libaudition_temporal_association_cli` now covers
-   Hungarian batch matching, diagonal covariance gating and Allen interval
-   relations; a **parameterized or graphical** matching scenario remains open.
-   The Temporal patterns tab currently runs TMP-04, not Hungarian matching.
+1. The `libaudition_temporal_association_cli` now offers `--scenario crossed`,
+   `--scenario gated` and `--scenario penalty --penalty 0.2`, with six
+   additional CTest cases (including invalid input). These demonstrate
+   one-to-one matching, forbidden edges and the unmatched-cost tradeoff.
+   The Temporal patterns tab still runs TMP-04 rather than Hungarian matching;
+   an interactive matrix editor remains a **GUI-only gap**.
 2. `libaudition_registries_cli` covers source/speaker/sound/model metadata; the
    standalone `libaudition_factory_registry_cli` demonstrates explicit factory
    registration, config forwarding, and duplicate/unknown-backend rejection.
@@ -72,3 +74,18 @@ it never shows a model-only capability as physically verified.
   demonstration or an explicitly recorded gap. Keep the demos lightweight;
   core-only examples cannot silently download models.
 - Do not treat a demonstration on canned input as general acoustic accuracy.
+
+## Parameterized matching quick start
+
+```sh
+./build/examples/libaudition_temporal_association_cli --scenario crossed
+./build/examples/libaudition_temporal_association_cli --scenario gated
+./build/examples/libaudition_temporal_association_cli --scenario penalty --penalty 0.2
+./build/examples/libaudition_temporal_association_cli --scenario penalty --penalty 2
+ctest --test-dir build -R '^cli-temporal-association-' --output-on-failure
+```
+
+These fixed synthetic cost matrices illustrate the public assignment API,
+not verified acoustic tracking or source identity on real microphone data.
+The `--penalty` argument applies only to the penalty scenario. Malformed
+arguments and nonfinite/nonpositive penalties fail with a nonzero exit.
