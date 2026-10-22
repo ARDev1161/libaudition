@@ -1156,6 +1156,29 @@ TEST(SourceIdentityResolver, RangeRefinesPositionAnchoredCandidateRanking) {
     EXPECT_EQ(selected.source_id, strong_source.source_id);
 }
 
+TEST(SourceIdentityResolver, DisabledFingerprintDoesNotVetoPositionReacquisition) {
+    audition::InMemoryAcousticSourceRegistry registry;
+    audition::HeuristicSourceIdentityResolverOptions options{};
+    options.fingerprint_weight = 0.0;
+    options.position_weight = 1.0;
+    options.range_weight = 0.0;
+    options.direction_weight = 0.0;
+    audition::HeuristicSourceIdentityResolver resolver{registry, options};
+
+    auto first = observation(1U, 0);
+    first.position = position(1.0, 2.0, 3.0);
+    first.fingerprint = fingerprint("model", {1.F, 0.F});
+    const auto initial = resolver.observe(first);
+    resolver.endTrack(first.track_id, ts(1));
+
+    auto next = observation(2U, 2);
+    next.position = first.position;
+    next.fingerprint = fingerprint("model", {0.F, 1.F});
+    const auto decision = resolver.observe(next);
+    EXPECT_FALSE(decision.newly_created);
+    EXPECT_EQ(decision.source_id, initial.source_id);
+}
+
 TEST(SourceIdentityResolver, ZeroWeightFingerprintCannotAnchorRangeOnlyMatch) {
     audition::InMemoryAcousticSourceRegistry registry;
     audition::HeuristicSourceIdentityResolverOptions options{};
