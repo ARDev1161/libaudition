@@ -43,6 +43,12 @@ is still required before an RC tag.
       package consumers. Save the workflow run link and commit SHA.
 - [ ] Verify unchanged public headers, version constants, CMake export paths,
       downstream `find_package` and a clean Release build/install.
+- [ ] **RC demo coverage:** Qt Feature catalog and Temporal patterns explorer
+      build and pass headless functional tests; the expanded CLI examples pass
+      CTest. Review [demo coverage inventory](rc_demo_coverage.md) against the
+      public API and ensure every subsystem is represented by a working
+      example, an optional-backend workbench, or an explicitly identified
+      API/CTest-only example gap.
 - [ ] Review `CHANGELOG.md`, model provenance, notices and supported-platform
       claims against the RC artifact. Keep optional weights unbundled.
 - [ ] Make an explicit release decision and only then create `v1.0.0-rc.1`
