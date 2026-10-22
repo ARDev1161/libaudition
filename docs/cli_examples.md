@@ -66,6 +66,21 @@ and `temporal-association=ok`. The `cli-temporal-association-smoke` CTest
 checks execution. The example does not establish a physical source identity
 or validate full covariance models.
 
+## Persistent source, speaker, sound prototype and model registries (RC)
+
+```sh
+./build/examples/libaudition_registries_cli
+```
+
+Creates independent in-memory acoustic-source and speaker identities, links
+them, indexes two synthetic sound prototypes, uses cosine matching to retrieve
+the closest prototype and registers model metadata without loading an ONNX
+artifact. This covers `InMemoryAcousticSourceRegistry`,
+`InMemorySpeakerRegistry`, `InMemorySoundPrototypeRegistry`,
+`CosineSoundPrototypeMatcher` and `InMemoryModelRegistry` through their
+public APIs. Expected ending: `registries=ok`. No model weights, biometric
+enrollment or external network requests are involved.
+
 ## SPL calibration and range prior
 
 ```bash
