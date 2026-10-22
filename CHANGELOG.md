@@ -6,7 +6,21 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-10-22 (candidate; not tagged)
+
 ### Added
+
+- Model-independent per-source classification, bounded asynchronous PCM ingress, VAD-driven speech segmentation and asynchronous ASR with explicit source epochs and retirement.
+- Source-specific temporal event detection, scalar change detection, event association, recurrence, DTW, acoustic motifs and bounded streaming template matching.
+- Expanded CTest, sanitizer, installed C++17 package, optional real-model and CI artifact-provenance checks.
+
+### Known limitations
+
+- Final CI on the integrated, versioned commit is required before a release decision.
+- Third-party model artifacts are unbundled; individual licenses and redistribution rights are not universally verified.
+- Real-world microphone-array spatial accuracy, representative WER/DER, hardware deadlines and accelerator variants are not established by deterministic CI tests.
+
+### Other tooling
 
 - Optional Qt Widgets playground covering dependency-free DSP, SPL/range, temporal smoothing, source identity, AcousticEvent and synthetic pipeline flows, plus a feature/status matrix for optional backends.
 - Qt backend workbench with explicit WAV I/O and runnable WORLD, AASIST, CLAP, Sherpa VAD/offline-ASR/streaming-ASR/KWS/language-ID/audio-tagging/speech-denoise/speaker-embedding/speaker-verification/speaker-identification/diarization/VITS-Piper-TTS, ODAS, libsamplerate, WebRTC AEC3, and GTSAM fusion panels when their adapters are enabled.
