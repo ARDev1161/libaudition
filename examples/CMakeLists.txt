@@ -34,7 +34,16 @@ add_executable(libaudition_temporal_cli temporal_patterns_cli.cpp)
 target_link_libraries(libaudition_temporal_cli PRIVATE audition::core)
 libaudition_configure_target(libaudition_temporal_cli)
 
+add_executable(libaudition_temporal_events_cli temporal_events_cli.cpp)
+target_link_libraries(libaudition_temporal_events_cli PRIVATE audition::core audition::pipeline)
+libaudition_configure_target(libaudition_temporal_events_cli)
+
 if(LIBAUDITION_BUILD_TESTS)
+    add_test(NAME cli-temporal-events-smoke
+        COMMAND libaudition_temporal_events_cli)
+    set_tests_properties(cli-temporal-events-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "temporal-events=ok")
+
     add_test(NAME cli-temporal-patterns-smoke
         COMMAND libaudition_temporal_cli)
     set_tests_properties(cli-temporal-patterns-smoke PROPERTIES
