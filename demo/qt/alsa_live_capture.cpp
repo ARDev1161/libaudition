@@ -1,5 +1,6 @@
 #include "alsa_live_capture.hpp"
 #include "live_audio_tagging_worker.hpp"
+#include "source_track_lifecycle.hpp"
 #include "odas_respeaker_profile.hpp"
 
 #if LIBAUDITION_DEMO_HAS_ALSA
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -238,8 +240,16 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                    config.tagging_ced_model,
                                    config.tagging_yamnet_model,
                                    config.sample_rate_hz,
-                                   config.hop_size});
+                                   config.hop_size,
+                                   audition::VocabularySelection{
+                                       config.tagging_selected_vocabulary
+                                           ? audition::VocabularyMode::SelectedClasses
+                                           : audition::VocabularyMode::AllClasses,
+                                       config.tagging_vocabulary_labels,
+                                       5U},
+                                   config.tagging_efficientat_model});
         }
+        SourceTrackLifecycle source_lifecycle;
         auto pcm = openPcm(config);
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
@@ -281,6 +291,11 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 measuredFrames = 0;
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
+                if (classifier) {
+                    source_lifecycle.clear([&](std::uint64_t id) {
+                        classifier->forget(id);
+                    });
+                }
                 continue;
             }
             if (result < 0) {
@@ -321,6 +336,16 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             const auto resultFrame = engine.process(block.view());
             ++hops;
             if (classifier) {
+                std::set<std::uint64_t> present;
+                for (const auto& track : resultFrame.tracks) {
+                    present.insert(track.track_id.value());
+                }
+                for (const auto& separated : resultFrame.separated_frames) {
+                    present.insert(separated.track_id.value());
+                }
+                source_lifecycle.update(std::move(present), [&](std::uint64_t id) {
+                    classifier->forget(id);
+                });
                 for (const auto& separated : resultFrame.separated_frames) {
                     classifier->push(separated.track_id.value(),
                                      separated.audio.samples(), hops);
@@ -342,7 +367,22 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 if (classifier) {
                     const auto tag = classifier->result(t.track_id.value(), hops);
                     if (tag.has_value()) {
-                        track.classification_label = tag->label;
+                        track.classification_label = tag->top_classes.empty()
+                            ? "No selected classes above the displayed results"
+                            : tag->top_classes;
+                        if (!tag->unsupported_labels.empty()) {
+                            track.classification_label += " | Unsupported: ";
+                            for (std::size_t j = 0; j < tag->unsupported_labels.size(); ++j) {
+                                if (j != 0U) track.classification_label += ", ";
+                                track.classification_label += tag->unsupported_labels[j];
+                            }
+                        }
+                        if (!tag->stage.empty()) {
+                            const auto phase = tag->stage == "quick"
+                                ? "Fast (~1s)" : "Refined (5s)";
+                            track.classification_label = phase + std::string{": "} +
+                                                         track.classification_label;
+                        }
                         track.classification_probability = tag->probability;
                     }
                 }

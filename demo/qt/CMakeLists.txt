@@ -10,6 +10,7 @@ add_executable(libaudition_qt_demo
     alsa_live_capture.hpp
     live_audio_tagging_worker.cpp
     live_audio_tagging_worker.hpp
+    source_track_lifecycle.hpp
     acoustic_sphere_widget.cpp
     acoustic_sphere_widget.hpp
     demo_window.hpp
@@ -46,6 +47,7 @@ target_compile_definitions(libaudition_qt_demo PRIVATE
     LIBAUDITION_DEMO_HAS_SHERPA_TTS=$<AND:$<BOOL:${LIBAUDITION_WITH_SHERPA}>,$<BOOL:${LIBAUDITION_SHERPA_ENABLE_TTS}>>
     LIBAUDITION_DEMO_HAS_CLAP=$<BOOL:${LIBAUDITION_WITH_CLAP}>
     LIBAUDITION_DEMO_HAS_YAMNET=$<BOOL:${LIBAUDITION_WITH_YAMNET}>
+    LIBAUDITION_DEMO_HAS_EFFICIENTAT=$<BOOL:${LIBAUDITION_WITH_EFFICIENTAT}>
     LIBAUDITION_DEMO_HAS_AASIST=$<BOOL:${LIBAUDITION_WITH_AASIST}>
     LIBAUDITION_DEMO_HAS_WORLD=$<BOOL:${LIBAUDITION_WITH_WORLD}>
     LIBAUDITION_DEMO_HAS_GTSAM=$<BOOL:${LIBAUDITION_WITH_GTSAM}>)
@@ -103,6 +105,10 @@ endif()
 
 if(LIBAUDITION_WITH_YAMNET)
     target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_yamnet)
+endif()
+
+if(LIBAUDITION_WITH_EFFICIENTAT)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_efficientat)
 endif()
 
 if(LIBAUDITION_WITH_AASIST)
