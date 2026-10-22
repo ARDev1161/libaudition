@@ -20,6 +20,7 @@ weights/devices instead of fabricating results.
 | Scalar EMA/CUSUM change detection | Feature catalog points to temporal demos | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
 | Temporal hysteresis event lifecycle | Feature catalog; no dedicated Qt controls | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
 | Persistent-source event episode association | Feature catalog; no dedicated Qt controls | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
+| Allen interval relations, spatial-time/covariance gate and Hungarian batch assignment | Feature catalog; no dedicated Qt controls | `libaudition_temporal_association_cli` | `cli-temporal-association-smoke` |
 | Recurrence / periodic event onset analysis | Temporal patterns | `libaudition_temporal_cli` | `qt_self_test`, `cli-temporal-patterns-smoke` |
 | DTW distance and warping | Temporal patterns | `libaudition_temporal_cli` | `qt_self_test`, `cli-temporal-patterns-smoke` |
 | Offline motif discovery | Temporal patterns | `libaudition_temporal_cli` | `qt_self_test`, `cli-temporal-patterns-smoke` |
@@ -39,10 +40,10 @@ it never shows a model-only capability as physically verified.
 
 ## Explicit gaps to close or mark before RC acceptance
 
-1. A standalone, parameterized worked example for **Hungarian batch matching,
-   covariance gating and interval relations** is still missing (unit tests
-   and API exist). The general feature catalog links to the temporal tab but
-   that tab currently runs the four TMP-04 algorithms, not Hungarian matching.
+1. The deterministic `libaudition_temporal_association_cli` now covers
+   Hungarian batch matching, diagonal covariance gating and Allen interval
+   relations; a **parameterized or graphical** matching scenario remains open.
+   The Temporal patterns tab currently runs TMP-04, not Hungarian matching.
 2. A self-contained CLI or GUI example for **source/speaker/prototype registry,
    model metadata and factory abstraction** is still missing. The public APIs
    and tests exist; classification and source-identity demonstrations only
