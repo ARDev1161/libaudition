@@ -47,7 +47,20 @@ target_link_libraries(libaudition_registries_cli PRIVATE
     audition::memory audition::model)
 libaudition_configure_target(libaudition_registries_cli)
 
+add_executable(libaudition_factory_registry_cli factory_registry_cli.cpp)
+target_link_libraries(libaudition_factory_registry_cli PRIVATE audition::core audition::interfaces)
+libaudition_configure_target(libaudition_factory_registry_cli)
+
 if(LIBAUDITION_BUILD_TESTS)
+    add_test(NAME cli-factory-registry-smoke COMMAND libaudition_factory_registry_cli)
+    set_tests_properties(cli-factory-registry-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "factory=ok")
+    add_test(NAME cli-factory-registry-unknown COMMAND libaudition_factory_registry_cli --unknown)
+    set_tests_properties(cli-factory-registry-unknown PROPERTIES
+        PASS_REGULAR_EXPRESSION "factory-unknown=blocked")
+    add_test(NAME cli-factory-registry-duplicate COMMAND libaudition_factory_registry_cli --duplicate)
+    set_tests_properties(cli-factory-registry-duplicate PROPERTIES
+        PASS_REGULAR_EXPRESSION "factory-duplicate=blocked")
     add_test(NAME cli-registries-smoke
         COMMAND libaudition_registries_cli)
     set_tests_properties(cli-registries-smoke PROPERTIES
