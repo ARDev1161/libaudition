@@ -38,7 +38,7 @@ constexpr Feature kFeatures[] = {
     {"Acoustic events", "Temporal event detection with hysteresis", "Temporal patterns", "API + CTest"},
     {"Temporal", "Scalar EMA/CUSUM and Page-Hinkley changes", "Temporal patterns", "API + CTest"},
     {"Temporal", "Timed activity segmentation and interval relations", "Temporal patterns", "API + CTest"},
-    {"Temporal", "Event association, gating and Hungarian matching", "Temporal patterns", "API + CTest"},
+    {"Temporal", "Event association, gating and Hungarian matching", "Temporal patterns", "Interactive matching + CLI"},
     {"Temporal", "Periodicity / recurrence of event onsets", "Temporal patterns", "Interactive + CLI"},
     {"Temporal", "Dynamic time warping (DTW)", "Temporal patterns", "Interactive + CLI"},
     {"Temporal", "Offline repeated acoustic motifs", "Temporal patterns", "Interactive + CLI"},
