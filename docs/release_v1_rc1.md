@@ -19,12 +19,16 @@ the respective behaviors and regressions are represented in #59.
 
 The complete pre-merge stack passed [CI #1560](https://github.com/ARDev1161/libaudition/actions/runs/39698811504).
 That is not evidence of CI on the new merged `main` commit or this
-versioned release branch. The exact release-branch HEAD `f41d083a7ffccf937f7baa35935f6f8e13303c80`
-passed [CI #1599](https://github.com/ARDev1161/libaudition/actions/runs/39732045958):
-25 jobs successful, one `real-spatial-corpus` skipped. This includes
-645/645 Ubuntu CTest cases, the Qt headless smoke and playback lifecycle,
-and all four installed-package C++17 consumers. **Any later commit needs
-its own exact-HEAD CI; real spatial accuracy is still NOT MEASURED.**
+versioned release branch. The previously validated release-branch HEAD
+`ddde13ca02a54c455b0427424add8127c785c50f` passed
+[CI #1608](https://github.com/ARDev1161/libaudition/actions/runs/39746849316):
+**25 successful jobs and one `real-spatial-corpus` skipped**, including
+Linux/macOS core and sanitizers, Qt5/Qt6 self-tests and all four
+installed-package C++17 consumers. The CI logs also confirm multiple positive
+[real-model Qt test paths](qt_model_validation_matrix.md). Changes introduced
+after this commit, notably the interactive scalar/event/episode Qt panel,
+**must pass their own exact-HEAD CI** before release approval.
+The real spatial-corpus skip is NOT evidence of measured DOA performance.
 
 ## Version contract
 
@@ -45,8 +49,10 @@ its own exact-HEAD CI; real spatial accuracy is still NOT MEASURED.**
 - [ ] Verify the release PR's *exact HEAD* passes core Linux/macOS, ASan/UBSan,
       optional model-backed/backend, Qt, and all independent installed C++17
       package consumers. Save the workflow run link and commit SHA.
-- [ ] Verify unchanged public headers, version constants, CMake export paths,
-      downstream `find_package` and a clean Release build/install.
+- [x] Verify public headers, version constants, CMake export paths,
+      downstream `find_package` and Release build/install against CI #1608
+      (four successful independent installed-package C++17 consumers).
+      Reconfirm this gate on the final immutable candidate commit.
 - [ ] **RC demo coverage:** Qt Feature catalog and Temporal patterns explorer
       build and pass headless functional tests; the expanded CLI examples pass
       CTest. Review [demo coverage inventory](rc_demo_coverage.md) against the
