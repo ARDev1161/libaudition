@@ -35,9 +35,9 @@ TEST(EfficientAtBackend, SyntheticLogitsAndOrdering) {
     EXPECT_EQ(result.classes[2].label, "class_0");
     EXPECT_NEAR(result.classes[0].probability.value(), 1.0, 1.e-6);
     EXPECT_NEAR(result.classes[1].probability.value(), 1.0, 1.e-6);
-    EXPECT_THROW(tagger.classifyLogMel(mel.data(), 127U, 10U), audition::Error);
+    EXPECT_THROW(static_cast<void>(tagger.classifyLogMel(mel.data(), 127U, 10U)), audition::Error);
     mel[0] = std::numeric_limits<float>::quiet_NaN();
-    EXPECT_THROW(tagger.classifyLogMel(mel.data(), 128U, 10U), audition::Error);
+    EXPECT_THROW(static_cast<void>(tagger.classifyLogMel(mel.data(), 128U, 10U)), audition::Error);
 }
 
 TEST(EfficientAtFrontend, SilenceHasExpectedLogFloor) {
@@ -69,9 +69,9 @@ TEST(EfficientAtBackend, EndToEndMonoWaveform) {
     ASSERT_FALSE(result.classes.empty());
     EXPECT_EQ(result.classes.front().label, "class_526");
     EXPECT_THROW(
-        tagger.classify(audition::AudioView{
+        static_cast<void>(tagger.classify(audition::AudioView{
             buffer.samples().data(), buffer.samples().size(),
-            {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}}),
+            {16000U, 1U, audition::AudioLayout::Interleaved}, audition::Timestamp{}})),
         audition::Error);
 }
 
