@@ -111,8 +111,14 @@ cmake --build build-qt -j4
 ```
 
 On the **Acoustic scene** tab, check **Classify source audio with Sherpa**,
-choose **Zipformer** or **CED**, select the matching pre-trained audio
-tagging **ONNX model** and **labels file**, then **Start live capture**.
+choose **Zipformer**, **CED**, or **YAMNet**, select a model variant where available,
+then choose the matching **ONNX model** and **labels file** before starting capture.
+The conditional **Model variant** selector offers CED Tiny/Mini/Small/Base and
+Zipformer Small/Standard (FP32/INT8). It is a UI selection hint: model weights
+for Sherpa are **not downloaded automatically** and the chosen variant does not
+change the ONNX parser; the user must supply the corresponding files.
+Changing family or variant clears manual model and label paths so an old model
+is not silently reused. Returning to YAMNet restores the default demo asset paths.
 The ONNX and labels paths must exist, and the capture rate must be
 16 kHz. The demo does **not** install or silently download a model.
 The existing standalone **Backend workbench → Audio tagging** panel can

@@ -33,6 +33,7 @@ struct LiveCaptureConfig {
     bool respeaker_angular_profile{false};
     bool classify_sources{false};
     bool tagging_ced_model{false};
+    bool tagging_yamnet_model{false};
     std::string tagging_model_path{};
     std::string tagging_labels_path{};
 };
@@ -47,6 +48,7 @@ struct LiveCaptureSnapshot {
     std::vector<double> channel_rms_dbfs{};
     std::vector<double> channel_peak_dbfs{};
     std::string classification_error{};
+    std::string classifier_status{};
     std::string error{};
 };
 
