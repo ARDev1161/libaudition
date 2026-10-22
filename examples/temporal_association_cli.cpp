@@ -5,6 +5,7 @@
 
 #include <audition/core/time.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <cmath>
 #include <exception>
@@ -97,7 +98,7 @@ int main(int argc, char** argv) {
                 !result.unmatched_tracks.empty() ||
                 std::abs(result.total_cost - 0.3) > 1e-9)
                 throw std::runtime_error("crossed assignment");
-            std::cout << "scenario=crossed assignment=0->1,1->0\\n";
+            std::cout << "scenario=crossed assignment=0->1,1->0\n";
         } else if (scenario == "gated") {
             const std::vector<std::vector<std::optional<double>>> gated{
                 {std::nullopt, 0.1}, {std::nullopt, std::nullopt}};
@@ -107,7 +108,7 @@ int main(int argc, char** argv) {
                 result.unmatched_tracks != std::vector<std::size_t>{0} ||
                 std::abs(result.total_cost - 2.1) > 1e-9)
                 throw std::runtime_error("forbidden-edge assignment");
-            std::cout << "scenario=gated assignment=0->1,1->unmatched\\n";
+            std::cout << "scenario=gated assignment=0->1,1->unmatched\n";
         } else if (scenario == "penalty") {
             BatchAssignmentOptions parameterized{};
             parameterized.unmatched_penalty = penalty;
@@ -124,7 +125,7 @@ int main(int argc, char** argv) {
                 throw std::runtime_error("penalty tradeoff");
             std::cout << "scenario=penalty assignment=0->"
                       << (matched ? "0" : "unmatched")
-                      << " cost=" << result.total_cost << '\\n';
+                      << " cost=" << result.total_cost << '\n';
         }
         std::cout << "temporal-association=ok\n";
         return 0;
