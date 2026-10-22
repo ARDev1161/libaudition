@@ -1,10 +1,12 @@
 #include "temporal_patterns_page.hpp"
 
 #include <audition/audition.hpp>
+#include <audition/temporal/hungarian_event_matcher.hpp>
 
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QLabel>
+#include <QGroupBox>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -20,6 +22,8 @@
 #include <cstdint>
 #include <exception>
 #include <limits>
+#include <optional>
+#include <string>
 #include <stdexcept>
 #include <vector>
 
@@ -128,6 +132,61 @@ QString report(const std::vector<std::vector<double>>& frames,
     return results.join(QLatin1Char('\n'));
 }
 
+// Each line is an observation, each cell the cost to one existing track.
+// 'x', '-' or 'null' forbids the edge; the Hungarian solver may leave rows
+// unmatched for a configurable penalty. This is not a physical identity claim.
+QString matchingReport(const QString& matrixText, std::size_t trackCount,
+                       double unmatchedPenalty) {
+    using namespace audition::temporal;
+    const auto lines=matrixText.split(QLatin1Char('\n'),Qt::SkipEmptyParts);
+    if(lines.isEmpty() || lines.size()>8)
+        throw std::invalid_argument("Provide 1..8 observation rows");
+    if(trackCount==0 || trackCount>8)
+        throw std::invalid_argument("Provide 1..8 existing tracks");
+    std::vector<std::vector<std::optional<double>>> matrix;
+    matrix.reserve(static_cast<std::size_t>(lines.size()));
+    for(const auto& line:lines) {
+        const auto entries=tokens(line);
+        if(static_cast<std::size_t>(entries.size())!=trackCount)
+            throw std::invalid_argument("Each matrix row needs one cell per track");
+        std::vector<std::optional<double>> row;
+        row.reserve(trackCount);
+        for(const auto& token:entries) {
+            if(token=="x" || token=="X" || token=="-" ||
+               token.compare("null",Qt::CaseInsensitive)==0) {
+                row.emplace_back(std::nullopt);
+                continue;
+            }
+            bool valid=false;
+            const double value=token.toDouble(&valid);
+            if(!valid || !std::isfinite(value) || value<0)
+                throw std::invalid_argument(
+                    "Assignment costs must be finite and nonnegative (or x)");
+            row.emplace_back(value);
+        }
+        matrix.emplace_back(std::move(row));
+    }
+    BatchAssignmentOptions options{};
+    options.unmatched_penalty=unmatchedPenalty;
+    const auto result=HungarianEventMatcher{options}.match(matrix,trackCount);
+    QStringList parts;
+    for(std::size_t i=0;i<result.track_for_observation.size();++i) {
+        const auto& track=result.track_for_observation[i];
+        parts << QStringLiteral("%1->%2")
+            .arg(static_cast<qulonglong>(i))
+            .arg(track.has_value() ? QString::number(static_cast<qulonglong>(*track))
+                                   : QStringLiteral("unmatched"));
+    }
+    QStringList unmatched;
+    for(const auto index:result.unmatched_tracks)
+        unmatched << QString::number(static_cast<qulonglong>(index));
+    return QStringLiteral("assignment: %1; cost=%2; unmatched_tracks=%3")
+        .arg(parts.join(QStringLiteral(", ")))
+        .arg(result.total_cost,0,'g',10)
+        .arg(unmatched.isEmpty() ? QStringLiteral("none")
+                                 : unmatched.join(QStringLiteral(",")));
+}
+
 }  // namespace
 
 QWidget* createTemporalPatternsPage() {
@@ -184,5 +243,55 @@ QWidget* createTemporalPatternsPage() {
         }
     });
     run->click();
+
+    auto* assignmentGroup=new QGroupBox{"Hungarian event association (editable costs)"};
+    auto* matchingLayout=new QVBoxLayout{assignmentGroup};
+    auto* assignmentHelp=new QLabel{
+        "Each line is an observation; columns are existing tracks. Enter "
+        "nonnegative costs, or 'x' to forbid an observation-track pair. "
+        "The minimum-cost one-to-one assignment may leave an observation "
+        "unmatched for the configured penalty. These are caller-defined "
+        "costs, not measured source-identity probabilities."};
+    assignmentHelp->setWordWrap(true);
+    matchingLayout->addWidget(assignmentHelp);
+    auto* matchingForm=new QFormLayout;
+    auto* trackCount=new QSpinBox;
+    trackCount->setRange(1,8);
+    trackCount->setValue(2);
+    trackCount->setObjectName("temporalAssignmentTracks");
+    matchingForm->addRow("Existing tracks",trackCount);
+    auto* unmatchedPenalty=new QDoubleSpinBox;
+    unmatchedPenalty->setRange(0.001,1000000);
+    unmatchedPenalty->setValue(2.0);
+    unmatchedPenalty->setDecimals(3);
+    unmatchedPenalty->setObjectName("temporalAssignmentPenalty");
+    matchingForm->addRow("Unmatched observation penalty",unmatchedPenalty);
+    matchingLayout->addLayout(matchingForm);
+    auto* matrix=new QPlainTextEdit{"0.2 5\n4 0.1\nx x"};
+    matrix->setMinimumHeight(90);
+    matrix->setObjectName("temporalAssignmentMatrix");
+    matchingLayout->addWidget(matrix);
+    auto* match=new QPushButton{"Assign observations to tracks"};
+    match->setObjectName("temporalAssignmentRun");
+    matchingLayout->addWidget(match);
+    auto* matchingOutput=new QPlainTextEdit;
+    matchingOutput->setReadOnly(true);
+    matchingOutput->setMinimumHeight(75);
+    matchingOutput->setObjectName("temporalAssignmentOutput");
+    matchingLayout->addWidget(matchingOutput);
+    QObject::connect(match,&QPushButton::clicked,page,
+                     [matrix,trackCount,unmatchedPenalty,matchingOutput] {
+        try {
+            matchingOutput->setPlainText(matchingReport(
+                matrix->toPlainText(),
+                static_cast<std::size_t>(trackCount->value()),
+                unmatchedPenalty->value()));
+        } catch(const std::exception& error) {
+            matchingOutput->setPlainText(
+                QStringLiteral("error: ") + QString::fromUtf8(error.what()));
+        }
+    });
+    match->click();
+    layout->addWidget(assignmentGroup);
     return page;
 }
