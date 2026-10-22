@@ -208,11 +208,11 @@ void verifyWorkbench(QWidget* root) {
     if (!assignOutput->toPlainText().contains("0->0, 1->1, 2->unmatched") ||
         !assignOutput->toPlainText().contains("cost=2.3"))
         throw std::runtime_error{"Qt self-test: baseline assignment failed"};
-    assignMatrix->setPlainText(QStringLiteral("4 0.2\\n0.1 4"));
+    assignMatrix->setPlainText(QStringLiteral("4 0.2\n0.1 4"));
     assignRun->click();
     if (!assignOutput->toPlainText().contains("0->1, 1->0"))
         throw std::runtime_error{"Qt self-test: crossed assignment failed"};
-    assignMatrix->setPlainText(QStringLiteral("x 0.1\\nx x"));
+    assignMatrix->setPlainText(QStringLiteral("x 0.1\nx x"));
     assignRun->click();
     if (!assignOutput->toPlainText().contains("0->1, 1->unmatched") ||
         !assignOutput->toPlainText().contains("unmatched_tracks=0"))
@@ -226,7 +226,7 @@ void verifyWorkbench(QWidget* root) {
     assignRun->click();
     if (!assignOutput->toPlainText().contains("error:"))
         throw std::runtime_error{"Qt self-test: invalid assignment not rejected"};
-    assignMatrix->setPlainText(QStringLiteral("0.2 5\\n4 0.1\\nx x"));
+    assignMatrix->setPlainText(QStringLiteral("0.2 5\n4 0.1\nx x"));
     assignPenalty->setValue(2.0);
     assignRun->click();
 
