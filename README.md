@@ -105,7 +105,7 @@ cmake --build build-qt -j
 It includes interactive DSP, SPL/range, temporal smoothing, source-identity,
 AcousticEvent and synthetic-pipeline tabs, plus a real WAV/model backend
 workbench for enabled WORLD, AASIST, CLAP, Sherpa VAD/ASR/TTS and ODAS
-adapters. The **Temporal patterns** tab runs recurrence, DTW, motif discovery and per-source streaming matching on editable feature sequences; the searchable **Feature catalog** identifies which other algorithms have interactive runners versus API/CTest-only interfaces. Disabled adapters remain visible with their required CMake option.
+adapters. The **Temporal patterns** tab runs recurrence, DTW, motif discovery, per-source streaming matching and editable Hungarian assignment on editable feature sequences; the searchable **Feature catalog** identifies which other algorithms have interactive runners versus API/CTest-only interfaces. Disabled adapters remain visible with their required CMake option.
 
 See [`docs/qt_demo.md`](docs/qt_demo.md).
 
