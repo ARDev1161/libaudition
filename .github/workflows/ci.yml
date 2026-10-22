@@ -1659,3 +1659,26 @@ jobs:
           cmake --build /tmp/libaudition-gtsam-consumer/build --parallel
           LD_LIBRARY_PATH="$PWD/install-gtsam/lib:\${LD_LIBRARY_PATH:-}" \
             /tmp/libaudition-gtsam-consumer/build/consumer
+
+  full-demo-combination:
+    # Individual backend jobs do not catch all-enabled Qt helper warnings
+    # (e.g. a fallback used only when a backend is disabled). Build the actual
+    # combined software stack with -Werror and no externally licensed weights.
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install full Qt 6 development prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config qt6-base-dev \
+            qt6-multimedia-dev doxygen libasound2-dev libfftw3-dev \
+            libconfig-dev libpulse-dev
+      - name: Configure all software backend options from public CMake preset
+        run: cmake --preset full-demo-no-model-download
+      - name: Build combined Qt executable and all active backend dependencies
+        run: cmake --build build/full-demo-no-model-download --target libaudition_qt_demo --parallel 3
+      - name: Verify combined Qt functional self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build/full-demo-no-model-download -R '^qt_self_test$' --output-on-failure
