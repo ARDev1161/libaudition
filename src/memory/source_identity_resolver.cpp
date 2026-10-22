@@ -417,6 +417,7 @@ SourceIdentityDecision HeuristicSourceIdentityResolver::observe(
     std::optional<Candidate> best{};
 
     const bool use_query_fingerprint =
+        options_.fingerprint_weight > 0.0 &&
         observation.fingerprint.has_value() &&
         observation.fingerprint->quality.value() >=
             options_.min_fingerprint_quality;
