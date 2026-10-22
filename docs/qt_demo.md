@@ -44,6 +44,20 @@ matches. All input is synthetic feature evidence; this is not a frontend
 that extracts audio features from WAV or a quality benchmark. Invalid input
 is reported in the output box without crashing the demo.
 
+The same page now includes a **Hungarian event association** panel with an
+editable observation-by-track cost matrix. Each line represents one
+observation, each number is the nonnegative cost of linking that
+observation to the corresponding track, and `x` excludes the edge.
+Set the track count and unmatched-observation penalty, then click
+**Assign observations to tracks**. The output reports one-to-one
+assignments, unmatched track IDs and total cost. The default matrix
+assigns 0→0 and 1→1 while leaving observation 2 unmatched, cost 2.3.
+No source identities or real-world probabilities are inferred from
+these illustrative costs.
+
+The headless self-test additionally checks crossed pairings, forbidden
+edges, a low unmatched penalty and error reporting for invalid costs.
+
 Run the hardware-independent smoke test:
 
 ```sh
