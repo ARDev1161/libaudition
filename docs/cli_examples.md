@@ -34,6 +34,22 @@ a zero-cost motif. User-provided features can legitimately have no repeated moti
 The corresponding `cli-temporal-patterns-smoke` test runs under CTest.
 This demonstrates feature-sequence processing, **not** detector accuracy on audio.
 
+## Temporal change detection and event lifecycle (RC)
+
+```sh
+./build/examples/libaudition_temporal_events_cli
+```
+
+Runs a deterministic *two-stage source-scoped pipeline*: an EMA/CUSUM
+`TemporalScalarAnalyzer` detects one positive activity change, then
+`TemporalAcousticEventDetector` emits Started/Ended transitions after
+classifier-score hysteresis, and `EventEpisodeAssociator` retains a stable
+persistent-source episode across those transitions. The output includes
+`scalar_positive_changes=1`, `event_starts=1 event_ends=1` and
+`temporal-events=ok`. This command is checked by
+`cli-temporal-events-smoke` under CTest. It uses synthetic scores and
+does not measure acoustic classification accuracy.
+
 ## SPL calibration and range prior
 
 ```bash
