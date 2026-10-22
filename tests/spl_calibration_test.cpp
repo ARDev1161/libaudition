@@ -206,3 +206,61 @@ TEST(SplCalibration, FeedsCalibratedObservationIntoRangePrior) {
         range->method,
         audition::RangeEstimate::Method::LevelPrior);
 }
+
+
+TEST(SplCalibration, RejectsEmptySignalPathAndInvalidPoseCoordinates) {
+    const audition::SoundPressureLevelCalibrator calibrator{profile()};
+    auto measured = observation(-30.0);
+    measured.signal_path_id.clear();
+    EXPECT_THROW(static_cast<void>(calibrator.calibrate(measured)), audition::Error);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (const double bad : {nan, inf, -inf}) {
+        measured = observation(-30.0);
+        measured.sensor_pose.position.x = bad;
+        EXPECT_THROW(static_cast<void>(calibrator.calibrate(measured)), audition::Error);
+        measured = observation(-30.0);
+        measured.sensor_pose.orientation.w = bad;
+        EXPECT_THROW(static_cast<void>(calibrator.calibrate(measured)), audition::Error);
+        measured = observation(-30.0);
+        measured.variance_db2 = bad;
+        EXPECT_THROW(static_cast<void>(calibrator.calibrate(measured)), audition::Error);
+    }
+}
+
+TEST(SplCalibration, RejectsNonfiniteOrOverflowingProfilesAndOutput) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (const double bad : {nan, inf, -inf}) {
+        auto invalid = profile();
+        invalid.reference_frequency_hz = bad;
+        EXPECT_THROW(static_cast<void>(audition::SoundPressureLevelCalibrator{invalid}),
+                     audition::Error);
+        invalid = profile();
+        invalid.transfer_variance_db2 = bad;
+        EXPECT_THROW(static_cast<void>(audition::SoundPressureLevelCalibrator{invalid}),
+                     audition::Error);
+    }
+    auto invalid = profile();
+    invalid.reference_level_db_spl.mean = std::numeric_limits<double>::max();
+    invalid.measured_level_dbfs.mean = -std::numeric_limits<double>::max();
+    EXPECT_THROW(static_cast<void>(audition::SoundPressureLevelCalibrator{invalid}),
+                 audition::Error);
+
+    auto large = profile();
+    large.reference_level_db_spl.mean = std::numeric_limits<double>::max() * 0.75;
+    large.measured_level_dbfs.mean = 0.0;
+    const audition::SoundPressureLevelCalibrator calibrator{large};
+    auto measured = observation(std::numeric_limits<double>::max() * 0.75);
+    EXPECT_THROW(static_cast<void>(calibrator.calibrate(measured)), audition::Error);
+    measured = observation(-30.0);
+    const auto result = calibrator.calibrate(measured);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(std::isfinite(result->level_db_spl.mean));
+
+    large = profile();
+    large.reference_level_db_spl.variance = std::numeric_limits<double>::max() * 0.75;
+    const audition::SoundPressureLevelCalibrator variance_calibrator{large};
+    measured = observation(-30.0, std::numeric_limits<double>::max() * 0.75);
+    EXPECT_THROW(static_cast<void>(variance_calibrator.calibrate(measured)), audition::Error);
+}

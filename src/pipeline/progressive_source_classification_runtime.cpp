@@ -90,6 +90,16 @@ ProgressiveClassificationStatus ProgressiveSourceClassificationRuntime::status(
     return result;
 }
 
+std::vector<CompletedProgressiveClassification>
+ProgressiveSourceClassificationRuntime::takeCompleted() {
+    std::vector<CompletedProgressiveClassification> out;
+    for (const auto& stage : stages_) {
+        for (auto& window : stage.runtime->takeCompleted())
+            out.push_back({stage.name, std::move(window)});
+    }
+    return out;
+}
+
 void ProgressiveSourceClassificationRuntime::forget(std::uint64_t source_id) {
     for (const auto& stage : stages_) {
         stage.runtime->forget(source_id);

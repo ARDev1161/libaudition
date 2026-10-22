@@ -31,6 +31,7 @@ struct LiveCaptureConfig {
     std::vector<std::size_t> input_channels{1, 2, 3, 4};
     std::vector<std::array<double, 3>> microphone_positions{};
     bool respeaker_angular_profile{false};
+    bool near_plane_sources{false};
     bool classify_sources{false};
     bool tagging_ced_model{false};
     bool tagging_yamnet_model{false};
@@ -39,6 +40,10 @@ struct LiveCaptureConfig {
     bool tagging_selected_vocabulary{false};
     std::vector<std::string> tagging_vocabulary_labels{};
     bool tagging_efficientat_model{false};
+    bool transcribe_sources{false};
+    std::string speech_vad_model_path{};
+    std::string speech_asr_model_path{};
+    std::string speech_asr_tokens_path{};
 };
 
 struct LiveCaptureSnapshot {
@@ -47,11 +52,24 @@ struct LiveCaptureSnapshot {
     std::uint64_t processed_hops{0};
     std::uint64_t recoveries{0};
     std::vector<AcousticSceneTrack> tracks{};
+    struct RecordedTrack {
+        std::uint64_t id{0};
+        std::uint64_t track_id{0};
+        std::string path;
+        std::uint64_t samples{0};
+        bool active{false};
+        std::uint64_t lost_samples{0};
+        std::string error{};
+    };
+    std::vector<RecordedTrack> recordings{};
     std::vector<AcousticScenePotential> potentials{};
     std::vector<double> channel_rms_dbfs{};
     std::vector<double> channel_peak_dbfs{};
+    struct SourceLevel { std::uint64_t track_id{0}; double rms_dbfs{0}; double peak_dbfs{0}; std::uint64_t samples{0}; };
+    std::vector<SourceLevel> sss_levels{};
     std::string classification_error{};
     std::string classifier_status{};
+    std::string speech_status{};
     std::string error{};
 };
 

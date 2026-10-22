@@ -3,14 +3,35 @@
 #include "odas_respeaker_profile.hpp"
 #include "acoustic_sphere_widget.hpp"
 #include "wav_io.hpp"
+#include "playback_normalizer.hpp"
+#include "recording_timeline_view.hpp"
+#include <audition/audio/recording_timeline_json.hpp>
 
 #if LIBAUDITION_DEMO_HAS_ODAS
 #include <audition/backends/odas.hpp>
+#include <audition/backends/odas/source_elevation_prior.hpp>
 #endif
 
 #include <QCheckBox>
+#include <QDialog>
+#include <QSignalBlocker>
+#include <QSlider>
+#include <QUrl>
+#include <QDateTime>
+#include <QColor>
+#if LIBAUDITION_DEMO_HAS_MULTIMEDIA
+#include <QMediaPlayer>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QAudioOutput>
+#endif
+#endif
+#include <map>
 #include <QComboBox>
 #include <QFileDialog>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include <QFormLayout>
 #include <QFutureWatcher>
 #include <QHBoxLayout>
@@ -34,6 +55,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -97,7 +119,7 @@ std::shared_ptr<SceneReplay> analyzeWav(
     const std::filesystem::path& wavFile,
     QString channels, QString geometry,
     std::uint32_t hopSize, std::uint32_t frameSize,
-    bool respeakerAngularProfile) {
+    bool respeakerAngularProfile, bool nearPlaneSources) {
     auto result = std::make_shared<SceneReplay>();
     try {
         const auto wav = demo::loadWav(wavFile);
@@ -112,6 +134,9 @@ std::shared_ptr<SceneReplay> analyzeWav(
         options.sss.enabled = false;
         if (respeakerAngularProfile) {
             demo::applyReSpeakerUsb4MicAngularProfile(options);
+        }
+        if (nearPlaneSources) {
+            audition::applyOdasNearPlaneSourcePrior(options);
         }
         audition::OdasSpatialEngine engine{options};
 
@@ -191,6 +216,260 @@ QString directionSummary(const AcousticSceneTrack& track) {
         .arg(classification);
 }
 }  // namespace
+
+QDialog* createRecordingPlaybackDialog(
+    QWidget* parent, std::uint64_t id, const QString& sourcePath,
+    std::uint64_t sampleCount) {
+#if !LIBAUDITION_DEMO_HAS_MULTIMEDIA
+    static_cast<void>(sourcePath);
+    static_cast<void>(sampleCount);
+#endif
+        auto* dialog = new QDialog(parent);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setObjectName("recordingPlaybackDialog");
+        dialog->setWindowTitle(QString("Source #%1 recording").arg(id));
+        dialog->resize(680, 365);
+        auto* column = new QVBoxLayout(dialog);
+        auto* playback = new QPushButton{"Play", dialog};
+        auto* progress = new QSlider(Qt::Horizontal, dialog);
+        progress->setRange(0, 0);
+        progress->setObjectName("recordingPlaybackProgress");
+        auto* times = new QLabel{"00:00 / 00:00", dialog};
+        auto* volume = new QSlider(Qt::Horizontal, dialog);
+        volume->setRange(0, 100);
+        volume->setValue(75);
+        auto* normalize = new QCheckBox{"Auto normalize (-3 dBFS peak)", dialog};
+        normalize->setChecked(true);
+        normalize->setObjectName("recordingPlaybackNormalize");
+        auto* gainLabel = new QLabel{"", dialog};
+        auto* soundTitle = new QLabel{"Sound events / classifier", dialog};
+        auto* soundLane = new demo::RecordingTimelineView(dialog);
+        auto* speechTitle = new QLabel{"Transcript / ASR", dialog};
+        auto* speechLane = new demo::RecordingTimelineView(dialog);
+        column->addWidget(soundTitle);
+        column->addWidget(soundLane);
+        column->addWidget(speechTitle);
+        column->addWidget(speechLane);
+        column->addWidget(normalize);
+        column->addWidget(gainLabel);
+        column->addWidget(playback);
+        column->addWidget(progress);
+        column->addWidget(times);
+        auto* volumeRow = new QHBoxLayout;
+        volumeRow->addWidget(new QLabel{"Volume", dialog});
+        volumeRow->addWidget(volume);
+        column->addLayout(volumeRow);
+#if LIBAUDITION_DEMO_HAS_MULTIMEDIA
+        auto* media = new QMediaPlayer(dialog);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        auto* output = new QAudioOutput(dialog);
+        media->setAudioOutput(output);
+        output->setVolume(0.75f);
+        QObject::connect(volume, &QSlider::valueChanged, dialog,
+                         [output](int v) { output->setVolume(static_cast<float>(v) / 100.0f); });
+        media->setSource(QUrl::fromLocalFile(sourcePath));
+        QObject::connect(media, &QMediaPlayer::playbackStateChanged, dialog,
+                         [playback](QMediaPlayer::PlaybackState state) {
+                             playback->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+                         });
+#else
+        media->setVolume(75);
+        QObject::connect(volume, &QSlider::valueChanged, media, &QMediaPlayer::setVolume);
+        media->setMedia(QUrl::fromLocalFile(sourcePath));
+        QObject::connect(media, &QMediaPlayer::stateChanged, dialog,
+                         [playback](QMediaPlayer::State state) {
+                             playback->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+                         });
+#endif
+        QObject::connect(playback, &QPushButton::clicked, dialog, [media]() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            if (media->playbackState() == QMediaPlayer::PlayingState) media->pause();
+#else
+            if (media->state() == QMediaPlayer::PlayingState) media->pause();
+#endif
+            else media->play();
+        });
+        QObject::connect(media, &QMediaPlayer::durationChanged, dialog,
+                         [progress, times](qint64 duration) {
+                             progress->setMaximum(static_cast<int>(duration));
+                             times->setText(QString("00:00 / %1:%2")
+                                 .arg(duration / 60000, 2, 10, QChar('0'))
+                                 .arg((duration / 1000) % 60, 2, 10, QChar('0')));
+                         });
+        QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
+                         [progress, times, media](qint64 pos) {
+                             if (!progress->isSliderDown()) progress->setValue(static_cast<int>(pos));
+                             const auto duration = media->duration();
+                             times->setText(QString("%1:%2 / %3:%4")
+                                 .arg(pos / 60000, 2, 10, QChar('0'))
+                                 .arg((pos / 1000) % 60, 2, 10, QChar('0'))
+                                 .arg(duration / 60000, 2, 10, QChar('0'))
+                                 .arg((duration / 1000) % 60, 2, 10, QChar('0')));
+                         });
+        QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
+        {
+            const auto annotationPath = std::filesystem::path{
+                sourcePath.toStdString() + ".json"};
+            try {
+                const auto timeline = audition::readRecordingTimelineJson(annotationPath);
+                const auto rate = timeline.sampleRateHz();
+                const auto duration = rate == 0 ? 0 :
+                    static_cast<qint64>(sampleCount * 1000ULL / rate);
+                soundLane->load(timeline, true, duration);
+                speechLane->load(timeline, false, duration);
+            } catch (const std::exception&) {
+                // WAV playback remains available without a completed sidecar.
+            }
+        }
+        soundLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
+        speechLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
+        QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
+                         [soundLane, speechLane](qint64 pos) {
+            soundLane->setPosition(pos);
+            speechLane->setPosition(pos);
+        });
+        struct PlaybackFiles {
+            std::mutex mutex;
+            bool closed{false};
+            QStringList files;
+            QString cached;
+            double cached_gain{0};
+        };
+        auto temporaryPlaybackFiles = std::make_shared<PlaybackFiles>();
+        // A QDialog destroyed() signal runs BEFORE its QMediaPlayer child
+        // is destroyed. Removing the active file there can race Qt's decoder.
+        // Mark shutdown immediately, but unlink temporary WAVs only AFTER
+        // the QMediaPlayer has torn down its backend.
+        const auto markClosed = [temporaryPlaybackFiles]() {
+            std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+            temporaryPlaybackFiles->closed = true;
+        };
+        QObject::connect(dialog, &QDialog::finished, dialog,
+                         [media, markClosed](int) {
+            markClosed();
+            media->stop();
+        });
+        QObject::connect(dialog, &QObject::destroyed,
+                         [markClosed](QObject*) { markClosed(); });
+        QObject::connect(media, &QObject::destroyed,
+                         [temporaryPlaybackFiles](QObject*) {
+            std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+            temporaryPlaybackFiles->closed = true;
+            for (const auto& path : temporaryPlaybackFiles->files)
+                QFile::remove(path);
+            temporaryPlaybackFiles->files.clear();
+        });
+        // Defer source replacement one GUI iteration after stop(). In Qt 6
+        // the FFmpeg backend may still be unwinding callbacks for the previous
+        // source; never replace it reentrantly from completion notifications.
+        const auto sourceEpoch = std::make_shared<std::uint64_t>(0);
+        const auto changeMedia = [media, sourceEpoch](
+            const QString& path, bool autoPlay = false) {
+            const auto previousPosition = media->position();
+            const bool wasPlaying =
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                media->playbackState() == QMediaPlayer::PlayingState;
+#else
+                media->state() == QMediaPlayer::PlayingState;
+#endif
+            media->stop();
+            const auto epoch = ++(*sourceEpoch);
+            QTimer::singleShot(0, media,
+                [media, path, previousPosition, wasPlaying, autoPlay,
+                 epoch, sourceEpoch]() {
+                if (epoch != *sourceEpoch) return;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                media->setSource(QUrl::fromLocalFile(path));
+#else
+                media->setMedia(QUrl::fromLocalFile(path));
+#endif
+                media->setPosition(previousPosition);
+                if (wasPlaying || autoPlay) media->play();
+            });
+        };
+        auto initialPlay = std::make_shared<bool>(true);
+        const auto applyNormalization = [=]() {
+            const bool firstPlay = *initialPlay;
+            *initialPlay = false;
+            if (!normalize->isChecked()) {
+                changeMedia(sourcePath, firstPlay);
+                gainLabel->setText("Original recording (no gain)");
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+                if (!temporaryPlaybackFiles->cached.isEmpty()) {
+                    changeMedia(temporaryPlaybackFiles->cached, firstPlay);
+                    gainLabel->setText(QString("Applied gain: +%1 dB")
+                        .arg(temporaryPlaybackFiles->cached_gain, 0, 'f', 1));
+                    return;
+                }
+            }
+            // Both passes run on the Qt worker pool: never scan or rewrite a
+            // long WAV from the GUI thread. This dialog has one in-flight task.
+            const bool resumePlay = firstPlay ||
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                media->playbackState() == QMediaPlayer::PlayingState;
+#else
+                media->state() == QMediaPlayer::PlayingState;
+#endif
+            // Avoid switching an actively playing decoder when the worker
+            // finishes. Resume only after the new WAV has been selected.
+            if (resumePlay && !firstPlay) media->pause();
+            normalize->setEnabled(false);
+            gainLabel->setText("Preparing normalized playback...");
+            auto* watcher = new QFutureWatcher<demo::NormalizedWav>(dialog);
+            QObject::connect(watcher, &QFutureWatcher<demo::NormalizedWav>::finished,
+                             dialog, [=]() {
+                normalize->setEnabled(true);
+                try {
+                    const auto result = watcher->result();
+                    bool closed = false;
+                    {
+                        std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+                        closed = temporaryPlaybackFiles->closed;
+                    }
+                    if (!closed && normalize->isChecked()) {
+                        changeMedia(QString::fromStdString(result.path.string()), resumePlay);
+                        gainLabel->setText(QString("Applied gain: +%1 dB")
+                            .arg(result.gain_db, 0, 'f', 1));
+                    }
+                } catch (const std::exception& error) {
+                    gainLabel->setText(QString("Normalization failed: ") +
+                                       QString::fromUtf8(error.what()));
+                    const QSignalBlocker blocker(normalize);
+                    normalize->setChecked(false);
+                    if (!temporaryPlaybackFiles->closed)
+                        changeMedia(sourcePath, resumePlay);
+                }
+                watcher->deleteLater();
+            });
+            watcher->setFuture(QtConcurrent::run(
+                [sourcePath, temporaryPlaybackFiles]() {
+                    const auto result = demo::normalizePlaybackWav(
+                        std::filesystem::path{sourcePath.toStdString()});
+                    const auto path = QString::fromStdString(result.path.string());
+                    std::lock_guard<std::mutex> lock(temporaryPlaybackFiles->mutex);
+                    if (temporaryPlaybackFiles->closed) {
+                        QFile::remove(path);
+                    } else {
+                        temporaryPlaybackFiles->files.append(path);
+                        temporaryPlaybackFiles->cached = path;
+                        temporaryPlaybackFiles->cached_gain = result.gain_db;
+                    }
+                    return result;
+                }));
+        };
+        QObject::connect(normalize, &QCheckBox::toggled, dialog,
+                         [applyNormalization](bool) { applyNormalization(); });
+        applyNormalization();
+#else
+        playback->setEnabled(false);
+        times->setText("Playback requires Qt Multimedia development libraries");
+#endif
+        dialog->show();
+        return dialog;
+}
 
 QWidget* createAcousticScenePage(QWidget* parent) {
     auto* page = new QWidget{parent};
@@ -290,6 +569,15 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     configForm->addRow("ODAS hop", hop);
     configForm->addRow("ODAS frame", frame);
     configForm->addRow("ODAS angular profile", angularPreset);
+    auto* nearPlane = new QCheckBox{
+        "Limit SSL search to sources within +/-25 deg of microphone plane", page};
+    nearPlane->setObjectName("acousticSceneNearPlaneSources");
+    nearPlane->setChecked(false); // do not suppress elevated 3D sources by default
+    nearPlane->setToolTip(
+        "Use only if relevant sound sources are known to be near the XY plane "
+        "of the mounted microphone array. This intentionally excludes steep "
+        "elevation directions before ODAS tracking and separation.");
+    configForm->addRow("Optional 2D source prior", nearPlane);
     configRow->addLayout(configForm);
     layout->addLayout(configRow);
 
@@ -382,6 +670,40 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     layout->addWidget(enableTagging);
     layout->addWidget(taggingSettings);
     taggingSettings->setVisible(enableTagging->isChecked());
+    auto* enableSpeech = new QCheckBox{"Transcribe separated sources (Silero + SenseVoice)", page};
+    enableSpeech->setObjectName("acousticSceneEnableSpeech");
+#if LIBAUDITION_DEMO_HAS_SHERPA && defined(LIBAUDITION_DEMO_SILERO_VAD_MODEL) && defined(LIBAUDITION_DEMO_SENSEVOICE_MODEL) && defined(LIBAUDITION_DEMO_SENSEVOICE_TOKENS)
+    enableSpeech->setChecked(true);
+#endif
+#if !LIBAUDITION_DEMO_HAS_SHERPA
+    enableSpeech->setEnabled(false);
+    enableSpeech->setToolTip("Build with LIBAUDITION_WITH_SHERPA=ON");
+#endif
+    auto* speechSettings = new QWidget{page};
+    auto* speechForm = new QFormLayout{speechSettings};
+    auto* speechVad = new QLineEdit{speechSettings};
+    auto* speechAsr = new QLineEdit{speechSettings};
+    auto* speechTokens = new QLineEdit{speechSettings};
+#ifdef LIBAUDITION_DEMO_SILERO_VAD_MODEL
+    speechVad->setText(QString::fromUtf8(LIBAUDITION_DEMO_SILERO_VAD_MODEL));
+#endif
+#ifdef LIBAUDITION_DEMO_SENSEVOICE_MODEL
+    speechAsr->setText(QString::fromUtf8(LIBAUDITION_DEMO_SENSEVOICE_MODEL));
+#endif
+#ifdef LIBAUDITION_DEMO_SENSEVOICE_TOKENS
+    speechTokens->setText(QString::fromUtf8(LIBAUDITION_DEMO_SENSEVOICE_TOKENS));
+#endif
+    speechVad->setPlaceholderText("Silero VAD model .onnx");
+    speechAsr->setPlaceholderText("SenseVoice model .onnx");
+    speechTokens->setPlaceholderText("SenseVoice tokens.txt");
+    speechForm->addRow("Silero VAD", speechVad);
+    speechForm->addRow("SenseVoice ONNX", speechAsr);
+    speechForm->addRow("SenseVoice tokens", speechTokens);
+    layout->addWidget(enableSpeech);
+    layout->addWidget(speechSettings);
+    speechSettings->setVisible(enableSpeech->isChecked());
+    QObject::connect(enableSpeech, &QCheckBox::toggled,
+                     speechSettings, &QWidget::setVisible);
 #if !LIBAUDITION_DEMO_HAS_SHERPA && !LIBAUDITION_DEMO_HAS_YAMNET
     enableTagging->setEnabled(false);
     enableTagging->setToolTip(
@@ -452,10 +774,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     split->addWidget(sphere);
     auto* sidebar = new QWidget{split};
     auto* sideLayout = new QVBoxLayout{sidebar};
-    auto* tracks = new QTableWidget{0, 5, sidebar};
+    auto* tracks = new QTableWidget{0, 7, sidebar};
     tracks->setObjectName("acousticSceneTracks");
     tracks->setHorizontalHeaderLabels({
-        "ID", "Azimuth", "Elevation", "Activity", "Activity type"});
+        "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript", "Recording"});
     tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -470,7 +792,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         "Orange grid: below equator\nBlue grid: above equator\n"
         "XYZ axes: +X forward / +Y left / +Z up\n"
         "Hover: direction, activity, sound class (if model loaded)\n"
-        "ASR is not connected in this viewer yet.", sidebar});
+        "ASR transcripts are shown per tracked source when enabled.", sidebar});
     split->addWidget(sidebar);
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 2);
@@ -480,37 +802,141 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto cursor = std::make_shared<std::size_t>(0);
     auto* timer = new QTimer{page};
     timer->setInterval(50);
+    // The table is a session history; only the sphere renders currently active tracks.
+    struct HistoryEntry {
+        AcousticSceneTrack track;
+        bool active{false};
+        QString wav;
+        std::uint64_t samples{0};
+        std::uint64_t lostSamples{0};
+        QString error{};
+    };
+    auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
+    auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
+    auto lastTableUpdate = std::make_shared<qint64>(0);
+    auto rowIndex = std::make_shared<std::map<std::uint64_t, int>>();
+    auto* playerButton = new QPushButton{"Play", sidebar};
+    playerButton->setVisible(false);
+    sideLayout->addWidget(playerButton);
+
+    QObject::connect(playerButton, &QPushButton::clicked, page, [=]() {
+        const auto selectedRows = tracks->selectionModel()->selectedRows();
+        if (selectedRows.empty()) return;
+        const auto item = tracks->item(selectedRows.first().row(), 0);
+        if (!item) return;
+        const auto id = item->data(Qt::UserRole).toULongLong();
+        const auto iter = history->find(id);
+        if (iter == history->end() || iter->second.wav.isEmpty()) return;
+        createRecordingPlaybackDialog(page, id,
+            iter->second.wav, iter->second.samples);
+    });
+
     auto display = [=](const std::vector<AcousticSceneTrack>& values) {
         sphere->setTracks(values);
-        tracks->setRowCount(static_cast<int>(values.size()));
-        for (int i = 0; i < static_cast<int>(values.size()); ++i) {
-            const auto& track = values[static_cast<std::size_t>(i)];
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (*lastTableUpdate != 0 && nowMs - *lastTableUpdate < 500)
+            return; // At most 2 full table rebuilds/sec, not 20.
+        *lastTableUpdate = nowMs;
+        for (auto& item : *history) item.second.active = false;
+        // Synthetic/replay tracks have no recording ID: use a reserved high key.
+        if (recordingInfo->empty()) {
+            for (const auto& track : values) {
+                auto& entry = (*history)[track.id | (1ULL << 63)];
+                entry.track = track;
+                entry.active = true;
+            }
+        } else {
+            for (const auto& recording : *recordingInfo) {
+                const auto& r = recording.second;
+                auto& entry = (*history)[r.id];
+                entry.track.id = r.track_id;
+                entry.wav = QString::fromStdString(r.path);
+                entry.samples = r.samples;
+                entry.lostSamples = r.lost_samples;
+                entry.error = QString::fromStdString(r.error);
+                entry.active = r.active;
+                if (r.active) {
+                    const auto it = std::find_if(values.begin(), values.end(),
+                        [&](const AcousticSceneTrack& track) {return track.id == r.track_id;});
+                    if (it != values.end()) entry.track = *it;
+                }
+            }
+        }
+        int row = 0;
+        for (const auto& pair : *history) {
+            const auto& entry = pair.second;
+            const auto& track = entry.track;
             const auto v = track.direction;
             const double az = std::atan2(v.y(), v.x()) * 180.0 / kPi;
             const double el = std::atan2(v.z(), std::hypot(v.x(), v.y())) * 180.0 / kPi;
-            for (int column = 0; column < 5; ++column) {
-                QString data;
-                switch (column) {
-                case 0: data = QString::number(static_cast<qulonglong>(track.id)); break;
-                case 1: data = QString::number(az, 'f', 1) + "°"; break;
-                case 2: data = QString::number(el, 'f', 1) + "°"; break;
-                case 3: data = QString::number(track.activity, 'f', 2); break;
-                default:
-                    if (!track.classification_label.empty()) {
-                        data = QString::fromStdString(track.classification_label) +
-                            QString(" (%1)").arg(
-                                track.classification_probability, 0, 'f', 2);
-                    } else {
-                        data = enableTagging->isChecked() ? "Analyzing…" :
-                               "Not configured";
-                    }
-                    break;
+            const QStringList columns{
+                QString::number(static_cast<qulonglong>(track.id)) +
+                    (pair.first & (1ULL << 63) ? "" : QString(" / #%1").arg(pair.first)),
+                QString::number(az, 'f', 1) + "°",
+                QString::number(el, 'f', 1) + "°",
+                QString::number(track.activity, 'f', 2),
+                QString::fromStdString(track.classification_label),
+                QString::fromStdString(track.transcript),
+                entry.wav.isEmpty() ? "No audio" :
+                    QString("Play (%1 s)%2%3").arg(entry.samples / 16000)
+                        .arg(entry.lostSamples ? QString(" | gap %1 samples").arg(entry.lostSamples) : QString{})
+                        .arg(entry.error.isEmpty() ? QString{} : QStringLiteral(" | WAV ERROR"))
+            };
+            auto foundRow = rowIndex->find(pair.first);
+            if (foundRow == rowIndex->end()) {
+                row = 0;
+                tracks->insertRow(row);
+                for (auto& indexed : *rowIndex) ++indexed.second;
+                rowIndex->emplace(pair.first, row);
+            } else {
+                row = foundRow->second;
+            }
+            for (int col = 0; col < columns.size(); ++col) {
+                auto* item = tracks->item(row, col);
+                if (!item) {
+                    item = new QTableWidgetItem;
+                    tracks->setItem(row, col, item);
                 }
-                tracks->setItem(i, column, new QTableWidgetItem{data});
+                if (item->text() != columns.at(col)) item->setText(columns.at(col));
+                item->setForeground(entry.active ? tracks->palette().text().color()
+                                                 : QColor(135, 135, 135));
+                item->setData(Qt::UserRole, QVariant::fromValue(static_cast<qulonglong>(pair.first)));
+                item->setToolTip(entry.error);
             }
-            if (track.id == sphere->selectedTrack()) {
+            if (track.id == sphere->selectedTrack() && entry.active)
                 selected->setText(directionSummary(track));
+        }
+        playerButton->setVisible(false);
+        for (int r = 0; r < tracks->rowCount(); ++r) {
+            const auto item = tracks->item(r, 0);
+            if (!item) continue;
+            const auto id = item->data(Qt::UserRole).toULongLong();
+            const auto found = history->find(id);
+            if (found == history->end() || found->second.wav.isEmpty()) continue;
+            if (auto* existing = qobject_cast<QPushButton*>(tracks->cellWidget(r, 6))) {
+                const auto boundId = existing->property("recordingId").toULongLong();
+                if (boundId == id) {
+                    existing->setStyleSheet(found->second.active ? QString{} : QStringLiteral("color: gray;"));
+                    continue;
+                }
+                tracks->removeCellWidget(r, 6);
+                existing->deleteLater();
             }
+            auto* playTrack = new QPushButton{"Play", tracks};
+            playTrack->setProperty("recordingId", QVariant::fromValue(static_cast<qulonglong>(id)));
+            if (!found->second.active)
+                playTrack->setStyleSheet("color: gray;");
+            QObject::connect(playTrack, &QPushButton::clicked, page, [tracks, playerButton, id]() {
+                for (int candidateRow = 0; candidateRow < tracks->rowCount(); ++candidateRow) {
+                    const auto* cell = tracks->item(candidateRow, 0);
+                    if (cell && cell->data(Qt::UserRole).toULongLong() == id) {
+                        tracks->selectRow(candidateRow);
+                        playerButton->click();
+                        break;
+                    }
+                }
+            });
+            tracks->setCellWidget(r, 6, playTrack);
         }
     };
     auto capture = std::make_shared<demo::AlsaLiveCapture>();
@@ -521,6 +947,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     const auto stopCapture = [=]() {
         liveTimer->stop();
         capture->stop(); // joins safely before the widget can be destroyed
+        // The recorder is closed when capture exits. Keep its history visible
+        // and mark all retained generations as inactive for the stopped session.
+        if (!recordingInfo->empty()) {
+            for (auto& item : *recordingInfo) item.second.active = false;
+            *lastTableUpdate = 0;
+            display({});
+        }
         stopLive->setEnabled(false);
         startLive->setEnabled(
 #if LIBAUDITION_DEMO_HAS_ALSA
@@ -544,6 +977,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         hop->setEnabled(true);
         frame->setEnabled(true);
         angularPreset->setEnabled(true);
+        nearPlane->setEnabled(true);
+        enableSpeech->setEnabled(LIBAUDITION_DEMO_HAS_SHERPA);
         enableTagging->setEnabled(
 #if LIBAUDITION_DEMO_HAS_SHERPA || LIBAUDITION_DEMO_HAS_YAMNET
             (taggingFamily->currentIndex() == 2 ? LIBAUDITION_DEMO_HAS_YAMNET : LIBAUDITION_DEMO_HAS_SHERPA)
@@ -627,7 +1062,24 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.hop_size = static_cast<std::uint32_t>(hop->value());
             config.frame_size = static_cast<std::uint32_t>(frame->value());
             config.respeaker_angular_profile = angularPreset->isChecked();
+            config.near_plane_sources = nearPlane->isChecked();
             config.classify_sources = enableTagging->isChecked();
+            config.transcribe_sources = enableSpeech->isChecked();
+            if (config.transcribe_sources) {
+                const auto vad = std::filesystem::path{speechVad->text().toStdString()};
+                const auto model = std::filesystem::path{speechAsr->text().toStdString()};
+                const auto tokens = std::filesystem::path{speechTokens->text().toStdString()};
+                if (config.sample_rate_hz != 16000U ||
+                    !std::filesystem::is_regular_file(vad) ||
+                    !std::filesystem::is_regular_file(model) ||
+                    !std::filesystem::is_regular_file(tokens)) {
+                    throw std::runtime_error{
+                        "ASR requires 16 kHz and existing Silero/SenseVoice ONNX + tokens"};
+                }
+                config.speech_vad_model_path = vad.string();
+                config.speech_asr_model_path = model.string();
+                config.speech_asr_tokens_path = tokens.string();
+            }
             if (config.classify_sources) {
                 const auto modelFile =
                     std::filesystem::path{taggingModel->text().toStdString()};
@@ -680,6 +1132,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             *cursor = 0;
             replay->frames.clear();
             sphere->clearTracks();
+            history->clear();
+            recordingInfo->clear();
+            rowIndex->clear();
+            *lastTableUpdate = 0;
             tracks->setRowCount(0);
             selected->setText("Click a live track to inspect its direction.");
             capture->start(std::move(config));
@@ -695,7 +1151,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             hop->setEnabled(false);
             frame->setEnabled(false);
             angularPreset->setEnabled(false);
+            nearPlane->setEnabled(false);
             enableTagging->setEnabled(false);
+            enableSpeech->setEnabled(false);
             taggingFamily->setEnabled(false);
             taggingModel->setEnabled(false);
             taggingLabels->setEnabled(false);
@@ -715,6 +1173,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         const auto snapshot = capture->snapshot();
         if (snapshot.generation != *seenGeneration) {
             *seenGeneration = snapshot.generation;
+            recordingInfo->clear();
+            for (const auto& r : snapshot.recordings) (*recordingInfo)[r.id] = r;
             display(snapshot.tracks);
             sphere->setPotentials(snapshot.potentials);
             if (!snapshot.classification_error.empty()) {
@@ -734,14 +1194,28 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             for (const auto& proposal : snapshot.potentials) {
                 strongest = std::max(strongest, proposal.score);
             }
+            QStringList sssLevelLines;
+            for (const auto& level : snapshot.sss_levels) {
+                const double gainDb = std::clamp(-3.0 - level.peak_dbfs, 0.0, 40.0);
+                sssLevelLines << QString("Track #%1: %2 dBFS RMS / %3 dBFS peak; normalize to -3 dBFS: +%4 dB (estimated peak %5 dBFS; %6 samples)")
+                    .arg(static_cast<qulonglong>(level.track_id))
+                    .arg(level.rms_dbfs, 0, 'f', 1)
+                    .arg(level.peak_dbfs, 0, 'f', 1)
+                    .arg(gainDb, 0, 'f', 1)
+                    .arg(level.peak_dbfs + gainDb, 0, 'f', 1)
+                    .arg(static_cast<qulonglong>(level.samples));
+            }
             diagnostics->setText(
-                QString("Classifier: %4\nRaw ALSA input levels: %1\n"
+                QString("Classifier: %4\nSpeech: %5\nRaw ALSA input levels: %1\n"
                         "ODAS SSL direction proposals: %2 (strongest raw score: %3) · "
                         "outlined diamonds are SSL proposals, filled circles are SST tracks")
                     .arg(levels.join("  |  "))
                     .arg(static_cast<qulonglong>(snapshot.potentials.size()))
                     .arg(strongest, 0, 'f', 3)
-                    .arg(QString::fromStdString(snapshot.classifier_status)));
+                    .arg(QString::fromStdString(snapshot.classifier_status))
+                    .arg(QString::fromStdString(snapshot.speech_status)) +
+                "\nODAS SSS output (same measurement window): " +
+                (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")));
         }
         if (!snapshot.error.empty()) {
             stopCapture();
@@ -832,6 +1306,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         replay->frames.clear();
         sphere->clearTracks();
         tracks->setRowCount(0);
+        history->clear();
+        recordingInfo->clear();
+        rowIndex->clear();
+        *lastTableUpdate = 0;
         selected->setText("Click a source on the sphere to inspect it.");
         play->setEnabled(false);
         status->setText("View data reset.");
@@ -851,6 +1329,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         const auto hopSize = static_cast<std::uint32_t>(hop->value());
         const auto frameSize = static_cast<std::uint32_t>(frame->value());
         const auto respeakerAngularProfile = angularPreset->isChecked();
+        const auto nearPlaneSources = nearPlane->isChecked();
         timer->stop();
         play->setEnabled(false);
         analyze->setEnabled(false);
@@ -858,7 +1337,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         diagnostics->setText("WAV replay mode; live ALSA levels not available.");
         watcher->setFuture(QtConcurrent::run([=]() {
             return analyzeWav(wavFile, mapping, positions, hopSize, frameSize,
-                              respeakerAngularProfile);
+                              respeakerAngularProfile, nearPlaneSources);
         }));
     });
     QObject::connect(watcher, &QFutureWatcherBase::finished, page, [=]() {

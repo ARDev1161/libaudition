@@ -39,6 +39,11 @@ struct ProgressiveClassificationStatus {
     std::optional<ClassificationResult> result{};
 };
 
+struct CompletedProgressiveClassification {
+    std::string stage{};
+    CompletedSourceClassification window{};
+};
+
 // Progressive prediction for each tracked source; e.g. first ~1s YAMNet,
 // then a higher-context 5s YAMNet classification. No YAMNet or Qt dependency.
 //
@@ -62,6 +67,7 @@ public:
     void push(std::uint64_t source_id, const float* samples, std::size_t count);
     [[nodiscard]] ProgressiveClassificationStatus status(
         std::uint64_t source_id) const;
+    [[nodiscard]] std::vector<CompletedProgressiveClassification> takeCompleted();
     // Discard all stage generations when a tracker ID vanishes or is reused.
     void forget(std::uint64_t source_id);
 

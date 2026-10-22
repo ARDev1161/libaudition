@@ -163,6 +163,23 @@ Enable it with:
 -DLIBAUDITION_WITH_WEBRTC_AEC3=ON
 ```
 
+
+### Deterministic AEC3 acceptance checks
+
+The optional AEC3 CTest suite validates 10-ms frames at 16, 32 and 48 kHz,
+including planar two-channel capture with mono playback reference, bounded
+finite PCM output and preserved capture timestamps/sequence numbers. Two
+synthetic numeric safety gates check (1) microphone silence with nonzero
+playback reference produces tail RMS below **0.01**, and (2) a 440-Hz,
+0.2-amplitude near-end tone with silent playback remains audible with tail
+RMS above **0.015**. Invalid frame formats and stream delays must be rejected,
+after which correctly formatted input must remain processable.
+
+These are *sanity/regression thresholds*, not measures of acoustic echo
+cancellation quality. They do not establish ERLE, delay convergence, speech
+intelligibility, or double-talk robustness. Such metrics need independent
+echo-path recordings, reference annotations and baselined thresholds.
+
 ## Real-time ownership
 
 All blocks remain caller-scheduled. A typical application may run capture,

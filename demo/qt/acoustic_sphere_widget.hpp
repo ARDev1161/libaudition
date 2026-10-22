@@ -24,6 +24,7 @@ struct AcousticSceneTrack {
     QVector3D direction{};
     double activity{0.0};
     std::string classification_label{};
+    std::string transcript{};
     double classification_probability{-1.0};
 };
 
