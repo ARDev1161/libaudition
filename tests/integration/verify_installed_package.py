@@ -27,6 +27,7 @@ def main() -> int:
     p.add_argument("--cmake", required=True)
     p.add_argument("--generator", required=True)
     p.add_argument("--version", required=True)
+    p.add_argument("--public-version", help="Expected public audition::kVersion; defaults to numeric package version")
     p.add_argument("--backend", choices=("core", "sherpa"), default="core")
     args = p.parse_args()
     prefix = args.prefix.resolve(strict=True)
@@ -198,7 +199,7 @@ def main() -> int:
             #include <vector>
             extern bool verifyInstalledSpeech();
             int main() {{
-                if (audition::kVersion != "{args.version}") return 1;
+                if (audition::kVersion != "{args.public_version or args.version}") return 1;
                 audition::TemporalSpatialTrackSmoother smoother{{}};
                 audition::AcousticEventAssembler events{{}};
                 audition::InMemoryAcousticSourceRegistry registry{{}};

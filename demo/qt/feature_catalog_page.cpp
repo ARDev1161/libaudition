@@ -91,13 +91,13 @@ QWidget* createFeatureCatalogPage(QTabWidget* applicationTabs) {
     table->setSelectionMode(QAbstractItemView::SingleSelection);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setRowCount(static_cast<int>(sizeof(kFeatures)/sizeof(kFeatures[0])));
-    int row=0;
+    int catalogRow=0;
     for(const auto& entry:kFeatures) {
-        table->setItem(row,0,new QTableWidgetItem{entry.group});
-        table->setItem(row,1,new QTableWidgetItem{entry.capability});
-        table->setItem(row,2,new QTableWidgetItem{entry.tab});
-        table->setItem(row,3,new QTableWidgetItem{entry.access});
-        ++row;
+        table->setItem(catalogRow,0,new QTableWidgetItem{entry.group});
+        table->setItem(catalogRow,1,new QTableWidgetItem{entry.capability});
+        table->setItem(catalogRow,2,new QTableWidgetItem{entry.tab});
+        table->setItem(catalogRow,3,new QTableWidgetItem{entry.access});
+        ++catalogRow;
     }
     layout->addWidget(table);
 

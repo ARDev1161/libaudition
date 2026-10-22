@@ -62,6 +62,13 @@ add_test(NAME ci_model_manifest_audit COMMAND
 set_tests_properties(ci_model_manifest_audit PROPERTIES
     LABELS "ci-contract;model-provenance;python" TIMEOUT 30)
 
+# Keep numeric CMake package version and public prerelease identity in sync.
+add_test(NAME ci_release_version_contract COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/ci/test_release_version_contract.py")
+set_tests_properties(ci_release_version_contract PROPERTIES
+    LABELS "ci-contract;release;package-consumer;python" TIMEOUT 30)
+
 # Offline regression for apt-get update returning success without a PPA index.
 add_test(NAME ci_gtsam_install_retry COMMAND
     ${Python3_EXECUTABLE}
