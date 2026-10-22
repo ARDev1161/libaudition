@@ -112,8 +112,8 @@ int main(int argc, char** argv) {
         } else if (scenario == "penalty") {
             BatchAssignmentOptions parameterized{};
             parameterized.unmatched_penalty = penalty;
-            const std::vector<std::vector<std::optional<double>>> costs{{0.4}};
-            const auto result = HungarianEventMatcher{parameterized}.match(costs, 1);
+            const std::vector<std::vector<std::optional<double>>> penalty_costs{{0.4}};
+            const auto result = HungarianEventMatcher{parameterized}.match(penalty_costs, 1);
             const bool matched = result.track_for_observation ==
                 std::vector<std::optional<std::size_t>>{0};
             const bool unmatched = result.track_for_observation ==
