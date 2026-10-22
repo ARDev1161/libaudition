@@ -86,3 +86,13 @@ rollback, or transactional create-and-fingerprint operation. The
 regression tests intentionally acknowledge this limitation rather
 than claiming full external rollback. The resolver remains
 single-thread-owned.
+
+## Defensive registry ID admission
+
+A custom `IAcousticSourceRegistry::create()` implementation must issue a
+valid new `AcousticSourceId`. The resolver rejects invalid IDs and IDs already
+present in the registry snapshot or bound to an active track. A rejected
+creation does not bind the track, update the transient geometry cache, or
+advance the resolver clock; deterministic fault-injection regressions exercise
+both invalid and reused IDs. The registry itself remains responsible for the
+atomicity of its persistent creation operation.
