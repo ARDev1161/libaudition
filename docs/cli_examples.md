@@ -50,6 +50,22 @@ persistent-source episode across those transitions. The output includes
 `cli-temporal-events-smoke` under CTest. It uses synthetic scores and
 does not measure acoustic classification accuracy.
 
+## Interval relations, spatial-time gating and Hungarian assignment (RC)
+
+```sh
+./build/examples/libaudition_temporal_association_cli
+```
+
+A deterministic association example demonstrates **Allen interval relations**,
+distance/time spatial gating, **diagonal** covariance Mahalanobis compatibility,
+and Hungarian minimum-cost one-to-one matching with forbidden edges and an
+unmatched observation. Expected summary is
+`interval_relation=meets`, `spatial_gate=accepted`,
+`mahalanobis_gate=accepted`, `assignment=0->0,1->1,2->unmatched`,
+and `temporal-association=ok`. The `cli-temporal-association-smoke` CTest
+checks execution. The example does not establish a physical source identity
+or validate full covariance models.
+
 ## SPL calibration and range prior
 
 ```bash
