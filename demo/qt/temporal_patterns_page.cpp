@@ -1,4 +1,5 @@
 #include "temporal_patterns_page.hpp"
+#include "temporal_events_page.hpp"
 
 #include <audition/audition.hpp>
 #include <audition/temporal/hungarian_event_matcher.hpp>
@@ -294,5 +295,6 @@ QWidget* createTemporalPatternsPage() {
     });
     match->click();
     layout->addWidget(assignmentGroup);
+    layout->addWidget(createTemporalEventsPanel(page));
     return page;
 }
