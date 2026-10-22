@@ -334,6 +334,24 @@ class ModelManifestAuditTests(unittest.TestCase):
                    f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
                    False, add_download=False)
 
+    def test_rejects_second_download_from_unregistered_host(self):
+        self.check(self.manifest(),
+                   "curl -o build/model.onnx https://mirror.test/resolve/main/model.onnx\n"
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False)
+
+    def test_rejects_second_download_from_different_revision(self):
+        self.check(self.manifest(revision="deadbeef", source_ref="deadbeef"),
+                   "curl -o build/model.onnx https://example.test/resolve/main/model.onnx\n"
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   False)
+
+    def test_accepts_repeated_download_from_same_pinned_source(self):
+        self.check(self.manifest(revision="deadbeef", source_ref="deadbeef"),
+                   "curl -o build/model.onnx https://example.test/resolve/deadbeef/model.onnx\n"
+                   f"echo '{DIGEST}  model.onnx' | sha256sum -c -\n",
+                   True)
+
     def test_download_url_with_query_is_accepted(self):
         self.check(self.manifest(),
                    f'curl -o build/model.onnx "https://example.test/resolve/main/model.onnx?download=true"\n'

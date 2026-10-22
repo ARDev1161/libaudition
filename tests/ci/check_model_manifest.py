@@ -175,8 +175,17 @@ for entry in entries:
             errors.append(f"{name}: SHA-256 not checked with filename {filename}")
         expected = urlsplit(entry.get("source", ""))
         canonical = f"{expected.scheme}://{expected.netloc.lower()}{expected.path}"
-        if canonical not in downloads.get(filename, set()):
+        actual_sources = downloads.get(filename, set())
+        if canonical not in actual_sources:
             errors.append(f"{name}: workflow curl download for {filename} does not match manifest source")
+        # Checking that one expected URL exists is insufficient: a second
+        # curl of the same output basename can replace the verified artifact.
+        # Reject all alternate origins, even when a valid download also exists.
+        unexpected_sources = actual_sources - {canonical}
+        if unexpected_sources:
+            errors.append(
+                f"{name}: unregistered workflow curl source(s) for {filename}: "
+                + ", ".join(sorted(unexpected_sources)))
     if not entry.get("source") or not entry.get("source_revision"):
         errors.append(f"{name}: missing source or source_revision")
     source = entry.get("source", "")
