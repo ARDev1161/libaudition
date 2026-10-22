@@ -42,7 +42,17 @@ add_executable(libaudition_temporal_association_cli temporal_association_cli.cpp
 target_link_libraries(libaudition_temporal_association_cli PRIVATE audition::core)
 libaudition_configure_target(libaudition_temporal_association_cli)
 
+add_executable(libaudition_registries_cli registries_cli.cpp)
+target_link_libraries(libaudition_registries_cli PRIVATE
+    audition::memory audition::model)
+libaudition_configure_target(libaudition_registries_cli)
+
 if(LIBAUDITION_BUILD_TESTS)
+    add_test(NAME cli-registries-smoke
+        COMMAND libaudition_registries_cli)
+    set_tests_properties(cli-registries-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "registries=ok")
+
     add_test(NAME cli-temporal-association-smoke
         COMMAND libaudition_temporal_association_cli)
     set_tests_properties(cli-temporal-association-smoke PROPERTIES
