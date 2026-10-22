@@ -9,6 +9,13 @@ function(libaudition_find_or_fetch_spdlog)
     if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
         message(FATAL_ERROR "spdlog not found. Install spdlog or set LIBAUDITION_FETCH_DEPENDENCIES=ON")
     endif()
+    # A fetched spdlog is linked by the installed static spdlog adapter.
+    # Export its own spdlog::spdlog target and package config as well;
+    # otherwise install(EXPORT libauditionTargets) fails during generation
+    # because the spdlog target has no installed export set.
+    # An existing system spdlog package remains unchanged.
+    set(SPDLOG_INSTALL ON CACHE BOOL
+        "Install fetched spdlog alongside the libaudition spdlog backend" FORCE)
     FetchContent_Declare(
         spdlog
         GIT_REPOSITORY https://github.com/gabime/spdlog.git

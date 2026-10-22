@@ -184,7 +184,7 @@ audition::AudioBuffer monoFrom(
         .arg(wav.info.bits_per_sample);
 }
 
-QWidget* unavailablePanel(
+[[maybe_unused]] QWidget* unavailablePanel(
     const QString& backend,
     const QString& option,
     QWidget* parent) {
