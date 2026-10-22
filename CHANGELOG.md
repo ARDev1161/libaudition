@@ -16,9 +16,10 @@ The project follows Semantic Versioning after `1.0`; the `0.x` public API may ev
 
 ### Known limitations
 
-- Final CI on the integrated, versioned commit is required before a release decision.
-- Third-party model artifacts are unbundled; individual licenses and redistribution rights are not universally verified.
+- The integrated candidate passed full CI #1616 on 2026-10-22 (25 successful jobs; one external real-spatial-corpus check skipped). Any modified candidate HEAD requires a fresh complete CI before tagging.
+- Third-party model artifacts are unbundled. Model license review and redistribution permissions remain unverified; CI fixture execution grants no downstream rights.
 - Real-world microphone-array spatial accuracy, representative WER/DER, hardware deadlines and accelerator variants are not established by deterministic CI tests.
+- The Qt playground now includes interactive recurrence/DTW/motif/streaming, Hungarian cost-matrix and scalar/event/episode lifecycle examples; model-backed panels have separate CI coverage documented in `docs/qt_model_validation_matrix.md`.
 
 ### Other tooling
 
