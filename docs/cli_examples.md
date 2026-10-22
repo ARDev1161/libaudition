@@ -13,6 +13,27 @@ cmake --build build -j
 
 The executables are created under `build/examples/`.
 
+## Temporal recurrence, DTW and acoustic motifs (RC)
+
+```sh
+./build/examples/libaudition_temporal_cli
+./build/examples/libaudition_temporal_cli 1 2 3 1 2 3 1 2 3
+./build/examples/libaudition_temporal_cli --help
+```
+
+The default deterministic demonstration uses separate event onsets at 0/100/200/300 ms
+and a repeated scalar feature pattern `1,2,3`. It exercises the **real**
+`RecurrenceAnalyzer`, `DynamicTimeWarping`, `AcousticMotifFinder` and
+`StreamingPatternMatcher`, printing `recurrence_period_ms`,
+`dtw_normalized_cost`, `motif`, `stream_matches`, and `temporal=ok`.
+Supply between 6 and 64 finite feature values to experiment with a different
+stream; no model weights or microphone device are needed.
+
+Only the built-in fixture is asserted to have three streaming matches and
+a zero-cost motif. User-provided features can legitimately have no repeated motif.
+The corresponding `cli-temporal-patterns-smoke` test runs under CTest.
+This demonstrates feature-sequence processing, **not** detector accuracy on audio.
+
 ## SPL calibration and range prior
 
 ```bash
