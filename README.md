@@ -118,7 +118,7 @@ target_link_libraries(my_app PRIVATE
 #include <audition/audition.hpp>
 ```
 
-## Temporal acoustic activity (v0.6 preview)
+## Temporal acoustic activity (v1 RC preview)
 
 The backend-neutral `TemporalAcousticEventDetector` converts timestamped
 classifier scores from each persistent `AcousticSourceId` into deterministic
@@ -130,4 +130,4 @@ semantics, limitations and a C++17 example.
 
 ## Status
 
-Version `0.5.0` completes the planned acoustic perception pipeline: optional speech/classification/voice backends, acoustic spatial fusion and persistent source identity, calibrated SPL/range priors, temporal metric smoothing, and explicit `AcousticEvent` assembly. Public APIs may still evolve before `1.0`.
+The `release/v1.0.0-rc1` branch is a **candidate**, not a tagged stable release. It integrates source classification, per-source VAD/ASR with bounded asynchronous ingestion, persistent spatial identity, temporal events, analysis and motifs. CMake installs the numeric version `1.0.0`; the public `audition::kVersion` identifies the pre-release as `1.0.0-rc.1`.\n\nOptional third-party model weights are **not bundled** and have separate license terms. Model accuracy, real-array DOA/SSS quality, RK3588 performance and physical capture reliability have not been universally validated. See [RC acceptance status](docs/release_v1_rc1.md) before distribution.
