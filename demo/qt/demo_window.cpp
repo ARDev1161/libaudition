@@ -3,6 +3,8 @@
 
 #include "acoustic_scene_page.hpp"
 #include "backend_workbench.hpp"
+#include "temporal_patterns_page.hpp"
+#include "feature_catalog_page.hpp"
 #include "wav_io.hpp"
 
 #include <audition/audition.hpp>
@@ -167,7 +169,7 @@ QWidget* requireTab(QTabWidget* tabs, const char* name) {
 
 void verifyWorkbench(QWidget* root) {
     auto* appTabs = qobject_cast<QTabWidget*>(root);
-    if (appTabs == nullptr || appTabs->count() != 10) {
+    if (appTabs == nullptr || appTabs->count() != 12) {
         throw std::runtime_error{"Qt self-test: unexpected application tab count"};
     }
     for (const char* name : {
@@ -180,9 +182,35 @@ void verifyWorkbench(QWidget* root) {
              "AcousticEvent",
              "Pipeline",
              "Backend workbench",
-             "Backends"}) {
+             "Backends",
+             "Temporal patterns",
+             "Feature catalog"}) {
         static_cast<void>(requireTab(appTabs, name));
     }
+
+    auto* temporalPage = requireTab(appTabs, "Temporal patterns");
+    auto* runTemporal = temporalPage->findChild<QPushButton*>("temporalRun");
+    auto* temporalOutput = temporalPage->findChild<QPlainTextEdit*>("temporalDemoOutput");
+    if (!runTemporal || !temporalOutput)
+        throw std::runtime_error{"Qt self-test: temporal controls missing"};
+    runTemporal->click();
+    if (!temporalOutput->toPlainText().contains("periodic=yes") ||
+        !temporalOutput->toPlainText().contains("motif: found") ||
+        !temporalOutput->toPlainText().contains("stream: matches=3"))
+        throw std::runtime_error{"Qt self-test: temporal algorithm demonstration failed"};
+
+    auto* catalogPage = requireTab(appTabs, "Feature catalog");
+    auto* catalog = catalogPage->findChild<QTableWidget*>("capabilityTable");
+    auto* catalogSearch = catalogPage->findChild<QLineEdit*>("capabilitySearch");
+    if (!catalog || catalog->rowCount()<35 || !catalogSearch)
+        throw std::runtime_error{"Qt self-test: incomplete capability catalog"};
+    catalogSearch->setText("DTW");
+    int visible=0;
+    for (int row=0;row<catalog->rowCount();++row)
+        if(!catalog->isRowHidden(row)) ++visible;
+    if(visible!=1)
+        throw std::runtime_error{"Qt self-test: catalog search not functional"};
+    catalogSearch->clear();
 
     auto* backendPage = requireTab(appTabs, "Backend workbench");
     auto* backends = backendPage->findChild<QTabWidget*>();
@@ -361,8 +389,10 @@ DemoWindow::DemoWindow(QWidget* parent)
     tabs->addTab(scrollPage(createIdentityTab()), "Source identity");
     tabs->addTab(scrollPage(createEventsTab()), "AcousticEvent");
     tabs->addTab(scrollPage(createPipelineTab()), "Pipeline");
+    tabs->addTab(scrollPage(createTemporalPatternsPage()), "Temporal patterns");
     tabs->addTab(scrollPage(createBackendWorkbench(tabs)), "Backend workbench");
     tabs->addTab(scrollPage(createCapabilitiesTab()), "Backends");
+    tabs->addTab(scrollPage(createFeatureCatalogPage(tabs)), "Feature catalog");
     setCentralWidget(tabs);
 }
 
