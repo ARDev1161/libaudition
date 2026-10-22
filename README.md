@@ -130,4 +130,6 @@ semantics, limitations and a C++17 example.
 
 ## Status
 
-The `release/v1.0.0-rc1` branch is a **candidate**, not a tagged stable release. It integrates source classification, per-source VAD/ASR with bounded asynchronous ingestion, persistent spatial identity, temporal events, analysis and motifs. CMake installs the numeric version `1.0.0`; the public `audition::kVersion` identifies the pre-release as `1.0.0-rc.1`.\n\nOptional third-party model weights are **not bundled** and have separate license terms. Model accuracy, real-array DOA/SSS quality, RK3588 performance and physical capture reliability have not been universally validated. See [RC acceptance status](docs/release_v1_rc1.md) before distribution.
+The `release/v1.0.0-rc1` branch is a **candidate**, not a tagged stable release. It integrates source classification, per-source VAD/ASR with bounded asynchronous ingestion, persistent spatial identity, temporal events, analysis and motifs. CMake installs the numeric version `1.0.0`; the public `audition::kVersion` identifies the pre-release as `1.0.0-rc.1`.
+
+Optional third-party model weights are **not bundled** and have separate license terms. Model accuracy, real-array DOA/SSS quality, RK3588 performance and physical capture reliability have not been universally validated. See [RC acceptance status](docs/release_v1_rc1.md) before distribution.
