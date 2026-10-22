@@ -101,6 +101,7 @@ target_include_directories(libaudition_logging PUBLIC
 find_package(Threads REQUIRED)
 add_library(libaudition_pipeline
     pipeline/acoustic_event_assembler.cpp
+    pipeline/temporal_acoustic_event_detector.cpp
     pipeline/spatial_identity.cpp
     pipeline/vocabulary.cpp
     pipeline/source_classification_runtime.cpp

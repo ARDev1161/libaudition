@@ -38,6 +38,7 @@ necessarily labels*. A build registers only its configured backends. Use
 | DSP, frontend, SPL | `Dsp.*`, `AudioQuality.*`, `AudioFrontend.*`, `SplCalibration.*`, `SoundLevelRangePrior.*` | Channel routing, gain, clipping, metrics, delays, calibrated inputs; not microphone measurements |
 | Memory and identification | `MemoryRegistry.*`, `SoundPrototypeMatcher.*`, `SourceIdentityResolver.*`, `SpatialIdentityCoordinator.*` | Registries, stable identity, track handoff, eviction and failure consistency; synthetic observations |
 | Spatial estimation and events | `TemporalSpatialTrackSmoother.*`, `AcousticEventAssembler.*`, `AcousticPipelineScenario.*` | Uncertainty, covariance, lifecycle and multi-source events; not measured ODAS DOA accuracy |
+| Temporal acoustic event detection | `TemporalAcousticEventDetector.*`; `tests/temporal_acoustic_event_detector_test.cpp` | Per-source/per-label hysteresis, gap closure, capacity, time-domain rejection, failure atomicity and mapping to caller-owned `AcousticEventAssembler`; model-independent semantics, not detection accuracy |
 | Per-source classification | `Vocabulary.*`, `SourceClassificationRuntime.*`, `ProgressiveSourceClassificationRuntime.*`, `progressive_stress_5_sources`, `progressive_stress_10_sources` | Windows, queue overload, stale result invalidation, prioritization, multi-source stress; scheduler correctness only |
 | Speech and speakers | `PerSourceSpeechRuntime.*`, `SpeechContracts.*`, `SpeakerContracts.*`, `Sherpa*` | VAD/ASR session/ID lifecycle and backend contracts; quality requires model-backed tests |
 | Recording and parsing | `WavIoTest.*`, `RecordingTimelineJson.*`, `source_wav_recorder_test`, `source_recording_session_test`, `recording_audio_apis_test` | PCM/JSON validation, stream and file lifecycle, malformed input; not device uptime |
@@ -119,6 +120,20 @@ claims: an accepted ERLE threshold needs independently measured echo-path
 references and a reproducible baseline. All four cases are ordinary CTest
 GoogleTest discoveries in the optional `aec3-backend` job. Validation must be
 confirmed by the corresponding completed CI run.
+
+## New algorithm: temporal acoustic event detection
+
+`TemporalAcousticEventDetector` is a dependency-free, caller-scheduled
+classifier-to-event transition tracker. It interprets timestamped
+`ClassificationResult` observations for persistent `AcousticSourceId` values,
+with hysteresis, bounded per-class state and optional long-gap closure. This
+is a new algorithmic capability, not another registration-only test.
+
+Cases in `tests/temporal_acoustic_event_detector_test.cpp` validate numeric
+threshold boundaries, deterministic multi-source behavior, no source mixing,
+transactional failure on bad labels/capacity/timestamps, lifecycle, reset and
+mapping to `AcousticEventAssembler`. See
+[temporal_acoustic_events.md](temporal_acoustic_events.md).
 
 ## Fast local development commands
 
@@ -209,10 +224,10 @@ follow the above checklist from their first implementation.
 - Streaming/chunk partition, reset and producer isolation: completed in CI #1204.
 - Two-source PCM → classification/VAD/ASR → persistent event and recovery:
   completed in CI #1205.
-- Optional AEC3 numeric/regression batch: **awaiting its CI validation**.
+- Optional AEC3 numeric/regression batch: validated in CI #1206 (PASS).
 
-**Stop condition:** once the final AEC3 batch passes its actual configured
-CTest job, stop library-wide coverage-only work and move to new algorithms.
+**Stop condition reached in CI #1206:** library-wide coverage-only work is
+closed. Extend tests alongside new algorithm implementations.
 Real-room corpora, long soak, accelerator benchmarking and statistical ML
 accuracy remain independent optional validation tracks. They should not
 reopen this transition milestone.

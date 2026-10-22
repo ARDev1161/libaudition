@@ -117,6 +117,16 @@ target_link_libraries(my_app PRIVATE
 #include <audition/audition.hpp>
 ```
 
+## Temporal acoustic activity (v0.6 preview)
+
+The backend-neutral `TemporalAcousticEventDetector` converts timestamped
+classifier scores from each persistent `AcousticSourceId` into deterministic
+Start/End transitions with hysteresis, multi-source isolation and explicit
+stream-discontinuity handling. Applications can compose these transitions with
+`AcousticEventAssembler` without adding a ROS/ODAS/model dependency.
+See [docs/temporal_acoustic_events.md](docs/temporal_acoustic_events.md) for
+semantics, limitations and a C++17 example.
+
 ## Status
 
 Version `0.5.0` completes the planned acoustic perception pipeline: optional speech/classification/voice backends, acoustic spatial fusion and persistent source identity, calibrated SPL/range priors, temporal metric smoothing, and explicit `AcousticEvent` assembly. Public APIs may still evolve before `1.0`.
