@@ -198,6 +198,37 @@ void verifyWorkbench(QWidget* root) {
         !temporalOutput->toPlainText().contains("motif: found") ||
         !temporalOutput->toPlainText().contains("stream: matches=3"))
         throw std::runtime_error{"Qt self-test: temporal algorithm demonstration failed"};
+    auto* assignRun = temporalPage->findChild<QPushButton*>("temporalAssignmentRun");
+    auto* assignMatrix = temporalPage->findChild<QPlainTextEdit*>("temporalAssignmentMatrix");
+    auto* assignOutput = temporalPage->findChild<QPlainTextEdit*>("temporalAssignmentOutput");
+    auto* assignPenalty = temporalPage->findChild<QDoubleSpinBox*>("temporalAssignmentPenalty");
+    if (!assignRun || !assignMatrix || !assignOutput || !assignPenalty)
+        throw std::runtime_error{"Qt self-test: Hungarian assignment controls missing"};
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("0->0, 1->1, 2->unmatched") ||
+        !assignOutput->toPlainText().contains("cost=2.3"))
+        throw std::runtime_error{"Qt self-test: baseline assignment failed"};
+    assignMatrix->setPlainText(QStringLiteral("4 0.2\\n0.1 4"));
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("0->1, 1->0"))
+        throw std::runtime_error{"Qt self-test: crossed assignment failed"};
+    assignMatrix->setPlainText(QStringLiteral("x 0.1\\nx x"));
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("0->1, 1->unmatched") ||
+        !assignOutput->toPlainText().contains("unmatched_tracks=0"))
+        throw std::runtime_error{"Qt self-test: forbidden assignment failed"};
+    assignPenalty->setValue(0.2);
+    assignMatrix->setPlainText(QStringLiteral("0.4 x"));
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("0->unmatched"))
+        throw std::runtime_error{"Qt self-test: unmatched penalty failed"};
+    assignMatrix->setPlainText(QStringLiteral("-1 0.1"));
+    assignRun->click();
+    if (!assignOutput->toPlainText().contains("error:"))
+        throw std::runtime_error{"Qt self-test: invalid assignment not rejected"};
+    assignMatrix->setPlainText(QStringLiteral("0.2 5\\n4 0.1\\nx x"));
+    assignPenalty->setValue(2.0);
+    assignRun->click();
 
     auto* catalogPage = requireTab(appTabs, "Feature catalog");
     auto* catalog = catalogPage->findChild<QTableWidget*>("capabilityTable");
