@@ -52,6 +52,7 @@ class FaultingRegistry final : public audition::IAcousticSourceRegistry {
 public:
     audition::AcousticSourceId create() override {
         if (fail_create) throw std::runtime_error{"injected registry create failure"};
+        if (create_override.has_value()) return *create_override;
         return inner.create();
     }
 
@@ -80,6 +81,7 @@ public:
     }
 
     audition::InMemoryAcousticSourceRegistry inner{};
+    std::optional<audition::AcousticSourceId> create_override{};
     bool fail_create{false};
     bool fail_add{false};
     bool fail_find{false};
@@ -162,6 +164,43 @@ TEST(SourceIdentityResolver, FailedRegistryListDoesNotEvictRecentGeometry) {
     EXPECT_FALSE(reacquired.newly_created);
     EXPECT_EQ(reacquired.source_id, original.source_id);
     EXPECT_EQ(registry.inner.list().size(), 1U);
+}
+
+TEST(SourceIdentityResolver, InvalidRegistryCreatedIdIsRejectedWithoutStateMutation) {
+    FaultingRegistry registry;
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    registry.create_override = audition::AcousticSourceId{};
+
+    EXPECT_THROW(static_cast<void>(resolver.observe(observation(70U, 500))),
+                 audition::Error);
+    registry.create_override.reset();
+
+    const auto accepted = resolver.observe(observation(70U, 1));
+    EXPECT_TRUE(accepted.newly_created);
+    EXPECT_TRUE(accepted.source_id.valid());
+    EXPECT_EQ(registry.inner.list().size(), 1U);
+    const auto continued = resolver.observe(observation(70U, 2));
+    EXPECT_EQ(continued.source_id, accepted.source_id);
+    EXPECT_FALSE(continued.newly_created);
+}
+
+TEST(SourceIdentityResolver, DuplicateRegistryCreatedIdCannotAliasExistingSource) {
+    FaultingRegistry registry;
+    const auto existing_id = registry.inner.create();
+    audition::HeuristicSourceIdentityResolver resolver{registry};
+    registry.create_override = existing_id;
+
+    EXPECT_THROW(static_cast<void>(resolver.observe(observation(71U, 500))),
+                 audition::Error);
+    registry.create_override.reset();
+
+    const auto accepted = resolver.observe(observation(71U, 1));
+    EXPECT_TRUE(accepted.newly_created);
+    EXPECT_NE(accepted.source_id, existing_id);
+    EXPECT_EQ(registry.inner.list().size(), 2U);
+    const auto continued = resolver.observe(observation(71U, 2));
+    EXPECT_EQ(continued.source_id, accepted.source_id);
+    EXPECT_FALSE(continued.newly_created);
 }
 
 TEST(SourceIdentityResolver, FailedCreateDoesNotAdvanceClockOrBindTrack) {
