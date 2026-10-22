@@ -2,18 +2,19 @@
 
 This document distinguishes **actual GUI execution** from “the backend built”
 or “the generic Qt self-test passed.” It is based on the
-[successful CI #1608](https://github.com/ARDev1161/libaudition/actions/runs/39746849316)
-at `ddde13ca02a54c455b0427424add8127c785c50f` (2026-10-22).
+[successful CI #1616](https://github.com/ARDev1161/libaudition/actions/runs/39768223220)
+at `a95e46562d711bcb3a5e49e7a674b42682203f56` (2026-10-22).
 That run completed with **25 successful jobs** and one skipped
 `real-spatial-corpus` job. It validates **that exact commit only**; later Qt
 changes must pass their own CI before release.
 
-## Proven Qt runners on CI #1608
+## Proven Qt runners on CI #1616
 
 | Workbench feature | Qt CTest evidence | CI job / input | What is actually verified |
 |---|---|---|---|
 | Core widgets and all top-level tabs | `qt_self_test` | `qt-demo`, `qt6-demo`, optional-backend jobs | Page topology, interactive synthetic DSP/temporal outputs and controls |
 | Temporal recurrence/DTW/motifs/streaming and Hungarian cost matrices | `qt_self_test` | `qt-demo`, `qt6-demo` | Synthetic input, assignment edges/penalties and malformed-input handling |
+| Scalar CUSUM and acoustic event/episode lifecycle | `qt_self_test` | `qt-demo`, `qt6-demo` | Editable synthetic features/scores, hysteresis thresholds, episode IDs and invalid input |
 | PCM playback dialog lifecycle | `qt_playback_lifecycle` | `qt-demo`, `qt6-demo` | Repeated opening/closing, normalization and pending callback cleanup |
 | Silero VAD | `qt_real_silero` | `sherpa-backend`, pinned ONNX | GUI VAD workflow invokes the actual model |
 | Whisper ASR | `qt_real_whisper-real` | `sherpa-backend`, pinned encoder/decoder/tokens | GUI ASR invocation and visible inference result |
