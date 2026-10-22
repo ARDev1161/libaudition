@@ -20,7 +20,7 @@ weights/devices instead of fabricating results.
 | Scalar EMA/CUSUM change detection | Feature catalog points to temporal demos | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
 | Temporal hysteresis event lifecycle | Feature catalog; no dedicated Qt controls | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
 | Persistent-source event episode association | Feature catalog; no dedicated Qt controls | `libaudition_temporal_events_cli` | `cli-temporal-events-smoke` |
-| Allen interval relations, spatial-time/covariance gate and Hungarian batch assignment | Feature catalog; no dedicated Qt controls | `libaudition_temporal_association_cli` | `cli-temporal-association-smoke`, `cli-temporal-association-{crossed,gated,penalty-*}` |
+| Allen interval relations, spatial-time/covariance gate and Hungarian batch assignment | Temporal patterns has editable Hungarian cost matrix; interval/covariance gates remain CLI | `libaudition_temporal_association_cli` | `cli-temporal-association-smoke`, `cli-temporal-association-{crossed,gated,penalty-*}` |
 | Explicitly linked backend factory registry (mock classifier, no inference) | Feature catalog; API + CTest | `libaudition_factory_registry_cli` | `cli-factory-registry-{smoke,unknown,duplicate}` |
 | Source/speaker/sound prototype registries and model metadata | Feature catalog points to Source identity / Backends | `libaudition_registries_cli` | `cli-registries-smoke` |
 | Recurrence / periodic event onset analysis | Temporal patterns | `libaudition_temporal_cli` | `qt_self_test`, `cli-temporal-patterns-smoke` |
@@ -46,8 +46,9 @@ it never shows a model-only capability as physically verified.
    `--scenario gated` and `--scenario penalty --penalty 0.2`, with six
    additional CTest cases (including invalid input). These demonstrate
    one-to-one matching, forbidden edges and the unmatched-cost tradeoff.
-   The Temporal patterns tab still runs TMP-04 rather than Hungarian matching;
-   an interactive matrix editor remains a **GUI-only gap**.
+   The Temporal patterns tab now runs Hungarian matching on editable
+   observation-by-track matrices, with forbidden edges and the unmatched
+   penalty. Interval relations and covariance gates remain CLI/API-only.
 2. `libaudition_registries_cli` covers source/speaker/sound/model metadata; the
    standalone `libaudition_factory_registry_cli` demonstrates explicit factory
    registration, config forwarding, and duplicate/unknown-backend rejection.
