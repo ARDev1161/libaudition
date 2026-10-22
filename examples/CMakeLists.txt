@@ -51,7 +51,15 @@ add_executable(libaudition_factory_registry_cli factory_registry_cli.cpp)
 target_link_libraries(libaudition_factory_registry_cli PRIVATE audition::core audition::interfaces)
 libaudition_configure_target(libaudition_factory_registry_cli)
 
+add_executable(libaudition_recording_replay_cli recording_replay_cli.cpp)
+target_link_libraries(libaudition_recording_replay_cli PRIVATE audition::io)
+libaudition_configure_target(libaudition_recording_replay_cli)
+
 if(LIBAUDITION_BUILD_TESTS)
+    add_test(NAME cli-recording-export-replay-smoke
+        COMMAND libaudition_recording_replay_cli --self-test)
+    set_tests_properties(cli-recording-export-replay-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "recording-export-replay=ok")
     add_test(NAME cli-factory-registry-smoke COMMAND libaudition_factory_registry_cli)
     set_tests_properties(cli-factory-registry-smoke PROPERTIES
         PASS_REGULAR_EXPRESSION "factory=ok")

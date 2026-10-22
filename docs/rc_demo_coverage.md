@@ -34,7 +34,7 @@ weights/devices instead of fabricating results.
 | Speaker identity, embedding, diarization | Sherpa workbench | Real-model self-tests when configured | Optional speech tests |
 | Audio resampling, AEC3, GTSAM fusion | Backend workbench | Real backend operation when enabled | Optional Qt model-self-test cases |
 | Per-source async PCM ingress, cancellation, generation | Acoustic scene uses adapter internally | Integrated scenario and runtime tests | CTest ingress/worker/recording tests |
-| Recording WAV/JSON timeline, source retirement | Acoustic scene / recording popups | WAV/sidecar tests and live capture | `recording_timeline_json_test`, `source_recording_session_test` |
+| Recording WAV/JSON timeline, source retirement and replay | Acoustic scene / recording popups | `libaudition_recording_replay_cli --export/--replay` | `cli-recording-export-replay-smoke`, recording timeline/session tests |
 
 The optional backends are not built by the default dependency-light build.
 The catalog says **API + CTest only** for features without a direct GUI runner;
@@ -51,9 +51,11 @@ it never shows a model-only capability as physically verified.
    registration, config forwarding, and duplicate/unknown-backend rejection.
    An interactive registry browser is still missing. Neither example loads
    weights, performs classification, or enrolls biometric identities.
-3. A publicly documented end-to-end **recording export/replay** tutorial
-   should show how WAV, source generations, annotation JSON and discontinuity
-   gaps relate, using actual outputs, not only a synthetic assertion.
+3. The [recording export/replay tutorial](recording_export_replay.md) now writes
+   actual WAV and JSON sidecar files, reopens them through public APIs and
+   checks generation isolation, gap silence and rate consistency in CTest.
+   Live ALSA/ODAS capture, asynchronous ASR timestamps and hardware loss
+   accounting still require separate device-level verification.
 4. For optional real-model/backend panels, run the GUI on one fully provisioned
    configuration and explicitly record which panels were checked. The
    default core-only `qt_self_test` cannot prove model UI behavior.

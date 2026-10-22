@@ -76,6 +76,19 @@ independently annotated corpus is not configured. **SKIP is not PASS**.
 This limitation may be accepted for a library-level RC only if no numerical
 real-world spatial quality or device realtime guarantee is claimed.
 
+## Recording export/replay example (new P0 evidence)
+
+The dependency-light `libaudition_recording_replay_cli` exports two actual
+PCM16 WAV files and JSON sidecars, then reopens and validates both generations.
+Its CTest smoke includes a negative sample-rate-mismatch check. See
+[recording export/replay](recording_export_replay.md). This is a synthetic
+file/metadata contract test, **not** live microphone or ASR timing evidence.
+
+CI [#1597](https://github.com/ARDev1161/libaudition/actions/runs/39709847460)
+passed 25 jobs with one skipped `real-spatial-corpus` on
+`32d19eee6806a3abb2c4e9e4c4a89bebf8654f04`. Newer RC changes must
+pass their own exact-HEAD CI before the gate is checked.
+
 ## RC verification baseline
 
 ```sh
