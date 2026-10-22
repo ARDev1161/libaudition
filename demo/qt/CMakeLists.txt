@@ -19,6 +19,8 @@ add_executable(libaudition_qt_demo
     backend_workbench.cpp
     temporal_patterns_page.cpp
     temporal_patterns_page.hpp
+    temporal_events_page.cpp
+    temporal_events_page.hpp
     feature_catalog_page.cpp
     feature_catalog_page.hpp
     backend_workbench.hpp
