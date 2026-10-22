@@ -17,6 +17,10 @@ add_executable(libaudition_qt_demo
     acoustic_sphere_widget.hpp
     demo_window.hpp
     backend_workbench.cpp
+    temporal_patterns_page.cpp
+    temporal_patterns_page.hpp
+    feature_catalog_page.cpp
+    feature_catalog_page.hpp
     backend_workbench.hpp
     async_panel_runner.cpp
     async_panel_runner.hpp
