@@ -608,16 +608,6 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     arrayMargin->setSuffix(" dB above ambient");
     configForm->addRow("Adaptive presence", arrayGate);
     configForm->addRow("Presence onset margin", arrayMargin);
-    auto* quietSourceTracking = new QCheckBox{
-        "Acquire quiet ODAS sources (SST activity 0.30/0.15)", page};
-    quietSourceTracking->setObjectName("acousticSceneQuietSourceTracking");
-    quietSourceTracking->setChecked(true);
-    quietSourceTracking->setToolTip(
-        "Experimental live-capture SST profile: lower active/inactive "
-        "GMM means from 0.40/0.25 to 0.30/0.15. "
-        "May generate more phantom tracks in noisy rooms. "
-        "Does not amplify microphone signals or change SSL thresholds.");
-    configForm->addRow("ODAS source sensitivity", quietSourceTracking);
     configRow->addLayout(configForm);
     layout->addLayout(configRow);
 
