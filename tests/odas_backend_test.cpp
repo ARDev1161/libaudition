@@ -153,3 +153,21 @@ TEST(OdasBackend, ProcessesOneConfiguredHopWithoutOwningScheduling) {
 
     EXPECT_NO_THROW(engine.reset());
 }
+
+TEST(OdasBackend, InPlaceSstTuningKeepsRuntimeOperational) {
+    auto options = makeFourMicOptions();
+    options.sss.enabled = false;
+    audition::OdasSpatialEngine engine{options};
+    auto frame = makeSilence(options);
+    EXPECT_NO_THROW((void)engine.process(frame.view()));
+    EXPECT_NO_THROW(engine.setSstTuning(0.34, 0.25, 125));
+    EXPECT_DOUBLE_EQ(engine.options().sst.active_gmm.front().mean, 0.34);
+    EXPECT_DOUBLE_EQ(engine.options().sst.inactive_gmm.front().mean, 0.25);
+    EXPECT_EQ(engine.options().sst.inactive_timeout_hops, 125U);
+    EXPECT_NO_THROW((void)engine.process(frame.view()));
+    EXPECT_NO_THROW(engine.setSstTuning(0.40, 0.28, 250));
+    EXPECT_NO_THROW((void)engine.process(frame.view()));
+    EXPECT_THROW(engine.setSstTuning(0.2, 0.3, 125), std::invalid_argument);
+    EXPECT_DOUBLE_EQ(engine.options().sst.active_gmm.front().mean, 0.40);
+    EXPECT_EQ(engine.options().sst.inactive_timeout_hops, 250U);
+}
