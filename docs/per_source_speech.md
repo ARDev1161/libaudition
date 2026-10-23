@@ -90,6 +90,26 @@ per track. This does not improve intrinsic signal-to-noise ratio: if ambient
 noise causes false voice triggers, disable the option and compare.
 Each gain state is destroyed when its ODAS source track retires.
 
+### ODAS track acquisition before speech inference
+
+Acoustic scene also offers **Acquire quiet ODAS sources** (enabled by
+default in the Qt demo, independent of speech gain). This configures the
+upstream ODAS **SST** active/inactive GMM means to 0.30/0.15 instead of
+the library default 0.40/0.25, as suggested in upstream ODAS tracking
+guidance. It does not alter SSL's source proposal threshold or bypass
+tracking confidence gates. With sound source localization, a candidate
+SSL proposal must exist before SST can create a persistent track; source
+audio cannot be separated or passed to VAD/ASR before this happens.
+For diagnosis, compare raw ALSA RMS, SSL proposal count/score, confirmed
+SST tracks and per-source VAD/ASR with and without this option using
+the same speaker/distance. If SSL proposals never appear, reducing SST
+activity means cannot solve the underlying localization issue.
+
+The sensitivity preset is experimental: false or clustered ODAS tracks
+can increase in noise or reverberation. No improved source-acquisition
+recall/accuracy is claimed without real annotated ReSpeaker recordings.
+Disable the checkbox to restore all default ODAS tracker settings.
+
 For each ODAS SSS mono frame, the adapter enqueues bounded 16-kHz PCM
 keyed by ODAS numeric track ID. An application-owned worker executes
 source-local VAD sessions; the separate ASR worker transcribes completed

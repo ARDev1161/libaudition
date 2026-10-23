@@ -21,6 +21,7 @@
 #if LIBAUDITION_DEMO_HAS_ALSA
 #include <audition/backends/odas.hpp>
 #include <audition/backends/odas/source_elevation_prior.hpp>
+#include <audition/backends/odas/quiet_source_profile.hpp>
 #include <alsa/asoundlib.h>
 #endif
 
@@ -248,6 +249,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         }
         if (config.near_plane_sources) {
             audition::applyOdasNearPlaneSourcePrior(options);
+        }
+        if (config.quiet_source_tracking) {
+            audition::applyOdasQuietSourceTrackingProfile(options);
         }
         // Source-specific classification needs actual SSS mono audio. Avoid
         // the extra DSP cost when no classifier model is configured.

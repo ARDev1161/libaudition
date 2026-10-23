@@ -1,6 +1,7 @@
 #include <audition/backends/odas/odas_spatial_engine.hpp>
 #include <audition/backends/odas/source_elevation_prior.hpp>
 #include <audition/backends/odas/respeaker_usb4_profile.hpp>
+#include <audition/backends/odas/quiet_source_profile.hpp>
 
 #include <algorithm>
 #include <vector>
@@ -51,6 +52,42 @@ TEST(OdasOptions, AcceptsUpstreamReSpeakerAngularMask) {
     audition::OdasSpatialEngine engine{options};
     auto frame = makeSilence(options);
     EXPECT_NO_THROW((void)engine.process(frame.view()));
+}
+
+
+TEST(OdasOptions, QuietSourceTrackingProfileOnlyChangesSstLikelihood) {
+    auto options = makeFourMicOptions();
+    const auto baselineSsl = options.ssl.minimum_probability;
+    const auto baselineNew = options.sst.new_threshold;
+    const auto baselineProbability = options.sst.probability_threshold;
+    const auto baselineTimeout = options.sst.inactive_timeout_hops;
+    const auto baselineActive = options.sst.active_gmm.front().mean;
+    const auto baselineInactive = options.sst.inactive_gmm.front().mean;
+
+    EXPECT_DOUBLE_EQ(baselineActive, 0.4);
+    EXPECT_DOUBLE_EQ(baselineInactive, 0.25);
+    audition::applyOdasQuietSourceTrackingProfile(options);
+    EXPECT_DOUBLE_EQ(options.sst.active_gmm.front().mean, 0.3);
+    EXPECT_DOUBLE_EQ(options.sst.inactive_gmm.front().mean, 0.15);
+    EXPECT_DOUBLE_EQ(options.ssl.minimum_probability, baselineSsl);
+    EXPECT_DOUBLE_EQ(options.sst.new_threshold, baselineNew);
+    EXPECT_DOUBLE_EQ(options.sst.probability_threshold, baselineProbability);
+    EXPECT_EQ(options.sst.inactive_timeout_hops, baselineTimeout);
+    EXPECT_NO_THROW(audition::validateOdasOptions(options));
+
+    // Construct and process with the actual libodas backend on silence.
+    // This is an integration/contract gate, not a quiet speech accuracy gate.
+    options.sss.enabled = false;
+    audition::OdasSpatialEngine engine{options};
+    auto frame = makeSilence(options);
+    EXPECT_NO_THROW((void)engine.process(frame.view()));
+}
+
+TEST(OdasOptions, QuietSourceTrackingRejectsMissingLikelihoodModels) {
+    auto options = makeFourMicOptions();
+    options.sst.active_gmm.clear();
+    EXPECT_THROW(audition::applyOdasQuietSourceTrackingProfile(options),
+                 std::invalid_argument);
 }
 
 TEST(OdasOptions, NearPlanePriorRequiresExplicitSelection) {

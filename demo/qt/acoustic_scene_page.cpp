@@ -582,6 +582,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         "of the mounted microphone array. This intentionally excludes steep "
         "elevation directions before ODAS tracking and separation.");
     configForm->addRow("Optional 2D source prior", nearPlane);
+    auto* quietSourceTracking = new QCheckBox{
+        "Acquire quiet ODAS sources (SST activity 0.30/0.15)", page};
+    quietSourceTracking->setObjectName("acousticSceneQuietSourceTracking");
+    quietSourceTracking->setChecked(true);
+    quietSourceTracking->setToolTip(
+        "Experimental live-capture SST profile: lower active/inactive "
+        "GMM means from 0.40/0.25 to 0.30/0.15. "
+        "May generate more phantom tracks in noisy rooms. "
+        "Does not amplify microphone signals or change SSL thresholds.");
+    configForm->addRow("ODAS source sensitivity", quietSourceTracking);
     configRow->addLayout(configForm);
     layout->addLayout(configRow);
 
@@ -994,6 +1004,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         frame->setEnabled(true);
         angularPreset->setEnabled(true);
         nearPlane->setEnabled(true);
+        quietSourceTracking->setEnabled(true);
         enableSpeech->setEnabled(LIBAUDITION_DEMO_HAS_SHERPA);
         speechAutoGain->setEnabled(true);
         enableTagging->setEnabled(
@@ -1080,6 +1091,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.frame_size = static_cast<std::uint32_t>(frame->value());
             config.respeaker_angular_profile = angularPreset->isChecked();
             config.near_plane_sources = nearPlane->isChecked();
+            config.quiet_source_tracking = quietSourceTracking->isChecked();
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
             config.normalize_speech_sources = speechAutoGain->isChecked();
@@ -1170,6 +1182,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             frame->setEnabled(false);
             angularPreset->setEnabled(false);
             nearPlane->setEnabled(false);
+            quietSourceTracking->setEnabled(false);
             enableTagging->setEnabled(false);
             enableSpeech->setEnabled(false);
             speechAutoGain->setEnabled(false);
@@ -1224,6 +1237,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(level.peak_dbfs + gainDb, 0, 'f', 1)
                     .arg(static_cast<qulonglong>(level.samples));
             }
+            const QString trackerSensitivity =
+                quietSourceTracking->isChecked()
+                    ? QStringLiteral("Sensitive (active=0.30, inactive=0.15)")
+                    : QStringLiteral("Standard (active=0.40, inactive=0.25)");
             QStringList gainLines;
             for (const auto& source : snapshot.speech_gain_levels) {
                 gainLines << QString("Track #%1: %2 -> %3 dBFS RMS; gain %4 dB")
@@ -1243,6 +1260,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(QString::fromStdString(snapshot.speech_status)) +
                 "\nODAS SSS output (same measurement window): " +
                 (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")) +
+                "\nODAS SST profile: " + trackerSensitivity +
                 "\nSpeech auto gain: " +
                 (enableSpeech->isChecked()
                     ? (speechAutoGain->isChecked()
