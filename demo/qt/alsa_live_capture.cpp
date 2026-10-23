@@ -495,7 +495,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         appliedSstRevision = requested.revision;
                         sssMeters.clear();
                     } catch (const std::exception& e) {
-                        std::fprintf(stderr, "[libaudition] SST tuning rejected: %s\\n",
+                        std::fprintf(stderr, "[libaudition] SST tuning rejected: %s\n",
                                      e.what());
                         appliedSstRevision = requested.revision;
                     }
