@@ -1067,6 +1067,16 @@ TEST(AsyncSpeechIngressWorker, DelayedForgetPreservesReusedEpochAndWavAnnotation
     EXPECT_EQ(epochs.at({71U,9U}),1003U);
     EXPECT_EQ(epochs.at({72U,2U}),2001U);
     EXPECT_TRUE(deferred.empty());
+    // Simulate an already-persisted WAV whose stale Forget arrives again:
+    // the exact old recording can safely be skipped without affecting the
+    // new source generation or throwing into the capture thread.
+    epochs[{71U,7U}]=1001U;
+    deferred.insert(1001U);
+    EXPECT_NO_THROW(demo::clearForgottenSpeechRecordingEpochs(
+        epochs,deferred,recordings,71U,8U));
+    EXPECT_TRUE(deferred.empty());
+    EXPECT_EQ(epochs.count({71U,7U}),0U);
+    EXPECT_EQ(epochs.at({71U,8U}),1002U);
     EXPECT_TRUE(recordings.active(71U));
     EXPECT_EQ(recordings.boundAsrGenerations(),1U);
 
