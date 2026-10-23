@@ -66,6 +66,13 @@ public:
         if (!mixture || !mixture->active || !mixture->inactive ||
             !mixture->active->nSignals || !mixture->inactive->nSignals)
             throw std::runtime_error("ODAS SST mixture unavailable");
+        if (!mixture->active->array || !mixture->inactive->array ||
+            !mixture->active->array[0] || !mixture->inactive->array[0] ||
+            !sst_->N_inactive || !options_.sst.active_gmm.size() ||
+            !options_.sst.inactive_gmm.size())
+            throw std::runtime_error("ODAS SST tuning storage unavailable");
+        // Validate all required pointers before the first write. Once here,
+        // the update cannot fail halfway through and leaves track state intact.
         mixture->active->array[0]->mu_x = static_cast<float>(onset);
         mixture->inactive->array[0]->mu_x = static_cast<float>(release);
         for (std::uint32_t i = 0; i < sst_->nTracksMax; ++i)
