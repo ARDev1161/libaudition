@@ -205,6 +205,9 @@ void AlsaLiveCapture::start(LiveCaptureConfig config) {
         std::lock_guard<std::mutex> lock{mutex_};
         latest_ = {};
         latest_.running = true;
+        speech_gain_enabled_ = config.speech_agc_enabled;
+        speech_gain_implementation_ = config.speech_agc_implementation;
+        speech_gain_revision_ = 0;
         requested_sst_.revision = 0;
         requested_sst_.onset = config.sst_onset;
         requested_sst_.release = config.sst_release;
@@ -220,6 +223,16 @@ void AlsaLiveCapture::start(LiveCaptureConfig config) {
         latest_.running = false;
         throw;
     }
+}
+
+void AlsaLiveCapture::setSpeechGain(bool enabled, std::string implementation) {
+    // Validate before publishing state to the capture thread.
+    if (enabled)
+        (void)audition::dsp::makeSourceGain(implementation.c_str());
+    std::lock_guard<std::mutex> lock{mutex_};
+    speech_gain_enabled_ = enabled;
+    speech_gain_implementation_ = std::move(implementation);
+    ++speech_gain_revision_;
 }
 
 void AlsaLiveCapture::setSstTuning(
@@ -310,6 +323,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::unique_ptr<audition::AsyncSpeechIngressWorker> speech_worker;
         std::map<std::uint64_t, std::string> transcripts;
         std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceGain>> speechGains;
+        std::uint64_t appliedGainRevision = 0;
         if (config.transcribe_sources) {
             audition::SherpaVadOptions vad_options{};
             vad_options.sample_rate_hz = config.sample_rate_hz;
@@ -473,6 +487,29 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 std::round(static_cast<double>(config.sample_rate_hz) /
                            (20.0 * static_cast<double>(config.hop_size)))));
         while (!stop_requested_.load()) {
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            {
+                bool enabled = false;
+                std::string implementation;
+                std::uint64_t revision = 0;
+                {
+                    std::lock_guard<std::mutex> lock{mutex_};
+                    enabled = speech_gain_enabled_;
+                    implementation = speech_gain_implementation_;
+                    revision = speech_gain_revision_;
+                }
+                if (revision != appliedGainRevision) {
+                    if (enabled) {
+                        // Create the replacement before modifying active state.
+                        (void)audition::dsp::makeSourceGain(implementation.c_str());
+                    }
+                    speechGains.clear();
+                    config.speech_agc_enabled = enabled;
+                    config.speech_agc_implementation = std::move(implementation);
+                    appliedGainRevision = revision;
+                }
+            }
+#endif
             if (config.tune_sst) {
                 SstTuningRequest requested;
                 {
