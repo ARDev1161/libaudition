@@ -6,6 +6,7 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <stdexcept>
 #include <utility>
 
 #include <audition/core/error.hpp>
@@ -52,6 +53,27 @@ public:
     }
 
     ~Impl() { destroyRuntime(); }
+
+    void setSstTuning(double onset, double release, std::uint32_t timeout_hops) {
+        if (!std::isfinite(onset) || !std::isfinite(release) ||
+            onset <= 0.0 || onset >= 1.0 || release <= 0.0 ||
+            release >= onset || timeout_hops == 0U)
+            throw std::invalid_argument("Invalid SST runtime tuning");
+        // The libodas module owns cloned GMMs in mixture2mixture.
+        // Updating them between process calls preserves Kalman/particle
+        // filters, numeric track IDs, and SSS state.
+        auto* mixture = sst_->mixture2mixture;
+        if (!mixture || !mixture->active || !mixture->inactive ||
+            !mixture->active->nSignals || !mixture->inactive->nSignals)
+            throw std::runtime_error("ODAS SST mixture unavailable");
+        mixture->active->array[0]->mu_x = static_cast<float>(onset);
+        mixture->inactive->array[0]->mu_x = static_cast<float>(release);
+        for (std::uint32_t i = 0; i < sst_->nTracksMax; ++i)
+            sst_->N_inactive[i] = timeout_hops;
+        options_.sst.active_gmm.front().mean = onset;
+        options_.sst.inactive_gmm.front().mean = release;
+        options_.sst.inactive_timeout_hops = timeout_hops;
+    }
 
     void reset() {
         destroyRuntime();
@@ -365,6 +387,9 @@ OdasRuntime::~OdasRuntime() = default;
 OdasRuntime::OdasRuntime(OdasRuntime&&) noexcept = default;
 OdasRuntime& OdasRuntime::operator=(OdasRuntime&&) noexcept = default;
 void OdasRuntime::reset() { impl_->reset(); }
+void OdasRuntime::setSstTuning(double onset, double release, std::uint32_t timeout_hops) {
+    impl_->setSstTuning(onset, release, timeout_hops);
+}
 OdasRuntimeResult OdasRuntime::process(AudioView audio) { return impl_->process(audio); }
 
 }  // namespace audition::odas_detail
