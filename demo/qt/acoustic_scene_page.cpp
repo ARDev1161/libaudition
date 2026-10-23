@@ -1017,6 +1017,34 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         }
     };
     auto capture = std::make_shared<demo::AlsaLiveCapture>();
+    QObject::connect(liveSstDebounce, &QTimer::timeout, page, [=]() {
+        if (liveRelease->value() >= liveOnset->value())
+            return;
+        capture->setSstTuning(liveOnset->value() / 100.0,
+                              liveRelease->value() / 100.0,
+                              static_cast<std::uint32_t>(liveTimeout->value()));
+    });
+    // The sliders are the active tuning source for each new capture.
+    QObject::connect(sstOnset, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                     page, [=](double value) {
+        liveOnset->setValue(static_cast<int>(std::lround(value * 100.0)));
+    });
+    QObject::connect(sstRelease, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                     page, [=](double value) {
+        liveRelease->setValue(static_cast<int>(std::lround(value * 100.0)));
+    });
+    QObject::connect(sstTimeout, QOverload<int>::of(&QSpinBox::valueChanged),
+                     page, [=](int value) { liveTimeout->setValue(value); });
+    QObject::connect(liveOnset, &QSlider::valueChanged, page, [=](int value) {
+        sstOnset->setValue(value / 100.0);
+    });
+    QObject::connect(liveRelease, &QSlider::valueChanged, page, [=](int value) {
+        sstRelease->setValue(value / 100.0);
+    });
+    QObject::connect(liveTimeout, &QSlider::valueChanged, page, [=](int value) {
+        sstTimeout->setValue(value);
+    });
+
     auto* liveTimer = new QTimer{page};
     liveTimer->setInterval(50);
     auto seenGeneration = std::make_shared<std::uint64_t>(0);
