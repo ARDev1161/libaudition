@@ -119,16 +119,24 @@ calibrates the mapped raw microphone channels for the FIRST SECOND of
 capture (stay quiet), estimates the median per-channel RMS noise floor,
 and opens when its level rises above the ambient floor by the configured
 4 dB (adjustable 1-20 dB). Onset and release have 2 dB hysteresis. If
-no acoustic activity is measured for 1.5 s, the application resets ODAS
-SST, retires existing source recordings and speech generations through
-the normal lifecycle, and skips further ODAS processing until a new
-sound is detected. **The input microphone data are never amplified or
+no acoustic activity is measured for 1.5 s, the application retires
+existing source recordings and speech generations through the normal
+lifecycle and skips further ODAS processing until a new sound is
+detected. **ALSA remains open throughout silence.** At the next sound,
+a replacement ODAS instance is built before the old one is discarded;
+reinitialization failures are logged as recoverable with a 500 ms
+retry interval, rather than terminating ALSA. **The input microphone data are never amplified or
 gated in place.** Raw capture-level diagnostics still run. ASR gain is
 separate and runs after track creation. The gate also responds to
 non-speech sounds (not a VAD), and cannot detect speech indistinguishable
 from the actual noise floor. It is experimental and should be disabled
 for calibrated benchmark runs until A/B tested on recorded ReSpeaker
-captures. No claim of measured improvement in recall/false positives.
+captures. No claim of measured improvement in recall/false positives. Capture
+fatal errors are now logged to stderr with the failing stage and remain
+visible in the Acoustic scene status. Asynchronous source retirement
+or speech completion errors are logged and shown as recoverable
+diagnostics instead of stopping capture; incomplete metadata may remain
+for the affected source.
 Start with a silent room for one second and compare A/B; inspect the
 live per-channel RMS, learned noise floor and reported SNR. A permanently
 loud fan or rapidly changing room noise can defeat this simple estimator.
