@@ -402,7 +402,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     break;
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Retired:
                     if (mapped!=epoch_recordings.end()) {
-                        recordings.acknowledgeRetired(mapped->second,event.generation);
+                        (void)recordings.tryAcknowledgeRetired(
+                            mapped->second,event.generation);
                         deferred_ack_recordings.erase(mapped->second);
                         epoch_recordings.erase(mapped);
                     }
