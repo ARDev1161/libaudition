@@ -1023,7 +1023,6 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         quietSourceTracking->setEnabled(true);
         arrayGate->setEnabled(true);
         arrayMargin->setEnabled(true);
-        quietSourceTracking->setEnabled(true);
         enableSpeech->setEnabled(LIBAUDITION_DEMO_HAS_SHERPA);
         speechAutoGain->setEnabled(true);
         enableTagging->setEnabled(
@@ -1113,7 +1112,6 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.quiet_source_tracking = quietSourceTracking->isChecked();
             config.adaptive_array_gate = arrayGate->isChecked();
             config.array_gate_snr_db = arrayMargin->value();
-            config.quiet_source_tracking = quietSourceTracking->isChecked();
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
             config.normalize_speech_sources = speechAutoGain->isChecked();
@@ -1207,8 +1205,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             quietSourceTracking->setEnabled(false);
             arrayGate->setEnabled(false);
             arrayMargin->setEnabled(false);
-            quietSourceTracking->setEnabled(false);
-            enableTagging->setEnabled(false);
+                enableTagging->setEnabled(false);
             enableSpeech->setEnabled(false);
             speechAutoGain->setEnabled(false);
             taggingFamily->setEnabled(false);
