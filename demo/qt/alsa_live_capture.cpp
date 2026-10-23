@@ -248,6 +248,21 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         if (config.near_plane_sources) {
             audition::applyOdasNearPlaneSourcePrior(options);
         }
+        // Tune ODAS SST itself. No post-hoc filtering, source gating, or
+        // ODAS reset/reconstruction on acoustic silence.
+        if (config.tune_sst) {
+            if (config.sst_onset <= 0.0 || config.sst_onset >= 1.0 ||
+                config.sst_release <= 0.0 ||
+                config.sst_release >= config.sst_onset ||
+                config.sst_inactive_hops == 0U)
+                throw std::invalid_argument("Invalid ODAS SST thresholds");
+            if (options.sst.active_gmm.empty() ||
+                options.sst.inactive_gmm.empty())
+                throw std::runtime_error("ODAS SST GMM parameters unavailable");
+            options.sst.active_gmm.front().mean = config.sst_onset;
+            options.sst.inactive_gmm.front().mean = config.sst_release;
+            options.sst.inactive_timeout_hops = config.sst_inactive_hops;
+        }
         // Source-specific classification needs actual SSS mono audio. Avoid
         // the extra DSP cost when no classifier model is configured.
         options.sss.enabled = true; // source WAV recording is available independently
