@@ -1,0 +1,147 @@
+flowchart TB
+%% Proposed libaudition development roadmap. Scope is acoustic-only; versions are not delivery promises.
+ROOT["libaudition development roadmap<br/>Proposed technical milestones; no committed dates"]
+subgraph M0["M0 — Release baseline / P0"]
+direction TB
+ R01["R01 — Verify the exact release commit against the full CI matrix (Linux, macOS, sanitizers, optional backends)."]
+ R02["R02 — Freeze and document public C++17 contracts: AudioView, timestamps, clock domains, source and speaker IDs, uncertainty."]
+ R03["R03 — Validate CMake install/export, static/shared consumers, third-party notices and model provenance."]
+ R04["R04 — Document unsupported deployment claims and decide whether the release candidate can be tagged."]
+ M0G{{"M0 gate — Exact-commit CI and independent installed consumer pass; exclusions and licenses recorded."}}
+ R01 --> M0G
+ R02 --> M0G
+ R03 --> M0G
+ R04 --> M0G
+end
+subgraph M1["M1 — Reusable signal processing / P0"]
+direction TB
+ D01["D01 — Provide FFT/IFFT plans, real/complex transforms, frequency-bin conventions and documented scaling."]
+ D02["D02 — Add Hann/Hamming/Blackman windows and streaming STFT/ISTFT with defined reconstruction and latency."]
+ D03["D03 — Provide FIR/IIR/biquad filters, high-order fractional delay and explicit reset/flush behavior."]
+ D04["D04 — Expose spectral features: PSD, log-mel, MFCC, spectral flux, onset, pitch and harmonicity."]
+ D05["D05 — Add calibrated A/C weighting, noise-floor estimation and separately configurable AGC, gate and limiter."]
+ M1G{{"M1 gate — Independent numerical references, reconstruction tolerances, chunk/reset tests and memory bounds."}}
+ D01 --> M1G
+ D02 --> M1G
+ D03 --> M1G
+ D04 --> M1G
+ D05 --> M1G
+end
+subgraph M2["M2 — Streaming and source lifecycle / P0"]
+direction TB
+ T01["T01 — Instrument per-channel levels, clipping, dropout, timestamp drift and capture-to-inference delays."]
+ T02["T02 — Introduce adaptive noise-floor estimation, onset thresholds, hysteresis, debounce and expiry tuning."]
+ T03["T03 — Specify source states: tentative, confirmed, inactive, lost and retired; prevent stale spatial tracks."]
+ T04["T04 — Harden per-source PCM epochs, backpressure, source retirement, late ASR results and ID reuse."]
+ T05["T05 — Keep spatial PCM phase-consistent; apply AEC/noise reduction/AGC on an explicit speech branch."]
+ M2G{{"M2 gate — Quiet/short-source corpus regressions; no stale tracks or source contamination; bounded queues."}}
+ T01 --> M2G
+ T02 --> M2G
+ T03 --> M2G
+ T04 --> M2G
+ T05 --> M2G
+end
+subgraph M3["M3 — Spatial algorithms and tracking / P1"]
+direction TB
+ S01["S01 — Version microphone-array geometry and measured gain, phase and delay calibration profiles."]
+ S02["S02 — Implement pluggable GCC-PHAT, SRP-PHAT and MUSIC localization baselines alongside ODAS."]
+ S03["S03 — Implement delay-and-sum beamforming; evaluate MVDR with numerical conditioning constraints."]
+ S04["S04 — Evaluate multiple-source association, covariance, split/merge and persistent acoustic-source re-ID."]
+ S05["S05 — Compare configurations on annotated stationary/moving sources, reverberation and overlap."]
+ M3G{{"M3 gate — Reproducible angular error, detection/track continuity and separation metrics against ODAS baseline."}}
+ S01 --> M3G
+ S02 --> M3G
+ S03 --> M3G
+ S04 --> M3G
+ S05 --> M3G
+end
+subgraph M4["M4 — Speech and speaker processing / P1"]
+direction TB
+ V01["V01 — Evaluate far-field AEC3, denoising, resampling and speech-path level control using playback references."]
+ V02["V02 — Validate VAD segmentation, pre/post-roll and offline/streaming ASR under low-SNR and overlap."]
+ V03["V03 — Validate token/word timestamps, language identification, KWS and source-bound partial/final results."]
+ V04["V04 — Evaluate speaker embeddings, verification, diarization and enrolled/unknown speaker decisions."]
+ V05["V05 — Document TTS interruption, playback echo interactions and model-specific capability restrictions."]
+ M4G{{"M4 gate — Measured WER, DER, keyword false alarms, AEC ERLE and source association on held-out recordings."}}
+ V01 --> M4G
+ V02 --> M4G
+ V03 --> M4G
+ V04 --> M4G
+ V05 --> M4G
+end
+subgraph M5["M5 — Semantic events and acoustic memory / P1"]
+direction TB
+ I01["I01 — Benchmark YAMNet, EfficientAT, CLAP and sherpa with matched audio windows and label mappings."]
+ I02["I02 — Separate raw scores from calibrated probabilities and validate unknown/open-vocabulary rejection."]
+ I03["I03 — Extend temporal events, DTW, recurrence and motifs to recurring source-local acoustic patterns."]
+ I04["I04 — Develop versioned sound prototypes, novelty detection and controlled long-term source memory."]
+ I05["I05 — Expose source/event observations with provenance, uncertainty and explicit event lifecycles."]
+ M5G{{"M5 gate — Held-out event F1/mAP, false-alarm rate, novelty and source-memory contamination measured."}}
+ I01 --> M5G
+ I02 --> M5G
+ I03 --> M5G
+ I04 --> M5G
+ I05 --> M5G
+end
+subgraph M6["M6 — Developer SDK and deployment / P1–P2"]
+direction TB
+ E01["E01 — Provide concise recipes for classification, source tracking, speech transcription and replay."]
+ E02["E02 — Maintain stable low-level C++ contracts; evaluate optional C and Python bindings."]
+ E03["E03 — Profile queue bounds, allocation/lock behavior, p50/p95/p99 latency and multi-source load."]
+ E04["E04 — Benchmark optimized CPU paths (AVX/NEON) and optional inference providers (OpenVINO/RKNN/CUDA)."]
+ E05["E05 — Publish install guides, samples, feature maturity matrix and reproducible package profiles."]
+ M6G{{"M6 gate — Independent consumer build and documented measured runtime/memory profile for supported targets."}}
+ E01 --> M6G
+ E02 --> M6G
+ E03 --> M6G
+ E04 --> M6G
+ E05 --> M6G
+end
+subgraph QA["Cross-cutting verification / P0"]
+direction TB
+ Q01["Q01 — Maintain dataset/model manifests (SHA-256, licensing, geometry, sample rate, annotations)."]
+ Q02["Q02 — Distinguish deterministic unit tests, model smoke, annotated benchmarks and physical HIL."]
+ Q03["Q03 — Record representative multi-channel scenes: silence, faint/brief speech, moving sources, 1/2/5/10 sources."]
+ Q04["Q04 — Measure task metrics: DOA error, ID switches, WER, DER, classification F1/mAP and AEC ERLE."]
+ Q05["Q05 — Record runtime p50/p95/p99, throughput, RAM, alloc count, drops and power by platform."]
+ Q06["Q06 — Establish baseline-relative regression limits; skipped external corpora are not passes."]
+ Q01 --> Q02 --> Q03 --> Q04 --> Q05 --> Q06
+end
+subgraph EXP["Optional research / not release blockers"]
+direction TB
+ X01["X01 — Passive acoustic mapping and room-signature estimation."]
+ X02["X02 — Multiple synchronized microphone arrays and spatial consistency."]
+ X03["X03 — Predictive event sequences and machine-condition anomaly detection."]
+ X04["X04 — Continual/few-shot acoustic adaptation with explicit forgetting and drift evaluation."]
+ X05["X05 — Auditory attention, spoofing/replay resistance and privacy controls."]
+end
+ROOT --> R01
+ROOT --> Q01
+M0G --> D01
+M0G --> T01
+M0G --> E01
+M1G --> S01
+M2G --> S01
+M2G --> V01
+M2G --> I01
+M3G --> I04
+M4G --> I05
+M5G --> E02
+M1G --> E03
+Q06 -. verification .-> M2G
+Q06 -. verification .-> M3G
+Q06 -. verification .-> M4G
+Q06 -. verification .-> M5G
+Q06 -. verification .-> M6G
+M3G -. research .-> X01
+M5G -. research .-> X03
+BOUNDARY["Responsibility boundary<br/>libaudition: audio-only inference and observations<br/>Applications: ROS 2, TF, cameras, radar, PDDL and action policy"]
+M6G --> BOUNDARY
+classDef headline fill:#e9f0f7,stroke:#5e7c99,color:#1a324a,stroke-width:1.5px
+classDef gate fill:#edf1f3,stroke:#60717a,color:#23303a,stroke-width:1.2px
+classDef quality fill:#f4f0e7,stroke:#9b8b69,color:#403b2d
+classDef research fill:#f2f2f2,stroke:#9a9a9a,color:#4c4c4c
+class ROOT,BOUNDARY headline
+class M0G,M1G,M2G,M3G,M4G,M5G,M6G gate
+class Q01,Q02,Q03,Q04,Q05,Q06 quality
+class X01,X02,X03,X04,X05 research

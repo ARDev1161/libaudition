@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 1961" role="img" aria-label="libaudition development roadmap overview">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#6b7b86"/></marker></defs>
+<rect width="1360" height="1961" fill="#fff"/>
+<text x="52" y="54" font-family="DejaVu Sans,Arial,sans-serif" font-size="30" font-weight="700" fill="#1b2832">libaudition — development roadmap</text>
+<text x="52" y="86" font-family="DejaVu Sans,Arial,sans-serif" font-size="16" fill="#58636d">Proposed technical milestones · version labels are not release commitments · 23 Oct 2026</text>
+<text x="52" y="112" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#58636d">Full work-item graph and dependencies are available in development_roadmap.mmd</text>
+<rect x="48" y="140" width="1264" height="182" rx="10" fill="#f7f9fb" stroke="#b4bfc7"/>
+<rect x="48" y="140" width="8" height="182" fill="#56748c"/>
+<text x="76" y="170" font-family="DejaVu Sans,Arial,sans-serif" font-size="20" font-weight="700" fill="#233441">M0 — Release baseline</text>
+<text x="1180" y="170" text-anchor="end" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#526471">P0</text>
+<text x="80" y="197" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Verify the exact release commit against the full CI matrix (Linux, macOS, sanitizers, optional backends)</text>
+<text x="80" y="218" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Freeze and document public C++17 contracts: AudioView, timestamps, clock domains, source and speaker IDs, uncertainty</text>
+<text x="80" y="239" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Validate CMake install/export, static/shared consumers, third-party notices and model provenance</text>
+<text x="80" y="260" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Document unsupported deployment claims and decide whether the release candidate can be tagged</text>
+<text x="80" y="310" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" font-weight="700" fill="#526471">Gate: Exact-commit CI and independent installed consumer pass; exclusions and licenses recorded.</text>
+<path d="M670 324 V338" fill="none" stroke="#6b7b86" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="48" y="344" width="1264" height="182" rx="10" fill="#fbfcfd" stroke="#b4bfc7"/>
+<rect x="48" y="344" width="8" height="182" fill="#56748c"/>
+<text x="76" y="374" font-family="DejaVu Sans,Arial,sans-serif" font-size="20" font-weight="700" fill="#233441">M1 — Reusable signal processing</text>
+<text x="1180" y="374" text-anchor="end" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#526471">P0</text>
+<text x="80" y="401" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Provide FFT/IFFT plans, real/complex transforms, frequency-bin conventions and documented scaling</text>
+<text x="80" y="422" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Add Hann/Hamming/Blackman windows and streaming STFT/ISTFT with defined reconstruction and latency</text>
+<text x="80" y="443" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Provide FIR/IIR/biquad filters, high-order fractional delay and explicit reset/flush behavior</text>
+<text x="80" y="464" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Expose spectral features: PSD, log-mel, MFCC, spectral flux, onset, pitch and harmonicity</text>
+<text x="80" y="485" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Add calibrated A/C weighting, noise-floor estimation and separately configurable AGC, gate and limiter</text>
+<text x="80" y="514" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" font-weight="700" fill="#526471">Gate: Independent numerical references, reconstruction tolerances, chunk/reset tests and memory bounds.</text>
+<path d="M670 528 V542" fill="none" stroke="#6b7b86" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="48" y="548" width="1264" height="182" rx="10" fill="#f7f9fb" stroke="#b4bfc7"/>
+<rect x="48" y="548" width="8" height="182" fill="#56748c"/>
+<text x="76" y="578" font-family="DejaVu Sans,Arial,sans-serif" font-size="20" font-weight="700" fill="#233441">M2 — Streaming and source lifecycle</text>
+<text x="1180" y="578" text-anchor="end" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#526471">P0</text>
+<text x="80" y="605" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Instrument per-channel levels, clipping, dropout, timestamp drift and capture-to-inference delays</text>
+<text x="80" y="626" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Introduce adaptive noise-floor estimation, onset thresholds, hysteresis, debounce and expiry tuning</text>
+<text x="80" y="647" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Specify source states: tentative, confirmed, inactive, lost and retired; prevent stale spatial tracks</text>
+<text x="80" y="668" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Harden per-source PCM epochs, backpressure, source retirement, late ASR results and ID reuse</text>
+<text x="80" y="689" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Keep spatial PCM phase-consistent; apply AEC/noise reduction/AGC on an explicit speech branch</text>
+<text x="80" y="718" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" font-weight="700" fill="#526471">Gate: Quiet/short-source corpus regressions; no stale tracks or source contamination; bounded queues.</text>
+<path d="M670 732 V746" fill="none" stroke="#6b7b86" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="48" y="752" width="1264" height="182" rx="10" fill="#fbfcfd" stroke="#b4bfc7"/>
+<rect x="48" y="752" width="8" height="182" fill="#8999a5"/>
+<text x="76" y="782" font-family="DejaVu Sans,Arial,sans-serif" font-size="20" font-weight="700" fill="#233441">M3 — Spatial algorithms and tracking</text>
+<text x="1180" y="782" text-anchor="end" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#526471">P1</text>
+<text x="80" y="809" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Version microphone-array geometry and measured gain, phase and delay calibration profiles</text>
+<text x="80" y="830" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Implement pluggable GCC-PHAT, SRP-PHAT and MUSIC localization baselines alongside ODAS</text>
+<text x="80" y="851" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Implement delay-and-sum beamforming; evaluate MVDR with numerical conditioning constraints</text>
+<text x="80" y="872" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Evaluate multiple-source association, covariance, split/merge and persistent acoustic-source re-ID</text>
+<text x="80" y="893" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Compare configurations on annotated stationary/moving sources, reverberation and overlap</text>
+<text x="80" y="922" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" font-weight="700" fill="#526471">Gate: Reproducible angular error, detection/track continuity and separation metrics against ODAS baseline.</text>
+<path d="M670 936 V950" fill="none" stroke="#6b7b86" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="48" y="956" width="1264" height="182" rx="10" fill="#f7f9fb" stroke="#b4bfc7"/>
+<rect x="48" y="956" width="8" height="182" fill="#8999a5"/>
+<text x="76" y="986" font-family="DejaVu Sans,Arial,sans-serif" font-size="20" font-weight="700" fill="#233441">M4 — Speech and speaker processing</text>
+<text x="1180" y="986" text-anchor="end" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#526471">P1</text>
+<text x="80" y="1013" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Evaluate far-field AEC3, denoising, resampling and speech-path level control using playback references</text>
+<text x="80" y="1034" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Validate VAD segmentation, pre/post-roll and offline/streaming ASR under low-SNR and overlap</text>
+<text x="80" y="1055" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Validate token/word timestamps, language identification, KWS and source-bound partial/final results</text>
+<text x="80" y="1076" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Evaluate speaker embeddings, verification, diarization and enrolled/unknown speaker decisions</text>
+<text x="80" y="1097" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Document TTS interruption, playback echo interactions and model-specific capability restrictions</text>
+<text x="80" y="1126" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" font-weight="700" fill="#526471">Gate: Measured WER, DER, keyword false alarms, AEC ERLE and source association on held-out recordings.</text>
+<path d="M670 1140 V1154" fill="none" stroke="#6b7b86" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="48" y="1160" width="1264" height="182" rx="10" fill="#fbfcfd" stroke="#b4bfc7"/>
+<rect x="48" y="1160" width="8" height="182" fill="#8999a5"/>
+<text x="76" y="1190" font-family="DejaVu Sans,Arial,sans-serif" font-size="20" font-weight="700" fill="#233441">M5 — Semantic events and acoustic memory</text>
+<text x="1180" y="1190" text-anchor="end" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#526471">P1</text>
+<text x="80" y="1217" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Benchmark YAMNet, EfficientAT, CLAP and sherpa with matched audio windows and label mappings</text>
+<text x="80" y="1238" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Separate raw scores from calibrated probabilities and validate unknown/open-vocabulary rejection</text>
+<text x="80" y="1259" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Extend temporal events, DTW, recurrence and motifs to recurring source-local acoustic patterns</text>
+<text x="80" y="1280" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Develop versioned sound prototypes, novelty detection and controlled long-term source memory</text>
+<text x="80" y="1301" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Expose source/event observations with provenance, uncertainty and explicit event lifecycles</text>
+<text x="80" y="1330" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" font-weight="700" fill="#526471">Gate: Held-out event F1/mAP, false-alarm rate, novelty and source-memory contamination measured.</text>
+<path d="M670 1344 V1358" fill="none" stroke="#6b7b86" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="48" y="1364" width="1264" height="182" rx="10" fill="#f7f9fb" stroke="#b4bfc7"/>
+<rect x="48" y="1364" width="8" height="182" fill="#8999a5"/>
+<text x="76" y="1394" font-family="DejaVu Sans,Arial,sans-serif" font-size="20" font-weight="700" fill="#233441">M6 — Developer SDK and deployment</text>
+<text x="1180" y="1394" text-anchor="end" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#526471">P1–P2</text>
+<text x="80" y="1421" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Provide concise recipes for classification, source tracking, speech transcription and replay</text>
+<text x="80" y="1442" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Maintain stable low-level C++ contracts; evaluate optional C and Python bindings</text>
+<text x="80" y="1463" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Profile queue bounds, allocation/lock behavior, p50/p95/p99 latency and multi-source load</text>
+<text x="80" y="1484" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Benchmark optimized CPU paths (AVX/NEON) and optional inference providers (OpenVINO/RKNN/CUDA)</text>
+<text x="80" y="1505" font-family="DejaVu Sans,Arial,sans-serif" font-size="13.6" fill="#33434e">• Publish install guides, samples, feature maturity matrix and reproducible package profiles</text>
+<text x="80" y="1534" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" font-weight="700" fill="#526471">Gate: Independent consumer build and documented measured runtime/memory profile for supported targets.</text>
+<rect x="48" y="1580" width="1264" height="226" rx="10" fill="#f8f8f5" stroke="#abb3a6"/>
+<text x="76" y="1612" font-family="DejaVu Sans,Arial,sans-serif" font-size="21" font-weight="700" fill="#39423b">Cross-cutting quality and benchmarking (P0)</text>
+<text x="80" y="1640" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#374038">• Maintain dataset/model manifests (SHA-256, licensing, geometry, sample rate, annotations).</text>
+<text x="80" y="1664" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#374038">• Distinguish deterministic unit tests, model smoke, annotated benchmarks and physical HIL.</text>
+<text x="80" y="1688" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#374038">• Record representative multi-channel scenes: silence, faint/brief speech, moving sources, 1/2/5/10 sources.</text>
+<text x="80" y="1712" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#374038">• Measure task metrics: DOA error, ID switches, WER, DER, classification F1/mAP and AEC ERLE.</text>
+<text x="80" y="1736" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#374038">• Record runtime p50/p95/p99, throughput, RAM, alloc count, drops and power by platform.</text>
+<text x="80" y="1760" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#374038">• Establish baseline-relative regression limits; skipped external corpora are not passes.</text>
+<rect x="48" y="1820" width="1264" height="98" rx="10" fill="#f7f7f7" stroke="#c6c6c6"/>
+<text x="76" y="1850" font-family="DejaVu Sans,Arial,sans-serif" font-size="19" font-weight="700" fill="#46505a">Optional research (not required for release)</text>
+<text x="80" y="1874" font-family="DejaVu Sans,Arial,sans-serif" font-size="14" fill="#46505a">Acoustic mapping · synchronized arrays · predictive events · continual adaptation · auditory attention and privacy</text>
+</svg>

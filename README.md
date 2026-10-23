@@ -22,6 +22,10 @@ real-time policy, threading, recording policy, robot behavior, and middleware.
 See [`docs/specification.md`](docs/specification.md) and
 [`docs/architecture.md`](docs/architecture.md).
 
+## Development roadmap
+
+The proposed [development roadmap](docs/development_roadmap.md) lists workstreams, dependencies, and evidence-based acceptance criteria. It is not a release schedule. A rendered [SVG overview](docs/images/development_roadmap_overview.svg) is also available.
+
 ## Tests and maintenance
 
 Start with the [test-family maintenance map](docs/test_maintenance_map.md) to
