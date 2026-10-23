@@ -264,6 +264,7 @@ LiveCaptureSnapshot AlsaLiveCapture::snapshot() const {
 
 void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_ALSA
+    std::string failureStage{"initialization"};
     try {
         audition::OdasOptions options{};
         options.sample_rate_hz = config.sample_rate_hz;
@@ -366,6 +367,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         // midway through a WAV would shift its annotation clock origin.
         std::map<std::uint64_t, std::uint64_t> skipped_annotation_recordings;
         std::uint64_t annotation_recordings_skipped = 0;
+        std::uint64_t recoverableErrors = 0;
+        std::string lastRecoverableError;
+        const auto reportRecoverable = [&](const char* phase, const std::exception& e) {
+            ++recoverableErrors;
+            lastRecoverableError = std::string{phase} + ": " + e.what();
+            if (recoverableErrors <= 3U || recoverableErrors % 100U == 0U) {
+                std::fprintf(stderr,
+                    "[libaudition] live capture recovered (%s, count=%llu): %s\n",
+                    phase, static_cast<unsigned long long>(recoverableErrors),
+                    e.what());
+                std::fflush(stderr);
+            }
+        };
 #if LIBAUDITION_DEMO_HAS_SHERPA
         using SpeechEpochKey = std::pair<std::uint64_t, std::uint64_t>;
         std::map<SpeechEpochKey, audition::RecordingId> epoch_recordings;
@@ -378,6 +392,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         const auto drainSpeechAcks = [&]() {
             if (!speech_worker) return;
             for (const auto& event : speech_worker->drainAcknowledgements()) {
+                try {
                 const SpeechEpochKey key{event.source_id,event.epoch};
                 const auto mapped = epoch_recordings.find(key);
                 switch (event.kind) {
@@ -409,6 +424,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     last_speech_worker_error=event.error.substr(0,200);
                     break;
                 }
+                } catch (const std::exception& e) {
+                    reportRecoverable("speech acknowledgement", e);
+                }
             }
         };
 #endif
@@ -426,6 +444,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_SHERPA
         const auto drainAsr = [&]() {
             if (!speech_runtime) return;
+            try {
             // The capture producer owns recordings. Apply worker generation
             // acknowledgements before consuming ASR results or retiring JSON.
             drainSpeechAcks();
@@ -442,12 +461,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 recordings.completeGeneration(generation);
                 speech_runtime->releaseRetired(generation);
             }
+            } catch (const std::exception& e) {
+                reportRecoverable("ASR completion", e);
+            }
         };
 #endif
         const auto retireSource = [&](std::uint64_t trackId) {
+            recorder.retire(trackId); // always close WAV before best-effort metadata handling
+            try {
             skipped_annotation_recordings.erase(trackId);
             if (classifier) classifier->forget(trackId);
-            recorder.retire(trackId);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            speechGains.erase(trackId);
+#endif
 #if LIBAUDITION_DEMO_HAS_SHERPA
             if (speech_worker) {
                 // FIFO Retire remains behind accepted audio. The ASR
@@ -464,13 +490,15 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     recordings.retire(trackId,std::nullopt);
                 }
                 transcripts.erase(trackId);
-                speechGains.erase(trackId);
             } else {
                 recordings.retire(trackId,std::nullopt);
             }
 #else
             recordings.retire(trackId, std::nullopt);
 #endif
+            } catch (const std::exception& e) {
+                reportRecoverable("retire source", e);
+            }
         };
         auto pcm = openPcm(config);
 
@@ -553,6 +581,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 for (auto& meter : channelMeters) meter.reset();
                 sssMeters.clear();
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
+                failureStage = "ODAS reset after ALSA xrun";
                 engine.reset(); // discontinuous samples must not share ODAS state
                 drainClassification();
                 source_lifecycle.clear([&](std::uint64_t id) {
@@ -595,6 +624,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 {config.sample_rate_hz, config.channel_count,
                  audition::AudioLayout::Interleaved},
                 timestamp, hops};
+            failureStage = "ODAS process";
             const auto resultFrame = engine.process(block.view());
             ++hops;
             { // Recording is independent of classifier and ASR toggles.
@@ -759,6 +789,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 if (processor)
                     latest_.speech_gain_levels.push_back({id, processor->gainDb()});
 #endif
+            if (recoverableErrors != 0U) {
+                latest_.speech_status += " | recoverable errors=" +
+                    std::to_string(recoverableErrors) + " | last: " + lastRecoverableError;
+            }
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             latest_.classification_error = classifier ? classifier->error() : "";
@@ -852,10 +886,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #endif
         recordings.flushAll();
     } catch (const std::exception& error) {
+        const auto message = failureStage + ": " + error.what();
+        std::fprintf(stderr, "[libaudition] live capture terminated: %s\n",
+                     message.c_str());
+        std::fflush(stderr);
         std::lock_guard<std::mutex> lock{mutex_};
-        if (!stop_requested_.load()) {
-            latest_.error = error.what();
-        }
+        if (!stop_requested_.load()) latest_.error = message;
+    } catch (...) {
+        std::fprintf(stderr, "[libaudition] live capture terminated: unknown error (%s)\n",
+                     failureStage.c_str());
+        std::fflush(stderr);
+        std::lock_guard<std::mutex> lock{mutex_};
+        if (!stop_requested_.load())
+            latest_.error = failureStage + ": unknown exception";
     }
 #else
     static_cast<void>(config);
