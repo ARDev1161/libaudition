@@ -95,6 +95,7 @@ public:
     void start(LiveCaptureConfig config);
     void stop();
     void setSstTuning(double onset, double release, std::uint32_t timeout_hops);
+    void setSpeechGain(bool enabled, std::string implementation);
     [[nodiscard]] LiveCaptureSnapshot snapshot() const;
     [[nodiscard]] static std::vector<AlsaCaptureDevice> discover();
 
@@ -112,6 +113,9 @@ private:
         std::uint64_t revision{0};
     };
     SstTuningRequest requested_sst_{};
+    bool speech_gain_enabled_{false};
+    std::string speech_gain_implementation_{"rms"};
+    std::uint64_t speech_gain_revision_{0};
 };
 
 }  // namespace demo
