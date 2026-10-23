@@ -47,6 +47,11 @@ public:
         return s.active;
     }
 
+    bool present(std::uint64_t id) const noexcept {
+        const auto it = states_.find(id);
+        return it == states_.end() || it->second.active;
+    }
+
     void clear() noexcept { states_.clear(); }
 
 private:
