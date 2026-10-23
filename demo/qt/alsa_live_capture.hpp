@@ -90,6 +90,7 @@ public:
 
     void start(LiveCaptureConfig config);
     void stop();
+    void setSstTuning(double onset, double release, std::uint32_t timeout_hops);
     [[nodiscard]] LiveCaptureSnapshot snapshot() const;
     [[nodiscard]] static std::vector<AlsaCaptureDevice> discover();
 
@@ -100,6 +101,13 @@ private:
     std::thread thread_{};
     std::atomic<bool> stop_requested_{false};
     LiveCaptureSnapshot latest_{};
+    struct SstTuningRequest {
+        double onset{0.34};
+        double release{0.25};
+        std::uint32_t timeout_hops{125};
+        std::uint64_t revision{0};
+    };
+    SstTuningRequest requested_sst_{};
 };
 
 }  // namespace demo
