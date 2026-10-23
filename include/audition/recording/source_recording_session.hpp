@@ -199,6 +199,17 @@ public:
         return id;
     }
 
+    // A duplicate or late Retired acknowledgement is not a fatal capture error.
+    // Match the exact RecordingId, never a possibly reused ODAS source ID.
+    [[nodiscard]] bool tryAcknowledgeRetired(
+        RecordingId id, std::optional<std::uint64_t> generation) {
+        const auto it = recordings_.find(id);
+        if (it == recordings_.end() || !it->second.pending_retire_ack)
+            return false;
+        acknowledgeRetired(id, generation);
+        return true;
+    }
+
     // Complete a deferred retirement after the serialized speech worker
     // reports the generation. A null generation persists a WAV-only sidecar.
     void acknowledgeRetired(RecordingId id, std::optional<std::uint64_t> generation) {
