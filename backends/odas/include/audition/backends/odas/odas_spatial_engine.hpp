@@ -19,6 +19,8 @@ public:
     [[nodiscard]] BackendInfo backendInfo() const override;
     [[nodiscard]] SpatialCapabilities capabilities() const override;
     void reset() override;
+    // Call between process() invocations on the owning audio thread.
+    void setSstTuning(double onset, double release, std::uint32_t timeout_hops);
     [[nodiscard]] SpatialProcessingResult process(AudioView multichannel_audio) override;
     [[nodiscard]] const OdasOptions& options() const noexcept;
 private:
