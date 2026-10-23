@@ -4,6 +4,7 @@
 #include "speech_epoch_recording_cleanup.hpp"
 #include "source_speech_gain.hpp"
 #include "adaptive_array_presence_gate.hpp"
+#include "per_source_acoustic_presence.hpp"
 #include <audition/recording/source_wav_recorder.hpp>
 #include <audition/recording/source_recording_session.hpp>
 #include <audition/dsp/streaming_level_meter.hpp>
@@ -476,6 +477,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::size_t filled = 0;
         bool odasRebuildPending = false;
         std::uint64_t nextOdasRebuildHop = 0U;
+        PerSourceAcousticPresence perSourcePresence;
         AdaptiveArrayPresenceGate arrayPresenceGate{
             config.sample_rate_hz, config.array_gate_snr_db};
         AdaptiveArrayPresenceGate::Status arrayStatus{};
@@ -511,6 +513,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 failureStage = "ODAS reset after ALSA xrun";
                 engine->reset(); // discontinuous samples must not share ODAS state
                 arrayPresenceGate.reset();
+                perSourcePresence.clear();
                 odasRebuildPending = false;
                 drainClassification();
                 source_lifecycle.clear([&](std::uint64_t id) {
@@ -574,6 +577,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         auto replacement =
                             std::make_unique<audition::OdasSpatialEngine>(options);
                         engine.swap(replacement);
+                        perSourcePresence.clear();
                         odasRebuildPending = false;
                         ++arrayResetCount;
                     } catch (const std::exception& e) {
@@ -594,11 +598,21 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             ++hops;
             { // Recording is independent of classifier and ASR toggles.
                 std::set<std::uint64_t> present;
+                // Update each source from its own SSS stream, independent
+                // of latched ODAS SST activity. Keep the original tracker and
+                // sphere rendering; only acoustic presence affects lifecycle.
+                for (const auto& separated : resultFrame.separated_frames) {
+                    perSourcePresence.update(separated.track_id.value(),
+                        separated.audio.samples().data(),
+                        separated.audio.samples().size(), config.sample_rate_hz);
+                }
                 for (const auto& track : resultFrame.tracks) {
-                    present.insert(track.track_id.value());
+                    if (perSourcePresence.present(track.track_id.value()))
+                        present.insert(track.track_id.value());
                 }
                 for (const auto& separated : resultFrame.separated_frames) {
-                    present.insert(separated.track_id.value());
+                    if (perSourcePresence.present(separated.track_id.value()))
+                        present.insert(separated.track_id.value());
                 }
                 failureStage = "source classification / lifecycle";
                 drainClassification();
@@ -606,6 +620,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     retireSource(id);
                 });
                 for (const auto& separated : resultFrame.separated_frames) {
+                    if (!perSourcePresence.present(separated.track_id.value()))
+                        continue;
                     sssMeters[separated.track_id.value()].push(
                         separated.audio.samples().data(),
                         separated.audio.samples().size());
@@ -672,6 +688,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             std::vector<AcousticSceneTrack> tracks;
             tracks.reserve(resultFrame.tracks.size());
             for (const auto& t : resultFrame.tracks) {
+                if (!perSourcePresence.present(t.track_id.value()))
+                    continue;
                 const auto xyz = t.direction.direction.vector();
                 AcousticSceneTrack track{
                     t.track_id.value(),
