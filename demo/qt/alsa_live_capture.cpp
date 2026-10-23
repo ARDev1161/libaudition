@@ -300,6 +300,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         options.sss.enabled = true; // source WAV recording is available independently
         audition::OdasSpatialEngine engine{options};
         std::uint64_t appliedSstRevision = 0;
+        std::string lastSstTuningError;
         std::unique_ptr<LiveAudioTaggingWorker> classifier;
         if (config.classify_sources) {
             classifier = std::make_unique<LiveAudioTaggingWorker>(
@@ -523,8 +524,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         engine.setSstTuning(requested.onset, requested.release,
                                             requested.timeout_hops);
                         appliedSstRevision = requested.revision;
+                        lastSstTuningError.clear();
                     } catch (const std::exception& e) {
-                        std::fprintf(stderr, "[libaudition] SST tuning rejected: %s\n",
+                        lastSstTuningError = e.what();
+                        std::fprintf(stderr, "[libaudition] SST tuning rejected (prior values retained): %s\n",
                                      e.what());
                         appliedSstRevision = requested.revision;
                     }
@@ -759,6 +762,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             latest_.classification_error = classifier ? classifier->error() : "";
+            if (!lastSstTuningError.empty()) {
+                if (!latest_.classification_error.empty()) latest_.classification_error += " | ";
+                latest_.classification_error += "SST tuning rejected: " + lastSstTuningError;
+            }
             latest_.classifier_status = classifier && !resultFrame.tracks.empty()
                 ? classifier->status(resultFrame.tracks.front().track_id.value())
                 : (classifier ? "Waiting for ODAS tracks" : "Disabled");
