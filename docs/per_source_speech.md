@@ -111,12 +111,18 @@ The sensitivity preset is experimental: false or clustered ODAS tracks
 can increase in noise or reverberation. No improved source-acquisition
 recall/accuracy is claimed without real annotated ReSpeaker recordings.
 Disable the checkbox to restore all default ODAS tracker settings.
-The **Active tracked sources** table now hides finished source recordings
-by default, rather than presenting the complete historical list as live
-tracks. Check **Show finished sources / recordings** to inspect the
-retained WAV and transcript rows. On the 3D sphere, only the ODAS active
-SST tracks are rendered; a track that persists there in silence indicates
-a tracker-activity issue rather than historical UI retention.
+The **Tracked sources** table continues showing the full session/recording
+history without filtering. The 3D sphere now distinguishes a persistent
+SST track ID from an *audible* tracked sound: live tracks appear above
+0.03 SST activity, remain visible while >= 0.01, and disappear after
+800 ms of continuously lower activity. The filter applies ONLY to live
+sphere markers and their trajectories; it does not retire ODAS IDs, stop
+recording, skip audio to ASR, or change historical table rows.
+Offline WAV replay and the synthetic example bypass this visualization
+filter. The original ODAS SST still independently retires IDs based on
+its likelihood and timeout logic. Measure real ReSpeaker activity
+distributions to calibrate the visual gate thresholds; they are initial
+heuristic values, not validated acoustic activity thresholds.
 
 For each ODAS SSS mono frame, the adapter enqueues bounded 16-kHz PCM
 keyed by ODAS numeric track ID. An application-owned worker executes

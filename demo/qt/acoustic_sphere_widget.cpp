@@ -10,6 +10,7 @@
 #include <QWheelEvent>
 
 #include <algorithm>
+#include <set>
 #include <cmath>
 #include <utility>
 
@@ -36,6 +37,7 @@ AcousticSphereWidget::AcousticSphereWidget(QWidget* parent)
 
 void AcousticSphereWidget::setTracks(const std::vector<AcousticSceneTrack>& tracks) {
     tracks_.clear();
+    std::set<std::uint64_t> visibleIds;
     for (const auto& track : tracks) {
         if (!std::isfinite(track.direction.x()) ||
             !std::isfinite(track.direction.y()) ||
@@ -47,6 +49,7 @@ void AcousticSphereWidget::setTracks(const std::vector<AcousticSceneTrack>& trac
         valid.direction.normalize();
         valid.activity = std::clamp(valid.activity, 0.0, 1.0);
         tracks_.push_back(valid);
+        visibleIds.insert(valid.id);
         auto& trail = trails_[valid.id];
         if (trail.empty() || (trail.back() - valid.direction).lengthSquared() > 1e-6F) {
             trail.push_back(valid.direction);
@@ -55,6 +58,15 @@ void AcousticSphereWidget::setTracks(const std::vector<AcousticSceneTrack>& trac
             }
         }
     }
+    // Retired or non-audible sources must not leave permanent ghost trails.
+    for (auto it = trails_.begin(); it != trails_.end();) {
+        if (!visibleIds.count(it->first))
+            it = trails_.erase(it);
+        else
+            ++it;
+    }
+    if (!visibleIds.count(selected_)) selected_ = 0U;
+    if (!visibleIds.count(hovered_)) hovered_ = 0U;
     update();
 }
 

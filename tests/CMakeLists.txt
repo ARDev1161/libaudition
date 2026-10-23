@@ -152,7 +152,8 @@ add_executable(libaudition_tests
     per_source_speech_runtime_test.cpp
     bounded_speech_pcm_ingress_test.cpp
     async_speech_ingress_worker_test.cpp
-    source_speech_gain_test.cpp)
+    source_speech_gain_test.cpp
+    source_activity_gate_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces
