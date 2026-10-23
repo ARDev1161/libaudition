@@ -42,6 +42,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QSpinBox>
+#include <QSlider>
 #include <QDoubleSpinBox>
 #include <QStringList>
 #include <QTableWidget>
@@ -796,15 +797,83 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     split->addWidget(sphere);
     auto* sidebar = new QWidget{split};
     auto* sideLayout = new QVBoxLayout{sidebar};
-    auto* tracks = new QTableWidget{0, 7, sidebar};
+    auto* tracks = new QTableWidget{0, 8, sidebar};
     tracks->setObjectName("acousticSceneTracks");
     tracks->setHorizontalHeaderLabels({
-        "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript", "Recording"});
+        "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript", "AGC gain", "Recording"});
     tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    auto* speechAgc = new QCheckBox{"Adaptive speech gain (VAD / ASR only)", sidebar};
+    speechAgc->setObjectName("acousticSceneSpeechAgc");
+    speechAgc->setChecked(false);
+    auto* agcImplementation = new QComboBox{sidebar};
+    agcImplementation->setObjectName("acousticSceneSpeechAgcImplementation");
+    agcImplementation->addItem("RMS AGC", QStringLiteral("rms"));
+    agcImplementation->setEnabled(false);
+    QObject::connect(speechAgc, &QCheckBox::toggled,
+                     agcImplementation, &QWidget::setEnabled);
+    auto* agcRow = new QHBoxLayout;
+    agcRow->addWidget(speechAgc);
+    agcRow->addWidget(agcImplementation);
+    sideLayout->addLayout(agcRow);
     sideLayout->addWidget(new QLabel{"Tracked sources", sidebar});
     sideLayout->addWidget(tracks);
+    // Native ODAS SST controls. A short debounce avoids rebuilding ODAS for
+    // every pixel while dragging; ALSA capture remains open.
+    auto* liveSstControls = new QWidget{sidebar};
+    auto* liveSstForm = new QFormLayout{liveSstControls};
+    auto* liveOnset = new QSlider{Qt::Horizontal, liveSstControls};
+    liveOnset->setObjectName("acousticSceneLiveSstOnset");
+    liveOnset->setRange(5, 95);
+    liveOnset->setValue(34);
+    auto* liveRelease = new QSlider{Qt::Horizontal, liveSstControls};
+    liveRelease->setObjectName("acousticSceneLiveSstRelease");
+    liveRelease->setRange(5, 94);
+    liveRelease->setValue(25);
+    auto* liveTimeout = new QSlider{Qt::Horizontal, liveSstControls};
+    liveTimeout->setObjectName("acousticSceneLiveSstTimeout");
+    liveTimeout->setRange(25, 500);
+    liveTimeout->setValue(125);
+    auto* onsetValue = new QLabel{"0.34", liveSstControls};
+    auto* releaseValue = new QLabel{"0.25", liveSstControls};
+    auto* timeoutValue = new QLabel{"125 hops", liveSstControls};
+    const auto addLiveSlider = [&](const QString& title, QSlider* slider,
+                                   QLabel* value) {
+        auto* container = new QWidget{liveSstControls};
+        auto* line = new QHBoxLayout{container};
+        line->setContentsMargins(0, 0, 0, 0);
+        line->addWidget(slider, 1);
+        line->addWidget(value);
+        liveSstForm->addRow(title, container);
+    };
+    addLiveSlider("Acquire GMM", liveOnset, onsetValue);
+    addLiveSlider("Inactive GMM", liveRelease, releaseValue);
+    addLiveSlider("Inactive timeout", liveTimeout, timeoutValue);
+    sideLayout->addWidget(liveSstControls);
+    auto* liveSstDebounce = new QTimer{page};
+    liveSstDebounce->setSingleShot(true);
+    liveSstDebounce->setInterval(250);
+    const auto scheduleLiveSst = [=]() {
+        onsetValue->setText(QString::number(liveOnset->value() / 100.0, 'f', 2));
+        releaseValue->setText(QString::number(liveRelease->value() / 100.0, 'f', 2));
+        timeoutValue->setText(QString("%1 hops").arg(liveTimeout->value()));
+        if (liveRelease->value() >= liveOnset->value()) {
+            liveSstDebounce->stop();
+            return;
+        }
+        liveSstDebounce->start();
+    };
+    QObject::connect(liveOnset, &QSlider::valueChanged, page, [=](int) {
+        scheduleLiveSst();
+    });
+    QObject::connect(liveRelease, &QSlider::valueChanged, page, [=](int) {
+        scheduleLiveSst();
+    });
+    QObject::connect(liveTimeout, &QSlider::valueChanged, page, [=](int) {
+        scheduleLiveSst();
+    });
+    auto gainByTrack = std::make_shared<std::map<std::uint64_t, double>>();
     auto* selected = new QLabel{"Click a source on the sphere to inspect it.", sidebar};
     selected->setObjectName("acousticSceneSelected");
     selected->setWordWrap(true);
@@ -899,6 +968,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 QString::number(track.activity, 'f', 2),
                 QString::fromStdString(track.classification_label),
                 QString::fromStdString(track.transcript),
+                (!entry.active || !speechAgc->isChecked()) ? QStringLiteral("—") :
+                    (gainByTrack->count(track.id)
+                        ? QString("%1 dB").arg(gainByTrack->at(track.id), 0, 'f', 1)
+                        : QStringLiteral("—")),
                 entry.wav.isEmpty() ? "No audio" :
                     QString("Play (%1 s)%2%3").arg(entry.samples / 16000)
                         .arg(entry.lostSamples ? QString(" | gap %1 samples").arg(entry.lostSamples) : QString{})
@@ -935,13 +1008,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const auto id = item->data(Qt::UserRole).toULongLong();
             const auto found = history->find(id);
             if (found == history->end() || found->second.wav.isEmpty()) continue;
-            if (auto* existing = qobject_cast<QPushButton*>(tracks->cellWidget(r, 6))) {
+            if (auto* existing = qobject_cast<QPushButton*>(tracks->cellWidget(r, 7))) {
                 const auto boundId = existing->property("recordingId").toULongLong();
                 if (boundId == id) {
                     existing->setStyleSheet(found->second.active ? QString{} : QStringLiteral("color: gray;"));
                     continue;
                 }
-                tracks->removeCellWidget(r, 6);
+                tracks->removeCellWidget(r, 7);
                 existing->deleteLater();
             }
             auto* playTrack = new QPushButton{"Play", tracks};
@@ -958,10 +1031,51 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     }
                 }
             });
-            tracks->setCellWidget(r, 6, playTrack);
+            tracks->setCellWidget(r, 7, playTrack);
         }
     };
     auto capture = std::make_shared<demo::AlsaLiveCapture>();
+    // AGC selection can be changed while recording; the producer applies
+    // the change between audio hops, preserving ODAS/ALSA and WAV lifetimes.
+    const auto updateSpeechGain = [=]() {
+        capture->setSpeechGain(speechAgc->isChecked() &&
+                                   enableSpeech->isChecked(),
+                               agcImplementation->currentData().toString().toStdString());
+    };
+    QObject::connect(speechAgc, &QCheckBox::toggled, page,
+                     [=](bool) { updateSpeechGain(); });
+    QObject::connect(agcImplementation,
+                     QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     page, [=](int) { updateSpeechGain(); });
+
+    QObject::connect(liveSstDebounce, &QTimer::timeout, page, [=]() {
+        if (liveRelease->value() >= liveOnset->value())
+            return;
+        capture->setSstTuning(liveOnset->value() / 100.0,
+                              liveRelease->value() / 100.0,
+                              static_cast<std::uint32_t>(liveTimeout->value()));
+    });
+    // The sliders are the active tuning source for each new capture.
+    QObject::connect(sstOnset, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                     page, [=](double value) {
+        liveOnset->setValue(static_cast<int>(std::lround(value * 100.0)));
+    });
+    QObject::connect(sstRelease, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                     page, [=](double value) {
+        liveRelease->setValue(static_cast<int>(std::lround(value * 100.0)));
+    });
+    QObject::connect(sstTimeout, QOverload<int>::of(&QSpinBox::valueChanged),
+                     page, [=](int value) { liveTimeout->setValue(value); });
+    QObject::connect(liveOnset, &QSlider::valueChanged, page, [=](int value) {
+        sstOnset->setValue(value / 100.0);
+    });
+    QObject::connect(liveRelease, &QSlider::valueChanged, page, [=](int value) {
+        sstRelease->setValue(value / 100.0);
+    });
+    QObject::connect(liveTimeout, &QSlider::valueChanged, page, [=](int value) {
+        sstTimeout->setValue(value);
+    });
+
     auto* liveTimer = new QTimer{page};
     liveTimer->setInterval(50);
     auto seenGeneration = std::make_shared<std::uint64_t>(0);
@@ -1095,6 +1209,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.sst_inactive_hops = static_cast<std::uint32_t>(sstTimeout->value());
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
+            config.speech_agc_enabled = speechAgc->isChecked() && config.transcribe_sources;
+            config.speech_agc_implementation =
+                agcImplementation->currentData().toString().toStdString();
             if (config.transcribe_sources) {
                 const auto vad = std::filesystem::path{speechVad->text().toStdString()};
                 const auto model = std::filesystem::path{speechAsr->text().toStdString()};
@@ -1209,6 +1326,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             *seenGeneration = snapshot.generation;
             recordingInfo->clear();
             for (const auto& r : snapshot.recordings) (*recordingInfo)[r.id] = r;
+            gainByTrack->clear();
+            for (const auto& level : snapshot.speech_gain_levels)
+                (*gainByTrack)[level.track_id] = level.gain_db;
             display(snapshot.tracks);
             sphere->setPotentials(snapshot.potentials);
             if (!snapshot.classification_error.empty()) {

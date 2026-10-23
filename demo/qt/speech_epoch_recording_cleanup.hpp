@@ -27,7 +27,7 @@ inline void clearForgottenSpeechRecordingEpochs(
         // the retired WAV without speech, but never touch the reused ID's
         // current/future epoch or any other source.
         if (deferred_ack_recordings.erase(it->second))
-            recordings.acknowledgeRetired(it->second,std::nullopt);
+            (void)recordings.tryAcknowledgeRetired(it->second,std::nullopt);
         it=epochs.erase(it);
     }
 }

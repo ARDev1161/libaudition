@@ -45,6 +45,8 @@ struct LiveCaptureConfig {
     std::vector<std::string> tagging_vocabulary_labels{};
     bool tagging_efficientat_model{false};
     bool transcribe_sources{false};
+    bool speech_agc_enabled{false};
+    std::string speech_agc_implementation{"rms"};
     std::string speech_vad_model_path{};
     std::string speech_asr_model_path{};
     std::string speech_asr_tokens_path{};
@@ -71,6 +73,8 @@ struct LiveCaptureSnapshot {
     std::vector<double> channel_peak_dbfs{};
     struct SourceLevel { std::uint64_t track_id{0}; double rms_dbfs{0}; double peak_dbfs{0}; std::uint64_t samples{0}; };
     std::vector<SourceLevel> sss_levels{};
+    struct GainLevel { std::uint64_t track_id{0}; double gain_db{0.0}; };
+    std::vector<GainLevel> speech_gain_levels{};
     std::string classification_error{};
     std::string classifier_status{};
     std::string speech_status{};
@@ -90,6 +94,8 @@ public:
 
     void start(LiveCaptureConfig config);
     void stop();
+    void setSstTuning(double onset, double release, std::uint32_t timeout_hops);
+    void setSpeechGain(bool enabled, std::string implementation);
     [[nodiscard]] LiveCaptureSnapshot snapshot() const;
     [[nodiscard]] static std::vector<AlsaCaptureDevice> discover();
 
@@ -100,6 +106,16 @@ private:
     std::thread thread_{};
     std::atomic<bool> stop_requested_{false};
     LiveCaptureSnapshot latest_{};
+    struct SstTuningRequest {
+        double onset{0.34};
+        double release{0.25};
+        std::uint32_t timeout_hops{125};
+        std::uint64_t revision{0};
+    };
+    SstTuningRequest requested_sst_{};
+    bool speech_gain_enabled_{false};
+    std::string speech_gain_implementation_{"rms"};
+    std::uint64_t speech_gain_revision_{0};
 };
 
 }  // namespace demo

@@ -1,4 +1,5 @@
 #include "alsa_live_capture.hpp"
+#include <audition/dsp/source_gain.hpp>
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
 #include "speech_epoch_recording_cleanup.hpp"
@@ -9,6 +10,7 @@
 #include <audition/audio/recording_timeline_json.hpp>
 #include <filesystem>
 #include <chrono>
+#include <cstdio>
 #include "odas_respeaker_profile.hpp"
 #if LIBAUDITION_DEMO_HAS_SHERPA
 #include <audition/backends/sherpa/vad.hpp>
@@ -203,6 +205,13 @@ void AlsaLiveCapture::start(LiveCaptureConfig config) {
         std::lock_guard<std::mutex> lock{mutex_};
         latest_ = {};
         latest_.running = true;
+        speech_gain_enabled_ = config.speech_agc_enabled;
+        speech_gain_implementation_ = config.speech_agc_implementation;
+        speech_gain_revision_ = 0;
+        requested_sst_.revision = 0;
+        requested_sst_.onset = config.sst_onset;
+        requested_sst_.release = config.sst_release;
+        requested_sst_.timeout_hops = config.sst_inactive_hops;
     }
     stop_requested_.store(false);
     try {
@@ -214,6 +223,29 @@ void AlsaLiveCapture::start(LiveCaptureConfig config) {
         latest_.running = false;
         throw;
     }
+}
+
+void AlsaLiveCapture::setSpeechGain(bool enabled, std::string implementation) {
+    // Validate before publishing state to the capture thread.
+    if (enabled)
+        (void)audition::dsp::makeSourceGain(implementation.c_str());
+    std::lock_guard<std::mutex> lock{mutex_};
+    speech_gain_enabled_ = enabled;
+    speech_gain_implementation_ = std::move(implementation);
+    ++speech_gain_revision_;
+}
+
+void AlsaLiveCapture::setSstTuning(
+    double onset, double release, std::uint32_t timeout_hops) {
+    if (!std::isfinite(onset) || !std::isfinite(release) ||
+        onset <= 0.0 || onset >= 1.0 || release <= 0.0 ||
+        release >= onset || timeout_hops == 0U)
+        throw std::invalid_argument("Invalid live SST tuning");
+    std::lock_guard<std::mutex> lock{mutex_};
+    requested_sst_.onset = onset;
+    requested_sst_.release = release;
+    requested_sst_.timeout_hops = timeout_hops;
+    ++requested_sst_.revision;
 }
 
 void AlsaLiveCapture::stop() {
@@ -232,6 +264,7 @@ LiveCaptureSnapshot AlsaLiveCapture::snapshot() const {
 
 void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_ALSA
+    std::string failureStage{"initialization"};
     try {
         audition::OdasOptions options{};
         options.sample_rate_hz = config.sample_rate_hz;
@@ -267,6 +300,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         // the extra DSP cost when no classifier model is configured.
         options.sss.enabled = true; // source WAV recording is available independently
         audition::OdasSpatialEngine engine{options};
+        std::uint64_t appliedSstRevision = 0;
+        std::string lastSstTuningError;
         std::unique_ptr<LiveAudioTaggingWorker> classifier;
         if (config.classify_sources) {
             classifier = std::make_unique<LiveAudioTaggingWorker>(
@@ -289,6 +324,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::unique_ptr<audition::PerSourceSpeechRuntime> speech_runtime;
         std::unique_ptr<audition::AsyncSpeechIngressWorker> speech_worker;
         std::map<std::uint64_t, std::string> transcripts;
+        std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceGain>> speechGains;
+        std::uint64_t appliedGainRevision = 0;
         if (config.transcribe_sources) {
             audition::SherpaVadOptions vad_options{};
             vad_options.sample_rate_hz = config.sample_rate_hz;
@@ -330,6 +367,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         // midway through a WAV would shift its annotation clock origin.
         std::map<std::uint64_t, std::uint64_t> skipped_annotation_recordings;
         std::uint64_t annotation_recordings_skipped = 0;
+        std::uint64_t recoverableErrors = 0;
+        std::string lastRecoverableError;
+        const auto reportRecoverable = [&](const char* phase, const std::exception& e) {
+            ++recoverableErrors;
+            lastRecoverableError = std::string{phase} + ": " + e.what();
+            if (recoverableErrors <= 3U || recoverableErrors % 100U == 0U) {
+                std::fprintf(stderr,
+                    "[libaudition] live capture recovered (%s, count=%llu): %s\n",
+                    phase, static_cast<unsigned long long>(recoverableErrors),
+                    e.what());
+                std::fflush(stderr);
+            }
+        };
 #if LIBAUDITION_DEMO_HAS_SHERPA
         using SpeechEpochKey = std::pair<std::uint64_t, std::uint64_t>;
         std::map<SpeechEpochKey, audition::RecordingId> epoch_recordings;
@@ -342,6 +392,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         const auto drainSpeechAcks = [&]() {
             if (!speech_worker) return;
             for (const auto& event : speech_worker->drainAcknowledgements()) {
+                try {
                 const SpeechEpochKey key{event.source_id,event.epoch};
                 const auto mapped = epoch_recordings.find(key);
                 switch (event.kind) {
@@ -351,7 +402,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     break;
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Retired:
                     if (mapped!=epoch_recordings.end()) {
-                        recordings.acknowledgeRetired(mapped->second,event.generation);
+                        (void)recordings.tryAcknowledgeRetired(
+                            mapped->second,event.generation);
                         deferred_ack_recordings.erase(mapped->second);
                         epoch_recordings.erase(mapped);
                     }
@@ -373,6 +425,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     last_speech_worker_error=event.error.substr(0,200);
                     break;
                 }
+                } catch (const std::exception& e) {
+                    reportRecoverable("speech acknowledgement", e);
+                }
             }
         };
 #endif
@@ -390,6 +445,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_SHERPA
         const auto drainAsr = [&]() {
             if (!speech_runtime) return;
+            try {
             // The capture producer owns recordings. Apply worker generation
             // acknowledgements before consuming ASR results or retiring JSON.
             drainSpeechAcks();
@@ -406,12 +462,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 recordings.completeGeneration(generation);
                 speech_runtime->releaseRetired(generation);
             }
+            } catch (const std::exception& e) {
+                reportRecoverable("ASR completion", e);
+            }
         };
 #endif
         const auto retireSource = [&](std::uint64_t trackId) {
+            recorder.retire(trackId); // always close WAV before best-effort metadata handling
+            try {
             skipped_annotation_recordings.erase(trackId);
             if (classifier) classifier->forget(trackId);
-            recorder.retire(trackId);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            speechGains.erase(trackId);
+#endif
 #if LIBAUDITION_DEMO_HAS_SHERPA
             if (speech_worker) {
                 // FIFO Retire remains behind accepted audio. The ASR
@@ -434,6 +497,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #else
             recordings.retire(trackId, std::nullopt);
 #endif
+            } catch (const std::exception& e) {
+                reportRecoverable("retire source", e);
+            }
         };
         auto pcm = openPcm(config);
 
@@ -451,6 +517,51 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 std::round(static_cast<double>(config.sample_rate_hz) /
                            (20.0 * static_cast<double>(config.hop_size)))));
         while (!stop_requested_.load()) {
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            {
+                bool enabled = false;
+                std::string implementation;
+                std::uint64_t revision = 0;
+                {
+                    std::lock_guard<std::mutex> lock{mutex_};
+                    enabled = speech_gain_enabled_;
+                    implementation = speech_gain_implementation_;
+                    revision = speech_gain_revision_;
+                }
+                if (revision != appliedGainRevision) {
+                    if (enabled) {
+                        // Create the replacement before modifying active state.
+                        (void)audition::dsp::makeSourceGain(implementation.c_str());
+                    }
+                    speechGains.clear();
+                    config.speech_agc_enabled = enabled;
+                    config.speech_agc_implementation = std::move(implementation);
+                    appliedGainRevision = revision;
+                }
+            }
+#endif
+            if (config.tune_sst) {
+                SstTuningRequest requested;
+                {
+                    std::lock_guard<std::mutex> lock{mutex_};
+                    requested = requested_sst_;
+                }
+                if (requested.revision != appliedSstRevision) {
+                    // Apply on the capture owner thread between ODAS hops.
+                    // Preserve tracker state, source identities and WAV/ASR epochs.
+                    try {
+                        engine.setSstTuning(requested.onset, requested.release,
+                                            requested.timeout_hops);
+                        appliedSstRevision = requested.revision;
+                        lastSstTuningError.clear();
+                    } catch (const std::exception& e) {
+                        lastSstTuningError = e.what();
+                        std::fprintf(stderr, "[libaudition] SST tuning rejected (prior values retained): %s\n",
+                                     e.what());
+                        appliedSstRevision = requested.revision;
+                    }
+                }
+            }
             // readi() can return a short interleaved frame count.
             const auto result = snd_pcm_readi(
                 pcm.get(), native.data() + filled * channelCount,
@@ -471,6 +582,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 for (auto& meter : channelMeters) meter.reset();
                 sssMeters.clear();
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
+                failureStage = "ODAS reset after ALSA xrun";
                 engine.reset(); // discontinuous samples must not share ODAS state
                 drainClassification();
                 source_lifecycle.clear([&](std::uint64_t id) {
@@ -513,6 +625,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 {config.sample_rate_hz, config.channel_count,
                  audition::AudioLayout::Interleaved},
                 timestamp, hops};
+            failureStage = "ODAS process";
             const auto resultFrame = engine.process(block.view());
             ++hops;
             { // Recording is independent of classifier and ASR toggles.
@@ -560,8 +673,22 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     if (speech_worker) {
                         // Associate the WAV with the exact admitted PCM epoch.
                         // A separate sourceEpoch() lookup can see a reused ID.
+                        std::vector<float> adjusted;
+                        auto speechView = separated.audio.view();
+                        if (config.speech_agc_enabled) {
+                            auto& processor = speechGains[sourceId];
+                            if (!processor)
+                                processor = audition::dsp::makeSourceGain(
+                                    config.speech_agc_implementation.c_str());
+                            adjusted = processor->process(
+                                separated.audio.samples().data(),
+                                separated.audio.samples().size(), config.sample_rate_hz);
+                            speechView = audition::AudioView{
+                                adjusted.data(), adjusted.size(), speechView.format(),
+                                speechView.captureTime(), speechView.sequenceNumber()};
+                        }
                         const auto admission=speech_worker->pushWithEpoch(
-                            sourceId,separated.audio.view());
+                            sourceId,speechView);
                         if (admission.admission==audition::SpeechPcmAdmission::Accepted) {
                             const auto recording_id=recordings.recordingId(sourceId);
                             if (admission.epoch && recording_id)
@@ -657,9 +784,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.channel_rms_dbfs = std::move(rmsDbfs);
             latest_.channel_peak_dbfs = std::move(peakDbfs);
             latest_.sss_levels = std::move(sssLevels);
+            latest_.speech_gain_levels.clear();
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            for (const auto& [id, processor] : speechGains)
+                if (processor)
+                    latest_.speech_gain_levels.push_back({id, processor->gainDb()});
+#endif
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             latest_.classification_error = classifier ? classifier->error() : "";
+            if (!lastSstTuningError.empty()) {
+                if (!latest_.classification_error.empty()) latest_.classification_error += " | ";
+                latest_.classification_error += "SST tuning rejected: " + lastSstTuningError;
+            }
             latest_.classifier_status = classifier && !resultFrame.tracks.empty()
                 ? classifier->status(resultFrame.tracks.front().track_id.value())
                 : (classifier ? "Waiting for ODAS tracks" : "Disabled");
@@ -718,6 +855,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 " | WAV history pruned=" + std::to_string(recorder.historyEvicted());
             if (recordings.persistenceError())
                 latest_.speech_status += " | JSON error: " + *recordings.persistenceError();
+            if (recoverableErrors != 0U) {
+                latest_.speech_status += " | recoverable errors=" +
+                    std::to_string(recoverableErrors) + " | last: " + lastRecoverableError;
+            }
             for (const auto& item : recorder.entries()) {
                 if (!item.error.empty()) {
                     latest_.speech_status += " | WAV error: " + item.error;
@@ -746,10 +887,19 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #endif
         recordings.flushAll();
     } catch (const std::exception& error) {
+        const auto message = failureStage + ": " + error.what();
+        std::fprintf(stderr, "[libaudition] live capture terminated: %s\n",
+                     message.c_str());
+        std::fflush(stderr);
         std::lock_guard<std::mutex> lock{mutex_};
-        if (!stop_requested_.load()) {
-            latest_.error = error.what();
-        }
+        if (!stop_requested_.load()) latest_.error = message;
+    } catch (...) {
+        std::fprintf(stderr, "[libaudition] live capture terminated: unknown error (%s)\n",
+                     failureStage.c_str());
+        std::fflush(stderr);
+        std::lock_guard<std::mutex> lock{mutex_};
+        if (!stop_requested_.load())
+            latest_.error = failureStage + ": unknown exception";
     }
 #else
     static_cast<void>(config);

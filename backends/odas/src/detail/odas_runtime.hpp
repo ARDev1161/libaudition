@@ -41,6 +41,7 @@ public:
     OdasRuntime& operator=(OdasRuntime&&) noexcept;
 
     void reset();
+    void setSstTuning(double onset, double release, std::uint32_t timeout_hops);
     [[nodiscard]] OdasRuntimeResult process(AudioView audio);
 
 private:

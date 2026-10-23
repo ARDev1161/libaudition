@@ -36,6 +36,13 @@ public:
         runtime_ = std::make_unique<odas_detail::OdasRuntime>(options_);
     }
 
+    void setSstTuning(double onset, double release, std::uint32_t timeout_hops) {
+        runtime_->setSstTuning(onset, release, timeout_hops);
+        options_.sst.active_gmm.front().mean = onset;
+        options_.sst.inactive_gmm.front().mean = release;
+        options_.sst.inactive_timeout_hops = timeout_hops;
+    }
+
     void reset() {
         runtime_->reset();
         first_seen_.clear();
@@ -131,6 +138,9 @@ OdasSpatialEngine& OdasSpatialEngine::operator=(OdasSpatialEngine&&) noexcept = 
 BackendInfo OdasSpatialEngine::backendInfo() const { return {kBackendName, kBackendVersion}; }
 SpatialCapabilities OdasSpatialEngine::capabilities() const { return impl_->capabilities(); }
 void OdasSpatialEngine::reset() { impl_->reset(); }
+void OdasSpatialEngine::setSstTuning(double onset, double release, std::uint32_t timeout_hops) {
+    impl_->setSstTuning(onset, release, timeout_hops);
+}
 SpatialProcessingResult OdasSpatialEngine::process(AudioView audio) { return impl_->process(audio); }
 const OdasOptions& OdasSpatialEngine::options() const noexcept { return impl_->options(); }
 
