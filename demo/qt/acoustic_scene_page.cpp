@@ -42,6 +42,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QStringList>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -578,6 +579,27 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         "of the mounted microphone array. This intentionally excludes steep "
         "elevation directions before ODAS tracking and separation.");
     configForm->addRow("Optional 2D source prior", nearPlane);
+    auto* tuneSst = new QCheckBox{"Tune native ODAS SST thresholds", page};
+    tuneSst->setChecked(true);
+    auto* sstOnset = new QDoubleSpinBox{page};
+    sstOnset->setDecimals(2);
+    sstOnset->setRange(0.05, 0.95);
+    sstOnset->setSingleStep(0.01);
+    sstOnset->setValue(0.34);
+    auto* sstRelease = new QDoubleSpinBox{page};
+    sstRelease->setDecimals(2);
+    sstRelease->setRange(0.05, 0.94);
+    sstRelease->setSingleStep(0.01);
+    sstRelease->setValue(0.25);
+    auto* sstTimeout = new QSpinBox{page};
+    sstTimeout->setRange(25, 1000);
+    sstTimeout->setSingleStep(25);
+    sstTimeout->setValue(125);
+    sstTimeout->setSuffix(" hops");
+    configForm->addRow("ODAS SST tuning", tuneSst);
+    configForm->addRow("Acquisition GMM mean", sstOnset);
+    configForm->addRow("Inactive GMM mean", sstRelease);
+    configForm->addRow("Inactive timeout", sstTimeout);
     configRow->addLayout(configForm);
     layout->addLayout(configRow);
 
@@ -978,6 +1000,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         frame->setEnabled(true);
         angularPreset->setEnabled(true);
         nearPlane->setEnabled(true);
+        tuneSst->setEnabled(true);
+        sstOnset->setEnabled(true);
+        sstRelease->setEnabled(true);
+        sstTimeout->setEnabled(true);
         enableSpeech->setEnabled(LIBAUDITION_DEMO_HAS_SHERPA);
         enableTagging->setEnabled(
 #if LIBAUDITION_DEMO_HAS_SHERPA || LIBAUDITION_DEMO_HAS_YAMNET
@@ -1063,6 +1089,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.frame_size = static_cast<std::uint32_t>(frame->value());
             config.respeaker_angular_profile = angularPreset->isChecked();
             config.near_plane_sources = nearPlane->isChecked();
+            config.tune_sst = tuneSst->isChecked();
+            config.sst_onset = sstOnset->value();
+            config.sst_release = sstRelease->value();
+            config.sst_inactive_hops = static_cast<std::uint32_t>(sstTimeout->value());
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
             if (config.transcribe_sources) {
@@ -1152,6 +1182,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             frame->setEnabled(false);
             angularPreset->setEnabled(false);
             nearPlane->setEnabled(false);
+            tuneSst->setEnabled(false);
+            sstOnset->setEnabled(false);
+            sstRelease->setEnabled(false);
+            sstTimeout->setEnabled(false);
             enableTagging->setEnabled(false);
             enableSpeech->setEnabled(false);
             taggingFamily->setEnabled(false);
