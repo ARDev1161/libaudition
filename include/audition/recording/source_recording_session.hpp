@@ -199,6 +199,18 @@ public:
         return id;
     }
 
+    // Stale asynchronous acknowledgements are expected when Forget overtakes
+    // Retire or the same recording has already been finalized. Never apply
+    // an acknowledgement to a different (reused) numeric source identity.
+    [[nodiscard]] bool tryAcknowledgeRetired(
+        RecordingId id, std::optional<std::uint64_t> generation) {
+        const auto it = recordings_.find(id);
+        if (it == recordings_.end() || !it->second.pending_retire_ack)
+            return false;
+        acknowledgeRetired(id, generation);
+        return true;
+    }
+
     // Complete a deferred retirement after the serialized speech worker
     // reports the generation. A null generation persists a WAV-only sidecar.
     void acknowledgeRetired(RecordingId id, std::optional<std::uint64_t> generation) {
