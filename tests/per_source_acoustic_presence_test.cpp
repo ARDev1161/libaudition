@@ -1,5 +1,6 @@
 #include "per_source_acoustic_presence.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -23,6 +24,7 @@ int main() {
         gate.update(2, speech.data(), speech.size(), rate);
     }
     if (!gate.present(2) || gate.present(1)) return 2;
+    std::fill(speech.begin(), speech.end(), 0.02f);
     for (int i = 0; i < 100; ++i)
         alive = gate.update(1, speech.data(), speech.size(), rate);
     if (!alive || !gate.present(1)) return 3;
