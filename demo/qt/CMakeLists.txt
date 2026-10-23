@@ -9,6 +9,7 @@ add_executable(libaudition_qt_demo
     acoustic_scene_page.hpp
     alsa_live_capture.cpp
     alsa_live_capture.hpp
+    source_speech_gain.hpp
     live_audio_tagging_worker.cpp
     live_audio_tagging_worker.hpp
     source_track_lifecycle.hpp

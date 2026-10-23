@@ -2,6 +2,7 @@
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
 #include "speech_epoch_recording_cleanup.hpp"
+#include "source_speech_gain.hpp"
 #include <audition/recording/source_wav_recorder.hpp>
 #include <audition/recording/source_recording_session.hpp>
 #include <audition/dsp/streaming_level_meter.hpp>
@@ -274,6 +275,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::unique_ptr<audition::PerSourceSpeechRuntime> speech_runtime;
         std::unique_ptr<audition::AsyncSpeechIngressWorker> speech_worker;
         std::map<std::uint64_t, std::string> transcripts;
+        std::map<std::uint64_t, SourceSpeechGain> speechGains;
         if (config.transcribe_sources) {
             audition::SherpaVadOptions vad_options{};
             vad_options.sample_rate_hz = config.sample_rate_hz;
@@ -395,6 +397,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #endif
         const auto retireSource = [&](std::uint64_t trackId) {
             skipped_annotation_recordings.erase(trackId);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            speechGains.erase(trackId);
+#endif
             if (classifier) classifier->forget(trackId);
             recorder.retire(trackId);
 #if LIBAUDITION_DEMO_HAS_SHERPA
@@ -545,8 +550,21 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     if (speech_worker) {
                         // Associate the WAV with the exact admitted PCM epoch.
                         // A separate sourceEpoch() lookup can see a reused ID.
+                        // Post-ODAS adaptation solely for VAD/ASR, never
+                        // spatial inference, classifier or original WAV.
+                        std::vector<float> adjusted;
+                        audition::AudioView speechAudio = separated.audio.view();
+                        if (config.normalize_speech_sources) {
+                            adjusted = speechGains[sourceId].process(
+                                speechAudio.data(), speechAudio.sampleCount(),
+                                config.sample_rate_hz);
+                            speechAudio = audition::AudioView{
+                                adjusted.data(), adjusted.size(),
+                                speechAudio.format(), speechAudio.captureTime(),
+                                speechAudio.sequenceNumber()};
+                        }
                         const auto admission=speech_worker->pushWithEpoch(
-                            sourceId,separated.audio.view());
+                            sourceId,speechAudio);
                         if (admission.admission==audition::SpeechPcmAdmission::Accepted) {
                             const auto recording_id=recordings.recordingId(sourceId);
                             if (admission.epoch && recording_id)
@@ -642,6 +660,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.channel_rms_dbfs = std::move(rmsDbfs);
             latest_.channel_peak_dbfs = std::move(peakDbfs);
             latest_.sss_levels = std::move(sssLevels);
+            latest_.speech_gain_levels.clear();
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            if (config.normalize_speech_sources) {
+                for (const auto& [id, gain] : speechGains) {
+                    const auto& metrics = gain.metrics();
+                    latest_.speech_gain_levels.push_back({
+                        id, metrics.input_rms_dbfs,
+                        metrics.output_rms_dbfs, metrics.applied_gain_db});
+                }
+            }
+#endif
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             latest_.classification_error = classifier ? classifier->error() : "";

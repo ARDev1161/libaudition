@@ -198,7 +198,7 @@ std::shared_ptr<SceneReplay> analyzeWav(
 }
 #endif
 
-QString directionSummary(const AcousticSceneTrack& track) {
+QString directionSummary(const AcousticSceneTrack& track, bool speechEnabled) {
     const auto v = track.direction;
     const double az = std::atan2(v.y(), v.x()) * 180.0 / kPi;
     const double el = std::atan2(v.z(), std::hypot(v.x(), v.y())) * 180.0 / kPi;
@@ -208,12 +208,16 @@ QString directionSummary(const AcousticSceneTrack& track) {
           QString(" (model probability %1)").arg(
               track.classification_probability, 0, 'f', 2);
     return QString("Track #%1\nAzimuth: %2°\nElevation: %3°\nActivity: %4\n"
-                   "Classification: %5\nASR: not configured")
+                   "Classification: %5\nASR: %6")
         .arg(static_cast<qulonglong>(track.id))
         .arg(az, 0, 'f', 1)
         .arg(el, 0, 'f', 1)
         .arg(track.activity, 0, 'f', 2)
-        .arg(classification);
+        .arg(classification)
+        .arg(!track.transcript.empty()
+                 ? QString::fromStdString(track.transcript)
+                 : (speechEnabled ? QStringLiteral("Waiting for completed speech")
+                                  : QStringLiteral("Disabled")));
 }
 }  // namespace
 
@@ -699,6 +703,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechForm->addRow("Silero VAD", speechVad);
     speechForm->addRow("SenseVoice ONNX", speechAsr);
     speechForm->addRow("SenseVoice tokens", speechTokens);
+    auto* speechAutoGain = new QCheckBox{
+        "Adaptive gain for quiet separated sources (VAD + ASR)", speechSettings};
+    speechAutoGain->setObjectName("acousticSceneSpeechAutoGain");
+    speechAutoGain->setChecked(true);
+    speechAutoGain->setToolTip(
+        "Post-ODAS only: up to +24 dB, gate below -60 dBFS, "
+        "smoothed and peak-limited. Source WAV and classification stay raw.");
+    speechForm->addRow("Speech input gain", speechAutoGain);
     layout->addWidget(enableSpeech);
     layout->addWidget(speechSettings);
     speechSettings->setVisible(enableSpeech->isChecked());
@@ -876,7 +888,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 QString::number(el, 'f', 1) + "°",
                 QString::number(track.activity, 'f', 2),
                 QString::fromStdString(track.classification_label),
-                QString::fromStdString(track.transcript),
+                !track.transcript.empty()
+                    ? QString::fromStdString(track.transcript)
+                    : (entry.active && enableSpeech->isChecked()
+                        ? QStringLiteral("Waiting for speech…")
+                        : QString{}),
                 entry.wav.isEmpty() ? "No audio" :
                     QString("Play (%1 s)%2%3").arg(entry.samples / 16000)
                         .arg(entry.lostSamples ? QString(" | gap %1 samples").arg(entry.lostSamples) : QString{})
@@ -904,7 +920,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 item->setToolTip(entry.error);
             }
             if (track.id == sphere->selectedTrack() && entry.active)
-                selected->setText(directionSummary(track));
+                selected->setText(directionSummary(track, enableSpeech->isChecked()));
         }
         playerButton->setVisible(false);
         for (int r = 0; r < tracks->rowCount(); ++r) {
@@ -979,6 +995,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         angularPreset->setEnabled(true);
         nearPlane->setEnabled(true);
         enableSpeech->setEnabled(LIBAUDITION_DEMO_HAS_SHERPA);
+        speechAutoGain->setEnabled(true);
         enableTagging->setEnabled(
 #if LIBAUDITION_DEMO_HAS_SHERPA || LIBAUDITION_DEMO_HAS_YAMNET
             (taggingFamily->currentIndex() == 2 ? LIBAUDITION_DEMO_HAS_YAMNET : LIBAUDITION_DEMO_HAS_SHERPA)
@@ -1065,6 +1082,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.near_plane_sources = nearPlane->isChecked();
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
+            config.normalize_speech_sources = speechAutoGain->isChecked();
             if (config.transcribe_sources) {
                 const auto vad = std::filesystem::path{speechVad->text().toStdString()};
                 const auto model = std::filesystem::path{speechAsr->text().toStdString()};
@@ -1154,6 +1172,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             nearPlane->setEnabled(false);
             enableTagging->setEnabled(false);
             enableSpeech->setEnabled(false);
+            speechAutoGain->setEnabled(false);
             taggingFamily->setEnabled(false);
             taggingModel->setEnabled(false);
             taggingLabels->setEnabled(false);
@@ -1205,6 +1224,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(level.peak_dbfs + gainDb, 0, 'f', 1)
                     .arg(static_cast<qulonglong>(level.samples));
             }
+            QStringList gainLines;
+            for (const auto& source : snapshot.speech_gain_levels) {
+                gainLines << QString("Track #%1: %2 -> %3 dBFS RMS; gain %4 dB")
+                    .arg(static_cast<qulonglong>(source.track_id))
+                    .arg(source.input_rms_dbfs, 0, 'f', 1)
+                    .arg(source.output_rms_dbfs, 0, 'f', 1)
+                    .arg(source.gain_db, 0, 'f', 1);
+            }
             diagnostics->setText(
                 QString("Classifier: %4\nSpeech: %5\nRaw ALSA input levels: %1\n"
                         "ODAS SSL direction proposals: %2 (strongest raw score: %3) · "
@@ -1215,7 +1242,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(QString::fromStdString(snapshot.classifier_status))
                     .arg(QString::fromStdString(snapshot.speech_status)) +
                 "\nODAS SSS output (same measurement window): " +
-                (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")));
+                (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")) +
+                "\nSpeech auto gain: " +
+                (enableSpeech->isChecked()
+                    ? (speechAutoGain->isChecked()
+                        ? (gainLines.isEmpty() ? QStringLiteral("waiting for SSS")
+                                               : gainLines.join(" | "))
+                        : QStringLiteral("disabled"))
+                    : QStringLiteral("ASR disabled")));
         }
         if (!snapshot.error.empty()) {
             stopCapture();
@@ -1241,7 +1275,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         if (current.running) {
             for (const auto& track : current.tracks) {
                 if (track.id == id) {
-                    selected->setText(directionSummary(track));
+                    selected->setText(directionSummary(track, enableSpeech->isChecked()));
                     return;
                 }
             }
@@ -1249,7 +1283,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         if (*cursor > 0 && *cursor <= replay->frames.size()) {
             for (const auto& track : replay->frames[*cursor - 1].tracks) {
                 if (track.id == id) {
-                    selected->setText(directionSummary(track));
+                    selected->setText(directionSummary(track, enableSpeech->isChecked()));
                     return;
                 }
             }

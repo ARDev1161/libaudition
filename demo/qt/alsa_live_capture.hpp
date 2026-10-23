@@ -41,6 +41,7 @@ struct LiveCaptureConfig {
     std::vector<std::string> tagging_vocabulary_labels{};
     bool tagging_efficientat_model{false};
     bool transcribe_sources{false};
+    bool normalize_speech_sources{true};
     std::string speech_vad_model_path{};
     std::string speech_asr_model_path{};
     std::string speech_asr_tokens_path{};
@@ -67,6 +68,8 @@ struct LiveCaptureSnapshot {
     std::vector<double> channel_peak_dbfs{};
     struct SourceLevel { std::uint64_t track_id{0}; double rms_dbfs{0}; double peak_dbfs{0}; std::uint64_t samples{0}; };
     std::vector<SourceLevel> sss_levels{};
+    struct SpeechGainLevel { std::uint64_t track_id{0}; double input_rms_dbfs{0}; double output_rms_dbfs{0}; double gain_db{0}; };
+    std::vector<SpeechGainLevel> speech_gain_levels{};
     std::string classification_error{};
     std::string classifier_status{};
     std::string speech_status{};

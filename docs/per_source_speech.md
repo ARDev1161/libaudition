@@ -76,8 +76,19 @@ into `main` automatically.
 With `LIBAUDITION_BUILD_QT_DEMO=ON`, `LIBAUDITION_WITH_ODAS=ON`
 and `LIBAUDITION_WITH_SHERPA=ON`, the Acoustic scene now has an
 independent **Transcribe separated sources (Silero + SenseVoice)** checkbox.
-Choose existing local Silero VAD ONNX, SenseVoice ONNX and matching
-SenseVoice `tokens.txt`. The Qt demo **does not download these models**.
+Choose compatible Silero VAD ONNX, SenseVoice ONNX and matching
+SenseVoice `tokens.txt`. The Qt demo optionally downloads these assets at
+CMake configure time when `LIBAUDITION_DEMO_FETCH_SPEECH_MODELS=ON`.
+
+**Speech input gain** in the Acoustic scene (on by default) adapts weak
+ODAS-separated mono PCM *only* before source-local Silero VAD and SenseVoice.
+The gain targets -26 dBFS RMS, is capped at +24 dB, avoids boosting blocks
+below -60 dBFS RMS, ramps between frames and limits peaks to 0.89 FS.
+Raw WAV source recordings, direction estimates and classification receive
+unchanged PCM. Live diagnostics show pre/post gain RMS and the current gain
+per track. This does not improve intrinsic signal-to-noise ratio: if ambient
+noise causes false voice triggers, disable the option and compare.
+Each gain state is destroyed when its ODAS source track retires.
 
 For each ODAS SSS mono frame, the adapter enqueues bounded 16-kHz PCM
 keyed by ODAS numeric track ID. An application-owned worker executes
