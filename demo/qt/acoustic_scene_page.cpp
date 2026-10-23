@@ -1035,6 +1035,19 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         }
     };
     auto capture = std::make_shared<demo::AlsaLiveCapture>();
+    // AGC selection can be changed while recording; the producer applies
+    // the change between audio hops, preserving ODAS/ALSA and WAV lifetimes.
+    const auto updateSpeechGain = [=]() {
+        capture->setSpeechGain(speechAgc->isChecked() &&
+                                   enableSpeech->isChecked(),
+                               agcImplementation->currentData().toString().toStdString());
+    };
+    QObject::connect(speechAgc, &QCheckBox::toggled, page,
+                     [=](bool) { updateSpeechGain(); });
+    QObject::connect(agcImplementation,
+                     QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     page, [=](int) { updateSpeechGain(); });
+
     QObject::connect(liveSstDebounce, &QTimer::timeout, page, [=]() {
         if (liveRelease->value() >= liveOnset->value())
             return;
