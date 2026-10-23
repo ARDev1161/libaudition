@@ -154,6 +154,28 @@ int main() {
     catch(const std::invalid_argument&) {double_ack_rejected=true;}
     assert(double_ack_rejected);
 
+    // Safe acknowledgement ignores a delayed duplicate, but never binds
+    // a retired WAV to a reused source ID's new ASR generation.
+    assert(!records.tryAcknowledgeRetired(*expired,std::nullopt));
+    assert(!records.tryAcknowledgeRetired(999999U,123U));
+    const auto safe_old_path=root/"safe-old.wav";
+    const auto safe_new_path=root/"safe-new.wav";
+    records.begin(87U,788U,safe_old_path,16000U,origin);
+    const auto safe_old=records.retireDeferred(87U);
+    assert(safe_old && *safe_old==788U);
+    records.begin(87U,789U,safe_new_path,16000U,origin);
+    records.bindAsr(87U,990U);
+    bool wrong_generation_rejected=false;
+    try { (void)records.tryAcknowledgeRetired(*safe_old,990U); }
+    catch(const std::invalid_argument&) { wrong_generation_rejected=true; }
+    assert(wrong_generation_rejected);
+    assert(records.pendingRetirements()==1U);
+    assert(records.tryAcknowledgeRetired(*safe_old,std::nullopt));
+    assert(!records.tryAcknowledgeRetired(*safe_old,std::nullopt));
+    assert(records.active(87U));
+    records.retire(87U,990U);
+    records.completeGeneration(990U);
+
     // Invalid gap arithmetic must not create a wrapped or partial event.
     const auto overflow_path = root / "gap-overflow.wav";
     records.begin(72U, 702U, overflow_path, 16000U, origin);
