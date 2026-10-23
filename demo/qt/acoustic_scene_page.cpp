@@ -583,14 +583,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         "elevation directions before ODAS tracking and separation.");
     configForm->addRow("Optional 2D source prior", nearPlane);
     auto* quietSourceTracking = new QCheckBox{
-        "Acquire quiet ODAS sources (SST activity 0.30/0.15)", page};
+        "Acquire quiet ODAS sources (onset 0.30, release 0.25)", page};
     quietSourceTracking->setObjectName("acousticSceneQuietSourceTracking");
     quietSourceTracking->setChecked(true);
     quietSourceTracking->setToolTip(
-        "Experimental live-capture SST profile: lower active/inactive "
-        "GMM means from 0.40/0.25 to 0.30/0.15. "
-        "May generate more phantom tracks in noisy rooms. "
-        "Does not amplify microphone signals or change SSL thresholds.");
+        "Experimental live-capture SST profile: lower the onset GMM mean "
+        "from 0.40 to 0.30, keep inactive mean at 0.25, and shorten the "
+        "inactivity window from 250 to 150 hops (1.2s at 16kHz). "
+        "May still generate false tracks. Compare with the standard mode.");
     configForm->addRow("ODAS source sensitivity", quietSourceTracking);
     configRow->addLayout(configForm);
     layout->addLayout(configRow);
@@ -803,7 +803,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    sideLayout->addWidget(new QLabel{"Tracked sources", sidebar});
+    auto* sourceHeader = new QLabel{"Active tracked sources", sidebar};
+    sourceHeader->setObjectName("acousticSceneSourceHeader");
+    auto* showHistory = new QCheckBox{"Show finished sources / recordings", sidebar};
+    showHistory->setObjectName("acousticSceneShowSourceHistory");
+    showHistory->setChecked(false);
+    showHistory->setToolTip(
+        "Finished ODAS sources are retained for WAV and transcript history. "
+        "The default view shows only currently active source rows.");
+    sideLayout->addWidget(sourceHeader);
+    sideLayout->addWidget(showHistory);
     sideLayout->addWidget(tracks);
     auto* selected = new QLabel{"Click a source on the sphere to inspect it.", sidebar};
     selected->setObjectName("acousticSceneSelected");
@@ -837,6 +846,15 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
     auto lastTableUpdate = std::make_shared<qint64>(0);
     auto rowIndex = std::make_shared<std::map<std::uint64_t, int>>();
+    QObject::connect(showHistory, &QCheckBox::toggled, page, [=](bool show) {
+        for (const auto& [id, row] : *rowIndex) {
+            const auto found = history->find(id);
+            if (found != history->end())
+                tracks->setRowHidden(row, !found->second.active && !show);
+        }
+        sourceHeader->setText(show ? QStringLiteral("Tracked sources — session history")
+                                   : QStringLiteral("Active tracked sources"));
+    });
     auto* playerButton = new QPushButton{"Play", sidebar};
     playerButton->setVisible(false);
     sideLayout->addWidget(playerButton);
@@ -929,9 +947,17 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 item->setData(Qt::UserRole, QVariant::fromValue(static_cast<qulonglong>(pair.first)));
                 item->setToolTip(entry.error);
             }
+            tracks->setRowHidden(row, !entry.active && !showHistory->isChecked());
             if (track.id == sphere->selectedTrack() && entry.active)
                 selected->setText(directionSummary(track, enableSpeech->isChecked()));
         }
+        const auto activeCount = static_cast<int>(std::count_if(
+            history->begin(), history->end(),
+            [](const auto& item) { return item.second.active; }));
+        sourceHeader->setText(showHistory->isChecked()
+            ? QString("Tracked sources — %1 active, %2 historical")
+                .arg(activeCount).arg(static_cast<int>(history->size()) - activeCount)
+            : QString("Active tracked sources (%1)").arg(activeCount));
         playerButton->setVisible(false);
         for (int r = 0; r < tracks->rowCount(); ++r) {
             const auto item = tracks->item(r, 0);
@@ -1239,7 +1265,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             }
             const QString trackerSensitivity =
                 quietSourceTracking->isChecked()
-                    ? QStringLiteral("Sensitive (active=0.30, inactive=0.15)")
+                    ? QStringLiteral("Sensitive (onset=0.30, inactive=0.25, timeout=150 hops)")
                     : QStringLiteral("Standard (active=0.40, inactive=0.25)");
             QStringList gainLines;
             for (const auto& source : snapshot.speech_gain_levels) {
@@ -1362,6 +1388,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         recordingInfo->clear();
         rowIndex->clear();
         *lastTableUpdate = 0;
+        sourceHeader->setText("Active tracked sources (0)");
         selected->setText("Click a source on the sphere to inspect it.");
         play->setEnabled(false);
         status->setText("View data reset.");

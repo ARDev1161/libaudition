@@ -93,11 +93,13 @@ Each gain state is destroyed when its ODAS source track retires.
 ### ODAS track acquisition before speech inference
 
 Acoustic scene also offers **Acquire quiet ODAS sources** (enabled by
-default in the Qt demo, independent of speech gain). This configures the
-upstream ODAS **SST** active/inactive GMM means to 0.30/0.15 instead of
-the library default 0.40/0.25, as suggested in upstream ODAS tracking
-guidance. It does not alter SSL's source proposal threshold or bypass
-tracking confidence gates. With sound source localization, a candidate
+default in the Qt demo, independent of speech gain). It lowers the ODAS
+**SST** active GMM mean from 0.40 to 0.30 to help create tracks for quiet
+sounds, while leaving the inactive mean at the standard 0.25 to avoid
+making sources too sticky. It also reduces SST inactivity timeout from
+250 to 150 hops (1.2 s at 16 kHz / 128 samples). These parameters are
+experimental and require on-device acceptance. It does not alter SSL's
+source proposal threshold or bypass tracking confidence gates. With sound source localization, a candidate
 SSL proposal must exist before SST can create a persistent track; source
 audio cannot be separated or passed to VAD/ASR before this happens.
 For diagnosis, compare raw ALSA RMS, SSL proposal count/score, confirmed
@@ -109,6 +111,12 @@ The sensitivity preset is experimental: false or clustered ODAS tracks
 can increase in noise or reverberation. No improved source-acquisition
 recall/accuracy is claimed without real annotated ReSpeaker recordings.
 Disable the checkbox to restore all default ODAS tracker settings.
+The **Active tracked sources** table now hides finished source recordings
+by default, rather than presenting the complete historical list as live
+tracks. Check **Show finished sources / recordings** to inspect the
+retained WAV and transcript rows. On the 3D sphere, only the ODAS active
+SST tracks are rendered; a track that persists there in silence indicates
+a tracker-activity issue rather than historical UI retention.
 
 For each ODAS SSS mono frame, the adapter enqueues bounded 16-kHz PCM
 keyed by ODAS numeric track ID. An application-owned worker executes

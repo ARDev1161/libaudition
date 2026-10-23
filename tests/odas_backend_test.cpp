@@ -68,11 +68,12 @@ TEST(OdasOptions, QuietSourceTrackingProfileOnlyChangesSstLikelihood) {
     EXPECT_DOUBLE_EQ(baselineInactive, 0.25);
     audition::applyOdasQuietSourceTrackingProfile(options);
     EXPECT_DOUBLE_EQ(options.sst.active_gmm.front().mean, 0.3);
-    EXPECT_DOUBLE_EQ(options.sst.inactive_gmm.front().mean, 0.15);
+    EXPECT_DOUBLE_EQ(options.sst.inactive_gmm.front().mean, 0.25);
     EXPECT_DOUBLE_EQ(options.ssl.minimum_probability, baselineSsl);
     EXPECT_DOUBLE_EQ(options.sst.new_threshold, baselineNew);
     EXPECT_DOUBLE_EQ(options.sst.probability_threshold, baselineProbability);
-    EXPECT_EQ(options.sst.inactive_timeout_hops, baselineTimeout);
+    EXPECT_EQ(baselineTimeout, 250U);
+    EXPECT_EQ(options.sst.inactive_timeout_hops, 150U);
     EXPECT_NO_THROW(audition::validateOdasOptions(options));
 
     // Construct and process with the actual libodas backend on silence.
