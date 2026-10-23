@@ -71,9 +71,9 @@ TEST(SourceSpeechGain, EachTrackOwnsItsGainAndCanReset) {
 
 TEST(SourceSpeechGain, InvalidSamplesAreRejectedWithoutChangingGain) {
     demo::SourceSpeechGain gain;
-    EXPECT_THROW(gain.process(nullptr, 128U, 16000U), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(gain.process(nullptr, 128U, 16000U)), std::invalid_argument);
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    EXPECT_THROW(gain.process(&nan, 1U, 16000U), std::invalid_argument);
-    EXPECT_THROW(gain.process(&nan, 1U, 0U), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(gain.process(&nan, 1U, 16000U)), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(gain.process(&nan, 1U, 0U)), std::invalid_argument);
     EXPECT_EQ(gain.metrics().applied_gain_db, 0.0);
 }
