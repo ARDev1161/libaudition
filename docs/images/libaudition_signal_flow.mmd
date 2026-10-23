@@ -1,0 +1,84 @@
+flowchart TB
+  %% Conceptual composition, not a mandatory runtime or thread graph.
+  APP["Application: robot / smart speaker / car / Qt / CLI<br/>capture, scheduling, buffering, policy"]
+  MIC["Microphone array or WAV<br/>multichannel float32 PCM"]
+  APP --> MIC
+  MIC --> BUF["AudioBuffer / AudioView<br/>AudioFormat and Timestamp"]
+
+  subgraph SPAT["A. Acoustic localization and separation"]
+    direction TB
+    ARRAY["Channel routing and calibration<br/>gain / DC removal / fractional delay"]
+    ODAS["ODAS (optional backend)<br/>STFT → SSL → SST → SSS → iSTFT<br/>DOA, tracking and source separation"]
+    GEO["Acoustic geometry<br/>SPL / range prior; optional GTSAM fusion<br/>range and position smoothing"]
+    TRACK["SpatialTrack<br/>direction, optional range / position"]
+    SEP["TrackedAudioFrame<br/>separated mono PCM per spatial track"]
+    ARRAY --> ODAS
+    ODAS --> TRACK
+    ODAS --> SEP
+    TRACK --> GEO
+  end
+
+  subgraph PER["B. Independent analysis per acoustic source"]
+    direction TB
+    FRONT["Speech-oriented frontend<br/>resampling / noise suppression<br/>optional AEC3 with playback reference"]
+    CLF["Sound classification<br/>YAMNet / EfficientAT / sherpa-onnx / CLAP<br/>bounded source-aware classification runtime"]
+    SPEECH["Speech processing<br/>VAD → segments → ASR<br/>keyword spotting / language identification"]
+    PERSON["Speaker and voice<br/>embeddings / verification / identification<br/>diarization / WORLD features / AASIST"]
+    FEATURES["Per-source observations<br/>classification scores / transcripts<br/>speaker, voice, authenticity, embeddings"]
+    FRONT --> SPEECH
+    FRONT --> PERSON
+    CLF --> FEATURES
+    SPEECH --> FEATURES
+    PERSON --> FEATURES
+  end
+
+  subgraph ID["C. Persistent acoustic source identity"]
+    direction TB
+    RESOLVE["SpatialIdentityCoordinator<br/>source resolver / registry<br/>track handoff and fingerprints"]
+    SID["AcousticSourceId<br/>distinct from SpatialTrackId and SpeakerId"]
+    RESOLVE --> SID
+  end
+
+  subgraph TEMP["D. Activity, changes and patterns"]
+    direction TB
+    EDGE["TemporalAcousticEventDetector<br/>score hysteresis → Started / Ended"]
+    CHANGE["EMA / CUSUM / Page–Hinkley<br/>timed activity segmentation"]
+    PATTERN["Recurrence / DTW / acoustic motifs<br/>streaming template matching"]
+    ASSOC["Allen interval relations / Hungarian matching<br/>spatio-temporal and Mahalanobis gates"]
+  end
+
+  ASSEM["AcousticEventAssembler<br/>application controls begin / update / finish"]
+  OUT["Acoustic outputs<br/>AcousticEvent / tracks / source identities<br/>classifications / transcripts / temporal evidence"]
+  EXTRA["Consumer application<br/>ROS 2 / audio_nav2 / UI / recording / decisions<br/>camera, radar, TF and cross-modal fusion are outside libaudition"]
+
+  BUF --> ARRAY
+  BUF -.->|"mono or non-spatial use"| FRONT
+  SEP --> FRONT
+  SEP --> CLF
+  GEO --> RESOLVE
+  TRACK --> RESOLVE
+  SID --> EDGE
+  FEATURES --> EDGE
+  FEATURES --> CHANGE
+  FEATURES --> PATTERN
+  EDGE --> ASSOC
+  EDGE --> ASSEM
+  SID --> ASSEM
+  TRACK --> ASSEM
+  FEATURES --> ASSEM
+  ASSOC -.-> ASSEM
+  ASSEM --> OUT
+  OUT --> EXTRA
+  APP -.->|"independent output capability"| TTS["Speech synthesis (TTS)<br/>optional sherpa-onnx backend"]
+  TTS -.->|"playback reference"| FRONT
+
+  classDef input fill:#e9f2fe,stroke:#3776b7,color:#122b49;
+  classDef dsp fill:#e6f5ee,stroke:#278259,color:#113f32;
+  classDef ml fill:#f2eafe,stroke:#8662bb,color:#332055;
+  classDef state fill:#fff4df,stroke:#c6861d,color:#533917;
+  classDef out fill:#e5f2f5,stroke:#3d8391,color:#153c46;
+  class APP,MIC,BUF input;
+  class ARRAY,ODAS,GEO,TRACK,SEP,FRONT dsp;
+  class CLF,SPEECH,PERSON,TTS ml;
+  class FEATURES,RESOLVE,SID,EDGE,CHANGE,PATTERN,ASSOC,ASSEM state;
+  class OUT,EXTRA out;

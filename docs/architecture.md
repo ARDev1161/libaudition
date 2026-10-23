@@ -1,5 +1,17 @@
 # Architecture
 
+## Functional overview
+
+Start with the [functional architecture and algorithm map](functional_architecture.md).
+It contains two **rendered English-language Mermaid diagrams**: a data-flow view
+(capture, spatial separation, per-source analysis, identity and acoustic events)
+and a capability inventory (DSP, spatial algorithms, classification, speech,
+speaker/voice, identity, temporal analysis and pipeline infrastructure).
+
+The interface/dependency diagram below is complementary: it describes **software
+boundaries and backend replaceability**, not a mandatory audio processing order.
+
+## Dependency boundaries
 The dependency rule is: **core owns abstractions, backends implement them,
 pipelines depend on abstractions, applications compose blocks**.
 

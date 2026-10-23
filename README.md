@@ -19,8 +19,10 @@ real-time policy, threading, recording policy, robot behavior, and middleware.
 - Backend implementations are replaceable through narrow interfaces.
 - Public API is C++17.
 
-See [`docs/specification.md`](docs/specification.md) and
-[`docs/architecture.md`](docs/architecture.md).
+Start with the [functional architecture and algorithm map](docs/functional_architecture.md)
+for two rendered diagrams of signal flow and available mechanisms. See also
+[`docs/specification.md`](docs/specification.md) and
+[`docs/architecture.md`](docs/architecture.md) for the formal API and dependency boundaries.
 
 ## Development roadmap
 

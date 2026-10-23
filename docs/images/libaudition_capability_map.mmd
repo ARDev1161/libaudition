@@ -1,0 +1,52 @@
+flowchart TB
+  LIB["libaudition: composable C++17 acoustic toolkit"]
+
+  subgraph FOUND["FOUNDATION: audio formats and signal processing"]
+    direction LR
+    A["PCM / time / geometry<br/>AudioBuffer, AudioView, ClockIdentity<br/>Probability vs Score, covariance"]
+    B["DSP / calibration<br/>RMS, peak, clipping, quality<br/>channel routing, mixdown, fractional delay<br/>SPL and sound-level range priors"]
+    C["Recording and replay<br/>WAV read / write, recording timeline<br/>per-source WAV recording"]
+  end
+
+  subgraph ENGINE["ACOUSTIC PERCEPTION: algorithms and optional backends"]
+    direction LR
+    D["Spatial perception<br/>ODAS: STFT / SSL / SST / SSS / iSTFT<br/>GTSAM fusion, range prior, smoothing"]
+    E["Classification and embeddings<br/>YAMNet, EfficientAT, sherpa tagger<br/>CLAP open-vocabulary labels / audio embeddings<br/>progressive per-source classification"]
+    F["Speech, speaker and voice<br/>VAD, offline / streaming ASR, KWS, language ID<br/>speaker embeddings / verification / ID / diarization<br/>WORLD analysis, AASIST authenticity, TTS"]
+  end
+
+  subgraph REASON["IDENTITY, MEMORY AND TEMPORAL ANALYSIS"]
+    direction LR
+    G["Identity and acoustic memory<br/>track ID → AcousticSourceId<br/>source / speaker / prototype registries<br/>cosine similarity prototype matching"]
+    H["Changes and event boundaries<br/>EMA, CUSUM, Page–Hinkley<br/>timed activity segmentation / score hysteresis"]
+    I["Patterns and association<br/>dynamic time warping, recurrence, motifs<br/>streaming template recognition<br/>Allen intervals / Hungarian / Mahalanobis"]
+  end
+
+  subgraph SYS["COMPOSITION, BOUNDED EXECUTION AND EXTENSIBILITY"]
+    direction LR
+    J["AcousticEventAssembler<br/>explicit begin / update / finish / cancel<br/>source identity and timestamp validation"]
+    K["Runtime lifecycle and isolation<br/>bounded queues, cancellation, per-source state<br/>explicit forget / reset / retirement"]
+    L["Replaceable algorithms<br/>backend-neutral interfaces / registries<br/>optional CMake adapters, external model weights"]
+  end
+
+  HOST["Outside libaudition: device capture and scheduling, ROS 2, camera / radar / TF,<br/>navigation, application policy and cross-modal sensor fusion"]
+
+  LIB --> FOUND
+  LIB --> ENGINE
+  LIB --> REASON
+  LIB --> SYS
+  FOUND --> ENGINE
+  ENGINE --> REASON
+  REASON --> SYS
+  SYS -.-> HOST
+
+  classDef h fill:#e9f2fe,stroke:#396da2,color:#153550;
+  classDef b fill:#ecf7f0,stroke:#4e8f70,color:#1a4834;
+  classDef m fill:#f0edfa,stroke:#8071aa,color:#3b3053;
+  classDef r fill:#fff2df,stroke:#c28b37,color:#553917;
+  classDef s fill:#e7f3f5,stroke:#4b8390,color:#234550;
+  class LIB,HOST h;
+  class A,B,C b;
+  class D,E,F m;
+  class G,H,I r;
+  class J,K,L s;
