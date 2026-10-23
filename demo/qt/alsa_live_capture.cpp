@@ -477,23 +477,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     requested = requested_sst_;
                 }
                 if (requested.revision != appliedSstRevision) {
-                    auto replacementOptions = options;
-                    replacementOptions.sst.active_gmm.front().mean = requested.onset;
-                    replacementOptions.sst.inactive_gmm.front().mean = requested.release;
-                    replacementOptions.sst.inactive_timeout_hops =
-                        requested.timeout_hops;
-                    // Prepare a new engine before touching the running one.
-                    // ALSA stays open; only ODAS track identities are reset.
+                    // Apply on the capture owner thread between ODAS hops.
+                    // Preserve tracker state, source identities and WAV/ASR epochs.
                     try {
-                        audition::OdasSpatialEngine replacement{replacementOptions};
-                        drainClassification();
-                        source_lifecycle.clear([&](std::uint64_t id) {
-                            retireSource(id);
-                        });
-                        engine = std::move(replacement);
-                        options = std::move(replacementOptions);
+                        engine.setSstTuning(requested.onset, requested.release,
+                                            requested.timeout_hops);
                         appliedSstRevision = requested.revision;
-                        sssMeters.clear();
                     } catch (const std::exception& e) {
                         std::fprintf(stderr, "[libaudition] SST tuning rejected: %s\n",
                                      e.what());
