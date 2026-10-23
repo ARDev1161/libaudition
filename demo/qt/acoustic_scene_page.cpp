@@ -42,6 +42,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QSpinBox>
+#include <QSlider>
 #include <QDoubleSpinBox>
 #include <QStringList>
 #include <QTableWidget>
@@ -805,6 +806,60 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
     sideLayout->addWidget(new QLabel{"Tracked sources", sidebar});
     sideLayout->addWidget(tracks);
+    // Native ODAS SST controls. A short debounce avoids rebuilding ODAS for
+    // every pixel while dragging; ALSA capture remains open.
+    auto* liveSstControls = new QWidget{sidebar};
+    auto* liveSstForm = new QFormLayout{liveSstControls};
+    auto* liveOnset = new QSlider{Qt::Horizontal, liveSstControls};
+    liveOnset->setObjectName("acousticSceneLiveSstOnset");
+    liveOnset->setRange(5, 95);
+    liveOnset->setValue(34);
+    auto* liveRelease = new QSlider{Qt::Horizontal, liveSstControls};
+    liveRelease->setObjectName("acousticSceneLiveSstRelease");
+    liveRelease->setRange(5, 94);
+    liveRelease->setValue(25);
+    auto* liveTimeout = new QSlider{Qt::Horizontal, liveSstControls};
+    liveTimeout->setObjectName("acousticSceneLiveSstTimeout");
+    liveTimeout->setRange(25, 500);
+    liveTimeout->setValue(125);
+    auto* onsetValue = new QLabel{"0.34", liveSstControls};
+    auto* releaseValue = new QLabel{"0.25", liveSstControls};
+    auto* timeoutValue = new QLabel{"125 hops", liveSstControls};
+    const auto addLiveSlider = [&](const QString& title, QSlider* slider,
+                                   QLabel* value) {
+        auto* container = new QWidget{liveSstControls};
+        auto* line = new QHBoxLayout{container};
+        line->setContentsMargins(0, 0, 0, 0);
+        line->addWidget(slider, 1);
+        line->addWidget(value);
+        liveSstForm->addRow(title, container);
+    };
+    addLiveSlider("Acquire GMM", liveOnset, onsetValue);
+    addLiveSlider("Inactive GMM", liveRelease, releaseValue);
+    addLiveSlider("Inactive timeout", liveTimeout, timeoutValue);
+    sideLayout->addWidget(liveSstControls);
+    auto* liveSstDebounce = new QTimer{page};
+    liveSstDebounce->setSingleShot(true);
+    liveSstDebounce->setInterval(250);
+    const auto scheduleLiveSst = [=]() {
+        onsetValue->setText(QString::number(liveOnset->value() / 100.0, 'f', 2));
+        releaseValue->setText(QString::number(liveRelease->value() / 100.0, 'f', 2));
+        timeoutValue->setText(QString("%1 hops").arg(liveTimeout->value()));
+        if (liveRelease->value() >= liveOnset->value()) {
+            liveSstDebounce->stop();
+            return;
+        }
+        liveSstDebounce->start();
+    };
+    QObject::connect(liveOnset, &QSlider::valueChanged, page, [=](int) {
+        scheduleLiveSst();
+    });
+    QObject::connect(liveRelease, &QSlider::valueChanged, page, [=](int) {
+        scheduleLiveSst();
+    });
+    QObject::connect(liveTimeout, &QSlider::valueChanged, page, [=](int) {
+        scheduleLiveSst();
+    });
     auto* selected = new QLabel{"Click a source on the sphere to inspect it.", sidebar};
     selected->setObjectName("acousticSceneSelected");
     selected->setWordWrap(true);
