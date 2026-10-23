@@ -1034,3 +1034,14 @@ add_test(NAME temporal_motif_allocation_probe
 set_tests_properties(temporal_motif_allocation_probe PROPERTIES
     LABELS "temporal;benchmark;allocation" TIMEOUT 90
     PASS_REGULAR_EXPRESSION "temporal-motif-allocations")
+
+# Standalone deterministic ODAS per-source acoustic lifecycle test (no hardware).
+add_executable(per_source_acoustic_presence_test
+    per_source_acoustic_presence_test.cpp)
+target_compile_features(per_source_acoustic_presence_test PRIVATE cxx_std_17)
+target_include_directories(per_source_acoustic_presence_test PRIVATE
+    "${PROJECT_SOURCE_DIR}/demo/qt")
+add_test(NAME per_source_acoustic_presence_test
+    COMMAND per_source_acoustic_presence_test)
+set_tests_properties(per_source_acoustic_presence_test PROPERTIES
+    LABELS "audio;odas;lifecycle" TIMEOUT 30)
