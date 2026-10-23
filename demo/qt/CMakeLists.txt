@@ -10,7 +10,7 @@ add_executable(libaudition_qt_demo
     alsa_live_capture.cpp
     alsa_live_capture.hpp
     source_speech_gain.hpp
-    source_activity_gate.hpp
+    adaptive_array_presence_gate.hpp
     live_audio_tagging_worker.cpp
     live_audio_tagging_worker.hpp
     source_track_lifecycle.hpp

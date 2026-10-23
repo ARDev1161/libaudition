@@ -111,18 +111,27 @@ The sensitivity preset is experimental: false or clustered ODAS tracks
 can increase in noise or reverberation. No improved source-acquisition
 recall/accuracy is claimed without real annotated ReSpeaker recordings.
 Disable the checkbox to restore all default ODAS tracker settings.
-The **Tracked sources** table continues showing the full session/recording
-history without filtering. The 3D sphere now distinguishes a persistent
-SST track ID from an *audible* tracked sound: live tracks appear above
-0.03 SST activity, remain visible while >= 0.01, and disappear after
-800 ms of continuously lower activity. The filter applies ONLY to live
-sphere markers and their trajectories; it does not retire ODAS IDs, stop
-recording, skip audio to ASR, or change historical table rows.
-Offline WAV replay and the synthetic example bypass this visualization
-filter. The original ODAS SST still independently retires IDs based on
-its likelihood and timeout logic. Measure real ReSpeaker activity
-distributions to calibrate the visual gate thresholds; they are initial
-heuristic values, not validated acoustic activity thresholds.
+The **Tracked sources** table and 3D sphere retain their existing behavior,
+without activity-based visual filtering. The experimental **Adaptive
+microphone noise-floor gate** addresses *real* stuck SST tracker IDs when
+ODAS treats the ambient room noise as a persistent active source. It
+calibrates the mapped raw microphone channels for the FIRST SECOND of
+capture (stay quiet), estimates the median per-channel RMS noise floor,
+and opens when its level rises above the ambient floor by the configured
+4 dB (adjustable 1-20 dB). Onset and release have 2 dB hysteresis. If
+no acoustic activity is measured for 1.5 s, the application resets ODAS
+SST, retires existing source recordings and speech generations through
+the normal lifecycle, and skips further ODAS processing until a new
+sound is detected. **The input microphone data are never amplified or
+gated in place.** Raw capture-level diagnostics still run. ASR gain is
+separate and runs after track creation. The gate also responds to
+non-speech sounds (not a VAD), and cannot detect speech indistinguishable
+from the actual noise floor. It is experimental and should be disabled
+for calibrated benchmark runs until A/B tested on recorded ReSpeaker
+captures. No claim of measured improvement in recall/false positives.
+Start with a silent room for one second and compare A/B; inspect the
+live per-channel RMS, learned noise floor and reported SNR. A permanently
+loud fan or rapidly changing room noise can defeat this simple estimator.
 
 For each ODAS SSS mono frame, the adapter enqueues bounded 16-kHz PCM
 keyed by ODAS numeric track ID. An application-owned worker executes

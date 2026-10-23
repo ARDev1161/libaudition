@@ -3,6 +3,7 @@
 #include "source_track_lifecycle.hpp"
 #include "speech_epoch_recording_cleanup.hpp"
 #include "source_speech_gain.hpp"
+#include "adaptive_array_presence_gate.hpp"
 #include <audition/recording/source_wav_recorder.hpp>
 #include <audition/recording/source_recording_session.hpp>
 #include <audition/dsp/streaming_level_meter.hpp>
@@ -437,6 +438,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::uint64_t hops = 0;
         std::uint64_t xruns = 0;
         std::size_t filled = 0;
+        AdaptiveArrayPresenceGate arrayPresenceGate{
+            config.sample_rate_hz, config.array_gate_snr_db};
+        AdaptiveArrayPresenceGate::Status arrayStatus{};
+        std::uint64_t arrayResetCount = 0U;
         std::vector<audition::dsp::StreamingLevelMeter> channelMeters(channelCount);
         std::map<std::uint64_t, audition::dsp::StreamingLevelMeter> sssMeters;
 
@@ -466,6 +471,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 sssMeters.clear();
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 engine.reset(); // discontinuous samples must not share ODAS state
+                arrayPresenceGate.reset();
                 drainClassification();
                 source_lifecycle.clear([&](std::uint64_t id) {
                     retireSource(id);
@@ -507,7 +513,22 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 {config.sample_rate_hz, config.channel_count,
                  audition::AudioLayout::Interleaved},
                 timestamp, hops};
-            const auto resultFrame = engine.process(block.view());
+            audition::SpatialProcessingResult resultFrame{};
+            if (config.adaptive_array_gate) {
+                arrayStatus = arrayPresenceGate.update(
+                    block.samples().data(), block.frameCount(),
+                    channelCount, config.input_channels);
+            }
+            if (!config.adaptive_array_gate || arrayStatus.process_audio) {
+                resultFrame = engine.process(block.view());
+            } else if (arrayStatus.became_inactive) {
+                // Do not let an SST slot stuck at activity=1.0 occupy the
+                // entire tracker through prolonged, measured ambient noise.
+                // The ordinary empty-present lifecycle below retires WAV/
+                // speech/classification generations before any ID reuse.
+                engine.reset();
+                ++arrayResetCount;
+            }
             ++hops;
             { // Recording is independent of classifier and ASR toggles.
                 std::set<std::uint64_t> present;
@@ -675,6 +696,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 }
             }
 #endif
+            if (config.adaptive_array_gate) {
+                const auto phase = arrayStatus.calibrating ? "calibrating (stay quiet)"
+                    : (arrayStatus.process_audio ? "sound present" : "ambient only");
+                latest_.array_gate_status = std::string{phase} +
+                    " | mapped mic RMS=" + std::to_string(arrayStatus.level_dbfs) +
+                    " dBFS | learned floor=" + std::to_string(arrayStatus.noise_dbfs) +
+                    " dBFS | SNR=" + std::to_string(arrayStatus.above_noise_db) +
+                    " dB | ODAS resets=" + std::to_string(arrayResetCount);
+            } else {
+                latest_.array_gate_status = "disabled";
+            }
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             latest_.classification_error = classifier ? classifier->error() : "";

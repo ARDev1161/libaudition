@@ -2,7 +2,6 @@
 #include "alsa_live_capture.hpp"
 #include "odas_respeaker_profile.hpp"
 #include "acoustic_sphere_widget.hpp"
-#include "source_activity_gate.hpp"
 #include "wav_io.hpp"
 #include "playback_normalizer.hpp"
 #include "recording_timeline_view.hpp"
@@ -43,6 +42,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QStringList>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -54,8 +54,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <chrono>
-#include <set>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -590,10 +588,35 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     quietSourceTracking->setObjectName("acousticSceneQuietSourceTracking");
     quietSourceTracking->setChecked(true);
     quietSourceTracking->setToolTip(
-        "Experimental live-capture SST profile: lower onset from 0.40 to 0.30, "
-        "retain inactive mean at 0.25, and reduce the internal inactivity "
-        "window from 250 to 150 hops. May still generate phantom tracks. "
-        "Does not change SSL or microphone PCM.");
+        "Experimental SST source-acquisition profile; reduces the active "
+        "GMM mean from 0.40 to 0.30 and inactive timeout to 150 hops.");
+    configForm->addRow("ODAS SST sensitivity", quietSourceTracking);
+    auto* arrayGate = new QCheckBox{
+        "Adaptive microphone noise-floor gate (experimental)", page};
+    arrayGate->setObjectName("acousticSceneArrayPresenceGate");
+    arrayGate->setChecked(true);
+    arrayGate->setToolTip(
+        "Calibrate in a quiet room for the FIRST SECOND after starting. "
+        "Pre-ODAS gate uses mapped raw microphone channels (not ch0/ch5), "
+        "releases stale ODAS tracks after 1.5 s of near-floor sound, "
+        "and automatically reopens above the noise floor.");
+    auto* arrayMargin = new QDoubleSpinBox{page};
+    arrayMargin->setObjectName("acousticSceneArrayGateSnr");
+    arrayMargin->setRange(1.0, 20.0);
+    arrayMargin->setValue(4.0);
+    arrayMargin->setSingleStep(1.0);
+    arrayMargin->setSuffix(" dB above ambient");
+    configForm->addRow("Adaptive presence", arrayGate);
+    configForm->addRow("Presence onset margin", arrayMargin);
+    auto* quietSourceTracking = new QCheckBox{
+        "Acquire quiet ODAS sources (SST activity 0.30/0.15)", page};
+    quietSourceTracking->setObjectName("acousticSceneQuietSourceTracking");
+    quietSourceTracking->setChecked(true);
+    quietSourceTracking->setToolTip(
+        "Experimental live-capture SST profile: lower active/inactive "
+        "GMM means from 0.40/0.25 to 0.30/0.15. "
+        "May generate more phantom tracks in noisy rooms. "
+        "Does not amplify microphone signals or change SSL thresholds.");
     configForm->addRow("ODAS source sensitivity", quietSourceTracking);
     configRow->addLayout(configForm);
     layout->addLayout(configRow);
@@ -856,26 +879,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             iter->second.wav, iter->second.samples);
     });
 
-    auto sourceActivityGate = std::make_shared<demo::SourceActivityGate>();
-    auto display = [=](const std::vector<AcousticSceneTrack>& values,
-                       bool live = false) {
-        if (live) {
-            std::vector<AcousticSceneTrack> audible;
-            audible.reserve(values.size());
-            std::set<std::uint64_t> present;
-            const auto now = std::chrono::steady_clock::now().time_since_epoch();
-            const auto nowMs = std::chrono::duration_cast<
-                std::chrono::milliseconds>(now).count();
-            for (const auto& item : values) {
-                present.insert(item.id);
-                if (sourceActivityGate->visible(item.id, item.activity, nowMs))
-                    audible.push_back(item);
-            }
-            sourceActivityGate->retainOnly(present);
-            sphere->setTracks(audible);
-        } else {
-            sphere->setTracks(values);
-        }
+    auto display = [=](const std::vector<AcousticSceneTrack>& values) {
+        sphere->setTracks(values);
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
         if (*lastTableUpdate != 0 && nowMs - *lastTableUpdate < 500)
             return; // At most 2 full table rebuilds/sec, not 20.
@@ -994,7 +999,6 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     const auto stopCapture = [=]() {
         liveTimer->stop();
         capture->stop(); // joins safely before the widget can be destroyed
-        sourceActivityGate->reset();
         // The recorder is closed when capture exits. Keep its history visible
         // and mark all retained generations as inactive for the stopped session.
         if (!recordingInfo->empty()) {
@@ -1026,6 +1030,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         frame->setEnabled(true);
         angularPreset->setEnabled(true);
         nearPlane->setEnabled(true);
+        quietSourceTracking->setEnabled(true);
+        arrayGate->setEnabled(true);
+        arrayMargin->setEnabled(true);
         quietSourceTracking->setEnabled(true);
         enableSpeech->setEnabled(LIBAUDITION_DEMO_HAS_SHERPA);
         speechAutoGain->setEnabled(true);
@@ -1114,6 +1121,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.respeaker_angular_profile = angularPreset->isChecked();
             config.near_plane_sources = nearPlane->isChecked();
             config.quiet_source_tracking = quietSourceTracking->isChecked();
+            config.adaptive_array_gate = arrayGate->isChecked();
+            config.array_gate_snr_db = arrayMargin->value();
+            config.quiet_source_tracking = quietSourceTracking->isChecked();
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
             config.normalize_speech_sources = speechAutoGain->isChecked();
@@ -1184,7 +1194,6 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             *cursor = 0;
             replay->frames.clear();
             sphere->clearTracks();
-            sourceActivityGate->reset();
             history->clear();
             recordingInfo->clear();
             rowIndex->clear();
@@ -1205,6 +1214,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             frame->setEnabled(false);
             angularPreset->setEnabled(false);
             nearPlane->setEnabled(false);
+            quietSourceTracking->setEnabled(false);
+            arrayGate->setEnabled(false);
+            arrayMargin->setEnabled(false);
             quietSourceTracking->setEnabled(false);
             enableTagging->setEnabled(false);
             enableSpeech->setEnabled(false);
@@ -1230,7 +1242,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             *seenGeneration = snapshot.generation;
             recordingInfo->clear();
             for (const auto& r : snapshot.recordings) (*recordingInfo)[r.id] = r;
-            display(snapshot.tracks, true);
+            display(snapshot.tracks);
             sphere->setPotentials(snapshot.potentials);
             if (!snapshot.classification_error.empty()) {
                 deviceStatus->setText(
@@ -1262,7 +1274,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             }
             const QString trackerSensitivity =
                 quietSourceTracking->isChecked()
-                    ? QStringLiteral("Sensitive (onset=0.30, inactive=0.25, timeout=150 hops)")
+                    ? QStringLiteral("Sensitive (active=0.30, inactive=0.15)")
                     : QStringLiteral("Standard (active=0.40, inactive=0.25)");
             QStringList gainLines;
             for (const auto& source : snapshot.speech_gain_levels) {
@@ -1284,6 +1296,12 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 "\nODAS SSS output (same measurement window): " +
                 (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")) +
                 "\nODAS SST profile: " + trackerSensitivity +
+                "\nODAS source profile: " +
+                (quietSourceTracking->isChecked()
+                    ? QStringLiteral("Sensitive onset 0.30, inactive 0.25, N=150")
+                    : QStringLiteral("Default onset 0.40, inactive 0.25, N=250")) +
+                "\nAdaptive array gate: " +
+                QString::fromStdString(snapshot.array_gate_status) +
                 "\nSpeech auto gain: " +
                 (enableSpeech->isChecked()
                     ? (speechAutoGain->isChecked()

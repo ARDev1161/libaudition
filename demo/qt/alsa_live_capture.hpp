@@ -33,6 +33,8 @@ struct LiveCaptureConfig {
     bool respeaker_angular_profile{false};
     bool near_plane_sources{false};
     bool quiet_source_tracking{false};
+    bool adaptive_array_gate{true};
+    double array_gate_snr_db{4.0};
     bool classify_sources{false};
     bool tagging_ced_model{false};
     bool tagging_yamnet_model{false};
@@ -71,6 +73,7 @@ struct LiveCaptureSnapshot {
     std::vector<SourceLevel> sss_levels{};
     struct SpeechGainLevel { std::uint64_t track_id{0}; double input_rms_dbfs{0}; double output_rms_dbfs{0}; double gain_db{0}; };
     std::vector<SpeechGainLevel> speech_gain_levels{};
+    std::string array_gate_status{"disabled"};
     std::string classification_error{};
     std::string classifier_status{};
     std::string speech_status{};
