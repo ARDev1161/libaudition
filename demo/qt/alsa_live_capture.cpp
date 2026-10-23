@@ -9,6 +9,7 @@
 #include <audition/audio/recording_timeline_json.hpp>
 #include <filesystem>
 #include <chrono>
+#include <cstdio>
 #include "odas_respeaker_profile.hpp"
 #if LIBAUDITION_DEMO_HAS_SHERPA
 #include <audition/backends/sherpa/vad.hpp>
@@ -203,6 +204,10 @@ void AlsaLiveCapture::start(LiveCaptureConfig config) {
         std::lock_guard<std::mutex> lock{mutex_};
         latest_ = {};
         latest_.running = true;
+        requested_sst_.revision = 0;
+        requested_sst_.onset = config.sst_onset;
+        requested_sst_.release = config.sst_release;
+        requested_sst_.timeout_hops = config.sst_inactive_hops;
     }
     stop_requested_.store(false);
     try {
@@ -214,6 +219,19 @@ void AlsaLiveCapture::start(LiveCaptureConfig config) {
         latest_.running = false;
         throw;
     }
+}
+
+void AlsaLiveCapture::setSstTuning(
+    double onset, double release, std::uint32_t timeout_hops) {
+    if (!std::isfinite(onset) || !std::isfinite(release) ||
+        onset <= 0.0 || onset >= 1.0 || release <= 0.0 ||
+        release >= onset || timeout_hops == 0U)
+        throw std::invalid_argument("Invalid live SST tuning");
+    std::lock_guard<std::mutex> lock{mutex_};
+    requested_sst_.onset = onset;
+    requested_sst_.release = release;
+    requested_sst_.timeout_hops = timeout_hops;
+    ++requested_sst_.revision;
 }
 
 void AlsaLiveCapture::stop() {
@@ -267,6 +285,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         // the extra DSP cost when no classifier model is configured.
         options.sss.enabled = true; // source WAV recording is available independently
         audition::OdasSpatialEngine engine{options};
+        std::uint64_t appliedSstRevision = 0;
         std::unique_ptr<LiveAudioTaggingWorker> classifier;
         if (config.classify_sources) {
             classifier = std::make_unique<LiveAudioTaggingWorker>(
@@ -451,6 +470,37 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 std::round(static_cast<double>(config.sample_rate_hz) /
                            (20.0 * static_cast<double>(config.hop_size)))));
         while (!stop_requested_.load()) {
+            if (config.tune_sst) {
+                SstTuningRequest requested;
+                {
+                    std::lock_guard<std::mutex> lock{mutex_};
+                    requested = requested_sst_;
+                }
+                if (requested.revision != appliedSstRevision) {
+                    auto replacementOptions = options;
+                    replacementOptions.sst.active_gmm.front().mean = requested.onset;
+                    replacementOptions.sst.inactive_gmm.front().mean = requested.release;
+                    replacementOptions.sst.inactive_timeout_hops =
+                        requested.timeout_hops;
+                    // Prepare a new engine before touching the running one.
+                    // ALSA stays open; only ODAS track identities are reset.
+                    try {
+                        audition::OdasSpatialEngine replacement{replacementOptions};
+                        drainClassification();
+                        source_lifecycle.clear([&](std::uint64_t id) {
+                            retireSource(id);
+                        });
+                        engine = std::move(replacement);
+                        options = std::move(replacementOptions);
+                        appliedSstRevision = requested.revision;
+                        sssMeters.clear();
+                    } catch (const std::exception& e) {
+                        std::fprintf(stderr, "[libaudition] SST tuning rejected: %s\\n",
+                                     e.what());
+                        appliedSstRevision = requested.revision;
+                    }
+                }
+            }
             // readi() can return a short interleaved frame count.
             const auto result = snd_pcm_readi(
                 pcm.get(), native.data() + filled * channelCount,
