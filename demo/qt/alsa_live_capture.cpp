@@ -235,8 +235,8 @@ LiveCaptureSnapshot AlsaLiveCapture::snapshot() const {
 }
 
 void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
-    std::string failureStage{"initialization"};
 #if LIBAUDITION_DEMO_HAS_ALSA
+    std::string failureStage{"initialization"};
     try {
         audition::OdasOptions options{};
         options.sample_rate_hz = config.sample_rate_hz;
