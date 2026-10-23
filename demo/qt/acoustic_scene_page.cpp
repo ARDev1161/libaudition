@@ -797,13 +797,26 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     split->addWidget(sphere);
     auto* sidebar = new QWidget{split};
     auto* sideLayout = new QVBoxLayout{sidebar};
-    auto* tracks = new QTableWidget{0, 7, sidebar};
+    auto* tracks = new QTableWidget{0, 8, sidebar};
     tracks->setObjectName("acousticSceneTracks");
     tracks->setHorizontalHeaderLabels({
-        "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript", "Recording"});
+        "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript", "AGC gain", "Recording"});
     tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    auto* speechAgc = new QCheckBox{"Adaptive speech gain (VAD / ASR only)", sidebar};
+    speechAgc->setObjectName("acousticSceneSpeechAgc");
+    speechAgc->setChecked(false);
+    auto* agcImplementation = new QComboBox{sidebar};
+    agcImplementation->setObjectName("acousticSceneSpeechAgcImplementation");
+    agcImplementation->addItem("RMS AGC", QStringLiteral("rms"));
+    agcImplementation->setEnabled(false);
+    QObject::connect(speechAgc, &QCheckBox::toggled,
+                     agcImplementation, &QWidget::setEnabled);
+    auto* agcRow = new QHBoxLayout;
+    agcRow->addWidget(speechAgc);
+    agcRow->addWidget(agcImplementation);
+    sideLayout->addLayout(agcRow);
     sideLayout->addWidget(new QLabel{"Tracked sources", sidebar});
     sideLayout->addWidget(tracks);
     // Native ODAS SST controls. A short debounce avoids rebuilding ODAS for
@@ -860,6 +873,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     QObject::connect(liveTimeout, &QSlider::valueChanged, page, [=](int) {
         scheduleLiveSst();
     });
+    auto gainByTrack = std::make_shared<std::map<std::uint64_t, double>>();
     auto* selected = new QLabel{"Click a source on the sphere to inspect it.", sidebar};
     selected->setObjectName("acousticSceneSelected");
     selected->setWordWrap(true);
@@ -954,6 +968,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 QString::number(track.activity, 'f', 2),
                 QString::fromStdString(track.classification_label),
                 QString::fromStdString(track.transcript),
+                (!entry.active || !speechAgc->isChecked()) ? QStringLiteral("—") :
+                    (gainByTrack->count(track.id)
+                        ? QString("%1 dB").arg(gainByTrack->at(track.id), 0, 'f', 1)
+                        : QStringLiteral("—")),
                 entry.wav.isEmpty() ? "No audio" :
                     QString("Play (%1 s)%2%3").arg(entry.samples / 16000)
                         .arg(entry.lostSamples ? QString(" | gap %1 samples").arg(entry.lostSamples) : QString{})
@@ -990,13 +1008,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const auto id = item->data(Qt::UserRole).toULongLong();
             const auto found = history->find(id);
             if (found == history->end() || found->second.wav.isEmpty()) continue;
-            if (auto* existing = qobject_cast<QPushButton*>(tracks->cellWidget(r, 6))) {
+            if (auto* existing = qobject_cast<QPushButton*>(tracks->cellWidget(r, 7))) {
                 const auto boundId = existing->property("recordingId").toULongLong();
                 if (boundId == id) {
                     existing->setStyleSheet(found->second.active ? QString{} : QStringLiteral("color: gray;"));
                     continue;
                 }
-                tracks->removeCellWidget(r, 6);
+                tracks->removeCellWidget(r, 7);
                 existing->deleteLater();
             }
             auto* playTrack = new QPushButton{"Play", tracks};
@@ -1013,7 +1031,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     }
                 }
             });
-            tracks->setCellWidget(r, 6, playTrack);
+            tracks->setCellWidget(r, 7, playTrack);
         }
     };
     auto capture = std::make_shared<demo::AlsaLiveCapture>();
@@ -1178,6 +1196,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.sst_inactive_hops = static_cast<std::uint32_t>(sstTimeout->value());
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
+            config.speech_agc_enabled = speechAgc->isChecked() && config.transcribe_sources;
+            config.speech_agc_implementation =
+                agcImplementation->currentData().toString().toStdString();
             if (config.transcribe_sources) {
                 const auto vad = std::filesystem::path{speechVad->text().toStdString()};
                 const auto model = std::filesystem::path{speechAsr->text().toStdString()};
@@ -1292,6 +1313,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             *seenGeneration = snapshot.generation;
             recordingInfo->clear();
             for (const auto& r : snapshot.recordings) (*recordingInfo)[r.id] = r;
+            gainByTrack->clear();
+            for (const auto& level : snapshot.speech_gain_levels)
+                (*gainByTrack)[level.track_id] = level.gain_db;
             display(snapshot.tracks);
             sphere->setPotentials(snapshot.potentials);
             if (!snapshot.classification_error.empty()) {
