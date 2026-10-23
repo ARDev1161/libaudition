@@ -789,10 +789,6 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 if (processor)
                     latest_.speech_gain_levels.push_back({id, processor->gainDb()});
 #endif
-            if (recoverableErrors != 0U) {
-                latest_.speech_status += " | recoverable errors=" +
-                    std::to_string(recoverableErrors) + " | last: " + lastRecoverableError;
-            }
             latest_.processed_hops = hops;
             latest_.recoveries = xruns;
             latest_.classification_error = classifier ? classifier->error() : "";
@@ -858,6 +854,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 " | WAV history pruned=" + std::to_string(recorder.historyEvicted());
             if (recordings.persistenceError())
                 latest_.speech_status += " | JSON error: " + *recordings.persistenceError();
+            if (recoverableErrors != 0U) {
+                latest_.speech_status += " | recoverable errors=" +
+                    std::to_string(recoverableErrors) + " | last: " + lastRecoverableError;
+            }
             for (const auto& item : recorder.entries()) {
                 if (!item.error.empty()) {
                     latest_.speech_status += " | WAV error: " + item.error;
