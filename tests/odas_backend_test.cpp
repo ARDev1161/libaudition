@@ -169,5 +169,12 @@ TEST(OdasBackend, InPlaceSstTuningKeepsRuntimeOperational) {
     EXPECT_NO_THROW((void)engine.process(frame.view()));
     EXPECT_THROW(engine.setSstTuning(0.2, 0.3, 125), std::invalid_argument);
     EXPECT_DOUBLE_EQ(engine.options().sst.active_gmm.front().mean, 0.40);
+    EXPECT_DOUBLE_EQ(engine.options().sst.inactive_gmm.front().mean, 0.28);
     EXPECT_EQ(engine.options().sst.inactive_timeout_hops, 250U);
+    EXPECT_THROW(engine.setSstTuning(0.45, 0.30, 0), std::invalid_argument);
+    EXPECT_THROW(engine.setSstTuning(0.0, 0.28, 250), std::invalid_argument);
+    EXPECT_DOUBLE_EQ(engine.options().sst.active_gmm.front().mean, 0.40);
+    EXPECT_DOUBLE_EQ(engine.options().sst.inactive_gmm.front().mean, 0.28);
+    EXPECT_EQ(engine.options().sst.inactive_timeout_hops, 250U);
+    EXPECT_NO_THROW((void)engine.process(frame.view()));
 }
