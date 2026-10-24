@@ -333,6 +333,10 @@ void verifyWorkbench(QWidget* root) {
         }
     }
     auto* sceneTable = scene->findChild<QTableWidget*>("acousticSceneTracks");
+    auto* speechLanguage = scene->findChild<QComboBox*>("acousticSceneSpeechLanguage");
+    if (!speechLanguage || speechLanguage->currentData().toString() != "ru") {
+        throw std::runtime_error{"Qt self-test: SenseVoice Russian default missing"};
+    }
     if (scene->findChild<QCheckBox*>("acousticSceneEnableTagging") == nullptr ||
         scene->findChild<QLineEdit*>("acousticSceneTaggingModel") == nullptr ||
         scene->findChild<QLineEdit*>("acousticSceneTaggingLabels") == nullptr) {
