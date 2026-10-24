@@ -838,14 +838,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto* onsetValue = new QLabel{"0.34", liveSstControls};
     auto* releaseValue = new QLabel{"0.25", liveSstControls};
     auto* timeoutValue = new QLabel{"125 hops", liveSstControls};
-    const auto addLiveSlider = [&](const QString& title, QSlider* slider,
+    const auto addLiveSlider = [&](const QString& sliderTitle, QSlider* slider,
                                    QLabel* value) {
         auto* container = new QWidget{liveSstControls};
         auto* line = new QHBoxLayout{container};
         line->setContentsMargins(0, 0, 0, 0);
         line->addWidget(slider, 1);
         line->addWidget(value);
-        liveSstForm->addRow(title, container);
+        liveSstForm->addRow(sliderTitle, container);
     };
     addLiveSlider("Acquire GMM", liveOnset, onsetValue);
     addLiveSlider("Inactive GMM", liveRelease, releaseValue);
