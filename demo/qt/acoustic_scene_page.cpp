@@ -990,7 +990,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 QString::number(el, 'f', 1) + "°",
                 QString::number(track.activity, 'f', 2),
                 QString::fromStdString(track.classification_label),
-                QString::fromStdString(track.transcript),
+                [&track]() {
+                    const auto full = QString::fromStdString(track.transcript);
+                    constexpr qsizetype kVisibleCharacters = 150;
+                    return full.size() > kVisibleCharacters
+                        ? QStringLiteral("…") + full.right(kVisibleCharacters)
+                        : full;
+                }(),
                 (!entry.active || !speechAgc->isChecked()) ? QStringLiteral("—") :
                     (gainByTrack->count(track.id)
                         ? QString("%1 dB").arg(gainByTrack->at(track.id), 0, 'f', 1)
@@ -1019,7 +1025,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 item->setForeground(entry.active ? tracks->palette().text().color()
                                                  : QColor(135, 135, 135));
                 item->setData(Qt::UserRole, QVariant::fromValue(static_cast<qulonglong>(pair.first)));
-                item->setToolTip(entry.error);
+                item->setToolTip(col == 5
+                    ? QString::fromStdString(track.transcript) : entry.error);
             }
             if (track.id == sphere->selectedTrack() && entry.active)
                 selected->setText(directionSummary(track));
