@@ -29,6 +29,10 @@
 #include <QComboBox>
 #include <QFileDialog>
 #include <QFile>
+#include <QDir>
+#include <QFileInfo>
+#include <QStandardItemModel>
+#include <QSettings>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -766,6 +770,117 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     (*asrPaths)["sensevoice"] = QStringList{
         speechAsr->text(), speechDecoder->text(),
         speechJoiner->text(), speechTokens->text()};
+    // A bounded set of known locations, plus a user-selectable model root.
+    auto* modelRoot = new QLineEdit{speechSettings};
+    modelRoot->setObjectName("acousticSceneModelRoot");
+    QSettings modelSettings{QSettings::IniFormat, QSettings::UserScope,
+                            "libaudition", "qt-demo"};
+    modelRoot->setText(modelSettings.value("speech/model_root",
+        QDir::current().absoluteFilePath("demo-models")).toString());
+    auto* scanModels = new QPushButton{"Scan models", speechSettings};
+    auto* browseModels = new QPushButton{"Browse directory…", speechSettings};
+    auto* rootRow = new QWidget{speechSettings};
+    auto* rootLayout = new QHBoxLayout{rootRow};
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->addWidget(modelRoot, 1);
+    rootLayout->addWidget(browseModels);
+    rootLayout->addWidget(scanModels);
+    speechForm->addRow("Model directory", rootRow);
+    QObject::connect(browseModels, &QPushButton::clicked, speechSettings, [=]() {
+        const auto dir = QFileDialog::getExistingDirectory(
+            speechSettings, "Select model directory", modelRoot->text());
+        if (!dir.isEmpty()) modelRoot->setText(dir);
+    });
+    QObject::connect(modelRoot, &QLineEdit::textChanged, speechSettings,
+                     [](const QString& value) {
+        QSettings settings{QSettings::IniFormat, QSettings::UserScope,
+                           "libaudition", "qt-demo"};
+        settings.setValue("speech/model_root", value);
+    });
+    const auto locate = [=](const QStringList& candidates) -> QString {
+        const QStringList roots{
+            modelRoot->text(),
+            QDir::current().absoluteFilePath("demo-models"),
+            QDir::current().absoluteFilePath("models")
+        };
+        for (const auto& root : roots) {
+            for (const auto& name : candidates) {
+                const auto path = QDir(root).absoluteFilePath(name);
+                if (QFileInfo(path).isFile()) return path;
+            }
+        }
+        return {};
+    };
+    const auto scan = [=]() {
+        const auto fileOk = [](const QString& path) {
+            return !path.isEmpty() && QFileInfo(path).isFile();
+        };
+        const auto fillVad = [&](const QString& kind, const QStringList& names) {
+            auto& path = (*vadPaths)[kind];
+            if (!fileOk(path)) path = locate(names);
+        };
+        fillVad("silero", {"speech/silero_vad.onnx", "silero_vad.onnx"});
+        fillVad("ten", {"speech/ten-vad.onnx", "speech/ten_vad.onnx",
+                        "ten-vad.onnx", "ten_vad.onnx"});
+        const auto fillAsr = [&](const QString& kind, const QStringList& model,
+                                 const QStringList& decoder, const QStringList& joiner,
+                                 const QStringList& tokens) {
+            auto& paths = (*asrPaths)[kind];
+            while (paths.size() < 4) paths << QString{};
+            if (!fileOk(paths[0])) paths[0] = locate(model);
+            if (!decoder.isEmpty() && !fileOk(paths[1])) paths[1] = locate(decoder);
+            if (!joiner.isEmpty() && !fileOk(paths[2])) paths[2] = locate(joiner);
+            if (!tokens.isEmpty() && !fileOk(paths[3])) paths[3] = locate(tokens);
+        };
+        fillAsr("sensevoice", {"speech/sensevoice.int8.onnx",
+                 "speech/sensevoice.onnx"}, {}, {},
+                {"speech/sensevoice.tokens.txt"});
+        fillAsr("whisper", {"whisper/encoder.onnx", "speech/whisper/encoder.onnx"},
+                {"whisper/decoder.onnx", "speech/whisper/decoder.onnx"}, {},
+                {"whisper/tokens.txt", "speech/whisper/tokens.txt"});
+        fillAsr("whispercpp", {"whisper/ggml-small.bin", "whisper/ggml-base.bin",
+                "ggml-small.bin", "ggml-base.bin"}, {}, {}, {});
+        const auto check = [&](const QString& kind, bool vad) -> QString {
+            if (vad) {
+                return fileOk((*vadPaths)[kind]) ? QString{} :
+                    QString{"Missing compatible VAD ONNX model"};
+            }
+            const auto files = (*asrPaths)[kind];
+            const bool decoder = kind == "whisper" || kind == "transducer";
+            const bool joiner = kind == "transducer";
+            const bool tokens = kind != "whispercpp";
+            QStringList missing;
+            if (!fileOk(files.value(0))) missing << "model/encoder";
+            if (decoder && !fileOk(files.value(1))) missing << "decoder";
+            if (joiner && !fileOk(files.value(2))) missing << "joiner";
+            if (tokens && !fileOk(files.value(3))) missing << "tokens";
+            return missing.isEmpty() ? QString{} :
+                "Missing " + missing.join(", ") + " for " + kind;
+        };
+        const auto mark = [&](QComboBox* combo, bool vad) {
+            auto* items = qobject_cast<QStandardItemModel*>(combo->model());
+            for (int i = 0; i < combo->count(); ++i) {
+                const auto key = combo->itemData(i).toString();
+                const auto error = check(key, vad);
+                combo->setItemData(i, error.isEmpty() ? QString{"Ready"} :
+                    error + ". Install files under Model directory, then Scan models.",
+                    Qt::ToolTipRole);
+                if (items && items->item(i))
+                    items->item(i)->setEnabled(error.isEmpty());
+            }
+        };
+        mark(vadKind, true);
+        mark(asrKind, false);
+        const auto vadValue = vadKind->currentData().toString();
+        const auto asrValue = asrKind->currentData().toString();
+        if (fileOk((*vadPaths)[vadValue])) speechVad->setText((*vadPaths)[vadValue]);
+        const auto paths = (*asrPaths)[asrValue];
+        if (fileOk(paths.value(0))) speechAsr->setText(paths.value(0));
+        if (fileOk(paths.value(1))) speechDecoder->setText(paths.value(1));
+        if (fileOk(paths.value(2))) speechJoiner->setText(paths.value(2));
+        if (fileOk(paths.value(3))) speechTokens->setText(paths.value(3));
+    };
+    QObject::connect(scanModels, &QPushButton::clicked, speechSettings, scan);
     auto currentVadKind = std::make_shared<QString>("silero");
     auto currentAsrKind = std::make_shared<QString>("sensevoice");
     QObject::connect(vadKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -822,6 +937,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     QObject::connect(vadKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
                      speechSettings, [=](int) { refreshSpeechInputs(); });
     refreshSpeechInputs();
+    scan();
     layout->addWidget(enableSpeech);
     layout->addWidget(speechSettings);
     speechSettings->setVisible(enableSpeech->isChecked());
