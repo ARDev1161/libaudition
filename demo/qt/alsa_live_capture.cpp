@@ -15,6 +15,9 @@
 #if LIBAUDITION_DEMO_HAS_SHERPA
 #include <audition/backends/sherpa/vad.hpp>
 #include <audition/backends/sherpa/offline_asr.hpp>
+#if LIBAUDITION_DEMO_HAS_WHISPERCPP
+#include <audition/backends/whispercpp/asr.hpp>
+#endif
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <audition/speech/async_speech_ingress_worker.hpp>
 #endif
@@ -324,23 +327,65 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::unique_ptr<audition::PerSourceSpeechRuntime> speech_runtime;
         std::unique_ptr<audition::AsyncSpeechIngressWorker> speech_worker;
         std::map<std::uint64_t, std::string> transcripts;
+        std::uint64_t ignored_asr_results = 0;
+        std::string last_asr_language;
         std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceGain>> speechGains;
         std::uint64_t appliedGainRevision = 0;
         if (config.transcribe_sources) {
             audition::SherpaVadOptions vad_options{};
             vad_options.sample_rate_hz = config.sample_rate_hz;
-            vad_options.model = audition::SherpaSileroVadModel{
-                config.speech_vad_model_path};
+            if (config.speech_vad_kind == "ten") {
+                vad_options.model = audition::SherpaTenVadModel{
+                    config.speech_vad_model_path};
+            } else {
+                vad_options.model = audition::SherpaSileroVadModel{
+                    config.speech_vad_model_path};
+            }
             speech_vad = std::make_unique<audition::SherpaVad>(std::move(vad_options));
-            // Keep the options on the heap: older GCC -O3 builds can
-            // spuriously report an uninitialized moved-from std::map when a
-            // large default-constructed options aggregate lives on the stack.
-            auto asr_options = std::make_unique<audition::SherpaOfflineAsrOptions>();
-            asr_options->features.sample_rate_hz = config.sample_rate_hz;
-            asr_options->tokens = config.speech_asr_tokens_path;
-            asr_options->model = audition::SherpaOfflineSenseVoiceModel{
-                config.speech_asr_model_path};
-            auto asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(*asr_options));
+            std::shared_ptr<audition::IAsrEngine> asr;
+            if (config.speech_asr_kind == "whispercpp") {
+#if LIBAUDITION_DEMO_HAS_WHISPERCPP
+                audition::WhisperCppAsrOptions options{};
+                options.model_path = config.speech_asr_model_path;
+                options.language = config.speech_asr_language;
+                asr = std::make_shared<audition::WhisperCppAsr>(std::move(options));
+#else
+                throw std::runtime_error{"whisper.cpp backend not built"};
+#endif
+            } else {
+                // Heap allocation avoids a known GCC -O3 false positive.
+                auto options = std::make_unique<audition::SherpaOfflineAsrOptions>();
+                options->features.sample_rate_hz = config.sample_rate_hz;
+                options->tokens = config.speech_asr_tokens_path;
+                if (config.speech_asr_kind == "whisper") {
+                    options->model = audition::SherpaOfflineWhisperModel{
+                        config.speech_asr_model_path,
+                        config.speech_asr_decoder_path,
+                        config.speech_asr_language == "auto" ? "" :
+                            config.speech_asr_language};
+                } else if (config.speech_asr_kind == "paraformer") {
+                    options->model = audition::SherpaOfflineParaformerModel{
+                        config.speech_asr_model_path};
+                } else if (config.speech_asr_kind == "nemo_ctc") {
+                    options->model = audition::SherpaOfflineNemoCtcModel{
+                        config.speech_asr_model_path};
+                } else if (config.speech_asr_kind == "zipformer_ctc") {
+                    options->model = audition::SherpaOfflineZipformerCtcModel{
+                        config.speech_asr_model_path};
+                } else if (config.speech_asr_kind == "wenet_ctc") {
+                    options->model = audition::SherpaOfflineWenetCtcModel{
+                        config.speech_asr_model_path};
+                } else if (config.speech_asr_kind == "transducer") {
+                    options->model = audition::SherpaOfflineTransducerModel{
+                        config.speech_asr_model_path,
+                        config.speech_asr_decoder_path,
+                        config.speech_asr_joiner_path};
+                } else {
+                    options->model = audition::SherpaOfflineSenseVoiceModel{
+                        config.speech_asr_model_path, config.speech_asr_language, false};
+                }
+                asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(*options));
+            }
             audition::PerSourceSpeechOptions pipeline_options{};
             pipeline_options.sample_rate_hz = config.sample_rate_hz;
             speech_runtime = std::make_unique<audition::PerSourceSpeechRuntime>(
@@ -451,11 +496,28 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             drainSpeechAcks();
             auto batch = speech_runtime->drainReady();
             for (auto& result : batch.results) {
+                last_asr_language = result.transcript.language;
                 recordings.addSpeech(result);
                 const auto active = speech_runtime->activeGeneration(result.track_id);
                 if (active && *active == result.generation &&
                     recordings.active(result.track_id)) {
-                    transcripts[result.track_id] = std::move(result.transcript.text);
+                    auto& history = transcripts[result.track_id];
+                    const auto& fragment = result.transcript.text;
+                    if (!fragment.empty()) {
+                        if (!history.empty()) history += " ";
+                        history += fragment;
+                        // Keep the live table bounded; recording sidecars
+                        // retain individual, timestamped ASR results.
+                        constexpr std::size_t kMaxVisibleTranscriptBytes = 8192;
+                        if (history.size() > kMaxVisibleTranscriptBytes) {
+                            const auto excess = history.size() - kMaxVisibleTranscriptBytes;
+                            const auto boundary = history.find(' ', excess);
+                            history.erase(0, boundary == std::string::npos
+                                                 ? excess : boundary + 1);
+                        }
+                    }
+                } else {
+                    ++ignored_asr_results;
                 }
             }
             for (const auto generation : batch.ready_retired_generations) {
@@ -811,7 +873,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     " retired=" + std::to_string(stats.retired_generations) +
                     " retire_capacity_drops=" +
                     std::to_string(retirement_capacity_drops) +
-                    " worker_errors=" + std::to_string(speech_worker_errors);
+                    " worker_errors=" + std::to_string(speech_worker_errors) +
+                    " ignored_results=" + std::to_string(ignored_asr_results) +
+                    " last_language=" + (last_asr_language.empty() ? "none" : last_asr_language);
                 if (speech_worker) {
                     const auto input=speech_worker->inputStatistics();
                     latest_.speech_status +=

@@ -31,7 +31,10 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QSettings>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -1119,6 +1122,65 @@ QWidget* createSherpaPanel(QWidget* parent) {
             });
         form->addRow("Output WAV", outputRow);
 
+        // Store user-selected paths locally, independently of the current
+        // working directory. Do not assume any model has been installed.
+        auto* settings = new QSettings{
+            QSettings::IniFormat, QSettings::UserScope,
+            "libaudition", "qt-demo", ttsPage};
+        const auto restoreText = [settings](QLineEdit* edit, const char* key) {
+            edit->setText(settings->value(
+                QStringLiteral("tts/") + QString::fromLatin1(key),
+                edit->text()).toString());
+            QObject::connect(edit, &QLineEdit::textChanged, edit,
+                             [settings, key](const QString& value) {
+                settings->setValue(
+                    QStringLiteral("tts/") + QString::fromLatin1(key),
+                    value);
+            });
+        };
+        restoreText(model, "model");
+        restoreText(tokens, "tokens");
+        restoreText(dataDir, "espeak_data");
+        restoreText(lexicon, "lexicon");
+        restoreText(outputPath, "output_wav");
+        restoreText(textInput, "text");
+        restoreText(language, "language");
+
+        speed->setValue(settings->value("tts/speed", speed->value()).toDouble());
+        speaker->setValue(settings->value("tts/speaker_id", speaker->value()).toInt());
+        QObject::connect(speed, qOverload<double>(&QDoubleSpinBox::valueChanged),
+                         ttsPage, [settings](double value) {
+            settings->setValue("tts/speed", value);
+        });
+        QObject::connect(speaker, qOverload<int>(&QSpinBox::valueChanged),
+                         ttsPage, [settings](int value) {
+            settings->setValue("tts/speaker_id", value);
+        });
+
+        // When available, prefill the system eSpeak-NG data directory.
+        if (dataDir->text().isEmpty()) {
+            for (const auto& candidate : {
+                     "/usr/share/espeak-ng-data",
+                     "/usr/local/share/espeak-ng-data"}) {
+                if (QFileInfo::exists(QString::fromLatin1(candidate))) {
+                    dataDir->setText(QString::fromLatin1(candidate));
+                    break;
+                }
+            }
+        }
+        // Piper model distributions commonly ship tokens.txt alongside ONNX.
+        // Only suggest it if the user has not chosen a tokens file already.
+        QObject::connect(model, &QLineEdit::textChanged, ttsPage,
+                         [model, tokens](const QString& path) {
+            if (!tokens->text().isEmpty()) return;
+            const auto candidate = QFileInfo(path).dir().filePath("tokens.txt");
+            if (QFileInfo(candidate).isFile()) tokens->setText(candidate);
+        });
+        if (tokens->text().isEmpty() && !model->text().isEmpty()) {
+            const auto candidate = QFileInfo(model->text()).dir().filePath("tokens.txt");
+            if (QFileInfo(candidate).isFile()) tokens->setText(candidate);
+        }
+
         ttsLayout->addLayout(form);
         auto* run =
             new QPushButton{"Synthesize with VITS/Piper"};
@@ -1460,6 +1522,95 @@ QWidget* createOdasPanel(QWidget* parent) {
 
 }  // namespace
 
+namespace {
+
+// Persist backend form inputs by their nested tab path and widget position.
+// Namespaces are distinct from the existing TTS settings for compatibility.
+void restoreBackendInputs(QTabWidget* tabs) {
+    auto* settings = new QSettings{
+        QSettings::IniFormat, QSettings::UserScope,
+        "libaudition", "qt-demo", tabs};
+    const auto visit = [settings](auto&& self, QTabWidget* group,
+                                  const QString& prefix) -> void {
+        for (int tab = 0; tab < group->count(); ++tab) {
+            const QString title = group->tabText(tab);
+            const QString scope = prefix + "/" + title;
+            QWidget* page = group->widget(tab);
+            // A nested QTabWidget has its own independently named forms.
+            if (auto* nested = page->findChild<QTabWidget*>()) {
+                self(self, nested, scope);
+                continue;
+            }
+            if (title == "VITS / Piper TTS") continue;
+            const auto edits = page->findChildren<QLineEdit*>();
+            for (int i = 0; i < edits.size(); ++i) {
+                auto* edit = edits.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/text_" + QString::number(i);
+                if (settings->contains(key))
+                    edit->setText(settings->value(key).toString());
+                QObject::connect(edit, &QLineEdit::textChanged, settings,
+                                 [settings, key](const QString& value) {
+                    settings->setValue(key, value);
+                });
+            }
+            const auto combos = page->findChildren<QComboBox*>();
+            for (int i = 0; i < combos.size(); ++i) {
+                auto* combo = combos.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/combo_" + QString::number(i);
+                if (settings->contains(key)) {
+                    const int index = combo->findText(settings->value(key).toString());
+                    if (index >= 0) combo->setCurrentIndex(index);
+                }
+                QObject::connect(combo, &QComboBox::currentTextChanged, settings,
+                                 [settings, key](const QString& value) {
+                    settings->setValue(key, value);
+                });
+            }
+            const auto spins = page->findChildren<QSpinBox*>();
+            for (int i = 0; i < spins.size(); ++i) {
+                auto* spin = spins.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/int_" + QString::number(i);
+                if (settings->contains(key))
+                    spin->setValue(settings->value(key).toInt());
+                QObject::connect(spin, qOverload<int>(&QSpinBox::valueChanged),
+                                 settings, [settings, key](int value) {
+                    settings->setValue(key, value);
+                });
+            }
+            const auto checks = page->findChildren<QCheckBox*>();
+            for (int i = 0; i < checks.size(); ++i) {
+                auto* check = checks.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/check_" + QString::number(i);
+                if (settings->contains(key))
+                    check->setChecked(settings->value(key).toBool());
+                QObject::connect(check, &QCheckBox::toggled, settings,
+                                 [settings, key](bool checked) {
+                    settings->setValue(key, checked);
+                });
+            }
+            const auto doubles = page->findChildren<QDoubleSpinBox*>();
+            for (int i = 0; i < doubles.size(); ++i) {
+                auto* spin = doubles.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/double_" + QString::number(i);
+                if (settings->contains(key))
+                    spin->setValue(settings->value(key).toDouble());
+                QObject::connect(spin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+                                 settings, [settings, key](double value) {
+                    settings->setValue(key, value);
+                });
+            }
+        }
+    };
+    visit(visit, tabs, QString{});
+}
+
+}  // namespace
+
 QWidget* createBackendWorkbench(QWidget* parent) {
     auto* page = new QWidget{parent};
     auto* layout = new QVBoxLayout{page};
@@ -1490,6 +1641,7 @@ QWidget* createBackendWorkbench(QWidget* parent) {
         createOdasPanel(tabs),
         "ODAS");
     addOptionalBackendWorkbenchTabs(tabs);
+    restoreBackendInputs(tabs);
 
     layout->addWidget(tabs);
     return page;

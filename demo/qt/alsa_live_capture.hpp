@@ -47,9 +47,14 @@ struct LiveCaptureConfig {
     bool transcribe_sources{false};
     bool speech_agc_enabled{false};
     std::string speech_agc_implementation{"rms"};
+    std::string speech_vad_kind{"silero"};
+    std::string speech_asr_kind{"sensevoice"};
     std::string speech_vad_model_path{};
     std::string speech_asr_model_path{};
+    std::string speech_asr_decoder_path{};
+    std::string speech_asr_joiner_path{};
     std::string speech_asr_tokens_path{};
+    std::string speech_asr_language{"auto"};
 };
 
 struct LiveCaptureSnapshot {
