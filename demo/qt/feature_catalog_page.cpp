@@ -118,10 +118,21 @@ QWidget* createFeatureCatalogPage(QTabWidget* applicationTabs) {
         const int row=table->currentRow();
         if (row<0 || table->isRowHidden(row) || !applicationTabs) return;
         const auto title=table->item(row,2)->text();
-        for(int index=0;index<applicationTabs->count();++index) {
-            if(applicationTabs->tabText(index)==title) {
+        for (int index = 0; index < applicationTabs->count(); ++index) {
+            if (applicationTabs->tabText(index) == title) {
                 applicationTabs->setCurrentIndex(index);
                 return;
+            }
+            // Some destinations live under Settings or Help instead of
+            // occupying a top-level application tab.
+            auto* nested = applicationTabs->widget(index)->findChild<QTabWidget*>();
+            if (!nested) continue;
+            for (int child = 0; child < nested->count(); ++child) {
+                if (nested->tabText(child) == title) {
+                    nested->setCurrentIndex(child);
+                    applicationTabs->setCurrentIndex(index);
+                    return;
+                }
             }
         }
     };
