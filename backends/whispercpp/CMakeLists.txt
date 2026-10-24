@@ -23,3 +23,10 @@ install(TARGETS libaudition_backend_whispercpp EXPORT libauditionTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/audition DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+if(BUILD_TESTING)
+    add_executable(whispercpp_adapter_smoke tests/adapter_smoke.cpp)
+    target_link_libraries(whispercpp_adapter_smoke PRIVATE audition::backend_whispercpp)
+    add_test(NAME whispercpp_adapter_smoke COMMAND whispercpp_adapter_smoke)
+    set_tests_properties(whispercpp_adapter_smoke PROPERTIES LABELS "whispercpp;backend")
+endif()
