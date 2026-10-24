@@ -31,6 +31,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QSettings>
@@ -1173,11 +1174,11 @@ QWidget* createSherpaPanel(QWidget* parent) {
                          [model, tokens](const QString& path) {
             if (!tokens->text().isEmpty()) return;
             const auto candidate = QFileInfo(path).dir().filePath("tokens.txt");
-            if (QFileInfo::isFile(candidate)) tokens->setText(candidate);
+            if (QFileInfo(candidate).isFile()) tokens->setText(candidate);
         });
         if (tokens->text().isEmpty() && !model->text().isEmpty()) {
             const auto candidate = QFileInfo(model->text()).dir().filePath("tokens.txt");
-            if (QFileInfo::isFile(candidate)) tokens->setText(candidate);
+            if (QFileInfo(candidate).isFile()) tokens->setText(candidate);
         }
 
         ttsLayout->addLayout(form);
