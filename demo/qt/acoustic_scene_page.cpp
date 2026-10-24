@@ -801,7 +801,17 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     tracks->setObjectName("acousticSceneTracks");
     tracks->setHorizontalHeaderLabels({
         "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript", "AGC gain", "Recording"});
-    tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    // Keep column widths user-adjustable rather than forcing equal stretching.
+    tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    tracks->horizontalHeader()->setStretchLastSection(false);
+    tracks->setColumnWidth(0, 55);
+    tracks->setColumnWidth(1, 85);
+    tracks->setColumnWidth(2, 90);
+    tracks->setColumnWidth(3, 85);
+    tracks->setColumnWidth(4, 115);
+    tracks->setColumnWidth(5, 220);
+    tracks->setColumnWidth(6, 90);
+    tracks->setColumnWidth(7, 100);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
     auto* speechAgc = new QCheckBox{"Adaptive speech gain (VAD / ASR only)", sidebar};
