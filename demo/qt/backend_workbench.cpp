@@ -32,6 +32,8 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QSettings>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -1118,6 +1120,65 @@ QWidget* createSherpaPanel(QWidget* parent) {
                 }
             });
         form->addRow("Output WAV", outputRow);
+
+        // Store user-selected paths locally, independently of the current
+        // working directory. Do not assume any model has been installed.
+        auto* settings = new QSettings{
+            QSettings::IniFormat, QSettings::UserScope,
+            "libaudition", "qt-demo", ttsPage};
+        const auto restoreText = [settings](QLineEdit* edit, const char* key) {
+            edit->setText(settings->value(
+                QStringLiteral("tts/") + QString::fromLatin1(key),
+                edit->text()).toString());
+            QObject::connect(edit, &QLineEdit::textChanged, edit,
+                             [settings, key](const QString& value) {
+                settings->setValue(
+                    QStringLiteral("tts/") + QString::fromLatin1(key),
+                    value);
+            });
+        };
+        restoreText(model, "model");
+        restoreText(tokens, "tokens");
+        restoreText(dataDir, "espeak_data");
+        restoreText(lexicon, "lexicon");
+        restoreText(outputPath, "output_wav");
+        restoreText(textInput, "text");
+        restoreText(language, "language");
+
+        speed->setValue(settings->value("tts/speed", speed->value()).toDouble());
+        speaker->setValue(settings->value("tts/speaker_id", speaker->value()).toInt());
+        QObject::connect(speed, qOverload<double>(&QDoubleSpinBox::valueChanged),
+                         ttsPage, [settings](double value) {
+            settings->setValue("tts/speed", value);
+        });
+        QObject::connect(speaker, qOverload<int>(&QSpinBox::valueChanged),
+                         ttsPage, [settings](int value) {
+            settings->setValue("tts/speaker_id", value);
+        });
+
+        // When available, prefill the system eSpeak-NG data directory.
+        if (dataDir->text().isEmpty()) {
+            for (const auto& candidate : {
+                     "/usr/share/espeak-ng-data",
+                     "/usr/local/share/espeak-ng-data"}) {
+                if (QFileInfo::exists(QString::fromLatin1(candidate))) {
+                    dataDir->setText(QString::fromLatin1(candidate));
+                    break;
+                }
+            }
+        }
+        // Piper model distributions commonly ship tokens.txt alongside ONNX.
+        // Only suggest it if the user has not chosen a tokens file already.
+        QObject::connect(model, &QLineEdit::textChanged, ttsPage,
+                         [model, tokens](const QString& path) {
+            if (!tokens->text().isEmpty()) return;
+            const auto candidate = QFileInfo(path).dir().filePath("tokens.txt");
+            if (QFileInfo::isFile(candidate)) tokens->setText(candidate);
+        });
+        if (tokens->text().isEmpty() && !model->text().isEmpty()) {
+            const auto candidate = QFileInfo(model->text()).dir().filePath("tokens.txt");
+            if (QFileInfo::isFile(candidate)) tokens->setText(candidate);
+        }
 
         ttsLayout->addLayout(form);
         auto* run =
