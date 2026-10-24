@@ -283,6 +283,25 @@ void verifyWorkbench(QWidget* root) {
     if(visible!=1)
         throw std::runtime_error{"Qt self-test: catalog search not functional"};
     catalogSearch->clear();
+    // Catalog links must continue to work for destinations nested under
+    // Settings rather than present in the application tab bar.
+    bool selectedBackend = false;
+    for (int row = 0; row < catalog->rowCount(); ++row) {
+        if (catalog->item(row, 2)->text() == "Backends") {
+            catalog->selectRow(row);
+            selectedBackend = true;
+            break;
+        }
+    }
+    auto* openCatalogTab = catalogPage->findChild<QPushButton*>("capabilityOpenTab");
+    if (!selectedBackend || !openCatalogTab) {
+        throw std::runtime_error{"Qt self-test: backend catalog link missing"};
+    }
+    openCatalogTab->click();
+    if (appTabs->tabText(appTabs->currentIndex()) != "Settings" ||
+        settingsTabs->tabText(settingsTabs->currentIndex()) != "Backends") {
+        throw std::runtime_error{"Qt self-test: nested catalog navigation failed"};
+    }
 
     auto* backendPage = requireTab(appTabs, "Backend workbench");
     auto* backends = backendPage->findChild<QTabWidget*>();
