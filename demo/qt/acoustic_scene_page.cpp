@@ -37,6 +37,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMessageBox>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -1315,15 +1316,19 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 const bool needsDecoder = config.speech_asr_kind == "whisper" ||
                     config.speech_asr_kind == "transducer";
                 const bool needsJoiner = config.speech_asr_kind == "transducer";
-                if (config.sample_rate_hz != 16000U ||
-                    !std::filesystem::is_regular_file(vad) ||
-                    !std::filesystem::is_regular_file(model) ||
-                    (needsTokens && !std::filesystem::is_regular_file(tokens)) ||
-                    (needsDecoder && !std::filesystem::is_regular_file(decoder)) ||
-                    (needsJoiner && !std::filesystem::is_regular_file(joiner))) {
-                    throw std::runtime_error{
-                        "ASR requires 16 kHz and valid model files for selected VAD/ASR"};
-                }
+                if (config.sample_rate_hz != 16000U)
+                    throw std::runtime_error{"Speech requires a 16000 Hz capture rate"};
+                const auto requireModel = [](const std::filesystem::path& file,
+                                             const char* label) {
+                    if (file.empty() || !std::filesystem::is_regular_file(file))
+                        throw std::runtime_error{std::string{label} +
+                            " is missing or invalid: " + file.string()};
+                };
+                requireModel(vad, "VAD model");
+                requireModel(model, "ASR model / encoder");
+                if (needsTokens) requireModel(tokens, "ASR tokens");
+                if (needsDecoder) requireModel(decoder, "ASR decoder");
+                if (needsJoiner) requireModel(joiner, "ASR joiner");
                 config.speech_vad_model_path = vad.string();
                 config.speech_asr_model_path = model.string();
                 config.speech_asr_decoder_path = decoder.string();
@@ -1419,8 +1424,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             diagnostics->setText("Waiting for first ALSA audio frames…");
             liveTimer->start();
         } catch (const std::exception& error) {
-            status->setText(QString("Live capture configuration error: ") +
-                            QString::fromUtf8(error.what()));
+            const QString detail = QString::fromUtf8(error.what());
+            status->setText("Live capture configuration error: " + detail);
+            diagnostics->setText("Capture was not started: " + detail);
+            QMessageBox::warning(page, "Cannot start live capture", detail);
         }
     });
 #endif
@@ -1478,8 +1485,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         }
         if (!snapshot.error.empty()) {
             stopCapture();
-            status->setText("Live ALSA/ODAS error: " +
-                            QString::fromStdString(snapshot.error));
+            const QString detail = QString::fromStdString(snapshot.error);
+            status->setText("Live ALSA/ODAS error: " + detail);
+            diagnostics->setText("Live capture stopped: " + detail);
+            QMessageBox::warning(page, "Live capture failed", detail);
             return;
         }
         if (!snapshot.running) {
