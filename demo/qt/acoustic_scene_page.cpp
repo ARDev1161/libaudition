@@ -722,6 +722,15 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechForm->addRow("Silero VAD", speechVad);
     speechForm->addRow("SenseVoice ONNX", speechAsr);
     speechForm->addRow("SenseVoice tokens", speechTokens);
+    auto* speechLanguage = new QComboBox{speechSettings};
+    speechLanguage->setObjectName("acousticSceneSpeechLanguage");
+    speechLanguage->addItem("Russian", QStringLiteral("ru"));
+    speechLanguage->addItem("Automatic", QStringLiteral("auto"));
+    speechLanguage->addItem("English", QStringLiteral("en"));
+    speechLanguage->addItem("Chinese", QStringLiteral("zh"));
+    speechLanguage->addItem("Japanese", QStringLiteral("ja"));
+    speechLanguage->addItem("Korean", QStringLiteral("ko"));
+    speechForm->addRow("SenseVoice language", speechLanguage);
     layout->addWidget(enableSpeech);
     layout->addWidget(speechSettings);
     speechSettings->setVisible(enableSpeech->isChecked());
@@ -1240,6 +1249,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 config.speech_vad_model_path = vad.string();
                 config.speech_asr_model_path = model.string();
                 config.speech_asr_tokens_path = tokens.string();
+                config.speech_asr_language =
+                    speechLanguage->currentData().toString().toStdString();
             }
             if (config.classify_sources) {
                 const auto modelFile =
