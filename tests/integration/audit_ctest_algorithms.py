@@ -79,6 +79,9 @@ BACKENDS = {
         "diarization clustering and timing constraints": r"^SherpaDiarizationContract\.",
         "speaker embedding model constraints": r"^SherpaSpeakerEmbeddingContract\.",
     },
+    "LIBAUDITION_WITH_WHISPERCPP": {
+        "whisper.cpp adapter smoke": r"^whispercpp_adapter_smoke$",
+    },
     "LIBAUDITION_WITH_CLAP": {
         "CLAP audio frontend": r"^ClapFrontend\.",
         "CLAP embeddings": r"^ClapBackend\.",
@@ -130,6 +133,7 @@ BACKEND_SOURCE_UNITS = {
         sherpa_speaker_config.cpp sherpa_speaker_embedder.cpp sherpa_speaker_verifier.cpp
         sherpa_speaker_identifier.cpp sherpa_speaker_diarizer.cpp
         sherpa_tts_config.cpp sherpa_tts.cpp""",
+    "whispercpp": "whispercpp_asr.cpp",
     "clap": "clap_features.cpp clap_audio_embedder.cpp roberta_tokenizer.cpp clap_text_encoder.cpp clap_open_vocabulary_classifier.cpp",
     "yamnet": "yamnet_audio_tagger.cpp",
     "efficientat": "efficientat_audio_tagger.cpp frontend.cpp resampler.cpp",
