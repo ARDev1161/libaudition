@@ -15,6 +15,9 @@
 #if LIBAUDITION_DEMO_HAS_SHERPA
 #include <audition/backends/sherpa/vad.hpp>
 #include <audition/backends/sherpa/offline_asr.hpp>
+#if LIBAUDITION_DEMO_HAS_WHISPERCPP
+#include <audition/backends/whispercpp/asr.hpp>
+#endif
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <audition/speech/async_speech_ingress_worker.hpp>
 #endif
@@ -331,18 +334,41 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         if (config.transcribe_sources) {
             audition::SherpaVadOptions vad_options{};
             vad_options.sample_rate_hz = config.sample_rate_hz;
-            vad_options.model = audition::SherpaSileroVadModel{
-                config.speech_vad_model_path};
+            if (config.speech_vad_kind == "ten") {
+                vad_options.model = audition::SherpaTenVadModel{
+                    config.speech_vad_model_path};
+            } else {
+                vad_options.model = audition::SherpaSileroVadModel{
+                    config.speech_vad_model_path};
+            }
             speech_vad = std::make_unique<audition::SherpaVad>(std::move(vad_options));
-            // Keep the options on the heap: older GCC -O3 builds can
-            // spuriously report an uninitialized moved-from std::map when a
-            // large default-constructed options aggregate lives on the stack.
-            auto asr_options = std::make_unique<audition::SherpaOfflineAsrOptions>();
-            asr_options->features.sample_rate_hz = config.sample_rate_hz;
-            asr_options->tokens = config.speech_asr_tokens_path;
-            asr_options->model = audition::SherpaOfflineSenseVoiceModel{
-                config.speech_asr_model_path, config.speech_asr_language, false};
-            auto asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(*asr_options));
+            std::shared_ptr<audition::IAsrEngine> asr;
+            if (config.speech_asr_kind == "whispercpp") {
+#if LIBAUDITION_DEMO_HAS_WHISPERCPP
+                audition::WhisperCppAsrOptions options{};
+                options.model_path = config.speech_asr_model_path;
+                options.language = config.speech_asr_language;
+                asr = std::make_shared<audition::WhisperCppAsr>(std::move(options));
+#else
+                throw std::runtime_error{"whisper.cpp backend not built"};
+#endif
+            } else {
+                // Heap allocation avoids a known GCC -O3 false positive.
+                auto options = std::make_unique<audition::SherpaOfflineAsrOptions>();
+                options->features.sample_rate_hz = config.sample_rate_hz;
+                options->tokens = config.speech_asr_tokens_path;
+                if (config.speech_asr_kind == "whisper") {
+                    options->model = audition::SherpaOfflineWhisperModel{
+                        config.speech_asr_model_path,
+                        config.speech_asr_decoder_path,
+                        config.speech_asr_language == "auto" ? "" :
+                            config.speech_asr_language};
+                } else {
+                    options->model = audition::SherpaOfflineSenseVoiceModel{
+                        config.speech_asr_model_path, config.speech_asr_language, false};
+                }
+                asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(*options));
+            }
             audition::PerSourceSpeechOptions pipeline_options{};
             pipeline_options.sample_rate_hz = config.sample_rate_hz;
             speech_runtime = std::make_unique<audition::PerSourceSpeechRuntime>(
