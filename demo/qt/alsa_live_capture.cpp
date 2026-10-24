@@ -354,37 +354,37 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #endif
             } else {
                 // Heap allocation avoids a known GCC -O3 false positive.
-                auto options = std::make_unique<audition::SherpaOfflineAsrOptions>();
-                options->features.sample_rate_hz = config.sample_rate_hz;
-                options->tokens = config.speech_asr_tokens_path;
+                auto sherpaAsrOptions = std::make_unique<audition::SherpaOfflineAsrOptions>();
+                sherpaAsrOptions->features.sample_rate_hz = config.sample_rate_hz;
+                sherpaAsrOptions->tokens = config.speech_asr_tokens_path;
                 if (config.speech_asr_kind == "whisper") {
-                    options->model = audition::SherpaOfflineWhisperModel{
+                    sherpaAsrOptions->model = audition::SherpaOfflineWhisperModel{
                         config.speech_asr_model_path,
                         config.speech_asr_decoder_path,
                         config.speech_asr_language == "auto" ? "" :
                             config.speech_asr_language};
                 } else if (config.speech_asr_kind == "paraformer") {
-                    options->model = audition::SherpaOfflineParaformerModel{
+                    sherpaAsrOptions->model = audition::SherpaOfflineParaformerModel{
                         config.speech_asr_model_path};
                 } else if (config.speech_asr_kind == "nemo_ctc") {
-                    options->model = audition::SherpaOfflineNemoCtcModel{
+                    sherpaAsrOptions->model = audition::SherpaOfflineNemoCtcModel{
                         config.speech_asr_model_path};
                 } else if (config.speech_asr_kind == "zipformer_ctc") {
-                    options->model = audition::SherpaOfflineZipformerCtcModel{
+                    sherpaAsrOptions->model = audition::SherpaOfflineZipformerCtcModel{
                         config.speech_asr_model_path};
                 } else if (config.speech_asr_kind == "wenet_ctc") {
-                    options->model = audition::SherpaOfflineWenetCtcModel{
+                    sherpaAsrOptions->model = audition::SherpaOfflineWenetCtcModel{
                         config.speech_asr_model_path};
                 } else if (config.speech_asr_kind == "transducer") {
-                    options->model = audition::SherpaOfflineTransducerModel{
+                    sherpaAsrOptions->model = audition::SherpaOfflineTransducerModel{
                         config.speech_asr_model_path,
                         config.speech_asr_decoder_path,
                         config.speech_asr_joiner_path};
                 } else {
-                    options->model = audition::SherpaOfflineSenseVoiceModel{
+                    sherpaAsrOptions->model = audition::SherpaOfflineSenseVoiceModel{
                         config.speech_asr_model_path, config.speech_asr_language, false};
                 }
-                asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(*options));
+                asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(*sherpaAsrOptions));
             }
             audition::PerSourceSpeechOptions pipeline_options{};
             pipeline_options.sample_rate_hz = config.sample_rate_hz;
