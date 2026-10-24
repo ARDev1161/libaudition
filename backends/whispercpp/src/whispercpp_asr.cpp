@@ -62,6 +62,8 @@ private:
     WhisperCppAsrOptions options_;
     whisper_context* context_{nullptr};
     mutable std::mutex lock_;
+public:
+    bool useGpu() const noexcept { return options_.use_gpu; }
 };
 
 WhisperCppAsr::WhisperCppAsr(WhisperCppAsrOptions options)
@@ -76,7 +78,7 @@ AsrCapabilities WhisperCppAsr::capabilities() const {
     caps.audio.supported_sample_rates_hz = {16000};
     caps.audio.supported_layouts = {AudioLayout::Interleaved};
     caps.language_identification = true;
-    caps.execution.providers = {impl_->options_.use_gpu ? "gpu" : "cpu"};
+    caps.execution.providers = {impl_->useGpu() ? "gpu" : "cpu"};
     return caps;
 }
 Transcript WhisperCppAsr::transcribe(const SpeechSegment& segment) const {
