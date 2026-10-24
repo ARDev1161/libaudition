@@ -186,12 +186,12 @@ void verifyWorkbench(QWidget* root) {
              "Help"}) {
         static_cast<void>(requireTab(appTabs, name));
     }
-    auto* settingsTabs = requireTab(appTabs, "Settings")->findChild<QTabWidget*>();
+    auto* settingsTabs = qobject_cast<QTabWidget*>(requireTab(appTabs, "Settings"));
     if (!settingsTabs || settingsTabs->count() != 1) {
         throw std::runtime_error{"Qt self-test: unexpected settings tabs"};
     }
     static_cast<void>(requireTab(settingsTabs, "Backends"));
-    auto* helpTabs = requireTab(appTabs, "Help")->findChild<QTabWidget*>();
+    auto* helpTabs = qobject_cast<QTabWidget*>(requireTab(appTabs, "Help"));
     if (!helpTabs || helpTabs->count() != 2) {
         throw std::runtime_error{"Qt self-test: unexpected help tabs"};
     }
