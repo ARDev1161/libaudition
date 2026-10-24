@@ -1522,6 +1522,83 @@ QWidget* createOdasPanel(QWidget* parent) {
 
 }  // namespace
 
+namespace {
+
+// Persist backend form inputs by their nested tab path and widget position.
+// Namespaces are distinct from the existing TTS settings for compatibility.
+void restoreBackendInputs(QTabWidget* tabs) {
+    auto* settings = new QSettings{
+        QSettings::IniFormat, QSettings::UserScope,
+        "libaudition", "qt-demo", tabs};
+    const auto visit = [settings](auto&& self, QTabWidget* group,
+                                  const QString& prefix) -> void {
+        for (int tab = 0; tab < group->count(); ++tab) {
+            const QString title = group->tabText(tab);
+            const QString scope = prefix + "/" + title;
+            QWidget* page = group->widget(tab);
+            // A nested QTabWidget has its own independently named forms.
+            if (auto* nested = page->findChild<QTabWidget*>()) {
+                self(self, nested, scope);
+                continue;
+            }
+            if (title == "VITS / Piper TTS") continue;
+            const auto edits = page->findChildren<QLineEdit*>();
+            for (int i = 0; i < edits.size(); ++i) {
+                auto* edit = edits.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/text_" + QString::number(i);
+                if (settings->contains(key))
+                    edit->setText(settings->value(key).toString());
+                QObject::connect(edit, &QLineEdit::textChanged, settings,
+                                 [settings, key](const QString& value) {
+                    settings->setValue(key, value);
+                });
+            }
+            const auto combos = page->findChildren<QComboBox*>();
+            for (int i = 0; i < combos.size(); ++i) {
+                auto* combo = combos.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/combo_" + QString::number(i);
+                if (settings->contains(key)) {
+                    const int index = combo->findText(settings->value(key).toString());
+                    if (index >= 0) combo->setCurrentIndex(index);
+                }
+                QObject::connect(combo, &QComboBox::currentTextChanged, settings,
+                                 [settings, key](const QString& value) {
+                    settings->setValue(key, value);
+                });
+            }
+            const auto spins = page->findChildren<QSpinBox*>();
+            for (int i = 0; i < spins.size(); ++i) {
+                auto* spin = spins.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/int_" + QString::number(i);
+                if (settings->contains(key))
+                    spin->setValue(settings->value(key).toInt());
+                QObject::connect(spin, qOverload<int>(&QSpinBox::valueChanged),
+                                 settings, [settings, key](int value) {
+                    settings->setValue(key, value);
+                });
+            }
+            const auto doubles = page->findChildren<QDoubleSpinBox*>();
+            for (int i = 0; i < doubles.size(); ++i) {
+                auto* spin = doubles.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/double_" + QString::number(i);
+                if (settings->contains(key))
+                    spin->setValue(settings->value(key).toDouble());
+                QObject::connect(spin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+                                 settings, [settings, key](double value) {
+                    settings->setValue(key, value);
+                });
+            }
+        }
+    };
+    visit(visit, tabs, QString{});
+}
+
+}  // namespace
+
 QWidget* createBackendWorkbench(QWidget* parent) {
     auto* page = new QWidget{parent};
     auto* layout = new QVBoxLayout{page};
@@ -1552,6 +1629,7 @@ QWidget* createBackendWorkbench(QWidget* parent) {
         createOdasPanel(tabs),
         "ODAS");
     addOptionalBackendWorkbenchTabs(tabs);
+    restoreBackendInputs(tabs);
 
     layout->addWidget(tabs);
     return page;
