@@ -895,8 +895,12 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         "Hover: direction, activity, sound class (if model loaded)\n"
         "ASR transcripts are shown per tracked source when enabled.", sidebar});
     split->addWidget(sidebar);
-    split->setStretchFactor(0, 3);
-    split->setStretchFactor(1, 2);
+    // Default the sphere viewport to roughly square rather than giving it
+    // most of the window width. Users can still drag the splitter freely.
+    split->setChildrenCollapsible(false);
+    split->setStretchFactor(0, 0);
+    split->setStretchFactor(1, 1);
+    split->setSizes({420, 740});
     layout->addWidget(split, 1);
 
     auto replay = std::make_shared<SceneReplay>();
