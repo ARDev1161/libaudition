@@ -338,6 +338,20 @@ void verifyWorkbench(QWidget* root) {
     if (!speechLanguage || speechLanguage->currentData().toString() != "auto") {
         throw std::runtime_error{"Qt self-test: SenseVoice supported language default missing"};
     }
+    auto* vadKind = scene->findChild<QComboBox*>("acousticSceneVadKind");
+    auto* asrKind = scene->findChild<QComboBox*>("acousticSceneAsrKind");
+    if (!vadKind || !asrKind || vadKind->count() != 2 ||
+        asrKind->count() != (LIBAUDITION_DEMO_HAS_WHISPERCPP ? 3 : 2)) {
+        throw std::runtime_error{"Qt self-test: VAD/ASR selector options missing"};
+    }
+    asrKind->setCurrentIndex(1);
+    if (speechLanguage->findData(QStringLiteral("ru")) < 0) {
+        throw std::runtime_error{"Qt self-test: Whisper Russian language missing"};
+    }
+    asrKind->setCurrentIndex(0);
+    if (speechLanguage->findData(QStringLiteral("ru")) >= 0) {
+        throw std::runtime_error{"Qt self-test: unsupported SenseVoice Russian language"};
+    }
     if (scene->findChild<QCheckBox*>("acousticSceneEnableTagging") == nullptr ||
         scene->findChild<QLineEdit*>("acousticSceneTaggingModel") == nullptr ||
         scene->findChild<QLineEdit*>("acousticSceneTaggingLabels") == nullptr) {
