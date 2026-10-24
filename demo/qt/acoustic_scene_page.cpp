@@ -727,16 +727,24 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     asrKind->setObjectName("acousticSceneAsrKind");
     asrKind->addItem("SenseVoice (Sherpa)", QStringLiteral("sensevoice"));
     asrKind->addItem("Whisper (Sherpa ONNX)", QStringLiteral("whisper"));
+    asrKind->addItem("Paraformer (Sherpa)", QStringLiteral("paraformer"));
+    asrKind->addItem("NeMo CTC (Sherpa)", QStringLiteral("nemo_ctc"));
+    asrKind->addItem("Zipformer CTC (Sherpa)", QStringLiteral("zipformer_ctc"));
+    asrKind->addItem("WeNet CTC (Sherpa)", QStringLiteral("wenet_ctc"));
+    asrKind->addItem("Transducer (Sherpa)", QStringLiteral("transducer"));
 #if LIBAUDITION_DEMO_HAS_WHISPERCPP
     asrKind->addItem("whisper.cpp (GGML)", QStringLiteral("whispercpp"));
 #endif
     auto* speechDecoder = new QLineEdit{speechSettings};
-    speechDecoder->setPlaceholderText("Whisper decoder.onnx");
+    speechDecoder->setPlaceholderText("Decoder ONNX");
+    auto* speechJoiner = new QLineEdit{speechSettings};
+    speechJoiner->setPlaceholderText("Transducer joiner.onnx");
     speechForm->addRow("VAD engine", vadKind);
     speechForm->addRow("VAD model", speechVad);
     speechForm->addRow("ASR engine", asrKind);
     speechForm->addRow("ASR model / encoder", speechAsr);
-    speechForm->addRow("Whisper decoder", speechDecoder);
+    speechForm->addRow("Decoder", speechDecoder);
+    speechForm->addRow("Joiner", speechJoiner);
     speechForm->addRow("ASR tokens", speechTokens);
     auto* speechLanguage = new QComboBox{speechSettings};
     speechLanguage->setObjectName("acousticSceneSpeechLanguage");
@@ -751,15 +759,17 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     const auto refreshSpeechInputs = [=]() {
         const auto kind = asrKind->currentData().toString();
         const bool whisperOnnx = kind == "whisper";
+        const bool transducer = kind == "transducer";
         const bool whisperCpp = kind == "whispercpp";
-        speechDecoder->setVisible(whisperOnnx);
+        speechDecoder->setVisible(whisperOnnx || transducer);
+        speechJoiner->setVisible(transducer);
         speechTokens->setVisible(!whisperCpp);
         // Keep language choices valid for the selected recognizer.
         const auto previous = speechLanguage->currentData().toString();
         speechLanguage->clear();
         speechLanguage->addItem("Automatic", QStringLiteral("auto"));
         speechLanguage->addItem("English", QStringLiteral("en"));
-        if (kind != "sensevoice")
+        if (whisperOnnx || whisperCpp)
             speechLanguage->addItem("Russian", QStringLiteral("ru"));
         speechLanguage->addItem("Chinese", QStringLiteral("zh"));
         speechLanguage->addItem("Japanese", QStringLiteral("ja"));
@@ -1297,21 +1307,27 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 const auto tokens = std::filesystem::path{speechTokens->text().toStdString()};
                 const auto decoder =
                     std::filesystem::path{speechDecoder->text().toStdString()};
+                const auto joiner =
+                    std::filesystem::path{speechJoiner->text().toStdString()};
                 config.speech_vad_kind = vadKind->currentData().toString().toStdString();
                 config.speech_asr_kind = asrKind->currentData().toString().toStdString();
                 const bool needsTokens = config.speech_asr_kind != "whispercpp";
-                const bool needsDecoder = config.speech_asr_kind == "whisper";
+                const bool needsDecoder = config.speech_asr_kind == "whisper" ||
+                    config.speech_asr_kind == "transducer";
+                const bool needsJoiner = config.speech_asr_kind == "transducer";
                 if (config.sample_rate_hz != 16000U ||
                     !std::filesystem::is_regular_file(vad) ||
                     !std::filesystem::is_regular_file(model) ||
                     (needsTokens && !std::filesystem::is_regular_file(tokens)) ||
-                    (needsDecoder && !std::filesystem::is_regular_file(decoder))) {
+                    (needsDecoder && !std::filesystem::is_regular_file(decoder)) ||
+                    (needsJoiner && !std::filesystem::is_regular_file(joiner))) {
                     throw std::runtime_error{
                         "ASR requires 16 kHz and valid model files for selected VAD/ASR"};
                 }
                 config.speech_vad_model_path = vad.string();
                 config.speech_asr_model_path = model.string();
                 config.speech_asr_decoder_path = decoder.string();
+                config.speech_asr_joiner_path = joiner.string();
                 config.speech_asr_tokens_path = tokens.string();
                 config.speech_asr_language =
                     speechLanguage->currentData().toString().toStdString();
