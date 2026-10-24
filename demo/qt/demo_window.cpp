@@ -169,12 +169,11 @@ QWidget* requireTab(QTabWidget* tabs, const char* name) {
 
 void verifyWorkbench(QWidget* root) {
     auto* appTabs = qobject_cast<QTabWidget*>(root);
-    if (appTabs == nullptr || appTabs->count() != 12) {
+    if (appTabs == nullptr || appTabs->count() != 11) {
         throw std::runtime_error{"Qt self-test: unexpected application tab count"};
     }
     for (const char* name : {
              "Acoustic scene",
-             "Overview",
              "Audio / DSP",
              "SPL / Range",
              "Smoothing",
@@ -182,11 +181,21 @@ void verifyWorkbench(QWidget* root) {
              "AcousticEvent",
              "Pipeline",
              "Backend workbench",
-             "Backends",
              "Temporal patterns",
-             "Feature catalog"}) {
+             "Settings",
+             "Help"}) {
         static_cast<void>(requireTab(appTabs, name));
     }
+    auto* settingsTabs = requireTab(appTabs, "Settings")->findChild<QTabWidget*>();
+    if (!settingsTabs || settingsTabs->count() != 1) {
+        throw std::runtime_error{"Qt self-test: unexpected settings tabs"};
+    }
+    static_cast<void>(requireTab(settingsTabs, "Backends"));
+    auto* helpTabs = requireTab(appTabs, "Help")->findChild<QTabWidget*>();
+    if (!helpTabs || helpTabs->count() != 2) {
+        throw std::runtime_error{"Qt self-test: unexpected help tabs"};
+    }
+    static_cast<void>(requireTab(helpTabs, "Overview"));
 
     auto* temporalPage = requireTab(appTabs, "Temporal patterns");
     auto* runTemporal = temporalPage->findChild<QPushButton*>("temporalRun");
@@ -262,7 +271,7 @@ void verifyWorkbench(QWidget* root) {
     eventScalars->setPlainText(QStringLiteral("0 0 3 3 3"));
     eventRun->click();
 
-    auto* catalogPage = requireTab(appTabs, "Feature catalog");
+    auto* catalogPage = requireTab(helpTabs, "Feature catalog");
     auto* catalog = catalogPage->findChild<QTableWidget*>("capabilityTable");
     auto* catalogSearch = catalogPage->findChild<QLineEdit*>("capabilitySearch");
     if (!catalog || catalog->rowCount()<35 || !catalogSearch)
@@ -445,7 +454,6 @@ DemoWindow::DemoWindow(QWidget* parent)
         return scroll;
     };
     tabs->addTab(scrollPage(createAcousticScenePage(tabs)), "Acoustic scene");
-    tabs->addTab(scrollPage(createOverviewTab()), "Overview");
     tabs->addTab(scrollPage(createAudioDspTab()), "Audio / DSP");
     tabs->addTab(scrollPage(createSpatialTab()), "SPL / Range");
     tabs->addTab(scrollPage(createSmoothingTab()), "Smoothing");
@@ -454,8 +462,16 @@ DemoWindow::DemoWindow(QWidget* parent)
     tabs->addTab(scrollPage(createPipelineTab()), "Pipeline");
     tabs->addTab(scrollPage(createTemporalPatternsPage()), "Temporal patterns");
     tabs->addTab(scrollPage(createBackendWorkbench(tabs)), "Backend workbench");
-    tabs->addTab(scrollPage(createCapabilitiesTab()), "Backends");
-    tabs->addTab(scrollPage(createFeatureCatalogPage(tabs)), "Feature catalog");
+
+    auto* settings = new QTabWidget;
+    settings->addTab(scrollPage(createCapabilitiesTab()), "Backends");
+    tabs->addTab(settings, "Settings");
+
+    auto* help = new QTabWidget;
+    help->addTab(scrollPage(createOverviewTab()), "Overview");
+    help->addTab(scrollPage(createFeatureCatalogPage(tabs)), "Feature catalog");
+    tabs->addTab(help, "Help");
+
     setCentralWidget(tabs);
 }
 
