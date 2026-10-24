@@ -363,6 +363,23 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         config.speech_asr_decoder_path,
                         config.speech_asr_language == "auto" ? "" :
                             config.speech_asr_language};
+                } else if (config.speech_asr_kind == "paraformer") {
+                    options->model = audition::SherpaOfflineParaformerModel{
+                        config.speech_asr_model_path};
+                } else if (config.speech_asr_kind == "nemo_ctc") {
+                    options->model = audition::SherpaOfflineNemoCtcModel{
+                        config.speech_asr_model_path};
+                } else if (config.speech_asr_kind == "zipformer_ctc") {
+                    options->model = audition::SherpaOfflineZipformerCtcModel{
+                        config.speech_asr_model_path};
+                } else if (config.speech_asr_kind == "wenet_ctc") {
+                    options->model = audition::SherpaOfflineWenetCtcModel{
+                        config.speech_asr_model_path};
+                } else if (config.speech_asr_kind == "transducer") {
+                    options->model = audition::SherpaOfflineTransducerModel{
+                        config.speech_asr_model_path,
+                        config.speech_asr_decoder_path,
+                        config.speech_asr_joiner_path};
                 } else {
                     options->model = audition::SherpaOfflineSenseVoiceModel{
                         config.speech_asr_model_path, config.speech_asr_language, false};
