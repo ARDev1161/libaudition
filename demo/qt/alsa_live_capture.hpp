@@ -50,6 +50,7 @@ struct LiveCaptureConfig {
     std::string speech_vad_model_path{};
     std::string speech_asr_model_path{};
     std::string speech_asr_tokens_path{};
+    std::string speech_asr_language{"ru"};
 };
 
 struct LiveCaptureSnapshot {
