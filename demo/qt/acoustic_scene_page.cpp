@@ -758,6 +758,36 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechLanguage->addItem("Cantonese", QStringLiteral("yue"));
     speechLanguage->setToolTip("SenseVoice supports auto, zh, en, ja, ko, yue. Russian requires a different ASR model.");
     speechForm->addRow("ASR language", speechLanguage);
+    // Keep model files isolated per backend. Switching to a different
+    // architecture must never silently reuse incompatible weights.
+    auto vadPaths = std::make_shared<std::map<QString, QString>>();
+    (*vadPaths)["silero"] = speechVad->text();
+    auto asrPaths = std::make_shared<std::map<QString, QStringList>>();
+    (*asrPaths)["sensevoice"] = QStringList{
+        speechAsr->text(), speechDecoder->text(),
+        speechJoiner->text(), speechTokens->text()};
+    auto currentVadKind = std::make_shared<QString>("silero");
+    auto currentAsrKind = std::make_shared<QString>("sensevoice");
+    QObject::connect(vadKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     speechSettings, [=](int) {
+        (*vadPaths)[*currentVadKind] = speechVad->text();
+        const auto next = vadKind->currentData().toString();
+        *currentVadKind = next;
+        speechVad->setText((*vadPaths)[next]);
+    });
+    QObject::connect(asrKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     speechSettings, [=](int) {
+        (*asrPaths)[*currentAsrKind] = QStringList{
+            speechAsr->text(), speechDecoder->text(),
+            speechJoiner->text(), speechTokens->text()};
+        const auto next = asrKind->currentData().toString();
+        *currentAsrKind = next;
+        const auto paths = (*asrPaths)[next];
+        speechAsr->setText(paths.value(0));
+        speechDecoder->setText(paths.value(1));
+        speechJoiner->setText(paths.value(2));
+        speechTokens->setText(paths.value(3));
+    });
     const auto refreshSpeechInputs = [=]() {
         const auto kind = asrKind->currentData().toString();
         const bool whisperOnnx = kind == "whisper";
