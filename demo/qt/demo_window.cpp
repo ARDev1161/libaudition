@@ -1,5 +1,6 @@
 #include "demo_window.hpp"
 #include <QCheckBox>
+#include <QComboBox>
 
 #include "acoustic_scene_page.hpp"
 #include "backend_workbench.hpp"
