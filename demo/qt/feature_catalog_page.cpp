@@ -125,7 +125,7 @@ QWidget* createFeatureCatalogPage(QTabWidget* applicationTabs) {
             }
             // Some destinations live under Settings or Help instead of
             // occupying a top-level application tab.
-            auto* nested = applicationTabs->widget(index)->findChild<QTabWidget*>();
+            auto* nested = qobject_cast<QTabWidget*>(applicationTabs->widget(index));
             if (!nested) continue;
             for (int child = 0; child < nested->count(); ++child) {
                 if (nested->tabText(child) == title) {
