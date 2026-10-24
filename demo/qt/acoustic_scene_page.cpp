@@ -693,7 +693,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     layout->addWidget(enableTagging);
     layout->addWidget(taggingSettings);
     taggingSettings->setVisible(enableTagging->isChecked());
-    auto* enableSpeech = new QCheckBox{"Transcribe separated sources (Silero + SenseVoice)", page};
+    auto* enableSpeech = new QCheckBox{"Transcribe separated sources (select VAD / ASR)", page};
     enableSpeech->setObjectName("acousticSceneEnableSpeech");
 #if LIBAUDITION_DEMO_HAS_SHERPA && defined(LIBAUDITION_DEMO_SILERO_VAD_MODEL) && defined(LIBAUDITION_DEMO_SENSEVOICE_MODEL) && defined(LIBAUDITION_DEMO_SENSEVOICE_TOKENS)
     enableSpeech->setChecked(true);
@@ -719,9 +719,25 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechVad->setPlaceholderText("Silero VAD model .onnx");
     speechAsr->setPlaceholderText("SenseVoice model .onnx");
     speechTokens->setPlaceholderText("SenseVoice tokens.txt");
-    speechForm->addRow("Silero VAD", speechVad);
-    speechForm->addRow("SenseVoice ONNX", speechAsr);
-    speechForm->addRow("SenseVoice tokens", speechTokens);
+    auto* vadKind = new QComboBox{speechSettings};
+    vadKind->setObjectName("acousticSceneVadKind");
+    vadKind->addItem("Silero VAD", QStringLiteral("silero"));
+    vadKind->addItem("TEN VAD", QStringLiteral("ten"));
+    auto* asrKind = new QComboBox{speechSettings};
+    asrKind->setObjectName("acousticSceneAsrKind");
+    asrKind->addItem("SenseVoice (Sherpa)", QStringLiteral("sensevoice"));
+    asrKind->addItem("Whisper (Sherpa ONNX)", QStringLiteral("whisper"));
+#if LIBAUDITION_DEMO_HAS_WHISPERCPP
+    asrKind->addItem("whisper.cpp (GGML)", QStringLiteral("whispercpp"));
+#endif
+    auto* speechDecoder = new QLineEdit{speechSettings};
+    speechDecoder->setPlaceholderText("Whisper decoder.onnx");
+    speechForm->addRow("VAD engine", vadKind);
+    speechForm->addRow("VAD model", speechVad);
+    speechForm->addRow("ASR engine", asrKind);
+    speechForm->addRow("ASR model / encoder", speechAsr);
+    speechForm->addRow("Whisper decoder", speechDecoder);
+    speechForm->addRow("ASR tokens", speechTokens);
     auto* speechLanguage = new QComboBox{speechSettings};
     speechLanguage->setObjectName("acousticSceneSpeechLanguage");
     speechLanguage->addItem("Automatic", QStringLiteral("auto"));
@@ -731,7 +747,39 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechLanguage->addItem("Korean", QStringLiteral("ko"));
     speechLanguage->addItem("Cantonese", QStringLiteral("yue"));
     speechLanguage->setToolTip("SenseVoice supports auto, zh, en, ja, ko, yue. Russian requires a different ASR model.");
-    speechForm->addRow("SenseVoice language", speechLanguage);
+    speechForm->addRow("ASR language", speechLanguage);
+    const auto refreshSpeechInputs = [=]() {
+        const auto kind = asrKind->currentData().toString();
+        const bool whisperOnnx = kind == "whisper";
+        const bool whisperCpp = kind == "whispercpp";
+        speechDecoder->setVisible(whisperOnnx);
+        speechTokens->setVisible(!whisperCpp);
+        // Keep language choices valid for the selected recognizer.
+        const auto previous = speechLanguage->currentData().toString();
+        speechLanguage->clear();
+        speechLanguage->addItem("Automatic", QStringLiteral("auto"));
+        speechLanguage->addItem("English", QStringLiteral("en"));
+        if (kind != "sensevoice")
+            speechLanguage->addItem("Russian", QStringLiteral("ru"));
+        speechLanguage->addItem("Chinese", QStringLiteral("zh"));
+        speechLanguage->addItem("Japanese", QStringLiteral("ja"));
+        speechLanguage->addItem("Korean", QStringLiteral("ko"));
+        if (kind == "sensevoice")
+            speechLanguage->addItem("Cantonese", QStringLiteral("yue"));
+        const int found = speechLanguage->findData(previous);
+        speechLanguage->setCurrentIndex(found >= 0 ? found : 0);
+        speechAsr->setPlaceholderText(whisperCpp ? "GGML Whisper model .bin" :
+                                      whisperOnnx ? "Whisper encoder.onnx" :
+                                                   "SenseVoice model.onnx");
+        speechVad->setPlaceholderText(
+            vadKind->currentData().toString() == "ten" ?
+            "TEN VAD model.onnx" : "Silero VAD model.onnx");
+    };
+    QObject::connect(asrKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     speechSettings, [=](int) { refreshSpeechInputs(); });
+    QObject::connect(vadKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     speechSettings, [=](int) { refreshSpeechInputs(); });
+    refreshSpeechInputs();
     layout->addWidget(enableSpeech);
     layout->addWidget(speechSettings);
     speechSettings->setVisible(enableSpeech->isChecked());
@@ -1247,15 +1295,23 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 const auto vad = std::filesystem::path{speechVad->text().toStdString()};
                 const auto model = std::filesystem::path{speechAsr->text().toStdString()};
                 const auto tokens = std::filesystem::path{speechTokens->text().toStdString()};
+                const auto decoder =
+                    std::filesystem::path{speechDecoder->text().toStdString()};
+                config.speech_vad_kind = vadKind->currentData().toString().toStdString();
+                config.speech_asr_kind = asrKind->currentData().toString().toStdString();
+                const bool needsTokens = config.speech_asr_kind != "whispercpp";
+                const bool needsDecoder = config.speech_asr_kind == "whisper";
                 if (config.sample_rate_hz != 16000U ||
                     !std::filesystem::is_regular_file(vad) ||
                     !std::filesystem::is_regular_file(model) ||
-                    !std::filesystem::is_regular_file(tokens)) {
+                    (needsTokens && !std::filesystem::is_regular_file(tokens)) ||
+                    (needsDecoder && !std::filesystem::is_regular_file(decoder))) {
                     throw std::runtime_error{
-                        "ASR requires 16 kHz and existing Silero/SenseVoice ONNX + tokens"};
+                        "ASR requires 16 kHz and valid model files for selected VAD/ASR"};
                 }
                 config.speech_vad_model_path = vad.string();
                 config.speech_asr_model_path = model.string();
+                config.speech_asr_decoder_path = decoder.string();
                 config.speech_asr_tokens_path = tokens.string();
                 config.speech_asr_language =
                     speechLanguage->currentData().toString().toStdString();
