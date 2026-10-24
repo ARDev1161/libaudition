@@ -1,6 +1,6 @@
 #include <audition/backends/whispercpp/asr.hpp>
 
-#include <exception>
+#include <stdexcept>
 #include <string>
 
 int main() {
