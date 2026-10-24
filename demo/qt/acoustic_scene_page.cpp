@@ -907,7 +907,6 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     const auto refreshSpeechInputs = [=]() {
         const auto kind = asrKind->currentData().toString();
         const bool whisperOnnx = kind == "whisper";
-        const bool transducer = kind == "transducer";
         const bool whisperCpp = kind == "whispercpp";
         // Model paths remain internal; the user selects a model directory,
         // not individual model files.
