@@ -17,6 +17,7 @@ option(LIBAUDITION_WITH_ODAS "Build the direct libodas spatial-audio backend" OF
 option(LIBAUDITION_WITH_LIBSAMPLERATE "Build the libsamplerate resampling backend" OFF)
 option(LIBAUDITION_WITH_WEBRTC_AEC3 "Build the WebRTC AEC3 echo-cancellation backend" OFF)
 option(LIBAUDITION_WITH_SHERPA "Build sherpa-onnx speech backends" OFF)
+option(LIBAUDITION_WITH_WHISPERCPP "Build optional whisper.cpp ASR backend (system library)" OFF)
 option(LIBAUDITION_WITH_CLAP "Build the CLAP ONNX audio-embedding backend" OFF)
 option(LIBAUDITION_WITH_YAMNET "Build the YAMNet ONNX AudioSet classifier" ${LIBAUDITION_BUILD_QT_DEMO})
 option(LIBAUDITION_WITH_EFFICIENTAT "Build experimental EfficientAT log-mel ONNX adapter" OFF)
@@ -91,6 +92,10 @@ endif()
 if(LIBAUDITION_WITH_SHERPA)
     libaudition_find_or_fetch_sherpa()
     add_subdirectory(backends/sherpa)
+endif()
+
+if(LIBAUDITION_WITH_WHISPERCPP)
+    add_subdirectory(backends/whispercpp)
 endif()
 
 if(LIBAUDITION_WITH_CLAP)
