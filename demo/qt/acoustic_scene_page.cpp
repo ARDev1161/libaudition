@@ -38,6 +38,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
+#include <QCoreApplication>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -1427,7 +1428,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const QString detail = QString::fromUtf8(error.what());
             status->setText("Live capture configuration error: " + detail);
             diagnostics->setText("Capture was not started: " + detail);
-            QMessageBox::warning(page, "Cannot start live capture", detail);
+            const auto args = QCoreApplication::arguments();
+            const bool automatedTest = args.contains("--self-test") ||
+                std::any_of(args.cbegin(), args.cend(), [](const QString& arg) {
+                    return arg.startsWith("--model-self-test=");
+                });
+            if (!automatedTest)
+                QMessageBox::warning(page, "Cannot start live capture", detail);
         }
     });
 #endif
@@ -1488,7 +1495,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             const QString detail = QString::fromStdString(snapshot.error);
             status->setText("Live ALSA/ODAS error: " + detail);
             diagnostics->setText("Live capture stopped: " + detail);
-            QMessageBox::warning(page, "Live capture failed", detail);
+            const auto args = QCoreApplication::arguments();
+            const bool automatedTest = args.contains("--self-test") ||
+                std::any_of(args.cbegin(), args.cend(), [](const QString& arg) {
+                    return arg.startsWith("--model-self-test=");
+                });
+            if (!automatedTest)
+                QMessageBox::warning(page, "Live capture failed", detail);
             return;
         }
         if (!snapshot.running) {
