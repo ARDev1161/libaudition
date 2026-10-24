@@ -339,7 +339,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             asr_options->features.sample_rate_hz = config.sample_rate_hz;
             asr_options->tokens = config.speech_asr_tokens_path;
             asr_options->model = audition::SherpaOfflineSenseVoiceModel{
-                config.speech_asr_model_path};
+                config.speech_asr_model_path, config.speech_asr_language, false};
             auto asr = std::make_shared<audition::SherpaOfflineAsr>(std::move(*asr_options));
             audition::PerSourceSpeechOptions pipeline_options{};
             pipeline_options.sample_rate_hz = config.sample_rate_hz;
@@ -455,7 +455,21 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 const auto active = speech_runtime->activeGeneration(result.track_id);
                 if (active && *active == result.generation &&
                     recordings.active(result.track_id)) {
-                    transcripts[result.track_id] = std::move(result.transcript.text);
+                    auto& history = transcripts[result.track_id];
+                    const auto& fragment = result.transcript.text;
+                    if (!fragment.empty()) {
+                        if (!history.empty()) history += " ";
+                        history += fragment;
+                        // Keep the live table bounded; recording sidecars
+                        // retain individual, timestamped ASR results.
+                        constexpr std::size_t kMaxVisibleTranscriptBytes = 8192;
+                        if (history.size() > kMaxVisibleTranscriptBytes) {
+                            const auto excess = history.size() - kMaxVisibleTranscriptBytes;
+                            const auto boundary = history.find(' ', excess);
+                            history.erase(0, boundary == std::string::npos
+                                                 ? excess : boundary + 1);
+                        }
+                    }
                 }
             }
             for (const auto generation : batch.ready_retired_generations) {
