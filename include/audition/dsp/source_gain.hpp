@@ -36,7 +36,7 @@ public:
             sum += static_cast<double>(pcm[i]) * pcm[i];
             peak = std::max(peak, std::abs(static_cast<double>(pcm[i])));
         }
-        const double rms = std::sqrt(sum / count);
+        const double rms = std::sqrt(sum / static_cast<double>(count));
         const double rms_db = 20.0 * std::log10(std::max(1e-9, rms));
         constexpr double ceiling = 0.89;
         const double peak_db = peak > 0.0 ?
@@ -50,7 +50,7 @@ public:
         const double initial = std::min(gain_db_, peak_db);
         const double end = std::min(gain_db_ + alpha * (wanted - gain_db_), peak_db);
         for (std::size_t i = 0; i < count; ++i) {
-            const double fraction = static_cast<double>(i + 1) / count;
+            const double fraction = static_cast<double>(i + 1) / static_cast<double>(count);
             const double gain = std::pow(
                 10.0, (initial + (end - initial) * fraction) / 20.0);
             result[i] = static_cast<float>(
