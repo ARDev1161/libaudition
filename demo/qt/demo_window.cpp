@@ -341,7 +341,7 @@ void verifyWorkbench(QWidget* root) {
     auto* vadKind = scene->findChild<QComboBox*>("acousticSceneVadKind");
     auto* asrKind = scene->findChild<QComboBox*>("acousticSceneAsrKind");
     if (!vadKind || !asrKind || vadKind->count() != 2 ||
-        asrKind->count() != (LIBAUDITION_DEMO_HAS_WHISPERCPP ? 3 : 2)) {
+        asrKind->count() != (LIBAUDITION_DEMO_HAS_WHISPERCPP ? 8 : 7)) {
         throw std::runtime_error{"Qt self-test: VAD/ASR selector options missing"};
     }
     asrKind->setCurrentIndex(1);
