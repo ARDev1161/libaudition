@@ -746,12 +746,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto* speechJoiner = new QLineEdit{speechSettings};
     speechJoiner->setPlaceholderText("Transducer joiner.onnx");
     speechForm->addRow("VAD engine", vadKind);
-    speechForm->addRow("VAD model", speechVad);
     speechForm->addRow("ASR engine", asrKind);
-    speechForm->addRow("ASR model / encoder", speechAsr);
-    speechForm->addRow("Decoder", speechDecoder);
-    speechForm->addRow("Joiner", speechJoiner);
-    speechForm->addRow("ASR tokens", speechTokens);
     auto* speechLanguage = new QComboBox{speechSettings};
     speechLanguage->setObjectName("acousticSceneSpeechLanguage");
     speechLanguage->addItem("Automatic", QStringLiteral("auto"));
@@ -775,8 +770,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     modelRoot->setObjectName("acousticSceneModelRoot");
     QSettings modelSettings{QSettings::IniFormat, QSettings::UserScope,
                             "libaudition", "qt-demo"};
-    modelRoot->setText(modelSettings.value("speech/model_root",
-        QDir::current().absoluteFilePath("demo-models")).toString());
+    QString defaultModelRoot = QDir::current().absoluteFilePath("demo-models");
+#ifdef LIBAUDITION_DEMO_SILERO_VAD_MODEL
+    defaultModelRoot = QFileInfo(
+        QString::fromUtf8(LIBAUDITION_DEMO_SILERO_VAD_MODEL)).dir().absolutePath();
+#endif
+    modelRoot->setText(modelSettings.value(
+        "speech/model_root", defaultModelRoot).toString());
     auto* scanModels = new QPushButton{"Scan models", speechSettings};
     auto* browseModels = new QPushButton{"Browse directory…", speechSettings};
     auto* rootRow = new QWidget{speechSettings};
@@ -800,6 +800,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     const auto locate = [=](const QStringList& candidates) -> QString {
         const QStringList roots{
             modelRoot->text(),
+            QFileInfo(modelRoot->text()).dir().absolutePath(),
             QDir::current().absoluteFilePath("demo-models"),
             QDir::current().absoluteFilePath("models")
         };
@@ -908,9 +909,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         const bool whisperOnnx = kind == "whisper";
         const bool transducer = kind == "transducer";
         const bool whisperCpp = kind == "whispercpp";
-        speechDecoder->setVisible(whisperOnnx || transducer);
-        speechJoiner->setVisible(transducer);
-        speechTokens->setVisible(!whisperCpp);
+        // Model paths remain internal; the user selects a model directory,
+        // not individual model files.
         // Keep language choices valid for the selected recognizer.
         const auto previous = speechLanguage->currentData().toString();
         speechLanguage->clear();
