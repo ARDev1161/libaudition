@@ -1580,6 +1580,18 @@ void restoreBackendInputs(QTabWidget* tabs) {
                     settings->setValue(key, value);
                 });
             }
+            const auto checks = page->findChildren<QCheckBox*>();
+            for (int i = 0; i < checks.size(); ++i) {
+                auto* check = checks.at(i);
+                const QString key = "backend_inputs" + scope +
+                                    "/check_" + QString::number(i);
+                if (settings->contains(key))
+                    check->setChecked(settings->value(key).toBool());
+                QObject::connect(check, &QCheckBox::toggled, settings,
+                                 [settings, key](bool checked) {
+                    settings->setValue(key, checked);
+                });
+            }
             const auto doubles = page->findChildren<QDoubleSpinBox*>();
             for (int i = 0; i < doubles.size(); ++i) {
                 auto* spin = doubles.at(i);
