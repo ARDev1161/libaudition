@@ -324,6 +324,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::unique_ptr<audition::PerSourceSpeechRuntime> speech_runtime;
         std::unique_ptr<audition::AsyncSpeechIngressWorker> speech_worker;
         std::map<std::uint64_t, std::string> transcripts;
+        std::uint64_t ignored_asr_results = 0;
+        std::string last_asr_language;
         std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceGain>> speechGains;
         std::uint64_t appliedGainRevision = 0;
         if (config.transcribe_sources) {
@@ -451,6 +453,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             drainSpeechAcks();
             auto batch = speech_runtime->drainReady();
             for (auto& result : batch.results) {
+                last_asr_language = result.transcript.language;
                 recordings.addSpeech(result);
                 const auto active = speech_runtime->activeGeneration(result.track_id);
                 if (active && *active == result.generation &&
@@ -470,6 +473,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                                  ? excess : boundary + 1);
                         }
                     }
+                } else {
+                    ++ignored_asr_results;
                 }
             }
             for (const auto generation : batch.ready_retired_generations) {
@@ -825,7 +830,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     " retired=" + std::to_string(stats.retired_generations) +
                     " retire_capacity_drops=" +
                     std::to_string(retirement_capacity_drops) +
-                    " worker_errors=" + std::to_string(speech_worker_errors);
+                    " worker_errors=" + std::to_string(speech_worker_errors) +
+                    " ignored_results=" + std::to_string(ignored_asr_results) +
+                    " last_language=" + (last_asr_language.empty() ? "none" : last_asr_language);
                 if (speech_worker) {
                     const auto input=speech_worker->inputStatistics();
                     latest_.speech_status +=
