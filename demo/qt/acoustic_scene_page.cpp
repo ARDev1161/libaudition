@@ -724,12 +724,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechForm->addRow("SenseVoice tokens", speechTokens);
     auto* speechLanguage = new QComboBox{speechSettings};
     speechLanguage->setObjectName("acousticSceneSpeechLanguage");
-    speechLanguage->addItem("Russian", QStringLiteral("ru"));
     speechLanguage->addItem("Automatic", QStringLiteral("auto"));
     speechLanguage->addItem("English", QStringLiteral("en"));
     speechLanguage->addItem("Chinese", QStringLiteral("zh"));
     speechLanguage->addItem("Japanese", QStringLiteral("ja"));
     speechLanguage->addItem("Korean", QStringLiteral("ko"));
+    speechLanguage->addItem("Cantonese", QStringLiteral("yue"));
+    speechLanguage->setToolTip("SenseVoice supports auto, zh, en, ja, ko, yue. Russian requires a different ASR model.");
     speechForm->addRow("SenseVoice language", speechLanguage);
     layout->addWidget(enableSpeech);
     layout->addWidget(speechSettings);
