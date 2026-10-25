@@ -29,6 +29,38 @@ These are **offline** engines, operating on completed speech segments.
 They do not implement realtime partial ASR. The separate Sherpa online
 ASR API/workbench remains a different path.
 
+## Extended demo model provisioning
+
+In addition to the default Silero + SenseVoice models, you can ask CMake to
+download representative models for **every Sherpa offline family listed in
+Acoustic scene**:
+
+```sh
+cmake -S . -B build/Desktop_Debug \
+  -DLIBAUDITION_BUILD_QT_DEMO=ON \
+  -DLIBAUDITION_WITH_SHERPA=ON \
+  -DLIBAUDITION_DEMO_FETCH_EXTRA_SPEECH_MODELS=ON
+```
+
+The extended package downloads **TEN VAD**, multilingual **Whisper Tiny INT8**
+(Russian included), English **Paraformer INT8**, Russian **NeMo CTC INT8**,
+Chinese **Zipformer CTC INT8**, Chinese **WeNet CTC INT8**, and Russian
+**Zipformer Transducer INT8**. Silero and SenseVoice remain part of the regular
+model-fetch option. Models are cached under
+`<build>/demo-models/speech` and picked up by **Scan models**.
+
+These are substantial downloads, so extended provisioning is opt-in and
+disabled in ordinary CI configurations. It requires network access during CMake
+configuration and a significant amount of free disk space. CMake reuses
+nonempty cached archives; no integrity hash is currently pinned for the extra
+upstream model packs, so this path is for development/demo provisioning rather
+than reproducible or security-critical builds. No model is embedded in the
+installed library.
+
+The `whisper.cpp` adapter requires a **separate GGML multilingual model**;
+the Sherpa Whisper ONNX package is not compatible with `whisper.cpp` and does
+not make that selection available automatically.
+
 ## Building whisper.cpp support
 
 This adapter uses the native upstream `whisper.h` API. It is disabled by
