@@ -20,7 +20,9 @@ public:
     virtual void reset() noexcept = 0;
 };
 
-// Bounded per-source RMS AGC, applied after source separation only.
+// Speech-oriented AGC on source-separated PCM. An energy gate prevents
+// amplifying stationary noise; a short hold retains gain between syllables.
+// The peak limiter is deliberately independent of the slow RMS controller.
 class RmsSourceGain final : public ISourceGain {
 public:
     std::vector<float> process(const float* pcm, std::size_t count,
@@ -29,40 +31,64 @@ public:
             throw std::invalid_argument("Invalid source gain PCM");
         std::vector<float> result(count);
         if (!count) return result;
-        double sum = 0.0, peak = 0.0;
+        double energy = 0.0;
         for (std::size_t i = 0; i < count; ++i) {
             if (!std::isfinite(pcm[i]))
                 throw std::invalid_argument("Nonfinite source gain sample");
-            sum += static_cast<double>(pcm[i]) * pcm[i];
-            peak = std::max(peak, std::abs(static_cast<double>(pcm[i])));
+            energy += static_cast<double>(pcm[i]) * pcm[i];
         }
-        const double rms = std::sqrt(sum / static_cast<double>(count));
-        const double rms_db = 20.0 * std::log10(std::max(1e-9, rms));
-        constexpr double ceiling = 0.89;
-        const double peak_db = peak > 0.0 ?
-            20.0 * std::log10(ceiling / peak) : 24.0;
-        const double wanted = std::min(
-            rms >= 0.001 ? std::clamp(-26.0 - rms_db, 0.0, 24.0) : 0.0,
-            peak_db);
-        const double tau = wanted < gain_db_ ? 0.02 : 0.075;
-        const double alpha = -std::expm1(
-            -static_cast<double>(count) / (sample_rate * tau));
-        const double initial = std::min(gain_db_, peak_db);
-        const double end = std::min(gain_db_ + alpha * (wanted - gain_db_), peak_db);
+        const double seconds = static_cast<double>(count) / sample_rate;
+        const double rms = std::sqrt(energy / static_cast<double>(count));
+        // Smooth power rather than dB values to avoid discontinuities.
+        const double levelAlpha = -std::expm1(-seconds / 0.30);
+        if (!initialized_) {
+            smoothedPower_ = rms * rms;
+            initialized_ = true;
+        } else {
+            smoothedPower_ += levelAlpha * (rms * rms - smoothedPower_);
+        }
+        const double smoothedDb = 10.0 * std::log10(std::max(1e-18, smoothedPower_));
+        constexpr double kGateDb = -60.0;
+        constexpr double kTargetDb = -26.0;
+        constexpr double kMaxGainDb = 36.0;
+        constexpr double kCeiling = 0.89;
+        if (rms >= 0.001) holdSeconds_ = 0.35;
+        else holdSeconds_ = std::max(0.0, holdSeconds_ - seconds);
+        // On silence do not chase the decaying smoothed RMS; release only
+        // after the hold expires to avoid pumping between spoken words.
+        const double wanted = holdSeconds_ > 0.0 && smoothedDb > kGateDb
+            ? std::clamp(kTargetDb - smoothedDb, 0.0, kMaxGainDb)
+            : 0.0;
+        const double tau = wanted > gain_db_ ? 0.25 : 0.60;
+        const double alpha = -std::expm1(-seconds / tau);
+        const double startGain = gain_db_;
+        const double endGain = std::clamp(
+            gain_db_ + alpha * (wanted - gain_db_), 0.0, kMaxGainDb);
+        // A fast peak limiter prevents clipping without forcing the slow AGC
+        // envelope to zero after a single transient.
         for (std::size_t i = 0; i < count; ++i) {
-            const double fraction = static_cast<double>(i + 1) / static_cast<double>(count);
-            const double gain = std::pow(
-                10.0, (initial + (end - initial) * fraction) / 20.0);
+            const double fraction = static_cast<double>(i + 1) / count;
+            const double db = startGain + (endGain - startGain) * fraction;
+            const double candidate = static_cast<double>(pcm[i]) *
+                std::pow(10.0, db / 20.0);
             result[i] = static_cast<float>(
-                std::clamp(static_cast<double>(pcm[i]) * gain, -ceiling, ceiling));
+                std::clamp(candidate, -kCeiling, kCeiling));
         }
-        gain_db_ = end;
+        gain_db_ = endGain;
         return result;
     }
     double gainDb() const noexcept override { return gain_db_; }
-    void reset() noexcept override { gain_db_ = 0.0; }
+    void reset() noexcept override {
+        gain_db_ = 0.0;
+        smoothedPower_ = 0.0;
+        holdSeconds_ = 0.0;
+        initialized_ = false;
+    }
 private:
     double gain_db_{0.0};
+    double smoothedPower_{0.0};
+    double holdSeconds_{0.0};
+    bool initialized_{false};
 };
 
 // Factory is intentionally replaceable by applications and later algorithms.
