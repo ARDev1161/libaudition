@@ -1052,7 +1052,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
     auto* speechAgc = new QCheckBox{"Adaptive speech gain (VAD / ASR only)", sidebar};
     speechAgc->setObjectName("acousticSceneSpeechAgc");
-    speechAgc->setChecked(false);
+    speechAgc->setChecked(true);
     auto* agcImplementation = new QComboBox{sidebar};
     agcImplementation->setObjectName("acousticSceneSpeechAgcImplementation");
     agcImplementation->addItem("RMS AGC", QStringLiteral("rms"));
