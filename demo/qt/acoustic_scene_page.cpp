@@ -353,8 +353,8 @@ QDialog* createRecordingPlaybackDialog(
                 double bestScore = -1.0;
                 for (const auto& event : (*timeline)->sounds()) {
                     if (event.start_sample <= sample && sample <= event.end_sample &&
-                        event.confidence.value() >= bestScore) {
-                        bestScore = event.confidence.value();
+                        event.confidence >= bestScore) {
+                        bestScore = event.confidence;
                         sound = QString::fromStdString(event.label);
                     }
                 }
