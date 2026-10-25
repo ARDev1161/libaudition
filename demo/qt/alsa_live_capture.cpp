@@ -502,7 +502,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 // hallucinations inside one inference response.
                 std::fprintf(stderr,
                     "[libaudition][ASR] track=%llu generation=%llu segment=%llu "
-                    "samples=[%llu,%llu) seconds=[%.3f,%.3f) language=%s text=%s\\n",
+                    "samples=[%llu,%llu) seconds=[%.3f,%.3f) language=%s text=%s\n",
                     static_cast<unsigned long long>(result.track_id),
                     static_cast<unsigned long long>(result.generation),
                     static_cast<unsigned long long>(result.transcript.segment_id.value()),
