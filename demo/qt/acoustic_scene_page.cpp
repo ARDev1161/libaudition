@@ -287,19 +287,19 @@ QDialog* createRecordingPlaybackDialog(
         column->addWidget(speechTitle);
         column->addWidget(currentSpeech);
         column->addWidget(speechLane);
-        auto* showAsrLog = new QPushButton{"ASR log…", dialog};
-        showAsrLog->setObjectName("recordingPlaybackAsrLog");
+        auto* showAsrLog = new QPushButton{"Source log…", dialog};
+        showAsrLog->setObjectName("recordingPlaybackSourceLog");
         column->addWidget(showAsrLog);
         QObject::connect(showAsrLog, &QPushButton::clicked, dialog, [=]() {
             auto* logDialog = new QDialog{dialog};
             logDialog->setAttribute(Qt::WA_DeleteOnClose);
-            logDialog->setWindowTitle(QString("Source #%1 · ASR diagnostics").arg(id));
+            logDialog->setWindowTitle(QString("Source #%1 · Source diagnostics").arg(id));
             logDialog->resize(850, 450);
             auto* logLayout = new QVBoxLayout{logDialog};
             auto* logText = new QPlainTextEdit{logDialog};
             logText->setReadOnly(true);
-            logText->setObjectName("recordingPlaybackAsrLogText");
-            logText->setPlaceholderText("No ASR segments received yet.");
+            logText->setObjectName("recordingPlaybackSourceLogText");
+            logText->setPlaceholderText("No source events recorded yet.");
             logLayout->addWidget(logText);
             auto* updateLog = new QTimer{logDialog};
             const auto refreshLog = [=]() {
@@ -1724,8 +1724,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             gainByTrack->clear();
             for (auto& entry : *history) {
                 const auto log = snapshot.asr_logs.find(entry.second.track.id);
-                if (log != snapshot.asr_logs.end())
-                    entry.second.asrLog = QString::fromStdString(log->second);
+                if (log != snapshot.asr_logs.end()) {
+                    const QString newAsr = QString::fromStdString(log->second);
+                    if (newAsr != entry.second.asrLog) {
+                        // ASR diagnostics remain raw and unmodified.
+                        entry.second.asrLog = newAsr;
+                    }
+                }
             }
             for (const auto& level : snapshot.speech_gain_levels)
                 (*gainByTrack)[level.track_id] = level.gain_db;
