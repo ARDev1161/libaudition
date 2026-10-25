@@ -327,6 +327,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::unique_ptr<audition::PerSourceSpeechRuntime> speech_runtime;
         std::unique_ptr<audition::AsyncSpeechIngressWorker> speech_worker;
         std::map<std::uint64_t, std::string> transcripts;
+        std::map<std::uint64_t, std::string> asrLogs;
         std::uint64_t ignored_asr_results = 0;
         std::string last_asr_language;
         std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceGain>> speechGains;
@@ -500,9 +501,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 // Source-local half-open sample offsets reveal duplicated or
                 // overlapping segments without conflating them with Whisper
                 // hallucinations inside one inference response.
-                std::fprintf(stderr,
-                    "[libaudition][ASR] track=%llu generation=%llu segment=%llu "
-                    "samples=[%llu,%llu) seconds=[%.3f,%.3f) language=%s text=%s\n",
+                char header[256]{};
+                std::snprintf(header, sizeof(header),
+                    "track=%llu generation=%llu segment=%llu samples=[%llu,%llu) "
+                    "seconds=[%.3f,%.3f) language=%s text=",
                     static_cast<unsigned long long>(result.track_id),
                     static_cast<unsigned long long>(result.generation),
                     static_cast<unsigned long long>(result.transcript.segment_id.value()),
@@ -510,8 +512,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     static_cast<unsigned long long>(result.audio_end_sample),
                     static_cast<double>(result.audio_start_sample) / config.sample_rate_hz,
                     static_cast<double>(result.audio_end_sample) / config.sample_rate_hz,
-                    result.transcript.language.c_str(),
-                    result.transcript.text.c_str());
+                    result.transcript.language.c_str());
+                auto& log = asrLogs[result.track_id];
+                log += header;
+                log += result.transcript.text;
+                log += '\\n';
+                constexpr std::size_t kMaxLogBytes = 32768;
+                if (log.size() > kMaxLogBytes) {
+                    const auto boundary = log.find('\\n', log.size() - kMaxLogBytes);
+                    log.erase(0, boundary == std::string::npos ?
+                                  log.size() - kMaxLogBytes : boundary + 1);
+                }
                 last_asr_language = result.transcript.language;
                 recordings.addSpeech(result);
                 const auto active = speech_runtime->activeGeneration(result.track_id);
@@ -853,6 +864,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             sssMeters.clear();
             std::lock_guard<std::mutex> lock{mutex_};
             latest_.tracks = std::move(tracks);
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            latest_.asr_logs = asrLogs;
+#endif
             latest_.recordings.clear();
             for (const auto& item : recorder.entries()) {
                 latest_.recordings.push_back({item.recording_id, item.track_id, item.path,
