@@ -233,6 +233,7 @@ QDialog* createRecordingPlaybackDialog(
 #if !LIBAUDITION_DEMO_HAS_MULTIMEDIA
     static_cast<void>(sourcePath);
     static_cast<void>(sampleCount);
+    static_cast<void>(liveAnnotations);
 #endif
         auto* dialog = new QDialog(parent);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -370,8 +371,8 @@ QDialog* createRecordingPlaybackDialog(
                 currentSound->setText(snapshot.first);
                 currentSpeech->setText(snapshot.second);
             }
-            currentSound->setCursorPosition(currentSound->text().size());
-            currentSpeech->setCursorPosition(currentSpeech->text().size());
+            currentSound->setCursorPosition(static_cast<int>(currentSound->text().size()));
+            currentSpeech->setCursorPosition(static_cast<int>(currentSpeech->text().size()));
         };
         QObject::connect(annotationTimer, &QTimer::timeout, dialog, refreshAnnotations);
         annotationTimer->start(250);
