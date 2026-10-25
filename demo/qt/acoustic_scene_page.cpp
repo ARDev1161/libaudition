@@ -228,8 +228,14 @@ QString directionSummary(const AcousticSceneTrack& track) {
 
 QDialog* createRecordingPlaybackDialog(
     QWidget* parent, std::uint64_t id, const QString& sourcePath,
+    std::uint64_t sampleCount) {
+    return createRecordingPlaybackDialog(parent, id, sourcePath, sampleCount, {});
+}
+
+QDialog* createRecordingPlaybackDialog(
+    QWidget* parent, std::uint64_t id, const QString& sourcePath,
     std::uint64_t sampleCount,
-    std::function<std::pair<QString, QString>()> liveAnnotations = {}) {
+    std::function<std::pair<QString, QString>()> liveAnnotations) {
 #if !LIBAUDITION_DEMO_HAS_MULTIMEDIA
     static_cast<void>(sourcePath);
     static_cast<void>(sampleCount);
