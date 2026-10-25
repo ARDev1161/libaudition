@@ -496,6 +496,22 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             drainSpeechAcks();
             auto batch = speech_runtime->drainReady();
             for (auto& result : batch.results) {
+                // Log the raw recognizer output BEFORE transcript aggregation.
+                // Source-local half-open sample offsets reveal duplicated or
+                // overlapping segments without conflating them with Whisper
+                // hallucinations inside one inference response.
+                std::fprintf(stderr,
+                    "[libaudition][ASR] track=%llu generation=%llu segment=%llu "
+                    "samples=[%llu,%llu) seconds=[%.3f,%.3f) language=%s text=%s\\n",
+                    static_cast<unsigned long long>(result.track_id),
+                    static_cast<unsigned long long>(result.generation),
+                    static_cast<unsigned long long>(result.transcript.segment_id.value()),
+                    static_cast<unsigned long long>(result.audio_start_sample),
+                    static_cast<unsigned long long>(result.audio_end_sample),
+                    static_cast<double>(result.audio_start_sample) / config.sample_rate_hz,
+                    static_cast<double>(result.audio_end_sample) / config.sample_rate_hz,
+                    result.transcript.language.c_str(),
+                    result.transcript.text.c_str());
                 last_asr_language = result.transcript.language;
                 recordings.addSpeech(result);
                 const auto active = speech_runtime->activeGeneration(result.track_id);
