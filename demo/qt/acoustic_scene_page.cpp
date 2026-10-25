@@ -1036,6 +1036,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript", "AGC gain", "Recording"});
     // Keep column widths user-adjustable rather than forcing equal stretching.
     tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    // Transcript consumes remaining viewport width; fixed neighboring columns
+    // remain manually resizable and Recording stays at the right edge.
+    tracks->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
     tracks->horizontalHeader()->setStretchLastSection(false);
     tracks->setColumnWidth(0, 55);
     tracks->setColumnWidth(1, 85);
