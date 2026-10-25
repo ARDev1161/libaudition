@@ -1259,6 +1259,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         qint64 lastLevelLogMs{0};
         double lastGainDb{0.0};
         bool hasGain{false};
+        bool recordingObserved{false};
+        bool recordingWasActive{false};
+        std::uint64_t lastLostSamples{0};
     };
     auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
     auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
@@ -1787,6 +1790,24 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     entry.hasGain = true;
                 }
                 const auto recording = recordingInfo->find(id);
+                if (recording != recordingInfo->end()) {
+                    const auto& wav = recording->second;
+                    if (!entry.recordingObserved) {
+                        appendEvent(entry, QString("[RECORDING] %1 (%2)")
+                            .arg(QString::fromStdString(wav.path))
+                            .arg(wav.active ? "active" : "completed"));
+                        entry.recordingObserved = true;
+                    } else if (entry.recordingWasActive && !wav.active) {
+                        appendEvent(entry, QString("[RECORDING] completed, samples=%1")
+                            .arg(static_cast<qulonglong>(wav.samples)));
+                    }
+                    entry.recordingWasActive = wav.active;
+                    if (wav.lost_samples > entry.lastLostSamples) {
+                        appendEvent(entry, QString("[RECORDING GAP] lost samples=%1")
+                            .arg(static_cast<qulonglong>(wav.lost_samples)));
+                        entry.lastLostSamples = wav.lost_samples;
+                    }
+                }
                 if (recording != recordingInfo->end() &&
                     !recording->second.error.empty()) {
                     const auto error = QString::fromStdString(recording->second.error);
