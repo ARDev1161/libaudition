@@ -745,6 +745,12 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechDecoder->setPlaceholderText("Decoder ONNX");
     auto* speechJoiner = new QLineEdit{speechSettings};
     speechJoiner->setPlaceholderText("Transducer joiner.onnx");
+    // Internal model paths are not form controls. Hide the backing editors
+    // explicitly: unlaid-out child widgets otherwise appear at (0, 0).
+    for (auto* pathEdit : {speechVad, speechAsr, speechTokens,
+                           speechDecoder, speechJoiner}) {
+        pathEdit->hide();
+    }
     speechForm->addRow("VAD engine", vadKind);
     speechForm->addRow("ASR engine", asrKind);
     auto* speechLanguage = new QComboBox{speechSettings};
