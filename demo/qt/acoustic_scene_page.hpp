@@ -1,5 +1,8 @@
 #pragma once
 #include <cstdint>
+#include <functional>
+#include <utility>
+#include <QString>
 class QWidget;
 class QDialog;
 class QString;
@@ -8,6 +11,10 @@ class QString;
 QDialog* createRecordingPlaybackDialog(QWidget* parent, std::uint64_t id,
                                         const QString& sourcePath,
                                         std::uint64_t sampleCount);
+QDialog* createRecordingPlaybackDialog(QWidget* parent, std::uint64_t id,
+                                        const QString& sourcePath,
+                                        std::uint64_t sampleCount,
+                                        std::function<std::pair<QString, QString>()> liveAnnotations);
 
 // An ODAS Studio-inspired 3D direction viewer. No dependency on Electron.
 QWidget* createAcousticScenePage(QWidget* parent);
