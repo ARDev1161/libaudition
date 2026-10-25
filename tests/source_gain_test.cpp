@@ -34,3 +34,31 @@ TEST(SourceGain, SilenceDoesNotAmplifyNoise) {
     EXPECT_EQ(output, silence);
     EXPECT_DOUBLE_EQ(gain->gainDb(), 0.0);
 }
+
+TEST(SourceGain, SpeechGainCanExceedLegacy24DbLimit) {
+    auto gain = audition::dsp::makeSourceGain("rms");
+    std::vector<float> quiet(160U, 0.0012f); // about -58.4 dBFS
+    for (int i = 0; i < 400; ++i)
+        (void)gain->process(quiet.data(), quiet.size(), 16000U);
+    EXPECT_GT(gain->gainDb(), 24.0);
+    EXPECT_LE(gain->gainDb(), 36.0);
+}
+
+TEST(SourceGain, ShortSilenceHoldsGainAndNoClipping) {
+    auto gain = audition::dsp::makeSourceGain("rms");
+    std::vector<float> speech(160U, 0.004f);
+    for (int i = 0; i < 180; ++i)
+        (void)gain->process(speech.data(), speech.size(), 16000U);
+    const double before = gain->gainDb();
+    std::vector<float> silence(160U, 0.0f);
+    for (int i = 0; i < 12; ++i) {
+        const auto output = gain->process(silence.data(), silence.size(), 16000U);
+        EXPECT_EQ(output, silence);
+    }
+    EXPECT_NEAR(gain->gainDb(), before, 1.0);
+    std::vector<float> transient(160U, 0.95f);
+    const auto output = gain->process(transient.data(), transient.size(), 16000U);
+    for (float sample : output) EXPECT_LE(std::abs(sample), 0.89f);
+    gain->reset();
+    EXPECT_DOUBLE_EQ(gain->gainDb(), 0.0);
+}
