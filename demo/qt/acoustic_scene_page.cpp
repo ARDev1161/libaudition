@@ -62,6 +62,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -227,7 +228,8 @@ QString directionSummary(const AcousticSceneTrack& track) {
 
 QDialog* createRecordingPlaybackDialog(
     QWidget* parent, std::uint64_t id, const QString& sourcePath,
-    std::uint64_t sampleCount) {
+    std::uint64_t sampleCount,
+    std::function<std::pair<QString, QString>()> liveAnnotations = {}) {
 #if !LIBAUDITION_DEMO_HAS_MULTIMEDIA
     static_cast<void>(sourcePath);
     static_cast<void>(sampleCount);
@@ -254,9 +256,19 @@ QDialog* createRecordingPlaybackDialog(
         auto* soundLane = new demo::RecordingTimelineView(dialog);
         auto* speechTitle = new QLabel{"Transcript / ASR", dialog};
         auto* speechLane = new demo::RecordingTimelineView(dialog);
+        auto* currentSound = new QLineEdit{dialog};
+        currentSound->setObjectName("recordingPlaybackCurrentSound");
+        currentSound->setReadOnly(true);
+        currentSound->setPlaceholderText("Waiting for sound classification…");
+        auto* currentSpeech = new QLineEdit{dialog};
+        currentSpeech->setObjectName("recordingPlaybackCurrentSpeech");
+        currentSpeech->setReadOnly(true);
+        currentSpeech->setPlaceholderText("Waiting for ASR…");
         column->addWidget(soundTitle);
+        column->addWidget(currentSound);
         column->addWidget(soundLane);
         column->addWidget(speechTitle);
+        column->addWidget(currentSpeech);
         column->addWidget(speechLane);
         column->addWidget(normalize);
         column->addWidget(gainLabel);
@@ -315,20 +327,55 @@ QDialog* createRecordingPlaybackDialog(
                                  .arg((duration / 1000) % 60, 2, 10, QChar('0')));
                          });
         QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
-        {
-            const auto annotationPath = std::filesystem::path{
-                sourcePath.toStdString() + ".json"};
-            try {
-                const auto timeline = audition::readRecordingTimelineJson(annotationPath);
-                const auto rate = timeline.sampleRateHz();
-                const auto duration = rate == 0 ? 0 :
-                    static_cast<qint64>(sampleCount * 1000ULL / rate);
-                soundLane->load(timeline, true, duration);
-                speechLane->load(timeline, false, duration);
-            } catch (const std::exception&) {
-                // WAV playback remains available without a completed sidecar.
+        const auto annotationPath = std::filesystem::path{
+            sourcePath.toStdString() + ".json"};
+        auto timeline = std::make_shared<std::optional<audition::RecordingTimeline>>();
+        auto* annotationTimer = new QTimer{dialog};
+        const auto refreshAnnotations = [=]() {
+            if (!*timeline && std::filesystem::is_regular_file(annotationPath)) {
+                try {
+                    *timeline = audition::readRecordingTimelineJson(annotationPath);
+                    const auto rate = (*timeline)->sampleRateHz();
+                    const auto duration = rate == 0 ? 0 :
+                        static_cast<qint64>(sampleCount * 1000ULL / rate);
+                    soundLane->load(**timeline, true, duration);
+                    speechLane->load(**timeline, false, duration);
+                } catch (const std::exception&) {
+                    // Sidecar may not yet be complete; retry while playing.
+                }
             }
-        }
+            if (*timeline) {
+                const auto rate = (*timeline)->sampleRateHz();
+                const auto sample = rate == 0 ? 0ULL :
+                    static_cast<std::uint64_t>(std::max<qint64>(0, media->position())) *
+                    static_cast<std::uint64_t>(rate) / 1000ULL;
+                QString sound;
+                double bestScore = -1.0;
+                for (const auto& event : (*timeline)->sounds()) {
+                    if (event.start_sample <= sample && sample <= event.end_sample &&
+                        event.confidence.value() >= bestScore) {
+                        bestScore = event.confidence.value();
+                        sound = QString::fromStdString(event.label);
+                    }
+                }
+                QString speech;
+                for (const auto& event : (*timeline)->speech()) {
+                    if (event.start_sample <= sample)
+                        speech += QString::fromStdString(event.text) + " ";
+                }
+                currentSound->setText(sound);
+                currentSpeech->setText(speech.trimmed());
+            } else if (liveAnnotations) {
+                const auto snapshot = liveAnnotations();
+                currentSound->setText(snapshot.first);
+                currentSpeech->setText(snapshot.second);
+            }
+            currentSound->setCursorPosition(currentSound->text().size());
+            currentSpeech->setCursorPosition(currentSpeech->text().size());
+        };
+        QObject::connect(annotationTimer, &QTimer::timeout, dialog, refreshAnnotations);
+        annotationTimer->start(250);
+        refreshAnnotations();
         soundLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
         speechLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
         QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
@@ -1169,7 +1216,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         const auto iter = history->find(id);
         if (iter == history->end() || iter->second.wav.isEmpty()) return;
         createRecordingPlaybackDialog(page, id,
-            iter->second.wav, iter->second.samples);
+            iter->second.wav, iter->second.samples,
+            [history, id]() -> std::pair<QString, QString> {
+                const auto found = history->find(id);
+                if (found == history->end()) return {};
+                return {QString::fromStdString(found->second.track.classification_label),
+                        QString::fromStdString(found->second.track.transcript)};
+            });
     });
 
     auto display = [=](const std::vector<AcousticSceneTrack>& values) {
