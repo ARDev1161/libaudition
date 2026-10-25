@@ -994,7 +994,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         speechLanguage->addItem("Korean", QStringLiteral("ko"));
         if (kind == "sensevoice")
             speechLanguage->addItem("Cantonese", QStringLiteral("yue"));
-        const int found = speechLanguage->findData(previous);
+        // Short ODAS/VAD chunks are unreliable for automatic language
+        // identification. When switching from another backend's automatic
+        // setting, prefer Russian for multilingual Whisper in this demo.
+        // Explicit user language selections are still preserved.
+        const auto preferred = (whisperOnnx || whisperCpp) &&
+                               (previous.isEmpty() || previous == "auto")
+                                   ? QStringLiteral("ru") : previous;
+        const int found = speechLanguage->findData(preferred);
         speechLanguage->setCurrentIndex(found >= 0 ? found : 0);
         speechAsr->setPlaceholderText(whisperCpp ? "GGML Whisper model .bin" :
                                       whisperOnnx ? "Whisper encoder.onnx" :
