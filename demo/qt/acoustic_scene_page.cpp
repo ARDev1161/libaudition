@@ -1746,11 +1746,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             // application console and never log unchanged fields each frame.
             const auto timestamp = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
             const auto appendEvent = [&](HistoryEntry& entry, const QString& event) {
-                entry.sourceLog += timestamp + " " + event + "\\n";
+                entry.sourceLog += timestamp + " " + event + "\n";
                 constexpr qsizetype kMaxChars = 65536;
                 if (entry.sourceLog.size() > kMaxChars) {
                     const auto boundary = entry.sourceLog.indexOf(
-                        '\\n', entry.sourceLog.size() - kMaxChars);
+                        '\n', entry.sourceLog.size() - kMaxChars);
                     entry.sourceLog.remove(0, boundary >= 0 ?
                         boundary + 1 : entry.sourceLog.size() - kMaxChars);
                 }
@@ -1771,7 +1771,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     // Keep the raw segment boundaries and full model response.
                     const QString delta = entry.asrLog.startsWith(entry.loggedAsr) ?
                         entry.asrLog.mid(entry.loggedAsr.size()) : entry.asrLog;
-                    for (const auto& line : delta.split('\\n', Qt::SkipEmptyParts))
+                    for (const auto& line : delta.split('\n', Qt::SkipEmptyParts))
                         appendEvent(entry, "[ASR] " + line);
                     entry.loggedAsr = entry.asrLog;
                 }
