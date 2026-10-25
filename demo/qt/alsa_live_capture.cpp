@@ -516,10 +516,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 auto& log = asrLogs[result.track_id];
                 log += header;
                 log += result.transcript.text;
-                log += '\\n';
+                log += '\n';
                 constexpr std::size_t kMaxLogBytes = 32768;
                 if (log.size() > kMaxLogBytes) {
-                    const auto boundary = log.find('\\n', log.size() - kMaxLogBytes);
+                    const auto boundary = log.find('\n', log.size() - kMaxLogBytes);
                     log.erase(0, boundary == std::string::npos ?
                                   log.size() - kMaxLogBytes : boundary + 1);
                 }
