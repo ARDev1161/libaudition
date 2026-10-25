@@ -229,17 +229,27 @@ QString directionSummary(const AcousticSceneTrack& track) {
 QDialog* createRecordingPlaybackDialog(
     QWidget* parent, std::uint64_t id, const QString& sourcePath,
     std::uint64_t sampleCount) {
-    return createRecordingPlaybackDialog(parent, id, sourcePath, sampleCount, {});
+    return createRecordingPlaybackDialog(parent, id, sourcePath, sampleCount, {}, {});
 }
 
 QDialog* createRecordingPlaybackDialog(
     QWidget* parent, std::uint64_t id, const QString& sourcePath,
     std::uint64_t sampleCount,
     std::function<std::pair<QString, QString>()> liveAnnotations) {
+    return createRecordingPlaybackDialog(parent, id, sourcePath, sampleCount,
+                                         std::move(liveAnnotations), {});
+}
+
+QDialog* createRecordingPlaybackDialog(
+    QWidget* parent, std::uint64_t id, const QString& sourcePath,
+    std::uint64_t sampleCount,
+    std::function<std::pair<QString, QString>()> liveAnnotations,
+    std::function<QString()> asrDiagnostics) {
 #if !LIBAUDITION_DEMO_HAS_MULTIMEDIA
     static_cast<void>(sourcePath);
     static_cast<void>(sampleCount);
     static_cast<void>(liveAnnotations);
+    static_cast<void>(asrDiagnostics);
 #endif
         auto* dialog = new QDialog(parent);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -277,6 +287,35 @@ QDialog* createRecordingPlaybackDialog(
         column->addWidget(speechTitle);
         column->addWidget(currentSpeech);
         column->addWidget(speechLane);
+        auto* showAsrLog = new QPushButton{"ASR log…", dialog};
+        showAsrLog->setObjectName("recordingPlaybackAsrLog");
+        column->addWidget(showAsrLog);
+        QObject::connect(showAsrLog, &QPushButton::clicked, dialog, [=]() {
+            auto* logDialog = new QDialog{dialog};
+            logDialog->setAttribute(Qt::WA_DeleteOnClose);
+            logDialog->setWindowTitle(QString("Source #%1 · ASR diagnostics").arg(id));
+            logDialog->resize(850, 450);
+            auto* logLayout = new QVBoxLayout{logDialog};
+            auto* logText = new QPlainTextEdit{logDialog};
+            logText->setReadOnly(true);
+            logText->setObjectName("recordingPlaybackAsrLogText");
+            logText->setPlaceholderText("No ASR segments received yet.");
+            logLayout->addWidget(logText);
+            auto* updateLog = new QTimer{logDialog};
+            const auto refreshLog = [=]() {
+                const QString next = asrDiagnostics ? asrDiagnostics() : QString{};
+                if (next != logText->toPlainText()) {
+                    const auto scrollbar = logText->verticalScrollBar();
+                    const bool atBottom = scrollbar->value() >= scrollbar->maximum() - 2;
+                    logText->setPlainText(next);
+                    if (atBottom) scrollbar->setValue(scrollbar->maximum());
+                }
+            };
+            QObject::connect(updateLog, &QTimer::timeout, logDialog, refreshLog);
+            updateLog->start(500);
+            refreshLog();
+            logDialog->show();
+        });
         column->addWidget(normalize);
         column->addWidget(gainLabel);
         column->addWidget(playback);
@@ -1212,6 +1251,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         std::uint64_t samples{0};
         std::uint64_t lostSamples{0};
         QString error{};
+        QString asrLog{};
     };
     auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
     auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
@@ -1236,6 +1276,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 if (found == history->end()) return {};
                 return {QString::fromStdString(found->second.track.classification_label),
                         QString::fromStdString(found->second.track.transcript)};
+            }, [history, id]() -> QString {
+                const auto found = history->find(id);
+                return found == history->end() ? QString{} : found->second.asrLog;
             });
     });
 
@@ -1679,6 +1722,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             recordingInfo->clear();
             for (const auto& r : snapshot.recordings) (*recordingInfo)[r.id] = r;
             gainByTrack->clear();
+            for (auto& entry : *history) {
+                const auto log = snapshot.asr_logs.find(entry.second.track.id);
+                if (log != snapshot.asr_logs.end())
+                    entry.second.asrLog = QString::fromStdString(log->second);
+            }
             for (const auto& level : snapshot.speech_gain_levels)
                 (*gainByTrack)[level.track_id] = level.gain_db;
             display(snapshot.tracks);
