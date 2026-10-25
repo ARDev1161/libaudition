@@ -130,4 +130,31 @@ if(LIBAUDITION_DEMO_FETCH_EXTRA_SPEECH_MODELS)
         "")
     _libaudition_extract_demo_pack("${_paraformer_pack}.tar.bz2" "${_paraformer_pack}"
         "model.int8.onnx,paraformer/model.onnx;tokens.txt,paraformer/tokens.txt")
+
+    # Russian NeMo CTC (GigaAM v2).
+    set(_nemo_pack sherpa-onnx-nemo-ctc-giga-am-v2-russian-2025-04-19)
+    _libaudition_demo_speech_download("${_nemo_pack}.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${_nemo_pack}.tar.bz2" "")
+    _libaudition_extract_demo_pack("${_nemo_pack}.tar.bz2" "${_nemo_pack}"
+        "model.int8.onnx,nemo_ctc/model.onnx;tokens.txt,nemo_ctc/tokens.txt")
+
+    # Chinese Zipformer CTC and WeNet CTC for backend comparison.
+    set(_zip_pack sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03)
+    _libaudition_demo_speech_download("${_zip_pack}.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${_zip_pack}.tar.bz2" "")
+    _libaudition_extract_demo_pack("${_zip_pack}.tar.bz2" "${_zip_pack}"
+        "model.int8.onnx,zipformer_ctc/model.onnx;tokens.txt,zipformer_ctc/tokens.txt")
+
+    set(_wenet_pack sherpa-onnx-wenetspeech-wu-u2pp-conformer-ctc-zh-int8-2026-02-03)
+    _libaudition_demo_speech_download("${_wenet_pack}.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${_wenet_pack}.tar.bz2" "")
+    _libaudition_extract_demo_pack("${_wenet_pack}.tar.bz2" "${_wenet_pack}"
+        "model.int8.onnx,wenet_ctc/model.onnx;tokens.txt,wenet_ctc/tokens.txt")
+
+    # Russian Zipformer transducer; this uses the offline transducer API.
+    set(_transducer_pack sherpa-onnx-zipformer-ru-2024-09-18)
+    _libaudition_demo_speech_download("${_transducer_pack}.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${_transducer_pack}.tar.bz2" "")
+    _libaudition_extract_demo_pack("${_transducer_pack}.tar.bz2" "${_transducer_pack}"
+        "encoder.int8.onnx,transducer/encoder.onnx;decoder.int8.onnx,transducer/decoder.onnx;joiner.int8.onnx,transducer/joiner.onnx;tokens.txt,transducer/tokens.txt")
 endif()
