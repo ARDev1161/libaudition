@@ -839,6 +839,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         fillAsr("whisper", {"whisper/encoder.onnx", "speech/whisper/encoder.onnx"},
                 {"whisper/decoder.onnx", "speech/whisper/decoder.onnx"}, {},
                 {"whisper/tokens.txt", "speech/whisper/tokens.txt"});
+        fillAsr("paraformer", {"paraformer/model.onnx",
+                 "speech/paraformer/model.onnx"}, {}, {},
+                {"paraformer/tokens.txt", "speech/paraformer/tokens.txt"});
         fillAsr("whispercpp", {"whisper/ggml-small.bin", "whisper/ggml-base.bin",
                 "ggml-small.bin", "ggml-base.bin"}, {}, {}, {});
         const auto check = [&](const QString& kind, bool vad) -> QString {
