@@ -1252,6 +1252,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         std::uint64_t lostSamples{0};
         QString error{};
         QString asrLog{};
+        QString sourceLog{};
+        QString loggedAsr{};
+        QString lastClassification{};
+        bool loggedActive{false};
+        qint64 lastLevelLogMs{0};
+        double lastGainDb{0.0};
+        bool hasGain{false};
     };
     auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
     auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
@@ -1278,7 +1285,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                         QString::fromStdString(found->second.track.transcript)};
             }, [history, id]() -> QString {
                 const auto found = history->find(id);
-                return found == history->end() ? QString{} : found->second.asrLog;
+                return found == history->end() ? QString{} : found->second.sourceLog;
             });
     });
 
@@ -1735,6 +1742,58 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             for (const auto& level : snapshot.speech_gain_levels)
                 (*gainByTrack)[level.track_id] = level.gain_db;
             display(snapshot.tracks);
+            // Build a bounded, source-specific event history. Never spam the
+            // application console and never log unchanged fields each frame.
+            const auto timestamp = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
+            const auto appendEvent = [&](HistoryEntry& entry, const QString& event) {
+                entry.sourceLog += timestamp + " " + event + "\\n";
+                constexpr qsizetype kMaxChars = 65536;
+                if (entry.sourceLog.size() > kMaxChars) {
+                    const auto boundary = entry.sourceLog.indexOf(
+                        '\\n', entry.sourceLog.size() - kMaxChars);
+                    entry.sourceLog.remove(0, boundary >= 0 ?
+                        boundary + 1 : entry.sourceLog.size() - kMaxChars);
+                }
+            };
+            for (auto& [id, entry] : *history) {
+                if (entry.active != entry.loggedActive) {
+                    appendEvent(entry, entry.active ?
+                        "[TRACK] acquired" : "[TRACK] inactive/retired");
+                    entry.loggedActive = entry.active;
+                }
+                const auto label = QString::fromStdString(entry.track.classification_label);
+                if (!label.isEmpty() && label != entry.lastClassification) {
+                    appendEvent(entry, QString("[CLASS] %1 (p=%2)")
+                        .arg(label).arg(entry.track.classification_probability, 0, 'f', 3));
+                    entry.lastClassification = label;
+                }
+                if (entry.asrLog != entry.loggedAsr) {
+                    // Keep the raw segment boundaries and full model response.
+                    const QString delta = entry.asrLog.startsWith(entry.loggedAsr) ?
+                        entry.asrLog.mid(entry.loggedAsr.size()) : entry.asrLog;
+                    for (const auto& line : delta.split('\\n', Qt::SkipEmptyParts))
+                        appendEvent(entry, "[ASR] " + line);
+                    entry.loggedAsr = entry.asrLog;
+                }
+                const auto gain = gainByTrack->find(entry.track.id);
+                const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                if (entry.active && gain != gainByTrack->end() &&
+                    (!entry.hasGain || (now - entry.lastLevelLogMs > 3000 &&
+                     std::abs(gain->second - entry.lastGainDb) >= 1.0))) {
+                    appendEvent(entry, QString("[AGC] gain=%1 dB")
+                        .arg(gain->second, 0, 'f', 1));
+                    entry.lastGainDb = gain->second;
+                    entry.lastLevelLogMs = now;
+                    entry.hasGain = true;
+                }
+                const auto recording = recordingInfo->find(id);
+                if (recording != recordingInfo->end() &&
+                    !recording->second.error.empty()) {
+                    const auto error = QString::fromStdString(recording->second.error);
+                    if (!entry.sourceLog.contains("[RECORDING ERROR] " + error))
+                        appendEvent(entry, "[RECORDING ERROR] " + error);
+                }
+            }
             sphere->setPotentials(snapshot.potentials);
             if (!snapshot.classification_error.empty()) {
                 deviceStatus->setText(
