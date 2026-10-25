@@ -23,7 +23,7 @@ option(LIBAUDITION_WITH_YAMNET "Build the YAMNet ONNX AudioSet classifier" ${LIB
 option(LIBAUDITION_WITH_EFFICIENTAT "Build experimental EfficientAT log-mel ONNX adapter" OFF)
 option(LIBAUDITION_DEMO_FETCH_YAMNET_MODEL "Download the demo YAMNet model and labels at configure time" ${LIBAUDITION_BUILD_QT_DEMO})
 option(LIBAUDITION_DEMO_FETCH_SPEECH_MODELS "Download Silero VAD and SenseVoice INT8 for the Qt demo at configure time" ${LIBAUDITION_BUILD_QT_DEMO})
-option(LIBAUDITION_DEMO_FETCH_EXTRA_SPEECH_MODELS "Download optional TEN VAD and multilingual Whisper/Paraformer demo model packs (large downloads)" OFF)
+option(LIBAUDITION_DEMO_FETCH_EXTRA_SPEECH_MODELS "Download extended VAD and offline ASR demo model packs (large downloads)" ${LIBAUDITION_BUILD_QT_DEMO})
 option(LIBAUDITION_WITH_AASIST "Build the AASIST ONNX authenticity backend" OFF)
 option(LIBAUDITION_WITH_WORLD "Build the WORLD voice-traits backend" OFF)
 option(LIBAUDITION_WITH_GTSAM "Build the GTSAM spatial-fusion backend" OFF)
