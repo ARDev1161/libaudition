@@ -15,6 +15,11 @@ QDialog* createRecordingPlaybackDialog(QWidget* parent, std::uint64_t id,
                                         const QString& sourcePath,
                                         std::uint64_t sampleCount,
                                         std::function<std::pair<QString, QString>()> liveAnnotations);
+QDialog* createRecordingPlaybackDialog(QWidget* parent, std::uint64_t id,
+                                        const QString& sourcePath,
+                                        std::uint64_t sampleCount,
+                                        std::function<std::pair<QString, QString>()> liveAnnotations,
+                                        std::function<QString()> asrDiagnostics);
 
 // An ODAS Studio-inspired 3D direction viewer. No dependency on Electron.
 QWidget* createAcousticScenePage(QWidget* parent);
