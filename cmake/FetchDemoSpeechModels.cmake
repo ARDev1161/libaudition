@@ -50,6 +50,7 @@ function(_libaudition_demo_speech_download name url sha256)
     endif()
 endfunction()
 
+if(LIBAUDITION_DEMO_FETCH_SPEECH_MODELS)
 # sherpa-onnx upstream Silero ONNX release asset.
 _libaudition_demo_speech_download(silero_vad.onnx
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
@@ -69,3 +70,64 @@ _libaudition_demo_speech_download(sensevoice.tokens.txt
 set(LIBAUDITION_DEMO_SILERO_VAD_MODEL "${_speech_dir}/silero_vad.onnx")
 set(LIBAUDITION_DEMO_SENSEVOICE_MODEL "${_speech_dir}/sensevoice.int8.onnx")
 set(LIBAUDITION_DEMO_SENSEVOICE_TOKENS "${_speech_dir}/sensevoice.tokens.txt")
+endif()
+
+
+# Large optional model packs. Only extract when required files are missing;
+# do not redownload on every CMake configure.
+if(LIBAUDITION_DEMO_FETCH_EXTRA_SPEECH_MODELS)
+    _libaudition_demo_speech_download(ten-vad.onnx
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/ten-vad.onnx"
+        "")
+
+    function(_libaudition_extract_demo_pack archive package file_pairs)
+        # file_pairs: source-relative|target-relative elements encoded with a
+        # comma to avoid the CMake list separator in function arguments.
+        set(_ready TRUE)
+        foreach(_pair IN LISTS file_pairs)
+            string(REPLACE "," ";" _parts "${_pair}")
+            list(GET _parts 1 _target)
+            if(NOT EXISTS "${_speech_dir}/${_target}")
+                set(_ready FALSE)
+            endif()
+        endforeach()
+        if(_ready)
+            return()
+        endif()
+        set(_unpack_dir "${_speech_dir}/_unpack_${package}")
+        file(REMOVE_RECURSE "${_unpack_dir}")
+        file(MAKE_DIRECTORY "${_unpack_dir}")
+        file(ARCHIVE_EXTRACT INPUT "${_speech_dir}/${archive}"
+             DESTINATION "${_unpack_dir}")
+        foreach(_pair IN LISTS file_pairs)
+            string(REPLACE "," ";" _parts "${_pair}")
+            list(GET _parts 0 _source)
+            list(GET _parts 1 _target)
+            set(_original "${_unpack_dir}/${package}/${_source}")
+            if(NOT EXISTS "${_original}")
+                message(FATAL_ERROR "Model archive ${archive} is missing ${_source}")
+            endif()
+            get_filename_component(_parent "${_speech_dir}/${_target}" DIRECTORY)
+            file(MAKE_DIRECTORY "${_parent}")
+            configure_file("${_original}" "${_speech_dir}/${_target}" COPYONLY)
+        endforeach()
+        file(REMOVE_RECURSE "${_unpack_dir}")
+    endfunction()
+
+    # Upstream multilingual tiny Whisper, including Russian; use INT8 files
+    # from the official sherpa-onnx archive to reduce disk/runtime footprint.
+    set(_whisper_pack sherpa-onnx-whisper-tiny)
+    _libaudition_demo_speech_download("${_whisper_pack}.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${_whisper_pack}.tar.bz2"
+        "")
+    _libaudition_extract_demo_pack("${_whisper_pack}.tar.bz2" "${_whisper_pack}"
+        "tiny-encoder.int8.onnx,whisper/encoder.onnx;tiny-decoder.int8.onnx,whisper/decoder.onnx;tiny-tokens.txt,whisper/tokens.txt")
+    
+    # Official English Paraformer offline package; no Russian support.
+    set(_paraformer_pack sherpa-onnx-paraformer-en-2024-03-09)
+    _libaudition_demo_speech_download("${_paraformer_pack}.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${_paraformer_pack}.tar.bz2"
+        "")
+    _libaudition_extract_demo_pack("${_paraformer_pack}.tar.bz2" "${_paraformer_pack}"
+        "model.int8.onnx,paraformer/model.onnx;tokens.txt,paraformer/tokens.txt")
+endif()
