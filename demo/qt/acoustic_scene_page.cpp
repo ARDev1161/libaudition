@@ -842,6 +842,15 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         fillAsr("paraformer", {"paraformer/model.onnx",
                  "speech/paraformer/model.onnx"}, {}, {},
                 {"paraformer/tokens.txt", "speech/paraformer/tokens.txt"});
+        fillAsr("nemo_ctc", {"nemo_ctc/model.onnx"}, {}, {},
+                {"nemo_ctc/tokens.txt"});
+        fillAsr("zipformer_ctc", {"zipformer_ctc/model.onnx"}, {}, {},
+                {"zipformer_ctc/tokens.txt"});
+        fillAsr("wenet_ctc", {"wenet_ctc/model.onnx"}, {}, {},
+                {"wenet_ctc/tokens.txt"});
+        fillAsr("transducer", {"transducer/encoder.onnx"},
+                {"transducer/decoder.onnx"}, {"transducer/joiner.onnx"},
+                {"transducer/tokens.txt"});
         fillAsr("whispercpp", {"whisper/ggml-small.bin", "whisper/ggml-base.bin",
                 "ggml-small.bin", "ggml-base.bin"}, {}, {}, {});
         const auto check = [&](const QString& kind, bool vad) -> QString {
