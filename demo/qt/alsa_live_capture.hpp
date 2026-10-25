@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <map>
 #include <string>
 #include <thread>
 #include <vector>
@@ -63,6 +64,7 @@ struct LiveCaptureSnapshot {
     std::uint64_t processed_hops{0};
     std::uint64_t recoveries{0};
     std::vector<AcousticSceneTrack> tracks{};
+    std::map<std::uint64_t, std::string> asr_logs{};
     struct RecordedTrack {
         std::uint64_t id{0};
         std::uint64_t track_id{0};
