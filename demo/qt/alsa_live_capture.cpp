@@ -504,7 +504,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 char header[256]{};
                 std::snprintf(header, sizeof(header),
                     "track=%llu generation=%llu segment=%llu samples=[%llu,%llu) "
-                    "seconds=[%.3f,%.3f) language=%s text=",
+                    "seconds=[%.3f,%.3f) language=%s end=%s repetition=%s text=",
                     static_cast<unsigned long long>(result.track_id),
                     static_cast<unsigned long long>(result.generation),
                     static_cast<unsigned long long>(result.transcript.segment_id.value()),
@@ -512,7 +512,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     static_cast<unsigned long long>(result.audio_end_sample),
                     static_cast<double>(result.audio_start_sample) / config.sample_rate_hz,
                     static_cast<double>(result.audio_end_sample) / config.sample_rate_hz,
-                    result.transcript.language.c_str());
+                    result.transcript.language.c_str(),
+                    result.segment_end_reason.c_str(),
+                    result.repetition_detected ? "yes" : "no");
                 auto& log = asrLogs[result.track_id];
                 log += header;
                 log += result.transcript.text;
