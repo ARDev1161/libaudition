@@ -1,3 +1,27 @@
+option(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2
+    "Enable standalone WebRTC AGC2 in the Qt acoustic scene when available" ON)
+set(LIBAUDITION_DEMO_HAS_WEBRTC_AGC2 OFF)
+# Supply a local checkout of Enaium/webrtc-agc2, or a compatible SDK.
+set(LIBAUDITION_WEBRTC_AGC2_ROOT "" CACHE PATH "Standalone WebRTC AGC2 source/install root")
+if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2 AND LIBAUDITION_WEBRTC_AGC2_ROOT)
+    find_path(LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR
+        NAMES audio_processing/gain_controller2.h
+        PATHS "${LIBAUDITION_WEBRTC_AGC2_ROOT}/src"
+              "${LIBAUDITION_WEBRTC_AGC2_ROOT}/include"
+        NO_DEFAULT_PATH)
+    find_library(LIBAUDITION_WEBRTC_AGC2_LIBRARY
+        NAMES webrtc_agc2
+        PATHS "${LIBAUDITION_WEBRTC_AGC2_ROOT}/.build"
+              "${LIBAUDITION_WEBRTC_AGC2_ROOT}/lib"
+        NO_DEFAULT_PATH)
+    if(LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR AND LIBAUDITION_WEBRTC_AGC2_LIBRARY)
+        set(LIBAUDITION_DEMO_HAS_WEBRTC_AGC2 ON)
+    endif()
+endif()
+if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2 AND NOT LIBAUDITION_DEMO_HAS_WEBRTC_AGC2)
+    message(STATUS "WebRTC AGC2 SDK unavailable; Qt demo retains RMS/SpeexDSP AGC")
+endif()
+
 option(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC
     "Enable SpeexDSP AGC in the Qt acoustic scene when available" ON)
 set(LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC OFF)
@@ -249,4 +273,17 @@ if(LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC)
     target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_SPEEXDSP_AGC=1)
 else()
     target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_SPEEXDSP_AGC=0)
+endif()
+
+if(LIBAUDITION_DEMO_HAS_WEBRTC_AGC2)
+    target_include_directories(libaudition_qt_demo SYSTEM PRIVATE
+        "${LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR}")
+    target_link_libraries(libaudition_qt_demo PRIVATE
+        "${LIBAUDITION_WEBRTC_AGC2_LIBRARY}")
+    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_WEBRTC_AGC2=1)
+    target_compile_features(libaudition_qt_demo PRIVATE cxx_std_20)
+    set_target_properties(libaudition_qt_demo PROPERTIES
+        BUILD_RPATH "${LIBAUDITION_WEBRTC_AGC2_ROOT}/.build;${LIBAUDITION_WEBRTC_AGC2_ROOT}/lib")
+else()
+    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_WEBRTC_AGC2=0)
 endif()
