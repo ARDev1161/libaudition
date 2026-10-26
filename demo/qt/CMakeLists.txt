@@ -34,6 +34,16 @@ if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2)
         # the parent project\x27s BUILD_TESTS cache value.
         set(BUILD_TESTS OFF)
         FetchContent_MakeAvailable(libaudition_demo_agc2_sdk)
+        # Upstream builds AVX2/FMA intrinsics without the required per-file
+        # ISA flags. Restrict these options to that translation unit only;
+        # never impose AVX2 on the rest of libaudition or on ARM builds.
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"
+           AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            set_source_files_properties(
+                "${libaudition_demo_agc2_sdk_SOURCE_DIR}/src/audio_processing/agc2/rnn_vad/vector_math_avx2.cc"
+                TARGET_DIRECTORY webrtc_agc2
+                PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+        endif()
         set(LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR
             "${libaudition_demo_agc2_sdk_SOURCE_DIR}/src")
         set(LIBAUDITION_DEMO_HAS_WEBRTC_AGC2 ON)
