@@ -34,15 +34,28 @@ if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2)
         # the parent project\x27s BUILD_TESTS cache value.
         set(BUILD_TESTS OFF)
         FetchContent_MakeAvailable(libaudition_demo_agc2_sdk)
-        # Upstream builds AVX2/FMA intrinsics without the required per-file
-        # ISA flags. Restrict these options to that translation unit only;
-        # never impose AVX2 on the rest of libaudition or on ARM builds.
+        # Keep upstream compiler workarounds scoped to the fetched target.
+        # Both x86 AVX2 translation units use FMA intrinsics; compiling the
+        # complete target with -mavx2 would break CPU runtime dispatch.
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"
            AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            foreach(_agc2_avx2_source IN ITEMS
+                    audio_processing/agc2/rnn_vad/vector_math_avx2.cc
+                    common_audio/resampler/sinc_resampler_avx2.cc)
+                set_source_files_properties(
+                    "${libaudition_demo_agc2_sdk_SOURCE_DIR}/src/${_agc2_avx2_source}"
+                    TARGET_DIRECTORY webrtc_agc2
+                    PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+            endforeach()
+        endif()
+        # Upstream api/audio_view.h calls memcpy without directly including
+        # <cstring>. GCC 16 exposes this in push_resampler.cc; inject the
+        # standard header only for the affected third-party translation unit.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             set_source_files_properties(
-                "${libaudition_demo_agc2_sdk_SOURCE_DIR}/src/audio_processing/agc2/rnn_vad/vector_math_avx2.cc"
+                "${libaudition_demo_agc2_sdk_SOURCE_DIR}/src/common_audio/resampler/push_resampler.cc"
                 TARGET_DIRECTORY webrtc_agc2
-                PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+                PROPERTIES COMPILE_OPTIONS "-include;cstring")
         endif()
         set(LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR
             "${libaudition_demo_agc2_sdk_SOURCE_DIR}/src")
