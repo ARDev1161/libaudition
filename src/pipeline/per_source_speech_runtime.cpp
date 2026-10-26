@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -36,6 +37,31 @@ bool transcriptWithinBudget(const Transcript& transcript,
     for (const auto& word : transcript.words)
         if (!consume(word.text)) return false;
     return true;
+}
+// Diagnostic only: preserve the original transcript, including hallucinations.
+bool hasRepetition(const std::string& text) {
+    std::istringstream words{text};
+    std::vector<std::string> tokens;
+    std::string word;
+    while (words >> word) {
+        word.erase(std::remove_if(word.begin(), word.end(),
+            [](unsigned char c) { return c == ',' || c == '.' || c == '!' || c == '?'; }),
+            word.end());
+        if (!word.empty()) tokens.push_back(word);
+    }
+    for (std::size_t width = 1; width <= 4; ++width) {
+        for (std::size_t start = 0; start + 4 * width <= tokens.size(); ++start) {
+            bool repeated = true;
+            for (std::size_t i = width; i < 4 * width; ++i) {
+                if (tokens[start + i] != tokens[start + i % width]) {
+                    repeated = false;
+                    break;
+                }
+            }
+            if (repeated) return true;
+        }
+    }
+    return false;
 }
 } // namespace
 
@@ -77,7 +103,7 @@ PerSourceSpeechRuntime::~PerSourceSpeechRuntime() {
     if (worker_.joinable()) worker_.join();
 }
 
-void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
+void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track, const char* reason) {
     if (track.voiced_samples >= options_.min_speech_samples) {
         if (jobs_.size() >= options_.max_pending_segments) {
             ++dropped_;
@@ -90,7 +116,7 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
                 {options_.sample_rate_hz, 1U, AudioLayout::Interleaved},
                 track.start_time};
             jobs_.push_back({id, track.generation, std::move(segment),
-                             track.start_sample});
+                             track.start_sample, reason});
             ++track.queued_segments;
             ++pending_by_generation_[track.generation];
             cv_.notify_one();
@@ -173,6 +199,8 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
                            track.received_samples;
     const auto chunk_start = track.received_samples;
     track.received_samples += std::min(accepted, remaining);
+    if (active && !track.speech_active) ++track.vad_starts;
+    if (!active && track.speech_active) ++track.vad_ends;
     track.speech_active = active;
     const auto advanceTime = [&](std::size_t sample_offset) {
         const auto ns = static_cast<std::int64_t>(
@@ -212,7 +240,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
             track.voiced_samples += take;
             offset += take;
             if (track.speech.size() == options_.max_segment_samples) {
-                queueSegment(id, track);
+                queueSegment(id, track, "max_duration");
                 // Continue in the same capture chunk; no samples may be
                 // dropped at a max-duration boundary.
                 track.start_time = advanceTime(offset);
@@ -222,7 +250,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         }
     } else if (!track.speech.empty()) {
         if (options_.post_roll_samples == 0U) {
-            queueSegment(id, track);
+            queueSegment(id, track, "vad_silence");
             track.trailing_silence_samples = 0U;
             rememberSilence(0U);
         } else {
@@ -234,7 +262,8 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
             track.trailing_silence_samples += take;
             if (track.speech.size() == options_.max_segment_samples ||
                 track.trailing_silence_samples >= options_.post_roll_samples) {
-                queueSegment(id, track);
+                queueSegment(id, track, track.speech.size() == options_.max_segment_samples
+                    ? "max_duration" : "vad_silence");
                 track.trailing_silence_samples = 0U;
                 rememberSilence(take);
             }
@@ -254,7 +283,7 @@ std::optional<std::uint64_t> PerSourceSpeechRuntime::retire(std::uint64_t id) {
     if (retired_generations_.size() >= options_.max_retired_generations)
         return std::nullopt;
     const auto generation = it->second.generation;
-    if (!it->second.speech.empty()) queueSegment(id, it->second);
+    if (!it->second.speech.empty()) queueSegment(id, it->second, "retired");
     retired_generations_.insert(generation);
     tracks_.erase(it);
     return generation;
@@ -357,7 +386,9 @@ SourceSpeechTrackStatus PerSourceSpeechRuntime::trackStatus(
     std::lock_guard<std::mutex> guard{mutex_};
     const auto it = tracks_.find(track_id);
     if (it == tracks_.end()) return {};
-    return {true, it->second.speech_active, it->second.speech.size(),
+    return {true, it->second.speech_active,
+            it->second.vad_starts, it->second.vad_ends,
+            it->second.speech.size(),
             it->second.voiced_samples, it->second.error,
             it->second.received_samples, it->second.queued_segments,
             it->second.dropped_segments};
@@ -385,7 +416,9 @@ void PerSourceSpeechRuntime::workerLoop() {
                     error_ = "ASR transcript exceeds configured result budget";
                     ++dropped_;
                 } else {
+                    const bool repetition = hasRepetition(transcript.text);
                     results_.push_back({job.track_id, job.generation, std::move(transcript),
+                        job.end_reason, repetition,
                         job.segment.audio.captureTime(),
                         job.segment.audio.captureTime().advancedBy(job.segment.audio.duration()),
                         job.start_sample,
