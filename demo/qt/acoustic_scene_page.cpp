@@ -691,11 +691,12 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     sstRelease->setRange(0.05, 0.94);
     sstRelease->setSingleStep(0.01);
     sstRelease->setValue(0.25);
-    auto* sstTimeout = new QSpinBox{page};
-    sstTimeout->setRange(25, 1000);
-    sstTimeout->setSingleStep(25);
-    sstTimeout->setValue(125);
-    sstTimeout->setSuffix(" hops");
+    auto* sstTimeout = new QDoubleSpinBox{page};
+    sstTimeout->setDecimals(2);
+    sstTimeout->setRange(0.10, 10.00);
+    sstTimeout->setSingleStep(0.10);
+    sstTimeout->setValue(1.00);
+    sstTimeout->setSuffix(" s");
     configForm->addRow("ODAS SST tuning", tuneSst);
     configForm->addRow("Acquisition GMM mean", sstOnset);
     configForm->addRow("Inactive GMM mean", sstRelease);
@@ -1199,11 +1200,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     liveRelease->setValue(25);
     auto* liveTimeout = new QSlider{Qt::Horizontal, liveSstControls};
     liveTimeout->setObjectName("acousticSceneLiveSstTimeout");
-    liveTimeout->setRange(25, 500);
-    liveTimeout->setValue(125);
+    liveTimeout->setRange(10, 1000); // hundredths of a second
+    liveTimeout->setValue(100);
     auto* onsetValue = new QLabel{"0.34", liveSstControls};
     auto* releaseValue = new QLabel{"0.25", liveSstControls};
-    auto* timeoutValue = new QLabel{"125 hops", liveSstControls};
+    auto* timeoutValue = new QLabel{"1.00 s", liveSstControls};
     const auto addLiveSlider = [&](const QString& sliderTitle, QSlider* slider,
                                    QLabel* value) {
         auto* container = new QWidget{liveSstControls};
@@ -1223,7 +1224,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     const auto scheduleLiveSst = [=]() {
         onsetValue->setText(QString::number(liveOnset->value() / 100.0, 'f', 2));
         releaseValue->setText(QString::number(liveRelease->value() / 100.0, 'f', 2));
-        timeoutValue->setText(QString("%1 hops").arg(liveTimeout->value()));
+        timeoutValue->setText(QString("%1 s").arg(liveTimeout->value() / 100.0, 0, 'f', 2));
         if (liveRelease->value() >= liveOnset->value()) {
             liveSstDebounce->stop();
             return;
@@ -1447,12 +1448,20 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                      QOverload<int>::of(&QComboBox::currentIndexChanged),
                      page, [=](int) { updateSpeechGain(); });
 
+    // ODAS expects an integer number of hops, but the UI presents wall time.
+    // Recompute when hop size or sample rate changes, preserving seconds.
+    const auto timeoutHops = [=](double seconds) -> std::uint32_t {
+        const auto samplesPerSecond = static_cast<double>(captureRate->value());
+        const auto samplesPerHop = static_cast<double>(hop->value());
+        return static_cast<std::uint32_t>(std::max(
+            1L, std::lround(seconds * samplesPerSecond / samplesPerHop)));
+    };
     QObject::connect(liveSstDebounce, &QTimer::timeout, page, [=]() {
         if (liveRelease->value() >= liveOnset->value())
             return;
         capture->setSstTuning(liveOnset->value() / 100.0,
                               liveRelease->value() / 100.0,
-                              static_cast<std::uint32_t>(liveTimeout->value()));
+                              timeoutHops(liveTimeout->value() / 100.0));
     });
     // The sliders are the active tuning source for each new capture.
     QObject::connect(sstOnset, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
@@ -1463,8 +1472,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                      page, [=](double value) {
         liveRelease->setValue(static_cast<int>(std::lround(value * 100.0)));
     });
-    QObject::connect(sstTimeout, QOverload<int>::of(&QSpinBox::valueChanged),
-                     page, [=](int value) { liveTimeout->setValue(value); });
+    QObject::connect(sstTimeout, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                     page, [=](double value) {
+        liveTimeout->setValue(static_cast<int>(std::lround(value * 100.0)));
+    });
     QObject::connect(liveOnset, &QSlider::valueChanged, page, [=](int value) {
         sstOnset->setValue(value / 100.0);
     });
@@ -1472,7 +1483,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         sstRelease->setValue(value / 100.0);
     });
     QObject::connect(liveTimeout, &QSlider::valueChanged, page, [=](int value) {
-        sstTimeout->setValue(value);
+        sstTimeout->setValue(value / 100.0);
     });
 
     auto* liveTimer = new QTimer{page};
@@ -1605,7 +1616,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.tune_sst = tuneSst->isChecked();
             config.sst_onset = sstOnset->value();
             config.sst_release = sstRelease->value();
-            config.sst_inactive_hops = static_cast<std::uint32_t>(sstTimeout->value());
+            config.sst_inactive_hops = timeoutHops(sstTimeout->value());
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
             config.speech_agc_enabled = speechAgc->isChecked() && config.transcribe_sources;
