@@ -3,6 +3,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#if defined(LIBAUDITION_WITH_SPEEXDSP_AGC) && LIBAUDITION_WITH_SPEEXDSP_AGC
+#include <speex/speex_preprocess.h>
+#endif
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -92,10 +96,87 @@ private:
     bool initialized_{false};
 };
 
+
+#if defined(LIBAUDITION_WITH_SPEEXDSP_AGC) && LIBAUDITION_WITH_SPEEXDSP_AGC
+// Adapts variable-sized ODAS chunks to Speex's 10-ms frames.
+// Output includes one frame of initial latency; counts remain unchanged.
+class SpeexSourceGain final : public ISourceGain {
+public:
+    ~SpeexSourceGain() override { reset(); }
+    std::vector<float> process(const float* pcm, std::size_t count,
+                               std::uint32_t sample_rate) override {
+        if (!sample_rate || sample_rate % 100U || (!pcm && count))
+            throw std::invalid_argument("Invalid Speex AGC PCM");
+        if (state_ && sample_rate_ != sample_rate)
+            throw std::invalid_argument("Speex AGC sample rate changed");
+        if (!state_) {
+            sample_rate_ = sample_rate;
+            frame_size_ = sample_rate / 100U;
+            state_ = speex_preprocess_state_init(static_cast<int>(frame_size_),
+                                                static_cast<int>(sample_rate));
+            if (!state_) throw std::runtime_error("Speex AGC initialization failed");
+            spx_int32_t on = 1, off = 0, max_gain = 36;
+            float level = 3500.0F;
+            if (speex_preprocess_ctl(state_, SPEEX_PREPROCESS_SET_AGC, &on) ||
+                speex_preprocess_ctl(state_, SPEEX_PREPROCESS_SET_DENOISE, &off) ||
+                speex_preprocess_ctl(state_, SPEEX_PREPROCESS_SET_AGC_MAX_GAIN, &max_gain) ||
+                speex_preprocess_ctl(state_, SPEEX_PREPROCESS_SET_AGC_LEVEL, &level)) {
+                reset();
+                throw std::runtime_error("Speex AGC configuration failed");
+            }
+            input_.reserve(frame_size_);
+        }
+        std::vector<float> output(count, 0.0F);
+        for (std::size_t i = 0; i < count; ++i) {
+            if (!std::isfinite(pcm[i]))
+                throw std::invalid_argument("Nonfinite Speex AGC sample");
+            const double sample = std::clamp(static_cast<double>(pcm[i]), -1.0, 1.0);
+            input_.push_back(static_cast<spx_int16_t>(std::lround(sample * 32767.0)));
+            if (input_.size() == frame_size_) {
+                speex_preprocess_run(state_, input_.data());
+                for (const auto value : input_)
+                    ready_.push_back(static_cast<float>(value) / 32768.0F);
+                input_.clear();
+                spx_int32_t percent = 100;
+                if (!speex_preprocess_ctl(state_, SPEEX_PREPROCESS_GET_AGC_GAIN, &percent)
+                    && percent > 0)
+                    gain_db_ = 20.0 * std::log10(static_cast<double>(percent) / 100.0);
+            }
+            if (!ready_.empty()) {
+                output[i] = ready_.front();
+                ready_.pop_front();
+            }
+        }
+        return output;
+    }
+    double gainDb() const noexcept override { return gain_db_; }
+    void reset() noexcept override {
+        if (state_) speex_preprocess_state_destroy(state_);
+        state_ = nullptr;
+        sample_rate_ = 0U;
+        frame_size_ = 0U;
+        gain_db_ = 0.0;
+        input_.clear();
+        ready_.clear();
+    }
+private:
+    SpeexPreprocessState* state_{nullptr};
+    std::uint32_t sample_rate_{0U};
+    std::size_t frame_size_{0U};
+    double gain_db_{0.0};
+    std::vector<spx_int16_t> input_{};
+    std::deque<float> ready_{};
+};
+#endif
+
 // Factory is intentionally replaceable by applications and later algorithms.
 inline std::unique_ptr<ISourceGain> makeSourceGain(const char* implementation) {
     if (implementation && std::string(implementation) == "rms")
         return std::make_unique<RmsSourceGain>();
+#if defined(LIBAUDITION_WITH_SPEEXDSP_AGC) && LIBAUDITION_WITH_SPEEXDSP_AGC
+    if (implementation && std::string(implementation) == "speex")
+        return std::make_unique<SpeexSourceGain>();
+#endif
     throw std::invalid_argument("Unknown source gain implementation");
 }
 } // namespace audition::dsp
