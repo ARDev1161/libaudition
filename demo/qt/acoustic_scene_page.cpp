@@ -1055,6 +1055,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                      speechSettings, [=](int) { refreshSpeechInputs(); });
     refreshSpeechInputs();
     scan();
+    // Prefer multilingual Whisper when its downloaded encoder/decoder/tokens
+    // are ready. Retain SenseVoice as a usable fallback for minimal installs.
+    const int whisperIndex = asrKind->findData(QStringLiteral("whisper"));
+    auto* asrItems = qobject_cast<QStandardItemModel*>(asrKind->model());
+    if (whisperIndex >= 0 && asrItems && asrItems->item(whisperIndex) &&
+        asrItems->item(whisperIndex)->isEnabled()) {
+        asrKind->setCurrentIndex(whisperIndex);
+        refreshSpeechInputs();
+        scan();
+    }
     layout->addWidget(enableSpeech);
     layout->addWidget(speechSettings);
     speechSettings->setVisible(enableSpeech->isChecked());
