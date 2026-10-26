@@ -868,6 +868,15 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.tracks = std::move(tracks);
 #if LIBAUDITION_DEMO_HAS_SHERPA
             latest_.asr_logs = asrLogs;
+            latest_.vad_states.clear();
+            if (speech_runtime) {
+                for (const auto& track : latest_.tracks) {
+                    const auto status = speech_runtime->trackStatus(track.id);
+                    if (status.exists)
+                        latest_.vad_states[track.id] = {
+                            status.speech_active, status.vad_starts, status.vad_ends};
+                }
+            }
 #endif
             latest_.recordings.clear();
             for (const auto& item : recorder.entries()) {
