@@ -1,3 +1,10 @@
+option(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC
+    "Enable SpeexDSP AGC in the Qt acoustic scene" OFF)
+if(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SPEEXDSP REQUIRED IMPORTED_TARGET speexdsp)
+endif()
+
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Concurrent REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Concurrent REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Multimedia QUIET)
@@ -226,4 +233,11 @@ if(BUILD_TESTING AND LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
     if(LIBAUDITION_WITH_AASIST)
         libaudition_add_qt_real_check(aasist)
     endif()
+endif()
+
+if(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC)
+    target_link_libraries(libaudition_qt_demo PRIVATE PkgConfig::SPEEXDSP)
+    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_SPEEXDSP_AGC=1)
+else()
+    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_SPEEXDSP_AGC=0)
 endif()
