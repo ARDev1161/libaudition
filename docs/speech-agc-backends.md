@@ -14,7 +14,7 @@ the unprocessed ODAS samples.
 
 On Ubuntu / Debian, install `libspeexdsp-dev`. Configure the Qt demo with
 `-DLIBAUDITION_DEMO_WITH_SPEEXDSP_AGC=ON` to expose the SpeexDSP selector.
-The option defaults to OFF so configurations without SpeexDSP continue to build.
+The option defaults to ON; CMake auto-detects SpeexDSP and enables it when installed. If the dependency is unavailable, the Qt demo still builds with RMS AGC only. SpeexDSP is selected by default when available.
 
 The adapter uses independent preprocessor instances per tracked source,
 10-ms frames, mono int16 samples, and a maximum requested gain of 36 dB.
