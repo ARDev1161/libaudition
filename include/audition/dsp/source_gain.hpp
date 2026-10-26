@@ -67,7 +67,8 @@ public:
         // A fast peak limiter prevents clipping without forcing the slow AGC
         // envelope to zero after a single transient.
         for (std::size_t i = 0; i < count; ++i) {
-            const double fraction = static_cast<double>(i + 1) / count;
+            const double fraction = static_cast<double>(i + 1) /
+                static_cast<double>(count);
             const double db = startGain + (endGain - startGain) * fraction;
             const double candidate = static_cast<double>(pcm[i]) *
                 std::pow(10.0, db / 20.0);
