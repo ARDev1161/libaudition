@@ -335,11 +335,17 @@ void verifyWorkbench(QWidget* root) {
     }
     auto* sceneTable = scene->findChild<QTableWidget*>("acousticSceneTracks");
     auto* speechLanguage = scene->findChild<QComboBox*>("acousticSceneSpeechLanguage");
-    if (!speechLanguage || speechLanguage->currentData().toString() != "auto") {
-        throw std::runtime_error{"Qt self-test: SenseVoice supported language default missing"};
-    }
     auto* vadKind = scene->findChild<QComboBox*>("acousticSceneVadKind");
     auto* asrKind = scene->findChild<QComboBox*>("acousticSceneAsrKind");
+    if (!speechLanguage || !asrKind) {
+        throw std::runtime_error{"Qt self-test: missing speech selector"};
+    }
+    const auto defaultAsr = asrKind->currentData().toString();
+    const auto defaultLanguage = speechLanguage->currentData().toString();
+    if (!((defaultAsr == "whisper" && defaultLanguage == "ru") ||
+          (defaultAsr == "sensevoice" && defaultLanguage == "auto"))) {
+        throw std::runtime_error{"Qt self-test: unexpected ASR/language default"};
+    }
     if (!vadKind || !asrKind || vadKind->count() != 2 ||
         asrKind->count() != (LIBAUDITION_DEMO_HAS_WHISPERCPP ? 8 : 7)) {
         throw std::runtime_error{"Qt self-test: VAD/ASR selector options missing"};
