@@ -61,6 +61,8 @@ TEST(PerSourceSpeechRuntime, CountersAreSourceLocalAndResetOnReuse) {
     EXPECT_EQ(runtime.trackStatus(42U).received_samples,4U);
     runtime.push(41U,chunk(quiet));
     EXPECT_EQ(runtime.trackStatus(41U).received_samples,8U);
+    EXPECT_EQ(runtime.trackStatus(41U).vad_starts,1U);
+    EXPECT_EQ(runtime.trackStatus(41U).vad_ends,1U);
     EXPECT_EQ(runtime.trackStatus(41U).queued_segments,1U);
     EXPECT_EQ(runtime.trackStatus(41U).dropped_segments,0U);
     EXPECT_EQ(runtime.trackStatus(42U).queued_segments,0U);
@@ -97,6 +99,8 @@ TEST(PerSourceSpeechRuntime, IndependentlySegmentsTwoTracksAndRunsAsyncAsr) {
     ASSERT_EQ(found.size(),2U);
     EXPECT_EQ(found[0].track_id,17U);
     EXPECT_EQ(found[0].transcript.text,"17:4");
+    EXPECT_EQ(found[0].segment_end_reason,"vad_silence");
+    EXPECT_FALSE(found[0].repetition_detected);
     EXPECT_EQ(found[1].track_id,19U);
     EXPECT_EQ(found[1].transcript.text,"19:4");
     EXPECT_EQ(runtime.statistics().completed_segments,2U);
@@ -1420,4 +1424,39 @@ TEST(PerSourceSpeechRuntime, SourceLocalOffsetsSurviveSegmentCap) {
     EXPECT_EQ(results[1].audio_end_sample,10U);
     EXPECT_EQ(results[2].audio_start_sample,10U);
     EXPECT_EQ(results[2].audio_end_sample,12U);
+}
+
+namespace {
+class RepeatAsr final : public IAsrEngine {
+public:
+    BackendInfo backendInfo() const override { return {"repeat-asr", "1"}; }
+    AsrCapabilities capabilities() const override { return {}; }
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        Transcript transcript{};
+        transcript.segment_id = segment.segment_id;
+        transcript.text = "в этом случае, в этом случае, в этом случае, в этом случае";
+        return transcript;
+    }
+};
+}
+TEST(PerSourceSpeechRuntime, FlagsRepeatedDecoderTextWithoutMutatingIt) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4;
+    options.max_segment_samples = 8;
+    options.pre_roll_samples = 0;
+    options.post_roll_samples = 0;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<RepeatAsr>(), options};
+    const std::vector<float> voice(8U, 0.5F);
+    runtime.push(8U, chunk(voice));
+    std::vector<SourceSpeechResult> found;
+    for (int attempt = 0; attempt < 1000 && found.empty(); ++attempt) {
+        found = runtime.takeResults();
+        if (found.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(found.size(), 1U);
+    EXPECT_EQ(found.front().segment_end_reason, "max_duration");
+    EXPECT_TRUE(found.front().repetition_detected);
+    EXPECT_EQ(found.front().transcript.text,
+              "в этом случае, в этом случае, в этом случае, в этом случае");
 }
