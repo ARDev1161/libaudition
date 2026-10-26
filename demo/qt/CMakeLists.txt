@@ -1,25 +1,43 @@
 option(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2
-    "Enable standalone WebRTC AGC2 in the Qt acoustic scene when available" ON)
+    "Enable standalone WebRTC AGC2 for the Qt acoustic scene" ON)
+option(LIBAUDITION_DEMO_FETCH_WEBRTC_AGC2
+    "Fetch and build a pinned WebRTC AGC2 for the Qt demo" ON)
+set(LIBAUDITION_WEBRTC_AGC2_ROOT "" CACHE PATH "Prebuilt standalone WebRTC AGC2 root (optional)")
 set(LIBAUDITION_DEMO_HAS_WEBRTC_AGC2 OFF)
-# Supply a local checkout of Enaium/webrtc-agc2, or a compatible SDK.
-set(LIBAUDITION_WEBRTC_AGC2_ROOT "" CACHE PATH "Standalone WebRTC AGC2 source/install root")
-if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2 AND LIBAUDITION_WEBRTC_AGC2_ROOT)
-    find_path(LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR
-        NAMES audio_processing/gain_controller2.h
-        PATHS "${LIBAUDITION_WEBRTC_AGC2_ROOT}/src"
-              "${LIBAUDITION_WEBRTC_AGC2_ROOT}/include"
-        NO_DEFAULT_PATH)
-    find_library(LIBAUDITION_WEBRTC_AGC2_LIBRARY
-        NAMES webrtc_agc2
-        PATHS "${LIBAUDITION_WEBRTC_AGC2_ROOT}/.build"
-              "${LIBAUDITION_WEBRTC_AGC2_ROOT}/lib"
-        NO_DEFAULT_PATH)
-    if(LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR AND LIBAUDITION_WEBRTC_AGC2_LIBRARY)
+if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2)
+    if(LIBAUDITION_WEBRTC_AGC2_ROOT)
+        find_path(LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR
+            NAMES audio_processing/gain_controller2.h
+            PATHS "${LIBAUDITION_WEBRTC_AGC2_ROOT}/src"
+                  "${LIBAUDITION_WEBRTC_AGC2_ROOT}/include"
+            NO_DEFAULT_PATH)
+        find_library(LIBAUDITION_WEBRTC_AGC2_LIBRARY
+            NAMES webrtc_agc2
+            PATHS "${LIBAUDITION_WEBRTC_AGC2_ROOT}/.build"
+                  "${LIBAUDITION_WEBRTC_AGC2_ROOT}/lib"
+            NO_DEFAULT_PATH)
+        if(NOT LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR OR NOT LIBAUDITION_WEBRTC_AGC2_LIBRARY)
+            message(FATAL_ERROR "WebRTC AGC2 SDK not found under LIBAUDITION_WEBRTC_AGC2_ROOT")
+        endif()
+        add_library(libaudition_demo_agc2_sdk UNKNOWN IMPORTED)
+        set_target_properties(libaudition_demo_agc2_sdk PROPERTIES
+            IMPORTED_LOCATION "${LIBAUDITION_WEBRTC_AGC2_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR}")
+        set(LIBAUDITION_DEMO_HAS_WEBRTC_AGC2 ON)
+    elseif(LIBAUDITION_DEMO_FETCH_WEBRTC_AGC2)
+        include(FetchContent)
+        FetchContent_Declare(libaudition_demo_agc2_sdk
+            GIT_REPOSITORY https://github.com/Enaium/webrtc-agc2.git
+            GIT_TAG aa5d2359c357bc15495881c12c52874c8830af0a
+            GIT_SHALLOW FALSE)
+        # Third-party project defines a generic BUILD_TESTS option. Avoid
+        # leaking it into the main project by disabling it explicitly.
+        set(BUILD_TESTS OFF CACHE BOOL "Disable AGC2 upstream test binary" FORCE)
+        FetchContent_MakeAvailable(libaudition_demo_agc2_sdk)
+        set(LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR
+            "${libaudition_demo_agc2_sdk_SOURCE_DIR}/src")
         set(LIBAUDITION_DEMO_HAS_WEBRTC_AGC2 ON)
     endif()
-endif()
-if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2 AND NOT LIBAUDITION_DEMO_HAS_WEBRTC_AGC2)
-    message(STATUS "WebRTC AGC2 SDK unavailable; Qt demo retains RMS/SpeexDSP AGC")
 endif()
 
 option(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC
@@ -278,12 +296,13 @@ endif()
 if(LIBAUDITION_DEMO_HAS_WEBRTC_AGC2)
     target_include_directories(libaudition_qt_demo SYSTEM PRIVATE
         "${LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR}")
-    target_link_libraries(libaudition_qt_demo PRIVATE
-        "${LIBAUDITION_WEBRTC_AGC2_LIBRARY}")
+    if(TARGET webrtc_agc2)
+        target_link_libraries(libaudition_qt_demo PRIVATE webrtc_agc2)
+    else()
+        target_link_libraries(libaudition_qt_demo PRIVATE libaudition_demo_agc2_sdk)
+    endif()
     target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_WEBRTC_AGC2=1)
     target_compile_features(libaudition_qt_demo PRIVATE cxx_std_20)
-    set_target_properties(libaudition_qt_demo PROPERTIES
-        BUILD_RPATH "${LIBAUDITION_WEBRTC_AGC2_ROOT}/.build;${LIBAUDITION_WEBRTC_AGC2_ROOT}/lib")
 else()
     target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_WEBRTC_AGC2=0)
 endif()
