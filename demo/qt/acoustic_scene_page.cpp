@@ -691,6 +691,23 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     sstRelease->setRange(0.05, 0.94);
     sstRelease->setSingleStep(0.01);
     sstRelease->setValue(0.25);
+    const QString acquireHelp = QStringLiteral(
+        "ODAS SST source acquisition threshold (GMM mean, unitless; not dB).\\n"
+        "Higher values make new tracks harder to acquire, reducing false sources "
+        "but potentially missing quiet or distant speakers.\\n"
+        "Lower values detect weaker sources sooner but may create noise tracks.\\n"
+        "Start at 0.34; adjust in small steps (0.02-0.05). "
+        "Keep Acquire above Inactive.");
+    const QString inactiveHelp = QStringLiteral(
+        "ODAS SST inactive/release threshold (GMM mean, unitless; not dB).\\n"
+        "Below this level, an existing track tends toward inactivity and "
+        "eventual retirement after the Inactive timeout.\\n"
+        "Higher values release weak tracks more readily; lower values hold "
+        "tracks longer, including possible noise or ghost sources.\\n"
+        "Start at 0.25; adjust in small steps (0.02-0.05). "
+        "Keep Inactive below Acquire.");
+    sstOnset->setToolTip(acquireHelp);
+    sstRelease->setToolTip(inactiveHelp);
     auto* sstTimeout = new QDoubleSpinBox{page};
     sstTimeout->setDecimals(2);
     sstTimeout->setRange(0.10, 10.00);
@@ -1198,12 +1215,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     liveRelease->setObjectName("acousticSceneLiveSstRelease");
     liveRelease->setRange(5, 94);
     liveRelease->setValue(25);
+    liveOnset->setToolTip(acquireHelp);
+    liveRelease->setToolTip(inactiveHelp);
     auto* liveTimeout = new QSlider{Qt::Horizontal, liveSstControls};
     liveTimeout->setObjectName("acousticSceneLiveSstTimeout");
     liveTimeout->setRange(10, 1000); // hundredths of a second
     liveTimeout->setValue(100);
     auto* onsetValue = new QLabel{"0.34", liveSstControls};
+    onsetValue->setToolTip(acquireHelp);
     auto* releaseValue = new QLabel{"0.25", liveSstControls};
+    releaseValue->setToolTip(inactiveHelp);
     auto* timeoutValue = new QLabel{"1.00 s", liveSstControls};
     const auto addLiveSlider = [&](const QString& sliderTitle, QSlider* slider,
                                    QLabel* value) {
