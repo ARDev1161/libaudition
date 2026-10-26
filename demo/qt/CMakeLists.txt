@@ -30,9 +30,9 @@ if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2)
             GIT_REPOSITORY https://github.com/Enaium/webrtc-agc2.git
             GIT_TAG aa5d2359c357bc15495881c12c52874c8830af0a
             GIT_SHALLOW FALSE)
-        # Third-party project defines a generic BUILD_TESTS option. Avoid
-        # leaking it into the main project by disabling it explicitly.
-        set(BUILD_TESTS OFF CACHE BOOL "Disable AGC2 upstream test binary" FORCE)
+        # Disable the optional third-party test binary without modifying
+        # the parent project\x27s BUILD_TESTS cache value.
+        set(BUILD_TESTS OFF)
         FetchContent_MakeAvailable(libaudition_demo_agc2_sdk)
         set(LIBAUDITION_WEBRTC_AGC2_INCLUDE_DIR
             "${libaudition_demo_agc2_sdk_SOURCE_DIR}/src")
