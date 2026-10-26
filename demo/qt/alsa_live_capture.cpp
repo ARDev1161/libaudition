@@ -754,7 +754,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                             speechView.captureTime(), speechView.sequenceNumber()};
                     }
 #endif
-                    const auto recorded = recorder.append(sourceId, speechView.samples());
+                    const auto recorded = recorder.append(sourceId, adjusted.empty() ? separated.audio.samples() : std::span<const float>{adjusted});
                     if (recorded.recording_id != 0) {
                         if (!recordings.active(sourceId) &&
                             skipped_annotation_recordings.count(sourceId) == 0) {
