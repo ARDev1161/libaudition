@@ -1259,6 +1259,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         qint64 lastLevelLogMs{0};
         double lastGainDb{0.0};
         bool hasGain{false};
+        std::uint64_t loggedVadStarts{0};
+        std::uint64_t loggedVadEnds{0};
         bool recordingObserved{false};
         bool recordingWasActive{false};
         std::uint64_t lastLostSamples{0};
@@ -1777,6 +1779,19 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     for (const auto& line : delta.split('\n', Qt::SkipEmptyParts))
                         appendEvent(entry, "[ASR] " + line);
                     entry.loggedAsr = entry.asrLog;
+                }
+                const auto vad = snapshot.vad_states.find(entry.track.id);
+                if (vad != snapshot.vad_states.end()) {
+                    if (vad->second.starts != entry.loggedVadStarts) {
+                        appendEvent(entry, QString("[VAD] speech_start count=%1")
+                            .arg(static_cast<qulonglong>(vad->second.starts)));
+                        entry.loggedVadStarts = vad->second.starts;
+                    }
+                    if (vad->second.ends != entry.loggedVadEnds) {
+                        appendEvent(entry, QString("[VAD] speech_end count=%1")
+                            .arg(static_cast<qulonglong>(vad->second.ends)));
+                        entry.loggedVadEnds = vad->second.ends;
+                    }
                 }
                 const auto gain = gainByTrack->find(entry.track.id);
                 const qint64 now = QDateTime::currentMSecsSinceEpoch();
