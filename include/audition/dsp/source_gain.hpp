@@ -198,8 +198,16 @@ public:
             if (input_.size() == frame_size_) {
                 float* const channel = buffer_->channels()[0];
                 std::copy(input_.begin(), input_.end(), channel);
+                double in_power = 0.0;
+                for (const float value : input_)
+                    in_power += static_cast<double>(value) * value;
                 engine_->Analyze(255, *buffer_);
                 engine_->Process(false, buffer_.get());
+                double out_power = 0.0;
+                for (std::size_t j = 0; j < frame_size_; ++j)
+                    out_power += static_cast<double>(channel[j]) * channel[j];
+                if (in_power > 1e-8 && out_power > 1e-8)
+                    gain_db_ = 10.0 * std::log10(out_power / in_power);
                 for (std::size_t j = 0; j < frame_size_; ++j)
                     ready_.push_back(static_cast<float>(
                         std::clamp(static_cast<double>(channel[j]) / 32768.0,
