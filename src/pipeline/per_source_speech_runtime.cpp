@@ -104,6 +104,7 @@ PerSourceSpeechRuntime::~PerSourceSpeechRuntime() {
 }
 
 void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track, const char* reason) {
+    const auto segment_samples = track.speech.size();
     if (track.voiced_samples >= options_.min_speech_samples) {
         if (jobs_.size() >= options_.max_pending_segments) {
             ++dropped_;
@@ -122,7 +123,7 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track, const 
             cv_.notify_one();
         }
     }
-    track.start_sample += track.speech.size();
+    track.start_sample += segment_samples;
     track.speech.clear();
     track.voiced_samples = 0U;
 }
