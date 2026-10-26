@@ -1163,6 +1163,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     agcImplementation->addItem("SpeexDSP AGC", QStringLiteral("speex"));
     agcImplementation->setCurrentIndex(agcImplementation->count() - 1);
 #endif
+#if defined(LIBAUDITION_WITH_WEBRTC_AGC2) && LIBAUDITION_WITH_WEBRTC_AGC2
+    agcImplementation->setCurrentIndex(agcImplementation->findData(QStringLiteral("webrtc_agc2")));
+#endif
     agcImplementation->setEnabled(speechAgc->isChecked());
     QObject::connect(speechAgc, &QCheckBox::toggled,
                      agcImplementation, &QWidget::setEnabled);
