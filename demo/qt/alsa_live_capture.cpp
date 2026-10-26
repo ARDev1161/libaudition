@@ -739,8 +739,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     // Persist exactly the same post-AGC samples that enter the
                     // speech ingress. Keep raw ODAS samples when AGC is off.
                     std::vector<float> adjusted;
-                    auto speechView = separated.audio.view();
 #if LIBAUDITION_DEMO_HAS_SHERPA
+                    auto speechView = separated.audio.view();
                     if (speech_worker && config.speech_agc_enabled) {
                         auto& processor = speechGains[sourceId];
                         if (!processor)
