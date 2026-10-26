@@ -40,18 +40,14 @@ platform CI and audio timing are still outstanding.
 
 This integration targets the pinned API layout in
 [Enaium/webrtc-agc2](https://github.com/Enaium/webrtc-agc2), revision
-`aa5d2359c357bc15495881c12c52874c8830af0a`. Obtain and build that
-standalone upstream library separately, then configure with:
+`aa5d2359c357bc15495881c12c52874c8830af0a`. The Qt demo now downloads and builds this pinned dependency automatically by default. No manual root path is required. For an existing locally built copy, configure with:
 
 ```bash
 cmake -S . -B build -DLIBAUDITION_DEMO_WITH_WEBRTC_AGC2=ON \
   -DLIBAUDITION_WEBRTC_AGC2_ROOT=/path/to/webrtc-agc2
 ```
 
-The demo locates `src/audio_processing/gain_controller2.h` and
-`.build/libwebrtc_agc2.so` (or equivalent platform library). Detection
-defaults ON but does **not** download code or enable the backend when the SDK
-is absent, preserving offline and minimal builds. Unlike WebRTC AEC3, this
+The default is `LIBAUDITION_DEMO_WITH_WEBRTC_AGC2=ON` and `LIBAUDITION_DEMO_FETCH_WEBRTC_AGC2=ON`. CMake FetchContent downloads the pinned source and builds it as part of the Qt demo, sets include/link paths automatically, and preselects WebRTC AGC2 in the Qt acoustic scene. Offline builds can disable fetching with `-DLIBAUDITION_DEMO_FETCH_WEBRTC_AGC2=OFF`, use a prebuilt root, or disable the backend with `-DLIBAUDITION_DEMO_WITH_WEBRTC_AGC2=OFF`. Builds with Qt Demo disabled do not fetch AGC2. Unlike WebRTC AEC3, this
 is a distinct dependency.
 
 The AGC2 adapter uses the upstream internal voice activity detector,
