@@ -62,3 +62,20 @@ TEST(SourceGain, ShortSilenceHoldsGainAndNoClipping) {
     gain->reset();
     EXPECT_DOUBLE_EQ(gain->gainDb(), 0.0);
 }
+
+#if defined(LIBAUDITION_WITH_SPEEXDSP_AGC) && LIBAUDITION_WITH_SPEEXDSP_AGC
+TEST(SourceGain, SpeexHandlesUnevenInputFramesAndReset) {
+    auto gain = audition::dsp::makeSourceGain("speex");
+    std::vector<float> pcm(128U, 0.002F);
+    for (int frame = 0; frame < 200; ++frame) {
+        const auto result = gain->process(pcm.data(), pcm.size(), 16000U);
+        ASSERT_EQ(result.size(), pcm.size());
+        for (const float sample : result) {
+            EXPECT_TRUE(std::isfinite(sample));
+            EXPECT_LE(std::abs(sample), 1.0F);
+        }
+    }
+    gain->reset();
+    EXPECT_DOUBLE_EQ(gain->gainDb(), 0.0);
+}
+#endif
