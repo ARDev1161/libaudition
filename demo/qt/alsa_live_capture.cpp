@@ -736,7 +736,25 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         separated.audio.samples().data(),
                         separated.audio.samples().size());
                     const auto sourceId = separated.track_id.value();
-                    const auto recorded = recorder.append(sourceId, separated.audio.samples());
+                    // Persist exactly the same post-AGC samples that enter the
+                    // speech ingress. Keep raw ODAS samples when AGC is off.
+                    std::vector<float> adjusted;
+                    auto speechView = separated.audio.view();
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                    if (speech_worker && config.speech_agc_enabled) {
+                        auto& processor = speechGains[sourceId];
+                        if (!processor)
+                            processor = audition::dsp::makeSourceGain(
+                                config.speech_agc_implementation.c_str());
+                        adjusted = processor->process(
+                            separated.audio.samples().data(),
+                            separated.audio.samples().size(), config.sample_rate_hz);
+                        speechView = audition::AudioView{
+                            adjusted.data(), adjusted.size(), speechView.format(),
+                            speechView.captureTime(), speechView.sequenceNumber()};
+                    }
+#endif
+                    const auto recorded = recorder.append(sourceId, speechView.samples());
                     if (recorded.recording_id != 0) {
                         if (!recordings.active(sourceId) &&
                             skipped_annotation_recordings.count(sourceId) == 0) {
@@ -764,20 +782,6 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     if (speech_worker) {
                         // Associate the WAV with the exact admitted PCM epoch.
                         // A separate sourceEpoch() lookup can see a reused ID.
-                        std::vector<float> adjusted;
-                        auto speechView = separated.audio.view();
-                        if (config.speech_agc_enabled) {
-                            auto& processor = speechGains[sourceId];
-                            if (!processor)
-                                processor = audition::dsp::makeSourceGain(
-                                    config.speech_agc_implementation.c_str());
-                            adjusted = processor->process(
-                                separated.audio.samples().data(),
-                                separated.audio.samples().size(), config.sample_rate_hz);
-                            speechView = audition::AudioView{
-                                adjusted.data(), adjusted.size(), speechView.format(),
-                                speechView.captureTime(), speechView.sequenceNumber()};
-                        }
                         const auto admission=speech_worker->pushWithEpoch(
                             sourceId,speechView);
                         if (admission.admission==audition::SpeechPcmAdmission::Accepted) {
