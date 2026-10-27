@@ -731,12 +731,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          ctest --no-tests=error --test-dir build-aec3 -R '^qt_aec3
-      - name: Test
-        run: ctest --no-tests=error --test-dir build-aec3 --output-on-failure
-      - name: Install
-        run: cmake --install build-aec3 --prefix "$PWD/install-aec3"
-      - name: Verify installed AEC3 backend package from C++17 consumer --output-on-failure
+          ctest --no-tests=error --test-dir build-aec3 -R '^qt_aec3$' --output-on-failure
           result=$?
           if [ "$result" -ne 0 ]; then
             echo "::group::AEC3 failure backtrace"
