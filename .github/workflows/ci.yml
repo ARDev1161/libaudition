@@ -708,11 +708,11 @@ jobs:
       - name: Install Qt 5 Widgets
         run: |
           sudo apt-get update
-          sudo apt-get install -y qtbase5-dev
+          sudo apt-get install -y qtbase5-dev gdb
       - name: Configure WebRTC AEC3 backend
         run: >-
           cmake -S . -B build-aec3 -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DLIBAUDITION_WITH_WEBRTC_AEC3=ON
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
@@ -728,7 +728,23 @@ jobs:
       - name: Qt async aec3 functional smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --no-tests=error --test-dir build-aec3 -R '^qt_aec3$' --output-on-failure
+        shell: bash
+        run: |
+          set +e
+          ctest --no-tests=error --test-dir build-aec3 -R '^qt_aec3
+      - name: Test
+        run: ctest --no-tests=error --test-dir build-aec3 --output-on-failure
+      - name: Install
+        run: cmake --install build-aec3 --prefix "$PWD/install-aec3"
+      - name: Verify installed AEC3 backend package from C++17 consumer --output-on-failure
+          result=$?
+          if [ "$result" -ne 0 ]; then
+            echo "::group::AEC3 failure backtrace"
+            gdb --batch -ex run -ex 'thread apply all bt 24' --args \
+              build-aec3/demo/qt/libaudition_qt_demo --model-self-test=aec3
+            echo "::endgroup::"
+          fi
+          exit "$result"
       - name: Test
         run: ctest --no-tests=error --test-dir build-aec3 --output-on-failure
       - name: Install
