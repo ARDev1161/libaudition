@@ -164,6 +164,7 @@ function(libaudition_find_or_fetch_webrtc_aec3)
         CMAKE_ARGS
             -DCMAKE_BUILD_TYPE=Release
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DCMAKE_SHARED_LINKER_FLAGS=-Wl,-Bsymbolic
             -DBUILD_TESTS=OFF
         INSTALL_COMMAND ""
         BUILD_BYPRODUCTS "${_webrtc_aec3_library}")
