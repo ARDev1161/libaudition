@@ -34,6 +34,11 @@ if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2)
         # the parent project\x27s BUILD_TESTS cache value.
         set(BUILD_TESTS OFF)
         FetchContent_MakeAvailable(libaudition_demo_agc2_sdk)
+        # Rename upstream's webrtc namespace exclusively for the fetched AGC2
+        # build. Standalone AEC3 ships a different webrtc::AudioBuffer ABI.
+        target_compile_definitions(webrtc_agc2 PRIVATE
+            webrtc=libaudition_agc2_webrtc)
+        set(LIBAUDITION_DEMO_AGC2_PRIVATE_NAMESPACE ON)
         # AEC3 and AGC2 are independent WebRTC extractions with overlapping
         # webrtc::* symbols. Prevent ELF interposition across their DSOs.
         if(UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -330,6 +335,10 @@ if(LIBAUDITION_DEMO_HAS_WEBRTC_AGC2)
         target_link_libraries(libaudition_qt_demo PRIVATE libaudition_demo_agc2_sdk)
     endif()
     target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_WEBRTC_AGC2=1)
+    if(LIBAUDITION_DEMO_AGC2_PRIVATE_NAMESPACE)
+        target_compile_definitions(libaudition_qt_demo PRIVATE
+            LIBAUDITION_AGC2_PRIVATE_NAMESPACE=1)
+    endif()
     target_compile_features(libaudition_qt_demo PRIVATE cxx_std_20)
 else()
     target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_WEBRTC_AGC2=0)
