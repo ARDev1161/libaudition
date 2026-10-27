@@ -5,9 +5,18 @@
 #include <cstdint>
 #include <deque>
 #if defined(LIBAUDITION_WITH_WEBRTC_AGC2) && LIBAUDITION_WITH_WEBRTC_AGC2
+// The fetched AGC2 extraction and AEC3 define incompatible webrtc:: types.
+// Compile the fetched AGC2 sources in a private namespace to avoid ELF/ODR
+// collisions when both libraries are loaded into the Qt process.
+#if defined(LIBAUDITION_AGC2_PRIVATE_NAMESPACE) && LIBAUDITION_AGC2_PRIVATE_NAMESPACE
+#define webrtc libaudition_agc2_webrtc
+#endif
 #include <api/environment.h>
 #include <audio_processing/audio_buffer.h>
 #include <audio_processing/gain_controller2.h>
+#if defined(LIBAUDITION_AGC2_PRIVATE_NAMESPACE) && LIBAUDITION_AGC2_PRIVATE_NAMESPACE
+#undef webrtc
+#endif
 #endif
 #if defined(LIBAUDITION_WITH_SPEEXDSP_AGC) && LIBAUDITION_WITH_SPEEXDSP_AGC
 #include <speex/speex_preprocess.h>
@@ -178,6 +187,11 @@ private:
 #if defined(LIBAUDITION_WITH_WEBRTC_AGC2) && LIBAUDITION_WITH_WEBRTC_AGC2
 // Standalone WebRTC AGC2 adapter. Mono FloatS16, 10-ms frames, with
 // per-source state and bounded framing latency for arbitrary ODAS hops.
+#if defined(LIBAUDITION_AGC2_PRIVATE_NAMESPACE) && LIBAUDITION_AGC2_PRIVATE_NAMESPACE
+namespace agc2_webrtc = libaudition_agc2_webrtc;
+#else
+namespace agc2_webrtc = webrtc;
+#endif
 class WebRtcAgc2SourceGain final : public ISourceGain {
 public:
     std::vector<float> process(const float* pcm, std::size_t count,
@@ -235,20 +249,20 @@ private:
     void initialize(std::uint32_t rate) {
         sample_rate_ = rate;
         frame_size_ = rate / 100U;
-        webrtc::AudioProcessing::Config::GainController2 cfg{};
+        agc2_webrtc::AudioProcessing::Config::GainController2 cfg{};
         cfg.enabled = true;
         cfg.adaptive_digital.enabled = true;
         cfg.adaptive_digital.max_gain_db = 36.0F;
         cfg.input_volume_controller.enabled = false;
-        engine_ = std::make_unique<webrtc::GainController2>(
-            environment_, cfg, webrtc::InputVolumeController::Config{},
+        engine_ = std::make_unique<agc2_webrtc::GainController2>(
+            environment_, cfg, agc2_webrtc::InputVolumeController::Config{},
             static_cast<int>(rate), 1, true);
-        buffer_ = std::make_unique<webrtc::AudioBuffer>(rate, 1, rate, 1, rate, 1);
+        buffer_ = std::make_unique<agc2_webrtc::AudioBuffer>(rate, 1, rate, 1, rate, 1);
         input_.reserve(frame_size_);
     }
-    webrtc::Environment environment_{};
-    std::unique_ptr<webrtc::GainController2> engine_{};
-    std::unique_ptr<webrtc::AudioBuffer> buffer_{};
+    agc2_webrtc::Environment environment_{};
+    std::unique_ptr<agc2_webrtc::GainController2> engine_{};
+    std::unique_ptr<agc2_webrtc::AudioBuffer> buffer_{};
     std::uint32_t sample_rate_{0};
     std::size_t frame_size_{0};
     double gain_db_{0.0};
