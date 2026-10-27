@@ -34,6 +34,11 @@ if(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2)
         # the parent project\x27s BUILD_TESTS cache value.
         set(BUILD_TESTS OFF)
         FetchContent_MakeAvailable(libaudition_demo_agc2_sdk)
+        # AEC3 and AGC2 are independent WebRTC extractions with overlapping
+        # webrtc::* symbols. Prevent ELF interposition across their DSOs.
+        if(UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_link_options(webrtc_agc2 PRIVATE "LINKER:-Bsymbolic")
+        endif()
         # Keep upstream compiler workarounds scoped to the fetched target.
         # Both x86 AVX2 translation units use FMA intrinsics; compiling the
         # complete target with -mavx2 would break CPU runtime dispatch.
