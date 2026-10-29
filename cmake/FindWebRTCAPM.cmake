@@ -3,9 +3,10 @@
 include(FindPackageHandleStandardArgs)
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-    pkg_check_modules(PC_WEBRTC_APM QUIET
-        webrtc-audio-processing-3
-        webrtc-audio-processing-2)
+    pkg_check_modules(PC_WEBRTC_APM QUIET webrtc-audio-processing-3)
+    if(NOT PC_WEBRTC_APM_FOUND)
+        pkg_check_modules(PC_WEBRTC_APM QUIET webrtc-audio-processing-2)
+    endif()
 endif()
 
 find_path(WebRTCAPM_INCLUDE_DIR
