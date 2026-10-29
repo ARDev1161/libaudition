@@ -137,6 +137,71 @@ function(libaudition_find_or_fetch_samplerate)
         DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endfunction()
 
+# Unified WebRTC Audio Processing Module (AGC1/AGC2, AEC3, noise
+# suppression). Use one library with one WebRTC ABI rather than linking
+# independently extracted AEC3/AGC2 implementations into the same process.
+function(libaudition_find_or_fetch_webrtc_apm)
+    find_package(WebRTCAPM QUIET)
+    if(TARGET WebRTCAPM::APM)
+        return()
+    endif()
+    if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR
+            "WebRTC APM 2.x was not found; install webrtc-audio-processing-2 "
+            "or enable LIBAUDITION_FETCH_DEPENDENCIES")
+    endif()
+
+    find_program(_apm_meson meson REQUIRED)
+    find_program(_apm_ninja ninja REQUIRED)
+    set(_apm_source_dir "${CMAKE_BINARY_DIR}/_deps/webrtc-apm-src")
+    set(_apm_build_dir "${CMAKE_BINARY_DIR}/_deps/webrtc-apm-build")
+    set(_apm_prefix "${CMAKE_BINARY_DIR}/_deps/webrtc-apm-install")
+    set(_apm_library
+        "${_apm_prefix}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}webrtc-audio-processing-2${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    file(MAKE_DIRECTORY
+        "${_apm_prefix}/include/webrtc-audio-processing-2"
+        "${_apm_prefix}/lib")
+
+    ExternalProject_Add(libaudition_webrtc_apm_external
+        GIT_REPOSITORY https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing.git
+        GIT_TAG bc838790
+        GIT_SHALLOW FALSE
+        UPDATE_DISCONNECTED TRUE
+        SOURCE_DIR "${_apm_source_dir}"
+        BINARY_DIR "${_apm_build_dir}"
+        INSTALL_DIR "${_apm_prefix}"
+        CONFIGURE_COMMAND "${_apm_meson}" setup <BINARY_DIR> <SOURCE_DIR>
+            --prefix=<INSTALL_DIR> --libdir=lib
+        BUILD_COMMAND "${_apm_meson}" compile -C <BINARY_DIR> -j 3
+        INSTALL_COMMAND "${_apm_meson}" install -C <BINARY_DIR>
+        BUILD_BYPRODUCTS "${_apm_library}")
+
+    add_library(WebRTCAPM::APM SHARED IMPORTED GLOBAL)
+    set_target_properties(WebRTCAPM::APM PROPERTIES
+        IMPORTED_LOCATION "${_apm_library}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_apm_prefix}/include/webrtc-audio-processing-2"
+        INTERFACE_COMPILE_DEFINITIONS "WEBRTC_LIBRARY_IMPL")
+    if(UNIX)
+        set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+            INTERFACE_COMPILE_DEFINITIONS WEBRTC_POSIX)
+        if(APPLE)
+            set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+                INTERFACE_COMPILE_DEFINITIONS WEBRTC_MAC)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+                INTERFACE_COMPILE_DEFINITIONS WEBRTC_LINUX)
+        endif()
+    endif()
+    add_dependencies(WebRTCAPM::APM libaudition_webrtc_apm_external)
+
+    # Ship the dependency only if built from the pinned sources. System
+    # packages remain system dependencies and must not be copied.
+    install(DIRECTORY "${_apm_prefix}/lib/"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        FILES_MATCHING PATTERN "libwebrtc-audio-processing-2.so*"
+            PATTERN "libwebrtc-audio-processing-2.dylib*")
+endfunction()
+
 function(libaudition_find_or_fetch_webrtc_aec3)
     if(TARGET webrtc_aec3)
         return()
