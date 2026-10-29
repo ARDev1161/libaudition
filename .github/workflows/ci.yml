@@ -708,7 +708,7 @@ jobs:
       - name: Install Qt 5 Widgets
         run: |
           sudo apt-get update
-          sudo apt-get install -y qtbase5-dev gdb
+          sudo apt-get install -y qtbase5-dev gdb meson ninja-build libabsl-dev pkg-config
       - name: Configure WebRTC AEC3 backend
         run: >-
           cmake -S . -B build-aec3 -G Ninja
@@ -1684,7 +1684,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config qt6-base-dev \
             qt6-multimedia-dev doxygen libasound2-dev libfftw3-dev \
-            libconfig-dev libpulse-dev
+            libconfig-dev libpulse-dev meson libabsl-dev
       - name: Configure all software backend options from public CMake preset
         run: cmake --preset full-demo-no-model-download
       - name: Build combined Qt executable and all active backend dependencies
