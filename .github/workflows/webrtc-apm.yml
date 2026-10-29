@@ -15,16 +15,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y meson ninja-build pkg-config curl \
             libabsl-dev qtbase5-dev
-      - name: Build pinned Freedesktop WebRTC APM 2.1
+      - name: Build patched Freedesktop WebRTC APM 2.x upstream commit
         shell: bash
         run: |
           set -euo pipefail
-          curl -fLsS --retry 3 \
-            https://gstreamer.freedesktop.org/src/mirror/webrtc-audio-processing/webrtc-audio-processing-2.1.tar.xz \
-            -o "${RUNNER_TEMP}/webrtc-apm-2.1.tar.xz"
-          mkdir -p "${RUNNER_TEMP}/apm-source"
-          tar -xf "${RUNNER_TEMP}/webrtc-apm-2.1.tar.xz" \
-            -C "${RUNNER_TEMP}/apm-source" --strip-components=1
+          git clone https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing.git \
+            "${RUNNER_TEMP}/apm-source"
+          git -C "${RUNNER_TEMP}/apm-source" checkout bc838790
+          # This post-2.1 upstream commit contains the 2025 Abseil nullability
+          # and GCC 15 compatibility fixes; the v2.1 release tarball does not.
           meson setup "${RUNNER_TEMP}/apm-build" "${RUNNER_TEMP}/apm-source" \
             --prefix="${GITHUB_WORKSPACE}/apm-prefix" --libdir=lib
           meson compile -C "${RUNNER_TEMP}/apm-build" -j 3
