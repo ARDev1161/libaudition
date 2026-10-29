@@ -1,59 +1,56 @@
 # Speech gain backends (Qt acoustic scene)
 
-The gain processor is source-local and is applied **after ODAS separation** and
-**before Silero/TEN VAD and offline ASR**. The original recording WAV retains
-the unprocessed ODAS samples.
+Gain processing is **source-local**: ODAS separation → selected AGC →
+Silero/TEN VAD and offline ASR. The source WAV records the **post-AGC**
+PCM delivered to speech ingress when AGC is enabled; otherwise it stores
+the unmodified ODAS PCM. Keep a separate raw ODAS capture for controlled
+comparisons, since the normal source WAV no longer provides both signals.
 
-| Backend | Status | Selection | Dependency |
+| Backend | Status | Qt selection | Dependency |
 | --- | --- | --- | --- |
-| RMS AGC | Available | `RMS AGC` | None |
+| RMS AGC | Built-in | `RMS AGC` | None |
 | SpeexDSP AGC | Optional | `SpeexDSP AGC` | SpeexDSP development package |
-| WebRTC AGC2 | Optional SDK adapter | `WebRTC AGC2` | Standalone `webrtc_agc2` library |
+| WebRTC APM AGC1 | Optional | `WebRTC APM AGC1` | Unified WebRTC APM 2.x |
+| WebRTC APM AGC2 | Optional | `WebRTC APM AGC2` | Unified WebRTC APM 2.x |
+
+## Unified WebRTC APM
+
+The library uses **one pinned Freedesktop WebRTC Audio Processing Module**
+implementation for AGC1, AGC2 and AEC3. It no longer fetches the independent
+`Enaium/webrtc-agc2` or `Enaium/webrtc-aec3` extractions. This prevents
+duplicate, incompatible implementations of internal `webrtc::` classes.
+
+Choose `-DLIBAUDITION_WITH_WEBRTC_APM=ON` (or enable
+`LIBAUDITION_WITH_WEBRTC_AEC3`, which implies APM). Build dependencies
+include Meson, Ninja and Abseil development headers. CMake first attempts
+to find an installed `webrtc-audio-processing-2` package, and can fetch
+the pinned APM source when `LIBAUDITION_FETCH_DEPENDENCIES=ON`.
+The system's old `webrtc-audio-processing-0.3` is not API-compatible.
+
+When APM is enabled, WebRTC APM AGC2 is the default Qt speech AGC.
+AGC1 and AGC2 run in separate, per-source APM sessions; both use 10-ms
+frames with a buffering delay when ODAS emits shorter hops. They operate
+only on speech gain: AEC3 requires both the unseparated microphone input
+and playback reference and belongs before ODAS.
+
+The reported `gainDb()` is the energy ratio measured per processed
+frame, not an internal WebRTC gain target.
 
 ## SpeexDSP
 
-On Ubuntu / Debian, install `libspeexdsp-dev`. Configure the Qt demo with
-`-DLIBAUDITION_DEMO_WITH_SPEEXDSP_AGC=ON` to expose the SpeexDSP selector.
-The option defaults to ON; CMake auto-detects SpeexDSP and enables it when installed. If the dependency is unavailable, the Qt demo still builds with RMS AGC only. SpeexDSP is selected by default when available.
+On Ubuntu/Debian install `libspeexdsp-dev`. Configure with
+`-DLIBAUDITION_DEMO_WITH_SPEEXDSP_AGC=ON` (the default) and CMake
+auto-detects it. The adapter maintains a separate mono preprocessing
+state per tracked source and converts normalized float PCM to/from
+signed 16-bit samples. Denoising remains disabled to allow comparing
+gain algorithms without adding noise reduction.
 
-The adapter uses independent preprocessor instances per tracked source,
-10-ms frames, mono int16 samples, and a maximum requested gain of 36 dB.
-It converts the ODAS float PCM to int16 for the SpeexDSP API and back. The
-output stream is delayed by up to one frame when source chunks are shorter
-than 10 ms; the initial unfilled samples are zero. **The adapter must not be
-selected in pipelines requiring sample-accurate timing without compensating
-for this buffering delay.** Denoising is disabled to compare gain algorithms
-without introducing a second noise reduction variable.
+Its 10-ms framing can introduce a delay of up to one frame for shorter
+input chunks. Sample-accurate applications must account for this delay.
 
-The displayed gain is obtained from the SpeexDSP AGC gain query. The existing
-RMS implementation remains the baseline for A/B listening and transcription
-comparison. Neither backend can reconstruct speech information removed by
-source separation, nor do they eliminate Whisper decoding hallucinations.
+## Evaluation before release
 
-## Next integration
-
-WebRTC AGC2 is distinct from the existing WebRTC AEC3 backend. The optional
-adapter and discovery gate are present; validation of the upstream SDK build,
-platform CI and audio timing are still outstanding.
-
-## WebRTC AGC2 (standalone extraction)
-
-This integration targets the pinned API layout in
-[Enaium/webrtc-agc2](https://github.com/Enaium/webrtc-agc2), revision
-`aa5d2359c357bc15495881c12c52874c8830af0a`. The Qt demo now downloads and builds this pinned dependency automatically by default. No manual root path is required. For an existing locally built copy, configure with:
-
-```bash
-cmake -S . -B build -DLIBAUDITION_DEMO_WITH_WEBRTC_AGC2=ON \
-  -DLIBAUDITION_WEBRTC_AGC2_ROOT=/path/to/webrtc-agc2
-```
-
-The default is `LIBAUDITION_DEMO_WITH_WEBRTC_AGC2=ON` and `LIBAUDITION_DEMO_FETCH_WEBRTC_AGC2=ON`. CMake FetchContent downloads the pinned source and builds it as part of the Qt demo, sets include/link paths automatically, and preselects WebRTC AGC2 in the Qt acoustic scene. Offline builds can disable fetching with `-DLIBAUDITION_DEMO_FETCH_WEBRTC_AGC2=OFF`, use a prebuilt root, or disable the backend with `-DLIBAUDITION_DEMO_WITH_WEBRTC_AGC2=OFF`. Builds with Qt Demo disabled do not fetch AGC2. Unlike WebRTC AEC3, this
-is a distinct dependency.
-
-The AGC2 adapter uses the upstream internal voice activity detector,
-adaptive digital gain (36 dB maximum), disabled microphone hardware gain
-controller, and 10-ms mono FloatS16 processing frames. Initial framing
-latency and sample alignment must be accounted for in precision timing
-applications. The `gainDb()` diagnostic reports measured input/output
-frame-energy gain, not AGC2's internal target level. The runtime comparison
-with ODAS + ASR must still be validated on real hardware.
+Measure RMS, peak, clipping, speech/noise levels, latency, CPU use and
+ASR WER on **identical input PCM** with fixed VAD boundaries. Neither
+gain processor recovers information already lost during ODAS separation,
+and increased loudness alone does not prove improved ASR accuracy.
