@@ -1715,8 +1715,7 @@ jobs:
           tar -xf "${RUNNER_TEMP}/webrtc-apm-2.1.tar.xz" \
             -C "${RUNNER_TEMP}/apm-source" --strip-components=1
           meson setup "${RUNNER_TEMP}/apm-build" "${RUNNER_TEMP}/apm-source" \
-            --prefix="${GITHUB_WORKSPACE}/apm-prefix" --libdir=lib \
-            -Dtests=disabled
+            --prefix="${GITHUB_WORKSPACE}/apm-prefix" --libdir=lib
           meson compile -C "${RUNNER_TEMP}/apm-build" -j 3
           meson install -C "${RUNNER_TEMP}/apm-build"
           test -f "$PWD/apm-prefix/lib/pkgconfig/webrtc-audio-processing-2.pc"
@@ -1740,9 +1739,10 @@ jobs:
       - name: Run APM AGC streaming tests
         env:
           LD_LIBRARY_PATH: ./apm-prefix/lib
-        run: ctest --test-dir build-apm -R 'SourceGain.UnifiedApm' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-apm -R 'SourceGain.UnifiedApm' --output-on-failure
       - name: Run APM Qt integration smoke test
         env:
           LD_LIBRARY_PATH: ./apm-prefix/lib
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-apm -R '^qt_self_test$' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-apm -R '^qt_self_test --output-on-failure
+ --output-on-failure
