@@ -289,6 +289,18 @@ if(BUILD_TESTING)
     endif()
 endif()
 
+# APM 2.x is a single public DSP API. Keep it separate from the old
+# independently extracted WebRTC backends during the migration.
+if(LIBAUDITION_WITH_WEBRTC_APM)
+    target_link_libraries(libaudition_qt_demo PRIVATE WebRTCAPM::APM)
+    target_compile_definitions(libaudition_qt_demo PRIVATE
+        LIBAUDITION_WITH_WEBRTC_APM=1)
+    target_compile_features(libaudition_qt_demo PRIVATE cxx_std_20)
+else()
+    target_compile_definitions(libaudition_qt_demo PRIVATE
+        LIBAUDITION_WITH_WEBRTC_APM=0)
+endif()
+
 # The model-backed checks require independently downloaded real weights.
 # Enable explicitly on CI jobs/local machines that provision those fixtures.
 option(LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS
