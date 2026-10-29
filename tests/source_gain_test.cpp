@@ -96,3 +96,27 @@ TEST(SourceGain, WebRtcAgc2HandlesUnevenHopsWithoutChangingSampleCount) {
     EXPECT_DOUBLE_EQ(gain->gainDb(), 0.0);
 }
 #endif
+
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+TEST(SourceGain, UnifiedApmAgc1AndAgc2HandleUnalignedHopsAndReset) {
+    for (const char* implementation : {"webrtc_apm_agc1", "webrtc_apm_agc2"}) {
+        auto gain = audition::dsp::makeSourceGain(implementation);
+        std::vector<float> speech(128U, 0.003F);
+        for (int hop = 0; hop < 250; ++hop) {
+            const auto output = gain->process(speech.data(), speech.size(), 16000U);
+            ASSERT_EQ(output.size(), speech.size());
+            for (const float sample : output) {
+                EXPECT_TRUE(std::isfinite(sample));
+                EXPECT_LE(std::abs(sample), 1.0F);
+            }
+        }
+        EXPECT_TRUE(std::isfinite(gain->gainDb()));
+        EXPECT_THROW((void)gain->process(speech.data(), speech.size(), 48000U),
+                     std::invalid_argument);
+        gain->reset();
+        EXPECT_DOUBLE_EQ(gain->gainDb(), 0.0);
+        EXPECT_EQ(gain->process(speech.data(), speech.size(), 16000U).size(),
+                  speech.size());
+    }
+}
+#endif
