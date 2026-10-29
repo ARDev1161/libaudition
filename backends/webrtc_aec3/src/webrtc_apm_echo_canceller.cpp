@@ -52,7 +52,9 @@ std::vector<std::vector<float>> unpack(AudioView input) {
     std::vector<std::vector<float>> planar(input.format().channel_count);
     for (std::size_t ch = 0; ch < planar.size(); ++ch) {
         const auto samples = input.channel(ch);
-        planar[ch].assign(samples.begin(), samples.end());
+        planar[ch].resize(samples.size());
+        for (std::size_t i = 0; i < samples.size(); ++i)
+            planar[ch][i] = samples[i];
     }
     return planar;
 }
