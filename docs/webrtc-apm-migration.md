@@ -1,10 +1,10 @@
 # WebRTC APM migration
 
-Status: **in progress**. The opt-in APM 2.x AGC1/AGC2 source-gain adapter,
-Qt selector, unit tests, and dedicated source-build CI job are implemented.
-The AEC3 replacement and deletion of standalone dependencies are still pending.
-Do not remove the working AEC3 and AGC2 backends before their replacements
-have passed all corresponding tests.
+Status: **unified AGC1/AGC2 + AEC3 migration implemented**. The
+dedicated WebRTC APM CI #11 passed the AGC and AEC3 functional tests.
+The standalone AGC2/AEC3 source, namespace workarounds and their downloader
+have been removed. Main full-demo CI, cross-platform and quality benchmarks
+must be revalidated before release.
 
 ## Source of truth
 
@@ -31,48 +31,49 @@ not vendored internal `webrtc::AudioBuffer` types.
 
 ## Staged replacement and removal
 
-- [x] Add APM 2.x pkg-config/system discovery and a dedicated CI job that
-      builds the pinned Freedesktop 2.1 source with Meson.
-      A production-wide fetch/install integration is still pending.
+- [x] Add APM 2.x package discovery, automatic Meson ExternalProject fetch
+      pinned to Freedesktop commit `bc838790`, and APM integration CI.
 - [x] Add opt-in APM-backed AGC1 and AGC2 processors with 10-ms framing,
       source-local state, gain metrics and reset tests.
 - [ ] Measure exact APM latency and verify signal quality on real ODAS audio.
-- [ ] Implement APM-backed echo canceller (including render reference and
-      stream delay) and noise suppression; preserve relevant metrics.
-- [ ] Run Qt demonstration and AEC functional self-tests on Linux Qt 5/6,
+- [x] Implement APM-backed AEC3 with 10-ms render/reference frames, stream
+      delay, reset and AEC metrics via the public APM API.
+- [ ] Expose APM noise suppression as a separate configurable capability.
+- [x] Pass dedicated Linux APM #11 unit tests and Qt AEC3 smoke test.
+- [ ] Revalidate combined full-demo with APM and cross-platform Qt 5/6,
       GCC with -Werror, Clang, x86-64 and ARM64.
 - [ ] Bench on identical input PCM: RMS/Speex versus APM AGC1/AGC2,
       including WER, clipping, signal/noise levels and CPU cost.
-- [ ] Remove `Enaium/webrtc-agc2` FetchContent and
-      `Enaium/webrtc-aec3` ExternalProject, namespace-renaming
-      workarounds and `cmake/PatchWebrtcAec3.cmake` only after green CI.
+- [x] Remove the standalone `Enaium/webrtc-agc2` and
+      `Enaium/webrtc-aec3` implementations, namespace-renaming
+      workarounds and `cmake/PatchWebrtcAec3.cmake`.
 - [ ] Update installed CMake exports, documentation and Yocto packaging;
       verify no duplicate `webrtc::` runtime implementations.
 
 ## Dependency evaluation
 
-Freedesktop APM 2.1 is a distribution-oriented Meson project, whereas the
-separate third-party AGC2/AEC3 extractions build through CMake. Prefer the
-former for the long-term API and predictable shared WebRTC ABI; preserve
-pinning and explicit dependency options. A Git submodule alone does not
-solve Meson/CMake integration or cross-compilation.
+Freedesktop APM is built with Meson and consumed by libaudition through a
+CMake imported target. The source is pinned to post-2.1 commit `bc838790`
+for compatibility with current Abseil/GCC. A Git submodule alone would
+not solve dependency management or cross-compilation.
 
-## Try the APM gain backend locally
+## Build with unified APM
 
-Install WebRTC Audio Processing **2.1** (the Ubuntu 24.04 apt package is
-0.3.1 and does not meet this requirement). Supply its install prefix through
-`CMAKE_PREFIX_PATH` and `PKG_CONFIG_PATH`, and configure:
+CMake first locates a system `webrtc-audio-processing-2`, then fetches the
+pinned source if fetching is enabled. On Linux, install Meson, Ninja and the
+Abseil development package before building.
 
 ```sh
 cmake -S . -B build-apm -G Ninja \
-  -DCMAKE_PREFIX_PATH=/path/to/apm-prefix \
   -DLIBAUDITION_WITH_WEBRTC_APM=ON \
-  -DLIBAUDITION_DEMO_WITH_WEBRTC_AGC2=OFF \
+  -DLIBAUDITION_WITH_WEBRTC_AEC3=ON \
   -DLIBAUDITION_BUILD_QT_DEMO=ON
 cmake --build build-apm --target libaudition_qt_demo
 ```
 
-The gain dropdown contains `WebRTC APM AGC1` and `WebRTC APM AGC2`.
-With APM available, AGC2 becomes the Qt default. Leave the legacy standalone
-AEC3 enabled only for existing configurations until the APM echo adapter is
-ready; both engines should not be assumed to share signal-processing state.
+The AGC dropdown includes `WebRTC APM AGC1` and `WebRTC APM AGC2`.
+The AEC3 UI keeps the existing WAV inputs and stream-delay control. The
+two custom AEC3 filter-initialization options from the old standalone
+library cannot be expressed through APM 2.x's public API; they are
+disabled in the Qt UI and explicitly rejected when set programmatically.
+AEC3's general filter tuning uses WebRTC's internal defaults.
