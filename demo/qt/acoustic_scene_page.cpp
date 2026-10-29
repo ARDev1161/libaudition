@@ -1184,9 +1184,6 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto* agcImplementation = new QComboBox{sidebar};
     agcImplementation->setObjectName("acousticSceneSpeechAgcImplementation");
     agcImplementation->addItem("RMS AGC", QStringLiteral("rms"));
-#if defined(LIBAUDITION_WITH_WEBRTC_AGC2) && LIBAUDITION_WITH_WEBRTC_AGC2
-    agcImplementation->addItem("WebRTC AGC2", QStringLiteral("webrtc_agc2"));
-#endif
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
     agcImplementation->addItem("WebRTC APM AGC1", QStringLiteral("webrtc_apm_agc1"));
     agcImplementation->addItem("WebRTC APM AGC2", QStringLiteral("webrtc_apm_agc2"));
@@ -1194,9 +1191,6 @@ QWidget* createAcousticScenePage(QWidget* parent) {
 #if defined(LIBAUDITION_WITH_SPEEXDSP_AGC) && LIBAUDITION_WITH_SPEEXDSP_AGC
     agcImplementation->addItem("SpeexDSP AGC", QStringLiteral("speex"));
     agcImplementation->setCurrentIndex(agcImplementation->count() - 1);
-#endif
-#if defined(LIBAUDITION_WITH_WEBRTC_AGC2) && LIBAUDITION_WITH_WEBRTC_AGC2
-    agcImplementation->setCurrentIndex(agcImplementation->findData(QStringLiteral("webrtc_agc2")));
 #endif
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
     agcImplementation->setCurrentIndex(
