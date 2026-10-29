@@ -156,6 +156,10 @@ public:
 
     AudioBuffer process(AudioView captured) override {
         validateFrame(captured, capture_, "capture");
+        // APM requires a stream-delay value for each capture block when
+        // echo cancellation is enabled, even if the application uses zero.
+        check(engine_->set_stream_delay_ms(delay_ms_.value_or(0)),
+              "set_stream_delay_ms before capture");
         auto samples = unpack(captured);
         auto in = inputPointers(samples);
         auto out = outputPointers(samples);
@@ -191,6 +195,8 @@ private:
     void rebuild() {
         webrtc::AudioProcessing::Config config{};
         config.echo_canceller.enabled = true;
+        config.pipeline.multi_channel_capture = capture_.channel_count > 1U;
+        config.pipeline.multi_channel_render = reference_.channel_count > 1U;
         config.gain_controller1.enabled = false;
         config.gain_controller2.enabled = false;
         config.noise_suppression.enabled = false;
