@@ -372,7 +372,7 @@ private:
     }
 
     bool use_agc2_{true};
-    rtc::scoped_refptr<webrtc::AudioProcessing> engine_{};
+    webrtc::scoped_refptr<webrtc::AudioProcessing> engine_{};
     std::uint32_t sample_rate_{0U};
     std::size_t frame_size_{0U};
     double gain_db_{0.0};
