@@ -55,5 +55,4 @@ jobs:
         env:
           LD_LIBRARY_PATH: ./apm-prefix/lib
           QT_QPA_PLATFORM: offscreen
-        run: ctest --no-tests=error --test-dir build-apm -R '^qt_self_test --output-on-failure
- --output-on-failure
+        run: ctest --no-tests=error --test-dir build-apm -R '^qt_self_test$' --output-on-failure
