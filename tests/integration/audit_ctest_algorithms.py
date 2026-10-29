@@ -61,6 +61,9 @@ BACKENDS = {
     },
     "LIBAUDITION_WITH_LIBSAMPLERATE": {"resampler": r"^SamplerateBackend\."},
     "LIBAUDITION_WITH_WEBRTC_AEC3": {"AEC3": r"^WebRtcAec3Backend\."},
+    "LIBAUDITION_WITH_WEBRTC_APM": {
+        "APM AGC1/AGC2 streaming": r"^SourceGain\.UnifiedApm",
+    },
     "LIBAUDITION_WITH_SHERPA": {
         "Sherpa configuration": r"^SherpaConfig\.",
         "Sherpa VAD": r"^SherpaVad\.",
