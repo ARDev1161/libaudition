@@ -1,0 +1,59 @@
+name: WebRTC APM
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unified-webrtc-apm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Meson, Abseil, Qt and build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build pkg-config curl \
+            libabsl-dev qtbase5-dev
+      - name: Build pinned Freedesktop WebRTC APM 2.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 \
+            https://gstreamer.freedesktop.org/src/mirror/webrtc-audio-processing/webrtc-audio-processing-2.1.tar.xz \
+            -o "${RUNNER_TEMP}/webrtc-apm-2.1.tar.xz"
+          mkdir -p "${RUNNER_TEMP}/apm-source"
+          tar -xf "${RUNNER_TEMP}/webrtc-apm-2.1.tar.xz" \
+            -C "${RUNNER_TEMP}/apm-source" --strip-components=1
+          meson setup "${RUNNER_TEMP}/apm-build" "${RUNNER_TEMP}/apm-source" \
+            --prefix="${GITHUB_WORKSPACE}/apm-prefix" --libdir=lib
+          meson compile -C "${RUNNER_TEMP}/apm-build" -j 3
+          meson install -C "${RUNNER_TEMP}/apm-build"
+          test -f "$PWD/apm-prefix/lib/pkgconfig/webrtc-audio-processing-2.pc"
+      - name: Configure APM-based source gain and Qt demo
+        run: |
+          export PKG_CONFIG_PATH="$PWD/apm-prefix/lib/pkgconfig"
+          cmake -S . -B build-apm -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/apm-prefix" \
+            -DLIBAUDITION_WITH_WEBRTC_APM=ON \
+            -DLIBAUDITION_DEMO_WITH_WEBRTC_AGC2=OFF \
+            -DLIBAUDITION_BUILD_TESTS=ON \
+            -DLIBAUDITION_BUILD_QT_DEMO=ON \
+            -DLIBAUDITION_WITH_SPDLOG=OFF \
+            -DLIBAUDITION_DEMO_FETCH_SPEECH_MODELS=OFF \
+            -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF \
+            -DLIBAUDITION_DEMO_FETCH_EXTRA_SPEECH_MODELS=OFF \
+            -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build APM test and demo targets
+        run: cmake --build build-apm --target libaudition_tests libaudition_qt_demo --parallel 3
+      - name: Run APM AGC streaming tests
+        env:
+          LD_LIBRARY_PATH: ./apm-prefix/lib
+        run: ctest --no-tests=error --test-dir build-apm -R 'SourceGain.UnifiedApm' --output-on-failure
+      - name: Run APM Qt integration smoke test
+        env:
+          LD_LIBRARY_PATH: ./apm-prefix/lib
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-apm -R '^qt_self_test --output-on-failure
+ --output-on-failure
