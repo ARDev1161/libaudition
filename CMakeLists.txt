@@ -90,7 +90,9 @@ if(LIBAUDITION_WITH_LIBSAMPLERATE)
 endif()
 
 if(LIBAUDITION_WITH_WEBRTC_AEC3)
-    libaudition_find_or_fetch_webrtc_aec3()
+    if(NOT LIBAUDITION_WITH_WEBRTC_APM)
+        libaudition_find_or_fetch_webrtc_aec3()
+    endif()
     add_subdirectory(backends/webrtc_aec3)
 endif()
 
