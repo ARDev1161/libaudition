@@ -36,6 +36,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$PWD/apm-prefix" \
             -DLIBAUDITION_WITH_WEBRTC_APM=ON \
+            -DLIBAUDITION_WITH_WEBRTC_AEC3=ON \
             -DLIBAUDITION_DEMO_WITH_WEBRTC_AGC2=OFF \
             -DLIBAUDITION_BUILD_TESTS=ON \
             -DLIBAUDITION_BUILD_QT_DEMO=ON \
@@ -49,9 +50,14 @@ jobs:
       - name: Run APM AGC streaming tests
         env:
           LD_LIBRARY_PATH: ./apm-prefix/lib
-        run: ctest --no-tests=error --test-dir build-apm -R 'SourceGain.UnifiedApm' --output-on-failure
+        run: ctest --no-tests=error --test-dir build-apm -R 'SourceGain.UnifiedApm|WebRtcAec3Backend' --output-on-failure
       - name: Run APM Qt integration smoke test
         env:
           LD_LIBRARY_PATH: ./apm-prefix/lib
           QT_QPA_PLATFORM: offscreen
         run: ctest --no-tests=error --test-dir build-apm -R '^qt_self_test$' --output-on-failure
+      - name: Run APM echo cancellation Qt functional smoke test
+        env:
+          LD_LIBRARY_PATH: ./apm-prefix/lib
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-apm -R '^qt_aec3$' --output-on-failure
