@@ -18,6 +18,10 @@
 #undef webrtc
 #endif
 #endif
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+// Unified WebRTC APM 2.x public API (not standalone AGC2 internals).
+#include <modules/audio_processing/include/audio_processing.h>
+#endif
 #if defined(LIBAUDITION_WITH_SPEEXDSP_AGC) && LIBAUDITION_WITH_SPEEXDSP_AGC
 #include <speex/speex_preprocess.h>
 #endif
@@ -271,6 +275,112 @@ private:
 };
 #endif
 
+
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+// One standalone APM session per separated source. AGC1 and AGC2 are mutually
+// exclusive. AEC and NS remain off here: echo cancellation needs the original
+// microphone channels and the render/reference stream, not separated speech.
+class WebRtcApmSourceGain final : public ISourceGain {
+public:
+    explicit WebRtcApmSourceGain(bool use_agc2) : use_agc2_(use_agc2) {}
+
+    std::vector<float> process(const float* pcm, std::size_t count,
+                               std::uint32_t sample_rate) override {
+        if ((!pcm && count != 0U) ||
+            (sample_rate != 16000U && sample_rate != 32000U &&
+             sample_rate != 48000U))
+            throw std::invalid_argument("WebRTC APM needs 16/32/48 kHz mono PCM");
+        if (engine_ && sample_rate != sample_rate_)
+            throw std::invalid_argument("WebRTC APM sample rate changed; reset first");
+        if (!engine_) initialize(sample_rate);
+
+        std::vector<float> result(count, 0.0F);
+        for (std::size_t i = 0; i < count; ++i) {
+            if (!std::isfinite(pcm[i]))
+                throw std::invalid_argument("Nonfinite WebRTC APM PCM");
+            input_.push_back(pcm[i]);
+            if (input_.size() == frame_size_) {
+                std::vector<float> processed(frame_size_);
+                const float* const source_channels[] = {input_.data()};
+                float* const output_channels[] = {processed.data()};
+                const webrtc::StreamConfig stream(
+                    static_cast<int>(sample_rate_), 1);
+                const int rc = engine_->ProcessStream(
+                    source_channels, stream, stream, output_channels);
+                if (rc != webrtc::AudioProcessing::kNoError)
+                    throw std::runtime_error("WebRTC APM ProcessStream failed: " +
+                                             std::to_string(rc));
+                double input_power = 0.0;
+                double output_power = 0.0;
+                for (std::size_t j = 0; j < frame_size_; ++j) {
+                    input_power += static_cast<double>(input_[j]) * input_[j];
+                    output_power += static_cast<double>(processed[j]) * processed[j];
+                    ready_.push_back(std::clamp(processed[j], -1.0F, 1.0F));
+                }
+                if (input_power > 1.e-12 && output_power > 1.e-12)
+                    gain_db_ = 10.0 * std::log10(output_power / input_power);
+                input_.clear();
+            }
+            if (!ready_.empty()) {
+                result[i] = ready_.front();
+                ready_.pop_front();
+            }
+        }
+        return result;
+    }
+
+    double gainDb() const noexcept override { return gain_db_; }
+
+    void reset() noexcept override {
+        engine_ = nullptr;
+        input_.clear();
+        ready_.clear();
+        sample_rate_ = 0;
+        frame_size_ = 0;
+        gain_db_ = 0.0;
+    }
+
+private:
+    void initialize(std::uint32_t rate) {
+        auto engine = webrtc::AudioProcessingBuilder().Create();
+        if (!engine)
+            throw std::runtime_error("WebRTC APM initialization failed");
+        webrtc::AudioProcessing::Config cfg{};
+        cfg.echo_canceller.enabled = false;
+        cfg.noise_suppression.enabled = false;
+        cfg.high_pass_filter.enabled = false;
+        cfg.gain_controller1.enabled = !use_agc2_;
+        cfg.gain_controller1.mode =
+            webrtc::AudioProcessing::Config::GainController1::Mode::kAdaptiveDigital;
+        cfg.gain_controller1.analog_gain_controller.enabled = false;
+        cfg.gain_controller2.enabled = use_agc2_;
+        cfg.gain_controller2.adaptive_digital.enabled = use_agc2_;
+        engine->ApplyConfig(cfg);
+        const webrtc::ProcessingConfig stream_config{
+            webrtc::StreamConfig(static_cast<int>(rate), 1),
+            webrtc::StreamConfig(static_cast<int>(rate), 1),
+            webrtc::StreamConfig(static_cast<int>(rate), 1),
+            webrtc::StreamConfig(static_cast<int>(rate), 1)};
+        const int rc = engine->Initialize(stream_config);
+        if (rc != webrtc::AudioProcessing::kNoError)
+            throw std::runtime_error("WebRTC APM Initialize failed: " +
+                                     std::to_string(rc));
+        engine_ = std::move(engine);
+        sample_rate_ = rate;
+        frame_size_ = rate / 100U;
+        input_.reserve(frame_size_);
+    }
+
+    bool use_agc2_{true};
+    rtc::scoped_refptr<webrtc::AudioProcessing> engine_{};
+    std::uint32_t sample_rate_{0U};
+    std::size_t frame_size_{0U};
+    double gain_db_{0.0};
+    std::vector<float> input_{};
+    std::deque<float> ready_{};
+};
+#endif
+
 // Factory is intentionally replaceable by applications and later algorithms.
 inline std::unique_ptr<ISourceGain> makeSourceGain(const char* implementation) {
     if (implementation && std::string(implementation) == "rms")
@@ -282,6 +392,12 @@ inline std::unique_ptr<ISourceGain> makeSourceGain(const char* implementation) {
 #if defined(LIBAUDITION_WITH_WEBRTC_AGC2) && LIBAUDITION_WITH_WEBRTC_AGC2
     if (implementation && std::string(implementation) == "webrtc_agc2")
         return std::make_unique<WebRtcAgc2SourceGain>();
+#endif
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+    if (implementation && std::string(implementation) == "webrtc_apm_agc1")
+        return std::make_unique<WebRtcApmSourceGain>(false);
+    if (implementation && std::string(implementation) == "webrtc_apm_agc2")
+        return std::make_unique<WebRtcApmSourceGain>(true);
 #endif
     throw std::invalid_argument("Unknown source gain implementation");
 }
