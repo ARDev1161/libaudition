@@ -400,6 +400,16 @@ QWidget* createAec3Panel(QWidget* parent) {
         doubleBox(0.001, 30.0, 0.5, 3, 0.1);
     auto* conservative =
         new QCheckBox{"Conservative initial phase"};
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+    // The unified APM exposes AEC3 through AudioProcessing::Config, but
+    // does not expose these standalone extraction-specific tuning knobs.
+    initialState->setEnabled(false);
+    conservative->setEnabled(false);
+    initialState->setToolTip(
+        "AEC3 filter initialization is managed internally by WebRTC APM");
+    conservative->setToolTip(
+        "This standalone AEC3 setting is unavailable through the APM API");
+#endif
 
     form->addRow(
         "Captured WAV",
