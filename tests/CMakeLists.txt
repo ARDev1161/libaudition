@@ -166,6 +166,12 @@ target_link_libraries(libaudition_tests PRIVATE
     audition::spatial
     GTest::gtest_main)
 libaudition_configure_target(libaudition_tests)
+if(LIBAUDITION_WITH_WEBRTC_APM)
+    target_link_libraries(libaudition_tests PRIVATE WebRTCAPM::APM)
+    target_compile_definitions(libaudition_tests PRIVATE LIBAUDITION_WITH_WEBRTC_APM=1)
+    target_compile_features(libaudition_tests PRIVATE cxx_std_20)
+endif()
+
 # With the optional reference suite, the synthesized ONNX fixture is
 # created before every discovered GTest, including tests of the model adapter.
 # Avoid relying on CI step ordering or a pre-existing fixture directory.
