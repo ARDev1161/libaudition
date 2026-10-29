@@ -1,5 +1,16 @@
+if(LIBAUDITION_WITH_WEBRTC_APM)
+    set(_standalone_webrtc_agc2_default OFF)
+else()
+    set(_standalone_webrtc_agc2_default ON)
+endif()
 option(LIBAUDITION_DEMO_WITH_WEBRTC_AGC2
-    "Enable standalone WebRTC AGC2 for the Qt acoustic scene" ON)
+    "Enable legacy standalone WebRTC AGC2 for the Qt acoustic scene"
+    ${_standalone_webrtc_agc2_default})
+if(LIBAUDITION_WITH_WEBRTC_APM AND LIBAUDITION_DEMO_WITH_WEBRTC_AGC2)
+    message(FATAL_ERROR
+        "Unified WebRTC APM replaces standalone AGC2. Set "
+        "LIBAUDITION_DEMO_WITH_WEBRTC_AGC2=OFF in this build.")
+endif()
 option(LIBAUDITION_DEMO_FETCH_WEBRTC_AGC2
     "Fetch and build a pinned WebRTC AGC2 for the Qt demo" ON)
 set(LIBAUDITION_WEBRTC_AGC2_ROOT "" CACHE PATH "Prebuilt standalone WebRTC AGC2 root (optional)")
