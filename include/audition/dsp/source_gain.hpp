@@ -4,20 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#if defined(LIBAUDITION_WITH_WEBRTC_AGC2) && LIBAUDITION_WITH_WEBRTC_AGC2
-// The fetched AGC2 extraction and AEC3 define incompatible webrtc:: types.
-// Compile the fetched AGC2 sources in a private namespace to avoid ELF/ODR
-// collisions when both libraries are loaded into the Qt process.
-#if defined(LIBAUDITION_AGC2_PRIVATE_NAMESPACE) && LIBAUDITION_AGC2_PRIVATE_NAMESPACE
-#define webrtc libaudition_agc2_webrtc
-#endif
-#include <api/environment.h>
-#include <audio_processing/audio_buffer.h>
-#include <audio_processing/gain_controller2.h>
-#if defined(LIBAUDITION_AGC2_PRIVATE_NAMESPACE) && LIBAUDITION_AGC2_PRIVATE_NAMESPACE
-#undef webrtc
-#endif
-#endif
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
 // Unified WebRTC APM 2.x public API (not standalone AGC2 internals).
 #include <modules/audio_processing/include/audio_processing.h>
@@ -188,94 +174,6 @@ private:
 #endif
 
 
-#if defined(LIBAUDITION_WITH_WEBRTC_AGC2) && LIBAUDITION_WITH_WEBRTC_AGC2
-// Standalone WebRTC AGC2 adapter. Mono FloatS16, 10-ms frames, with
-// per-source state and bounded framing latency for arbitrary ODAS hops.
-#if defined(LIBAUDITION_AGC2_PRIVATE_NAMESPACE) && LIBAUDITION_AGC2_PRIVATE_NAMESPACE
-namespace agc2_webrtc = libaudition_agc2_webrtc;
-#else
-namespace agc2_webrtc = webrtc;
-#endif
-class WebRtcAgc2SourceGain final : public ISourceGain {
-public:
-    std::vector<float> process(const float* pcm, std::size_t count,
-                               std::uint32_t sample_rate) override {
-        if (!sample_rate || (!pcm && count) ||
-            (sample_rate != 8000U && sample_rate != 16000U &&
-             sample_rate != 32000U && sample_rate != 48000U))
-            throw std::invalid_argument("WebRTC AGC2 requires 8/16/32/48 kHz mono PCM");
-        if (engine_ && sample_rate != sample_rate_)
-            throw std::invalid_argument("WebRTC AGC2 rate changed; reset first");
-        if (!engine_) initialize(sample_rate);
-        std::vector<float> out(count, 0.0F);
-        for (std::size_t i = 0; i < count; ++i) {
-            if (!std::isfinite(pcm[i]))
-                throw std::invalid_argument("Nonfinite WebRTC AGC2 PCM");
-            input_.push_back(static_cast<float>(
-                std::clamp(static_cast<double>(pcm[i]), -1.0, 1.0) * 32767.0));
-            if (input_.size() == frame_size_) {
-                float* const channel = buffer_->channels()[0];
-                std::copy(input_.begin(), input_.end(), channel);
-                double in_power = 0.0;
-                for (const float value : input_)
-                    in_power += static_cast<double>(value) * value;
-                engine_->Analyze(255, *buffer_);
-                engine_->Process(false, buffer_.get());
-                double out_power = 0.0;
-                for (std::size_t j = 0; j < frame_size_; ++j)
-                    out_power += static_cast<double>(channel[j]) * channel[j];
-                if (in_power > 1e-8 && out_power > 1e-8)
-                    gain_db_ = 10.0 * std::log10(out_power / in_power);
-                for (std::size_t j = 0; j < frame_size_; ++j)
-                    ready_.push_back(static_cast<float>(
-                        std::clamp(static_cast<double>(channel[j]) / 32768.0,
-                                   -1.0, 1.0)));
-                input_.clear();
-            }
-            if (!ready_.empty()) {
-                out[i] = ready_.front();
-                ready_.pop_front();
-            }
-        }
-        return out;
-    }
-    double gainDb() const noexcept override { return gain_db_; }
-    void reset() noexcept override {
-        engine_.reset();
-        buffer_.reset();
-        input_.clear();
-        ready_.clear();
-        sample_rate_ = 0U;
-        frame_size_ = 0U;
-        gain_db_ = 0.0;
-    }
-private:
-    void initialize(std::uint32_t rate) {
-        sample_rate_ = rate;
-        frame_size_ = rate / 100U;
-        agc2_webrtc::AudioProcessing::Config::GainController2 cfg{};
-        cfg.enabled = true;
-        cfg.adaptive_digital.enabled = true;
-        cfg.adaptive_digital.max_gain_db = 36.0F;
-        cfg.input_volume_controller.enabled = false;
-        engine_ = std::make_unique<agc2_webrtc::GainController2>(
-            environment_, cfg, agc2_webrtc::InputVolumeController::Config{},
-            static_cast<int>(rate), 1, true);
-        buffer_ = std::make_unique<agc2_webrtc::AudioBuffer>(rate, 1, rate, 1, rate, 1);
-        input_.reserve(frame_size_);
-    }
-    agc2_webrtc::Environment environment_{};
-    std::unique_ptr<agc2_webrtc::GainController2> engine_{};
-    std::unique_ptr<agc2_webrtc::AudioBuffer> buffer_{};
-    std::uint32_t sample_rate_{0};
-    std::size_t frame_size_{0};
-    double gain_db_{0.0};
-    std::vector<float> input_{};
-    std::deque<float> ready_{};
-};
-#endif
-
-
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
 // One standalone APM session per separated source. AGC1 and AGC2 are mutually
 // exclusive. AEC and NS remain off here: echo cancellation needs the original
@@ -388,10 +286,6 @@ inline std::unique_ptr<ISourceGain> makeSourceGain(const char* implementation) {
 #if defined(LIBAUDITION_WITH_SPEEXDSP_AGC) && LIBAUDITION_WITH_SPEEXDSP_AGC
     if (implementation && std::string(implementation) == "speex")
         return std::make_unique<SpeexSourceGain>();
-#endif
-#if defined(LIBAUDITION_WITH_WEBRTC_AGC2) && LIBAUDITION_WITH_WEBRTC_AGC2
-    if (implementation && std::string(implementation) == "webrtc_agc2")
-        return std::make_unique<WebRtcAgc2SourceGain>();
 #endif
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
     if (implementation && std::string(implementation) == "webrtc_apm_agc1")
