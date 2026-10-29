@@ -1668,7 +1668,7 @@ jobs:
             -B /tmp/libaudition-gtsam-consumer/build -G Ninja \
             -DCMAKE_PREFIX_PATH="$PWD/install-gtsam"
           cmake --build /tmp/libaudition-gtsam-consumer/build --parallel
-          LD_LIBRARY_PATH="$PWD/install-gtsam/lib:\${LD_LIBRARY_PATH:-}" \
+          LD_LIBRARY_PATH="$PWD/install-gtsam/lib:${LD_LIBRARY_PATH:-}" \
             /tmp/libaudition-gtsam-consumer/build/consumer
 
   full-demo-combination:
@@ -1710,15 +1710,15 @@ jobs:
           set -euo pipefail
           curl -fLsS --retry 3 \
             https://gstreamer.freedesktop.org/src/mirror/webrtc-audio-processing/webrtc-audio-processing-2.1.tar.xz \
-            -o "\${RUNNER_TEMP}/webrtc-apm-2.1.tar.xz"
-          mkdir -p "\${RUNNER_TEMP}/apm-source"
-          tar -xf "\${RUNNER_TEMP}/webrtc-apm-2.1.tar.xz" \
-            -C "\${RUNNER_TEMP}/apm-source" --strip-components=1
-          meson setup "\${RUNNER_TEMP}/apm-build" "\${RUNNER_TEMP}/apm-source" \
-            --prefix="\${GITHUB_WORKSPACE}/apm-prefix" --libdir=lib \
+            -o "${RUNNER_TEMP}/webrtc-apm-2.1.tar.xz"
+          mkdir -p "${RUNNER_TEMP}/apm-source"
+          tar -xf "${RUNNER_TEMP}/webrtc-apm-2.1.tar.xz" \
+            -C "${RUNNER_TEMP}/apm-source" --strip-components=1
+          meson setup "${RUNNER_TEMP}/apm-build" "${RUNNER_TEMP}/apm-source" \
+            --prefix="${GITHUB_WORKSPACE}/apm-prefix" --libdir=lib \
             -Dtests=disabled
-          meson compile -C "\${RUNNER_TEMP}/apm-build" -j 3
-          meson install -C "\${RUNNER_TEMP}/apm-build"
+          meson compile -C "${RUNNER_TEMP}/apm-build" -j 3
+          meson install -C "${RUNNER_TEMP}/apm-build"
           test -f "$PWD/apm-prefix/lib/pkgconfig/webrtc-audio-processing-2.pc"
       - name: Configure APM-based source gain and Qt demo
         run: |
