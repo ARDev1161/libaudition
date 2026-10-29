@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -90,7 +91,7 @@ std::vector<float> pack(const std::vector<std::vector<float>>& planar,
 
 void check(int code, const char* step) {
     if (code != webrtc::AudioProcessing::kNoError) {
-        throw Error{ErrorCode::BackendFailure,
+        throw Error{ErrorCode::ProcessingError,
                     std::string{"WebRTC APM "} + step +
                     " returned " + std::to_string(code)};
     }
