@@ -1,5 +1,8 @@
 #include "alsa_live_capture.hpp"
 #include <audition/dsp/source_gain.hpp>
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+#include <audition/backends/webrtc_apm_noise_suppressor.hpp>
+#endif
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
 #include "speech_epoch_recording_cleanup.hpp"
@@ -137,6 +140,17 @@ bool isReSpeaker(const std::string& name) {
 
 #endif
 
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+audition::dsp::NoiseSuppressionLevel nsLevel(const std::string& name) {
+    using audition::dsp::NoiseSuppressionLevel;
+    if (name == "low") return NoiseSuppressionLevel::low;
+    if (name == "moderate") return NoiseSuppressionLevel::moderate;
+    if (name == "high") return NoiseSuppressionLevel::high;
+    if (name == "very_high") return NoiseSuppressionLevel::very_high;
+    throw std::invalid_argument("Unknown WebRTC APM NS level: " + name);
+}
+#endif
+
 }  // namespace
 
 AlsaLiveCapture::~AlsaLiveCapture() {
@@ -204,10 +218,23 @@ void AlsaLiveCapture::start(LiveCaptureConfig config) {
     if (config.pcm_name.empty()) {
         throw std::runtime_error{"Select an ALSA input (or enter hw:N,M)"};
     }
+    if (config.speech_ns_enabled) {
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+        (void)nsLevel(config.speech_ns_level);
+#else
+        throw std::runtime_error{
+            "Speech NS requires LIBAUDITION_WITH_WEBRTC_APM=ON"};
+#endif
+        if (!config.transcribe_sources)
+            throw std::invalid_argument{"Speech NS requires transcription"};
+    }
     {
         std::lock_guard<std::mutex> lock{mutex_};
         latest_ = {};
         latest_.running = true;
+        speech_ns_enabled_ = config.speech_ns_enabled;
+        speech_ns_level_ = config.speech_ns_level;
+        speech_ns_revision_ = 0;
         speech_gain_enabled_ = config.speech_agc_enabled;
         speech_gain_implementation_ = config.speech_agc_implementation;
         speech_gain_revision_ = 0;
@@ -236,6 +263,21 @@ void AlsaLiveCapture::setSpeechGain(bool enabled, std::string implementation) {
     speech_gain_enabled_ = enabled;
     speech_gain_implementation_ = std::move(implementation);
     ++speech_gain_revision_;
+}
+
+void AlsaLiveCapture::setSpeechNoiseSuppression(bool enabled, std::string level) {
+    if (enabled) {
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+        (void)nsLevel(level);
+#else
+        throw std::runtime_error{
+            "Speech NS requires LIBAUDITION_WITH_WEBRTC_APM=ON"};
+#endif
+    }
+    std::lock_guard<std::mutex> lock{mutex_};
+    speech_ns_enabled_ = enabled;
+    speech_ns_level_ = std::move(level);
+    ++speech_ns_revision_;
 }
 
 void AlsaLiveCapture::setSstTuning(
@@ -331,7 +373,11 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::uint64_t ignored_asr_results = 0;
         std::string last_asr_language;
         std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceGain>> speechGains;
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+        std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceNoiseSuppressor>> speechSuppressors;
+#endif
         std::uint64_t appliedGainRevision = 0;
+        std::uint64_t appliedNsRevision = 0;
         if (config.transcribe_sources) {
             audition::SherpaVadOptions vad_options{};
             vad_options.sample_rate_hz = config.sample_rate_hz;
@@ -565,6 +611,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             if (classifier) classifier->forget(trackId);
 #if LIBAUDITION_DEMO_HAS_SHERPA
             speechGains.erase(trackId);
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+            speechSuppressors.erase(trackId);
+#endif
 #endif
 #if LIBAUDITION_DEMO_HAS_SHERPA
             if (speech_worker) {
@@ -609,6 +658,29 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                            (20.0 * static_cast<double>(config.hop_size)))));
         while (!stop_requested_.load()) {
 #if LIBAUDITION_DEMO_HAS_SHERPA
+            {
+                bool enabled = false;
+                std::string level;
+                std::uint64_t revision = 0;
+                {
+                    std::lock_guard<std::mutex> lock{mutex_};
+                    enabled = speech_ns_enabled_;
+                    level = speech_ns_level_;
+                    revision = speech_ns_revision_;
+                }
+                if (revision != appliedNsRevision) {
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+                    if (enabled) (void)nsLevel(level);
+                    speechSuppressors.clear();
+#else
+                    if (enabled)
+                        throw std::runtime_error("WebRTC APM NS not built");
+#endif
+                    config.speech_ns_enabled = enabled;
+                    config.speech_ns_level = std::move(level);
+                    appliedNsRevision = revision;
+                }
+            }
             {
                 bool enabled = false;
                 std::string implementation;
@@ -736,25 +808,55 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         separated.audio.samples().data(),
                         separated.audio.samples().size());
                     const auto sourceId = separated.track_id.value();
-                    // Persist exactly the same post-AGC samples that enter the
-                    // speech ingress. Keep raw ODAS samples when AGC is off.
+                    // Apply optional NS and AGC only after SSS, to speech
+                    // ingress and its matching recording, not ODAS/classifier.
                     std::vector<float> adjusted;
+                    const std::vector<float>* speechSamples = &separated.audio.samples();
 #if LIBAUDITION_DEMO_HAS_SHERPA
+                    bool speechProcessingFailed = false;
+                    if (speech_worker) {
+                        try {
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+                            if (config.speech_ns_enabled) {
+                                auto& ns = speechSuppressors[sourceId];
+                                if (!ns)
+                                    ns = audition::dsp::makeWebRtcApmSourceNoiseSuppressor(
+                                        nsLevel(config.speech_ns_level));
+                                adjusted = ns->process(speechSamples->data(),
+                                    speechSamples->size(), config.sample_rate_hz);
+                                speechSamples = &adjusted;
+                            }
+#endif
+                            if (config.speech_agc_enabled) {
+                                auto& gain = speechGains[sourceId];
+                                if (!gain)
+                                    gain = audition::dsp::makeSourceGain(
+                                        config.speech_agc_implementation.c_str());
+                                adjusted = gain->process(speechSamples->data(),
+                                    speechSamples->size(), config.sample_rate_hz);
+                                speechSamples = &adjusted;
+                            }
+                        } catch (const std::exception& e) {
+                            // Never feed raw PCM as an implicit ASR fallback.
+                            speechProcessingFailed = true;
+                            reportRecoverable("speech preprocessing", e);
+                            speechSamples = &separated.audio.samples();
+                            adjusted.clear();
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+                            speechSuppressors.erase(sourceId);
+#endif
+                            speechGains.erase(sourceId);
+                        }
+                    }
                     auto speechView = separated.audio.view();
-                    if (speech_worker && config.speech_agc_enabled) {
-                        auto& processor = speechGains[sourceId];
-                        if (!processor)
-                            processor = audition::dsp::makeSourceGain(
-                                config.speech_agc_implementation.c_str());
-                        adjusted = processor->process(
-                            separated.audio.samples().data(),
-                            separated.audio.samples().size(), config.sample_rate_hz);
+                    if (speechSamples != &separated.audio.samples()) {
                         speechView = audition::AudioView{
-                            adjusted.data(), adjusted.size(), speechView.format(),
-                            speechView.captureTime(), speechView.sequenceNumber()};
+                            speechSamples->data(), speechSamples->size(),
+                            speechView.format(), speechView.captureTime(),
+                            speechView.sequenceNumber()};
                     }
 #endif
-                    const auto recorded = recorder.append(sourceId, adjusted.empty() ? separated.audio.samples() : adjusted);
+                    const auto recorded = recorder.append(sourceId, *speechSamples);
                     if (recorded.recording_id != 0) {
                         if (!recordings.active(sourceId) &&
                             skipped_annotation_recordings.count(sourceId) == 0) {
@@ -779,7 +881,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                          separated.audio.samples(), hops);
                     }
 #if LIBAUDITION_DEMO_HAS_SHERPA
-                    if (speech_worker) {
+                    if (speech_worker && !speechProcessingFailed) {
                         // Associate the WAV with the exact admitted PCM epoch.
                         // A separate sourceEpoch() lookup can see a reused ID.
                         const auto admission=speech_worker->pushWithEpoch(

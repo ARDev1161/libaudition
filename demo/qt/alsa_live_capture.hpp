@@ -46,6 +46,8 @@ struct LiveCaptureConfig {
     std::vector<std::string> tagging_vocabulary_labels{};
     bool tagging_efficientat_model{false};
     bool transcribe_sources{false};
+    bool speech_ns_enabled{false};
+    std::string speech_ns_level{"moderate"};
     bool speech_agc_enabled{false};
     std::string speech_agc_implementation{"rms"};
     std::string speech_vad_kind{"silero"};
@@ -105,6 +107,7 @@ public:
     void stop();
     void setSstTuning(double onset, double release, std::uint32_t timeout_hops);
     void setSpeechGain(bool enabled, std::string implementation);
+    void setSpeechNoiseSuppression(bool enabled, std::string level);
     [[nodiscard]] LiveCaptureSnapshot snapshot() const;
     [[nodiscard]] static std::vector<AlsaCaptureDevice> discover();
 
@@ -122,6 +125,9 @@ private:
         std::uint64_t revision{0};
     };
     SstTuningRequest requested_sst_{};
+    bool speech_ns_enabled_{false};
+    std::string speech_ns_level_{"moderate"};
+    std::uint64_t speech_ns_revision_{0};
     bool speech_gain_enabled_{false};
     std::string speech_gain_implementation_{"rms"};
     std::uint64_t speech_gain_revision_{0};
