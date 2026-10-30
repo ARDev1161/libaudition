@@ -846,17 +846,24 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                 gain = processor.get();
                             }
                             if (ns || gain) {
-                                adjusted = audition::dsp::processSourceSpeechChain(
+                                auto hop = audition::dsp::processSourceSpeechHopOrMute(
                                     speechSamples->data(), speechSamples->size(),
                                     config.sample_rate_hz, ns, gain);
+                                adjusted = std::move(hop.samples);
                                 speechSamples = &adjusted;
+                                if (hop.failed) {
+                                    throw std::runtime_error(
+                                        "Speech DSP returned a muted gap: " + hop.error);
+                                }
                             }
                         } catch (const std::exception& e) {
-                            // Never feed raw PCM as an implicit ASR fallback.
+                            // Preserve the speech PCM timeline and prevent raw
+                            // microphone audio being mistaken for ASR input.
+                            // A valid gap is persisted in the sidecar below.
                             speechProcessingFailed = true;
                             reportRecoverable("speech preprocessing", e);
-                            speechSamples = &separated.audio.samples();
-                            adjusted.clear();
+                            adjusted.assign(separated.audio.samples().size(), 0.0F);
+                            speechSamples = &adjusted;
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
                             speechSuppressors.erase(sourceId);
 #endif
@@ -895,6 +902,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                 }
                             }
                         }
+                        if (speechProcessingFailed && recorded.accepted_samples != 0U) {
+                            // Keep the WAV length and VAD/ASR offsets aligned.
+                            // Do not present injected silence as valid PCM.
+                            recordings.addGap(sourceId, recorded.start_sample,
+                                              recorded.accepted_samples);
+                        }
                         if (recorded.lost_samples != 0)
                             recordings.addGap(sourceId, recorded.start_sample +
                                 recorded.accepted_samples, recorded.lost_samples);
@@ -904,7 +917,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                          separated.audio.samples(), hops);
                     }
 #if LIBAUDITION_DEMO_HAS_SHERPA
-                    if (speech_worker && !speechProcessingFailed) {
+                    if (speech_worker) {
+                        // The muted gap is deliberately admitted as silence;
+                        // dropping it would shift subsequent VAD/ASR offsets.
                         // Associate the WAV with the exact admitted PCM epoch.
                         // A separate sourceEpoch() lookup can see a reused ID.
                         const auto admission=speech_worker->pushWithEpoch(

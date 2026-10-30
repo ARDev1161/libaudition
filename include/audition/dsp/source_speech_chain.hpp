@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace audition::dsp {
@@ -54,6 +55,27 @@ inline std::vector<float> processSourceSpeechChain(
     for (std::size_t i = 0; i < count; ++i)
         passthrough[i] = pcm[i];
     return passthrough;
+}
+
+ // Explicit fail-closed policy for non-realtime speech ingress. A failed
+ // DSP hop is replaced with an equal-length mute, NOT raw source samples.
+ // The caller should mark the matching recording interval as an invalid
+ // preprocessing gap and retire/reset any stateful processor that failed.
+struct SourceSpeechHopResult {
+    std::vector<float> samples{};
+    bool failed{false};
+    std::string error{};
+};
+
+[[nodiscard]] inline SourceSpeechHopResult processSourceSpeechHopOrMute(
+    const float* pcm, std::size_t count, std::uint32_t sample_rate,
+    ISourceNoiseSuppressor* ns, ISourceGain* gain) {
+    try {
+        return {processSourceSpeechChain(pcm, count, sample_rate, ns, gain),
+                false, {}};
+    } catch (const std::exception& e) {
+        return {std::vector<float>(count, 0.0F), true, e.what()};
+    }
 }
 
 } // namespace audition::dsp

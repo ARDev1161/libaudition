@@ -62,6 +62,49 @@ TEST(SourceSpeechChain, RunsNSBeforeAGCWithoutMutatingInput) {
         EXPECT_FLOAT_EQ(no_gain[i], pcm[i] * 0.5F);
 }
 
+TEST(SourceSpeechChain, FailedProcessorMutesHopWithoutLeakingRawPcm) {
+    std::vector<int> order;
+    NsSpy ns; ns.order = &order;
+    GainSpy gain; gain.order = &order;
+    const std::vector<float> pcm{0.1F, -0.2F, 0.3F, -0.4F};
+
+    ns.nonfinite = true;
+    auto ns_failure = audition::dsp::processSourceSpeechHopOrMute(
+        pcm.data(), pcm.size(), 16000U, &ns, &gain);
+    EXPECT_TRUE(ns_failure.failed);
+    EXPECT_FALSE(ns_failure.error.empty());
+    EXPECT_EQ(ns_failure.samples, std::vector<float>(pcm.size(), 0.0F));
+    EXPECT_EQ(order, (std::vector<int>{1})); // never invoke AGC on corrupt NS
+    ns.nonfinite = false;
+    order.clear();
+
+    gain.nonfinite = true;
+    auto agc_failure = audition::dsp::processSourceSpeechHopOrMute(
+        pcm.data(), pcm.size(), 16000U, &ns, &gain);
+    EXPECT_TRUE(agc_failure.failed);
+    EXPECT_FALSE(agc_failure.error.empty());
+    EXPECT_EQ(agc_failure.samples, std::vector<float>(pcm.size(), 0.0F));
+    EXPECT_EQ(order, (std::vector<int>{1, 2}));
+    gain.nonfinite = false;
+
+    const auto valid = audition::dsp::processSourceSpeechHopOrMute(
+        pcm.data(), pcm.size(), 16000U, &ns, &gain);
+    EXPECT_FALSE(valid.failed);
+    EXPECT_TRUE(valid.error.empty());
+    ASSERT_EQ(valid.samples.size(), pcm.size());
+    EXPECT_FLOAT_EQ(valid.samples.front(), pcm.front() * 1.5F);
+
+    const auto invalid = audition::dsp::processSourceSpeechHopOrMute(
+        nullptr, pcm.size(), 16000U, &ns, &gain);
+    EXPECT_TRUE(invalid.failed);
+    EXPECT_EQ(invalid.samples, std::vector<float>(pcm.size(), 0.0F));
+    EXPECT_EQ(pcm, (std::vector<float>{0.1F, -0.2F, 0.3F, -0.4F}));
+    const auto empty = audition::dsp::processSourceSpeechHopOrMute(
+        nullptr, 0U, 16000U, &ns, &gain);
+    EXPECT_FALSE(empty.failed);
+    EXPECT_TRUE(empty.samples.empty());
+}
+
 TEST(SourceSpeechChain, MatchedRmsAndPeakMetersTrackOnlyProcessedSamples) {
     std::vector<int> order;
     NsSpy ns; ns.order = &order;
