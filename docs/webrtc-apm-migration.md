@@ -40,7 +40,8 @@ not vendored internal `webrtc::AudioBuffer` types.
 - [ ] Measure exact APM latency and verify signal quality on real ODAS audio.
 - [x] Implement APM-backed AEC3 with 10-ms render/reference frames, stream
       delay, reset and AEC metrics via the public APM API.
-- [ ] Expose APM noise suppression as a separate configurable capability.
+- [x] Expose APM noise suppression as a separate configurable opt-in SDK
+      capability. Live Qt integration and measured quality remain open.
 - [x] Pass dedicated Linux APM #11 unit tests and Qt AEC3 smoke test.
 - [ ] Revalidate combined full-demo with APM and cross-platform Qt 5/6,
       GCC with -Werror, Clang, x86-64 and ARM64.
@@ -75,6 +76,31 @@ cmake -S . -B build-apm -G Ninja \
   -DLIBAUDITION_BUILD_QT_DEMO=ON
 cmake --build build-apm --target libaudition_qt_demo
 ```
+
+## Per-source NS usage (SDK-only)
+
+The generic C++17 interface and exact bypass live in
+`<audition/dsp/source_noise_suppressor.hpp>`. When APM is enabled, a
+C++20 application can link `audition::backend_webrtc_apm` and include
+`<audition/backends/webrtc_apm_noise_suppressor.hpp>`:
+
+```cpp
+auto ns = audition::dsp::makeWebRtcApmSourceNoiseSuppressor(
+    audition::dsp::NoiseSuppressionLevel::high);
+auto cleaned = ns->process(source_pcm.data(), source_pcm.size(), 16000U);
+ns->reset(); // source retirement, track-ID reuse, or sample-rate change
+```
+
+Levels are low/moderate/high/very-high. Each instance handles one source,
+rejects malformed chunks atomically, supports 16/32/48-kHz normalized mono
+PCM and keeps the output count unchanged. Ten-millisecond framing initially
+emits frame_size - 1 samples of silence; reset discards partial frames.
+Process errors reset the instance and raise an exception. Processing
+allocates output and must run outside a hard-realtime capture callback.
+AGC and AEC are explicitly disabled in the NS session. Keep microphone
+PCM fed to ODAS unchanged; NS belongs only on the speech branch after SSS.
+This capability is not yet wired into live Qt capture. Synthetic tests
+do not establish real noise suppression quality, latency or ASR WER.
 
 The AGC dropdown includes `WebRTC APM AGC1` and `WebRTC APM AGC2`.
 The AEC3 UI keeps the existing WAV inputs and stream-delay control. The
