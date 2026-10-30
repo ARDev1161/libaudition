@@ -846,15 +846,15 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                 gain = processor.get();
                             }
                             if (ns || gain) {
-                                auto hop = audition::dsp::processSourceSpeechHopOrMute(
+                                auto speechHop = audition::dsp::processSourceSpeechHopOrMute(
                                     speechSamples->data(), speechSamples->size(),
                                     config.sample_rate_hz, ns, gain);
-                                adjusted = std::move(hop.samples);
+                                adjusted = std::move(speechHop.samples);
                                 speechSamples = &adjusted;
-                                if (hop.failed) {
+                                if (speechHop.failed) {
                                     speechProcessingFailed = true;
                                     const std::runtime_error failure{
-                                        "Speech DSP returned a muted gap: " + hop.error};
+                                        "Speech DSP returned a muted gap: " + speechHop.error};
                                     reportRecoverable("speech preprocessing", failure);
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
                                     speechSuppressors.erase(sourceId);
