@@ -852,8 +852,14 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                 adjusted = std::move(hop.samples);
                                 speechSamples = &adjusted;
                                 if (hop.failed) {
-                                    throw std::runtime_error(
-                                        "Speech DSP returned a muted gap: " + hop.error);
+                                    speechProcessingFailed = true;
+                                    const std::runtime_error failure{
+                                        "Speech DSP returned a muted gap: " + hop.error};
+                                    reportRecoverable("speech preprocessing", failure);
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+                                    speechSuppressors.erase(sourceId);
+#endif
+                                    speechGains.erase(sourceId);
                                 }
                             }
                         } catch (const std::exception& e) {
@@ -902,12 +908,14 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                 }
                             }
                         }
+#if LIBAUDITION_DEMO_HAS_SHERPA
                         if (speechProcessingFailed && recorded.accepted_samples != 0U) {
                             // Keep the WAV length and VAD/ASR offsets aligned.
                             // Do not present injected silence as valid PCM.
                             recordings.addGap(sourceId, recorded.start_sample,
                                               recorded.accepted_samples);
                         }
+#endif
                         if (recorded.lost_samples != 0)
                             recordings.addGap(sourceId, recorded.start_sample +
                                 recorded.accepted_samples, recorded.lost_samples);
