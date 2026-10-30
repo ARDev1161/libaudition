@@ -373,6 +373,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::uint64_t ignored_asr_results = 0;
         std::string last_asr_language;
         std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceGain>> speechGains;
+        audition::dsp::SourceSpeechFailureTracker speechFailureTracker;
         // One bounded pair of meters per live speech source; compare matched
         // before/after samples, never different track IDs or failed hops.
         std::map<std::uint64_t,
@@ -478,6 +479,12 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             }
         };
 #if LIBAUDITION_DEMO_HAS_SHERPA
+        const auto reportSpeechPreprocessingFailure = [&](
+            std::uint64_t source_id, std::size_t muted_samples,
+            const std::exception& error) {
+            reportRecoverable("speech preprocessing", error);
+            speechFailureTracker.recordFailure(source_id, muted_samples, error.what());
+        };
         using SpeechEpochKey = std::pair<std::uint64_t, std::uint64_t>;
         std::map<SpeechEpochKey, audition::RecordingId> epoch_recordings;
         // Worker Forget can cancel an unconsumed FIFO Retire. Keep the
@@ -617,6 +624,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if LIBAUDITION_DEMO_HAS_SHERPA
             speechGains.erase(trackId);
             speechMeters.erase(trackId);
+            speechFailureTracker.retire(trackId);
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
             speechSuppressors.erase(trackId);
 #endif
@@ -855,7 +863,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                     speechProcessingFailed = true;
                                     const std::runtime_error failure{
                                         "Speech DSP returned a muted gap: " + speechHop.error};
-                                    reportRecoverable("speech preprocessing", failure);
+                                    reportSpeechPreprocessingFailure(
+                                        sourceId, adjusted.size(), failure);
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
                                     speechSuppressors.erase(sourceId);
 #endif
@@ -867,7 +876,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                             // microphone audio being mistaken for ASR input.
                             // A valid gap is persisted in the sidecar below.
                             speechProcessingFailed = true;
-                            reportRecoverable("speech preprocessing", e);
+                            reportSpeechPreprocessingFailure(
+                                sourceId, separated.audio.samples().size(), e);
                             adjusted.assign(separated.audio.samples().size(), 0.0F);
                             speechSamples = &adjusted;
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
@@ -1055,6 +1065,16 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.channel_peak_dbfs = std::move(peakDbfs);
             latest_.sss_levels = std::move(sssLevels);
             latest_.speech_processing_levels = std::move(speechLevels);
+            latest_.speech_preprocessing_failures_total = 0U;
+            latest_.speech_preprocessing_failures_untracked = 0U;
+            latest_.speech_preprocessing_failures.clear();
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            latest_.speech_preprocessing_failures_total =
+                speechFailureTracker.totalFailures();
+            latest_.speech_preprocessing_failures_untracked =
+                speechFailureTracker.untrackedFailures();
+            latest_.speech_preprocessing_failures = speechFailureTracker.active();
+#endif
             latest_.speech_gain_levels.clear();
 #if LIBAUDITION_DEMO_HAS_SHERPA
             for (const auto& [id, processor] : speechGains)
@@ -1083,6 +1103,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     " retire_capacity_drops=" +
                     std::to_string(retirement_capacity_drops) +
                     " worker_errors=" + std::to_string(speech_worker_errors) +
+                    " DSP_failed_hops=" +
+                    std::to_string(speechFailureTracker.totalFailures()) +
+                    " DSP_untracked_errors=" +
+                    std::to_string(speechFailureTracker.untrackedFailures()) +
                     " ignored_results=" + std::to_string(ignored_asr_results) +
                     " last_language=" + (last_asr_language.empty() ? "none" : last_asr_language);
                 if (speech_worker) {

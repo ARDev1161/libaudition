@@ -117,6 +117,14 @@ closed rather than letting ASR consume samples that the PCM16 WAV writer
 would silently clip. The SDK helper `processSourceSpeechHopOrMute` exposes
 the same explicit fail-closed behavior for consumers, returning the
 error and a failed flag without losing the PCM clock.
+`SourceSpeechFailureTracker` is an optional backend-neutral C++17
+monitor: it tracks muted samples, failure counts and the last error for
+active source generations. State is retired on source disappearance, while
+the capture-wide failure total persists until restart; source and message
+counts are bounded. The Qt live diagnostics show aggregate DSP failures
+distinctly from ASR, VAD and WAV backpressure, and the source event log
+shows per-track muted hops and their last failure. Neither the tracker
+nor vector-returning DSP helpers are hard-realtime-safe.
 Qt's diagnostics additionally show per-source **matched** pre-processing
 and post-processing RMS/peak levels and their combined dB difference, based
 only on successful PCM windows. This is total NS+AGC level change, **not**

@@ -1325,6 +1325,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         bool hasGain{false};
         std::uint64_t loggedVadStarts{0};
         std::uint64_t loggedVadEnds{0};
+        std::uint64_t loggedSpeechPreprocessingFailures{0};
         bool recordingObserved{false};
         bool recordingWasActive{false};
         std::uint64_t lastLostSamples{0};
@@ -1878,6 +1879,20 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                             .arg(static_cast<qulonglong>(vad->second.ends)));
                         entry.loggedVadEnds = vad->second.ends;
                     }
+                }
+                const auto preprocessing =
+                    snapshot.speech_preprocessing_failures.find(entry.track.id);
+                if (entry.active &&
+                    preprocessing != snapshot.speech_preprocessing_failures.end() &&
+                    preprocessing->second.failed_hops >
+                        entry.loggedSpeechPreprocessingFailures) {
+                    const auto& failure = preprocessing->second;
+                    appendEvent(entry, QString("[SPEECH DSP] muted hops=%1"
+                        " (muted samples=%2), latest error: %3")
+                        .arg(static_cast<qulonglong>(failure.failed_hops))
+                        .arg(static_cast<qulonglong>(failure.muted_samples))
+                        .arg(QString::fromStdString(failure.last_error)));
+                    entry.loggedSpeechPreprocessingFailures = failure.failed_hops;
                 }
                 const auto gain = gainByTrack->find(entry.track.id);
                 const qint64 now = QDateTime::currentMSecsSinceEpoch();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "acoustic_sphere_widget.hpp"
+#include <audition/dsp/source_speech_failure_tracker.hpp>
 
 #include <atomic>
 #include <array>
@@ -95,6 +96,11 @@ struct LiveCaptureSnapshot {
         std::uint64_t samples{0};
     };
     std::vector<SpeechProcessingLevel> speech_processing_levels{};
+    // Cumulative during this capture, source-local state retires with ODAS ID.
+    std::uint64_t speech_preprocessing_failures_total{0};
+    std::uint64_t speech_preprocessing_failures_untracked{0};
+    std::map<std::uint64_t, audition::dsp::SourceSpeechFailureStats>
+        speech_preprocessing_failures{};
     struct GainLevel { std::uint64_t track_id{0}; double gain_db{0.0}; };
     std::vector<GainLevel> speech_gain_levels{};
     std::string classification_error{};

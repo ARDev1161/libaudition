@@ -1,4 +1,5 @@
 #include <audition/dsp/source_speech_chain.hpp>
+#include <audition/dsp/source_speech_failure_tracker.hpp>
 #include <audition/dsp/streaming_level_meter.hpp>
 #include <gtest/gtest.h>
 #include <algorithm>
@@ -39,6 +40,35 @@ struct GainSpy final : audition::dsp::ISourceGain {
     void reset() noexcept override {}
 };
 } // namespace
+
+TEST(SourceSpeechChain, FailureTrackerIsBoundedAndRetiresOnIdReuse) {
+    using audition::dsp::SourceSpeechFailureTracker;
+    EXPECT_THROW((void)SourceSpeechFailureTracker(0U),
+                 std::invalid_argument);
+    EXPECT_THROW((void)SourceSpeechFailureTracker(1U, 0U),
+                 std::invalid_argument);
+    SourceSpeechFailureTracker monitor{2U, 6U};
+    monitor.recordFailure(17U, 160U, "NS initialization failed");
+    monitor.recordFailure(17U, 80U, "AGC failed");
+    monitor.recordFailure(19U, 10U, "ok");
+    monitor.recordFailure(23U, 320U, "too many live tracks");
+    EXPECT_EQ(monitor.totalFailures(), 4U);
+    EXPECT_EQ(monitor.untrackedFailures(), 1U);
+    ASSERT_EQ(monitor.active().size(), 2U);
+    EXPECT_EQ(monitor.active().at(17U).failed_hops, 2U);
+    EXPECT_EQ(monitor.active().at(17U).muted_samples, 240U);
+    EXPECT_EQ(monitor.active().at(17U).last_error, "AGC fa");
+    monitor.retire(17U);
+    monitor.recordFailure(17U, 40U, "new gen");
+    EXPECT_EQ(monitor.active().at(17U).failed_hops, 1U);
+    EXPECT_EQ(monitor.active().at(17U).muted_samples, 40U);
+    EXPECT_EQ(monitor.totalFailures(), 5U);
+    monitor.retire(42U);
+    monitor.reset();
+    EXPECT_TRUE(monitor.active().empty());
+    EXPECT_EQ(monitor.totalFailures(), 0U);
+    EXPECT_EQ(monitor.untrackedFailures(), 0U);
+}
 
 TEST(SourceSpeechChain, RunsNSBeforeAGCWithoutMutatingInput) {
     std::vector<int> order;
