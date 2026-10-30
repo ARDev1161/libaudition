@@ -2,10 +2,11 @@
 
 Status: **unified AGC1/AGC2 + AEC3 migration implemented**. The
 main CI #1842 and dedicated WebRTC APM CI #39 passed at commit
-`f822856`, including installed-package C++17 AEC3 and C++20 AGC1/AGC2\nconsumers.
+`f822856`, including installed-package C++17 AEC3 and C++20 AGC1/AGC2
+consumers.
 The standalone AGC2/AEC3 source, namespace workarounds and their downloader
-have been removed. Main full-demo CI, cross-platform and quality benchmarks
-must be revalidated before release.
+have been removed. The full-demo configuration has passed CI; Yocto deployment, cross-platform
+runtime behavior, audio quality and latency benchmarks remain to be verified.
 
 ## Source of truth
 
