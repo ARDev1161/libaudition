@@ -1203,6 +1203,26 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     agcRow->addWidget(speechAgc);
     agcRow->addWidget(agcImplementation);
     sideLayout->addLayout(agcRow);
+    auto* speechNs = new QCheckBox{"Noise suppression (speech VAD / ASR only)", sidebar};
+    speechNs->setObjectName("acousticSceneSpeechNs");
+    speechNs->setChecked(false);
+    auto* nsLevel = new QComboBox{sidebar};
+    nsLevel->setObjectName("acousticSceneSpeechNsLevel");
+    nsLevel->addItem("Low", QStringLiteral("low"));
+    nsLevel->addItem("Moderate", QStringLiteral("moderate"));
+    nsLevel->addItem("High", QStringLiteral("high"));
+    nsLevel->addItem("Very high", QStringLiteral("very_high"));
+#if !defined(LIBAUDITION_WITH_WEBRTC_APM) || !LIBAUDITION_WITH_WEBRTC_APM
+    speechNs->setEnabled(false);
+    speechNs->setToolTip("Requires LIBAUDITION_WITH_WEBRTC_APM=ON");
+#endif
+    nsLevel->setEnabled(false);
+    QObject::connect(speechNs, &QCheckBox::toggled,
+                     nsLevel, &QWidget::setEnabled);
+    auto* nsRow = new QHBoxLayout;
+    nsRow->addWidget(speechNs);
+    nsRow->addWidget(nsLevel);
+    sideLayout->addLayout(nsRow);
     sideLayout->addWidget(new QLabel{"Tracked sources", sidebar});
     sideLayout->addWidget(tracks);
     // Native ODAS SST controls. A short debounce avoids rebuilding ODAS for
@@ -1470,6 +1490,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     QObject::connect(agcImplementation,
                      QOverload<int>::of(&QComboBox::currentIndexChanged),
                      page, [=](int) { updateSpeechGain(); });
+    const auto updateSpeechNs = [=]() {
+        capture->setSpeechNoiseSuppression(
+            speechNs->isChecked() && enableSpeech->isChecked(),
+            nsLevel->currentData().toString().toStdString());
+    };
+    QObject::connect(speechNs, &QCheckBox::toggled, page,
+                     [=](bool) { updateSpeechNs(); });
+    QObject::connect(nsLevel,
+                     QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     page, [=](int) { updateSpeechNs(); });
 
     // ODAS expects an integer number of hops, but the UI presents wall time.
     // Recompute when hop size or sample rate changes, preserving seconds.
@@ -1642,6 +1672,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.sst_inactive_hops = timeoutHops(sstTimeout->value());
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
+            config.speech_ns_enabled = speechNs->isChecked() && config.transcribe_sources;
+            config.speech_ns_level = nsLevel->currentData().toString().toStdString();
             config.speech_agc_enabled = speechAgc->isChecked() && config.transcribe_sources;
             config.speech_agc_implementation =
                 agcImplementation->currentData().toString().toStdString();
