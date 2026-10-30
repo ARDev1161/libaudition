@@ -1,5 +1,5 @@
 #include "alsa_live_capture.hpp"
-#include <audition/dsp/source_gain.hpp>
+#include <audition/dsp/source_speech_chain.hpp>
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
 #include <audition/backends/webrtc_apm_noise_suppressor.hpp>
 #endif
@@ -816,24 +816,28 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     bool speechProcessingFailed = false;
                     if (speech_worker) {
                         try {
+                            audition::dsp::ISourceNoiseSuppressor* ns = nullptr;
+                            audition::dsp::ISourceGain* gain = nullptr;
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
                             if (config.speech_ns_enabled) {
-                                auto& ns = speechSuppressors[sourceId];
-                                if (!ns)
-                                    ns = audition::dsp::makeWebRtcApmSourceNoiseSuppressor(
+                                auto& processor = speechSuppressors[sourceId];
+                                if (!processor)
+                                    processor = audition::dsp::makeWebRtcApmSourceNoiseSuppressor(
                                         nsLevel(config.speech_ns_level));
-                                adjusted = ns->process(speechSamples->data(),
-                                    speechSamples->size(), config.sample_rate_hz);
-                                speechSamples = &adjusted;
+                                ns = processor.get();
                             }
 #endif
                             if (config.speech_agc_enabled) {
-                                auto& gain = speechGains[sourceId];
-                                if (!gain)
-                                    gain = audition::dsp::makeSourceGain(
+                                auto& processor = speechGains[sourceId];
+                                if (!processor)
+                                    processor = audition::dsp::makeSourceGain(
                                         config.speech_agc_implementation.c_str());
-                                adjusted = gain->process(speechSamples->data(),
-                                    speechSamples->size(), config.sample_rate_hz);
+                                gain = processor.get();
+                            }
+                            if (ns || gain) {
+                                adjusted = audition::dsp::processSourceSpeechChain(
+                                    speechSamples->data(), speechSamples->size(),
+                                    config.sample_rate_hz, ns, gain);
                                 speechSamples = &adjusted;
                             }
                         } catch (const std::exception& e) {
