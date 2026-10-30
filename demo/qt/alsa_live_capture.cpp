@@ -912,8 +912,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         if (speechProcessingFailed && recorded.accepted_samples != 0U) {
                             // Keep the WAV length and VAD/ASR offsets aligned.
                             // Do not present injected silence as valid PCM.
-                            recordings.addGap(sourceId, recorded.start_sample,
-                                              recorded.accepted_samples);
+                            recordings.addGap(
+                                sourceId, recorded.start_sample, recorded.accepted_samples,
+                                audition::recording::RecordingGapReason::SpeechPreprocessingFailure);
                         }
 #endif
                         if (recorded.lost_samples != 0)

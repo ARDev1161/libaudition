@@ -106,8 +106,9 @@ ODAS hops, without restarting ALSA/ODAS or retiring WAV recordings. NS
 runs on post-SSS speech PCM before optional AGC, VAD and ASR, while ODAS
 and classification retain unmodified PCM. The speech WAV records the
 post-processing PCM. On preprocessing failure the affected hop becomes a same-length muted
-PCM interval (rather than raw unprocessed audio), with a gap marked in
-the WAV's JSON sidecar. The muted samples are also admitted to VAD/ASR
+PCM interval (rather than raw unprocessed audio), with a `speech_preprocessing_failure` gap marked in
+the WAV's JSON sidecar (distinct from `recorder_backpressure`). The
+muted samples are also admitted to VAD/ASR
 to preserve source-local sample offsets; the broken NS/AGC instance
 is discarded. The SDK helper `processSourceSpeechHopOrMute` exposes
 the same explicit fail-closed behavior for consumers, returning the
