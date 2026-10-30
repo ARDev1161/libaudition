@@ -113,6 +113,12 @@ public:
             throw std::invalid_argument("Invalid Speex AGC PCM");
         if (state_ && sample_rate_ != sample_rate)
             throw std::invalid_argument("Speex AGC sample rate changed");
+        // Reject malformed chunks before mutating a partially filled
+        // 10-ms frame or the internal Speex state.
+        for (std::size_t i = 0; i < count; ++i) {
+            if (!std::isfinite(pcm[i]))
+                throw std::invalid_argument("Nonfinite Speex AGC sample");
+        }
         if (!state_) {
             sample_rate_ = sample_rate;
             frame_size_ = sample_rate / 100U;
@@ -132,8 +138,6 @@ public:
         }
         std::vector<float> output(count, 0.0F);
         for (std::size_t i = 0; i < count; ++i) {
-            if (!std::isfinite(pcm[i]))
-                throw std::invalid_argument("Nonfinite Speex AGC sample");
             const double sample = std::clamp(static_cast<double>(pcm[i]), -1.0, 1.0);
             input_.push_back(static_cast<spx_int16_t>(std::lround(sample * 32767.0)));
             if (input_.size() == frame_size_) {
@@ -203,9 +207,10 @@ public:
         for (std::size_t i = 0; i < count; ++i) {
             input_.push_back(pcm[i]);
             if (input_.size() == frame_size_) {
-                std::vector<float> processed(frame_size_);
+                // Reuse one 10-ms output frame; its previous samples have
+                // already been drained before the next frame completes.
                 const float* const source_channels[] = {input_.data()};
-                float* const output_channels[] = {processed.data()};
+                float* const output_channels[] = {processed_.data()};
                 const webrtc::StreamConfig stream(
                     static_cast<int>(sample_rate_), 1);
                 const int rc = engine_->ProcessStream(
@@ -217,16 +222,16 @@ public:
                 double output_power = 0.0;
                 for (std::size_t j = 0; j < frame_size_; ++j) {
                     input_power += static_cast<double>(input_[j]) * input_[j];
-                    output_power += static_cast<double>(processed[j]) * processed[j];
-                    ready_.push_back(std::clamp(processed[j], -1.0F, 1.0F));
+                    output_power += static_cast<double>(processed_[j]) * processed_[j];
                 }
                 if (input_power > 1.e-12 && output_power > 1.e-12)
                     gain_db_ = 10.0 * std::log10(output_power / input_power);
                 input_.clear();
+                next_output_index_ = 0U;
             }
-            if (!ready_.empty()) {
-                result[i] = ready_.front();
-                ready_.pop_front();
+            if (next_output_index_ < processed_.size()) {
+                result[i] = std::clamp(
+                    processed_[next_output_index_++], -1.0F, 1.0F);
             }
         }
         return result;
@@ -237,7 +242,8 @@ public:
     void reset() noexcept override {
         engine_ = nullptr;
         input_.clear();
-        ready_.clear();
+        processed_.clear();
+        next_output_index_ = 0U;
         sample_rate_ = 0;
         frame_size_ = 0;
         gain_db_ = 0.0;
@@ -272,6 +278,8 @@ private:
         sample_rate_ = rate;
         frame_size_ = rate / 100U;
         input_.reserve(frame_size_);
+        processed_.resize(frame_size_);
+        next_output_index_ = frame_size_;
     }
 
     bool use_agc2_{true};
@@ -280,7 +288,8 @@ private:
     std::size_t frame_size_{0U};
     double gain_db_{0.0};
     std::vector<float> input_{};
-    std::deque<float> ready_{};
+    std::vector<float> processed_{};
+    std::size_t next_output_index_{0U};
 };
 #endif
 

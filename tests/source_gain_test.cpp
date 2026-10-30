@@ -79,6 +79,31 @@ TEST(SourceGain, SpeexHandlesUnevenInputFramesAndReset) {
     gain->reset();
     EXPECT_DOUBLE_EQ(gain->gainDb(), 0.0);
 }
+
+// Failed input must not advance the buffered partial 10-ms frame.
+TEST(SourceGain, SpeexRejectsNonfiniteChunkWithoutMutatingStream) {
+    auto subject = audition::dsp::makeSourceGain("speex");
+    auto control = audition::dsp::makeSourceGain("speex");
+    const std::vector<float> prefix(64U, 0.002F);
+    EXPECT_EQ(subject->process(prefix.data(), prefix.size(), 16000U),
+              control->process(prefix.data(), prefix.size(), 16000U));
+
+    std::vector<float> invalid(96U, 0.003F);
+    for (const float bad : {std::numeric_limits<float>::quiet_NaN(),
+                            std::numeric_limits<float>::infinity(),
+                            -std::numeric_limits<float>::infinity()}) {
+        invalid[48U] = bad;
+        EXPECT_THROW((void)subject->process(invalid.data(), invalid.size(), 16000U),
+                     std::invalid_argument);
+    }
+
+    const std::vector<float> recovery(160U, 0.004F);
+    for (int frame = 0; frame < 4; ++frame) {
+        EXPECT_EQ(subject->process(recovery.data(), recovery.size(), 16000U),
+                  control->process(recovery.data(), recovery.size(), 16000U));
+        EXPECT_DOUBLE_EQ(subject->gainDb(), control->gainDb());
+    }
+}
 #endif
 
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
@@ -129,6 +154,44 @@ TEST(SourceGain, UnifiedApmRejectsNonfiniteChunkWithoutMutatingStream) {
             EXPECT_EQ(subject->process(recovery.data(), recovery.size(), 16000U),
                       control->process(recovery.data(), recovery.size(), 16000U));
             EXPECT_DOUBLE_EQ(subject->gainDb(), control->gainDb());
+        }
+    }
+}
+
+// The initial 10-ms algorithmic buffering and all later samples must be
+// identical regardless of where the caller splits the source PCM.
+TEST(SourceGain, UnifiedApmOutputIsInvariantToInputChunkBoundaries) {
+    for (const char* implementation : {"webrtc_apm_agc1", "webrtc_apm_agc2"}) {
+        for (const auto rate : {16000U, 32000U, 48000U}) {
+            const auto frames = static_cast<std::size_t>(rate / 100U);
+            std::vector<float> pcm(frames * 13U);
+            for (std::size_t i = 0; i < pcm.size(); ++i)
+                pcm[i] = static_cast<float>(
+                    static_cast<int>(i % 71U) - 35) / 2000.0F;
+
+            auto contiguous = audition::dsp::makeSourceGain(implementation);
+            auto fragmented = audition::dsp::makeSourceGain(implementation);
+            const auto reference = contiguous->process(pcm.data(), pcm.size(), rate);
+
+            std::vector<float> streamed;
+            streamed.reserve(pcm.size());
+            constexpr std::size_t hops[] = {1U, 31U, 223U, 7U, 480U, 2U, 101U};
+            std::size_t pos = 0U;
+            std::size_t hop_index = 0U;
+            while (pos < pcm.size()) {
+                const auto count = std::min(hops[hop_index % 7U],
+                                            pcm.size() - pos);
+                const auto part = fragmented->process(pcm.data() + pos, count, rate);
+                streamed.insert(streamed.end(), part.begin(), part.end());
+                pos += count;
+                ++hop_index;
+            }
+            EXPECT_EQ(streamed, reference);
+            EXPECT_DOUBLE_EQ(fragmented->gainDb(), contiguous->gainDb());
+
+            fragmented->reset();
+            EXPECT_DOUBLE_EQ(fragmented->gainDb(), 0.0);
+            EXPECT_EQ(fragmented->process(pcm.data(), pcm.size(), rate), reference);
         }
     }
 }
