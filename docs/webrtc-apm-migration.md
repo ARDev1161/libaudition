@@ -116,7 +116,10 @@ and equal sample counts. Out-of-range or malformed adapter output fails
 closed rather than letting ASR consume samples that the PCM16 WAV writer
 would silently clip. The SDK helper `processSourceSpeechHopOrMute` exposes
 the same explicit fail-closed behavior for consumers, returning the
-error and a failed flag without losing the PCM clock.
+error and a failed flag without losing the PCM clock. Both standard and
+non-standard backend exceptions produce a failed muted hop; unexpected
+exceptions are reported as `Unknown speech DSP exception`. Severe memory
+exhaustion may still prevent allocating replacement PCM.
 `SourceSpeechFailureTracker` is an optional backend-neutral C++17
 monitor: it tracks muted samples, failure counts and the last error for
 active source generations. State is retired on source disappearance, while

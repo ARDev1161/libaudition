@@ -38,7 +38,7 @@ public:
         auto it = active_.find(source_id);
         if (it == active_.end()) {
             if (active_.size() >= max_sources_) {
-                ++untracked_failures_;
+                untracked_failures_ = increment(untracked_failures_, 1U);
                 return;
             }
             it = active_.emplace(source_id, SourceSpeechFailureStats{}).first;
@@ -47,7 +47,11 @@ public:
         info.failed_hops = increment(info.failed_hops, 1U);
         info.muted_samples = increment(info.muted_samples,
                                         static_cast<std::uint64_t>(samples));
-        info.last_error.assign(error.data(), std::min(error.size(), max_error_bytes_));
+        const auto length = std::min(error.size(), max_error_bytes_);
+        // A default-constructed string_view may have null data().
+        // Avoid constructing a std::string from a null pointer, even for 0.
+        if (length == 0U) info.last_error.clear();
+        else info.last_error.assign(error.data(), length);
     }
 
     void retire(std::uint64_t source_id) noexcept { active_.erase(source_id); }

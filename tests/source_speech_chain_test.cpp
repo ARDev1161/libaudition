@@ -8,14 +8,16 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace {
 struct NsSpy final : audition::dsp::ISourceNoiseSuppressor {
     std::vector<int>* order{};
-    bool truncate{false}, nonfinite{false}, out_of_range{false};
+    bool truncate{false}, nonfinite{false}, out_of_range{false}, unknown_exception{false};
     std::vector<float> process(const float* in, std::size_t n, std::uint32_t) override {
         order->push_back(1);
+        if (unknown_exception) throw 17; // non-std backend exception
         std::vector<float> out(n);
         for (std::size_t i = 0; i < n; ++i) out[i] = in[i] * 0.5F;
         if (truncate) out.pop_back();
@@ -27,9 +29,10 @@ struct NsSpy final : audition::dsp::ISourceNoiseSuppressor {
 };
 struct GainSpy final : audition::dsp::ISourceGain {
     std::vector<int>* order{};
-    bool nonfinite{false}, out_of_range{false};
+    bool nonfinite{false}, out_of_range{false}, unknown_exception{false};
     std::vector<float> process(const float* in, std::size_t n, std::uint32_t) override {
         order->push_back(2);
+        if (unknown_exception) throw 23; // non-std backend exception
         std::vector<float> out(n);
         for (std::size_t i = 0; i < n; ++i) out[i] = in[i] * 3.0F;
         if (nonfinite) out.front() = std::numeric_limits<float>::infinity();
@@ -63,11 +66,52 @@ TEST(SourceSpeechChain, FailureTrackerIsBoundedAndRetiresOnIdReuse) {
     EXPECT_EQ(monitor.active().at(17U).failed_hops, 1U);
     EXPECT_EQ(monitor.active().at(17U).muted_samples, 40U);
     EXPECT_EQ(monitor.totalFailures(), 5U);
+    // Empty string_view is valid without a null pointer conversion.
+    monitor.recordFailure(17U, 8U, std::string_view{});
+    EXPECT_EQ(monitor.active().at(17U).failed_hops, 2U);
+    EXPECT_EQ(monitor.active().at(17U).muted_samples, 48U);
+    EXPECT_TRUE(monitor.active().at(17U).last_error.empty());
+    EXPECT_EQ(monitor.totalFailures(), 6U);
     monitor.retire(42U);
     monitor.reset();
     EXPECT_TRUE(monitor.active().empty());
     EXPECT_EQ(monitor.totalFailures(), 0U);
     EXPECT_EQ(monitor.untrackedFailures(), 0U);
+}
+
+TEST(SourceSpeechChain, NonStdBackendExceptionsMuteOnlyTheirHop) {
+    std::vector<int> order;
+    NsSpy ns; ns.order = &order;
+    GainSpy gain; gain.order = &order;
+    const std::vector<float> pcm(16U, 0.2F);
+
+    ns.unknown_exception = true;
+    const auto failed_ns = audition::dsp::processSourceSpeechHopOrMute(
+        pcm.data(), pcm.size(), 16000U, &ns, &gain);
+    EXPECT_TRUE(failed_ns.failed);
+    EXPECT_EQ(failed_ns.error, "Unknown speech DSP exception");
+    EXPECT_EQ(failed_ns.samples, std::vector<float>(pcm.size(), 0.0F));
+    EXPECT_EQ(order, (std::vector<int>{1})); // malformed NS cannot reach AGC
+
+    ns.unknown_exception = false;
+    gain.unknown_exception = true;
+    order.clear();
+    const auto failed_gain = audition::dsp::processSourceSpeechHopOrMute(
+        pcm.data(), pcm.size(), 16000U, &ns, &gain);
+    EXPECT_TRUE(failed_gain.failed);
+    EXPECT_EQ(failed_gain.error, "Unknown speech DSP exception");
+    EXPECT_EQ(failed_gain.samples, std::vector<float>(pcm.size(), 0.0F));
+    EXPECT_EQ(order, (std::vector<int>{1, 2}));
+
+    gain.unknown_exception = false;
+    order.clear();
+    const auto good = audition::dsp::processSourceSpeechHopOrMute(
+        pcm.data(), pcm.size(), 16000U, &ns, &gain);
+    EXPECT_FALSE(good.failed);
+    EXPECT_TRUE(good.error.empty());
+    ASSERT_EQ(good.samples.size(), pcm.size());
+    EXPECT_FLOAT_EQ(good.samples.front(), 0.3F);
+    EXPECT_EQ(order, (std::vector<int>{1, 2}));
 }
 
 TEST(SourceSpeechChain, RunsNSBeforeAGCWithoutMutatingInput) {

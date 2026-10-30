@@ -83,6 +83,11 @@ struct SourceSpeechHopResult {
                 false, {}};
     } catch (const std::exception& e) {
         return {std::vector<float>(count, 0.0F), true, e.what()};
+    } catch (...) {
+        // Optional C/C++ adapters may throw non-std exceptions. One failing
+        // source-local backend must not terminate the entire live capture.
+        return {std::vector<float>(count, 0.0F), true,
+                "Unknown speech DSP exception"};
     }
 }
 
