@@ -460,6 +460,34 @@ QString testWorld(QMainWindow& window, const QTemporaryDir& dir) {
 #endif
 }
 
+QString testNsControls(QMainWindow& window) {
+    auto* root = qobject_cast<QTabWidget*>(window.centralWidget());
+    auto* panel = requireTab(root, "Acoustic scene");
+    auto* enabled = panel->findChild<QCheckBox*>("acousticSceneSpeechNs");
+    auto* level = panel->findChild<QComboBox*>("acousticSceneSpeechNsLevel");
+    if (!enabled || !level || level->count() != 4 || enabled->isChecked())
+        throw std::runtime_error{"Speech NS controls missing or enabled by default"};
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+    if (!enabled->isEnabled() || level->isEnabled())
+        throw std::runtime_error{"Speech NS initial state invalid"};
+    enabled->setChecked(true);
+    if (!level->isEnabled())
+        throw std::runtime_error{"NS level selector did not enable"};
+    for (int index = 0; index < level->count(); ++index) {
+        level->setCurrentIndex(index);
+        if (level->currentData().toString().isEmpty())
+            throw std::runtime_error{"NS selector missing backend value"};
+    }
+    enabled->setChecked(false);
+    if (level->isEnabled())
+        throw std::runtime_error{"NS level selector did not disable"};
+#else
+    if (enabled->isEnabled())
+        throw std::runtime_error{"NS enabled without APM"};
+#endif
+    return "qt-model-self-test=ok backend=speech-ns-controls";
+}
+
 QString testAlsaCaptureErrors(QMainWindow& window) {
 #if LIBAUDITION_DEMO_HAS_ALSA
     auto* root = qobject_cast<QTabWidget*>(window.centralWidget());
@@ -897,6 +925,8 @@ bool runQtModelFixtureSelfTest(
             result = testOdasErrors(window);
         } else if (which == "alsa-errors") {
             result = testAlsaCaptureErrors(window);
+        } else if (which == "ns-controls") {
+            result = testNsControls(window);
         } else if (which == "playback-lifecycle") {
             result = testPlaybackLifecycle(dir);
         } else if (which == "source-track-lifecycle") {

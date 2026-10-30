@@ -48,6 +48,7 @@ constexpr Feature kFeatures[] = {
     {"Classification", "EfficientAT and audio embeddings", "Backend workbench", "Optional backend + model"},
     {"Classification", "Open-vocabulary text/audio CLAP", "Backend workbench", "Optional backend + model"},
     {"Speech", "Per-source VAD, pre/post-roll and ASR", "Acoustic scene", "Optional backend + model"},
+    {"Speech", "WebRTC APM NS on post-SSS speech PCM", "Acoustic scene", "Optional backend + live capture"},
     {"Speech", "Bounded PCM ingress, epochs and cancellation", "Acoustic scene", "API + CTest; integrated capture"},
     {"Speech", "Offline/online ASR and keyword spotting", "Backend workbench", "Optional backend + model"},
     {"Speech", "Language identification and denoising", "Backend workbench", "Optional backend + model"},

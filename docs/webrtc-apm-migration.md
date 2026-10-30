@@ -41,7 +41,8 @@ not vendored internal `webrtc::AudioBuffer` types.
 - [x] Implement APM-backed AEC3 with 10-ms render/reference frames, stream
       delay, reset and AEC metrics via the public APM API.
 - [x] Expose APM noise suppression as a separate configurable opt-in SDK
-      capability. Live Qt integration and measured quality remain open.
+      capability. Live Qt speech-path integration is implemented; measured
+      sound-quality improvements remain open.
 - [x] Pass dedicated Linux APM #11 unit tests and Qt AEC3 smoke test.
 - [ ] Revalidate combined full-demo with APM and cross-platform Qt 5/6,
       GCC with -Werror, Clang, x86-64 and ARM64.
@@ -99,8 +100,16 @@ Process errors reset the instance and raise an exception. Processing
 allocates output and must run outside a hard-realtime capture callback.
 AGC and AEC are explicitly disabled in the NS session. Keep microphone
 PCM fed to ODAS unchanged; NS belongs only on the speech branch after SSS.
-This capability is not yet wired into live Qt capture. Synthetic tests
-do not establish real noise suppression quality, latency or ASR WER.
+Qt acoustic scene provides an off-by-default NS checkbox and four-level
+selector. Switching while capturing resets source-local NS state between
+ODAS hops, without restarting ALSA/ODAS or retiring WAV recordings. NS
+runs on post-SSS speech PCM before optional AGC, VAD and ASR, while ODAS
+and classification retain unmodified PCM. The speech WAV records the
+post-processing PCM. On preprocessing failure the affected ASR hop is
+skipped with a reported error instead of silently substituting raw PCM.
+The headless `qt_noise_suppression_controls` test checks Qt controls
+without a microphone. Synthetic tests do not establish real-room SNR,
+latency or ASR WER improvements.
 
 The AGC dropdown includes `WebRTC APM AGC1` and `WebRTC APM AGC2`.
 The AEC3 UI keeps the existing WAV inputs and stream-delay control. The
