@@ -14,8 +14,8 @@ struct NsSpy final : audition::dsp::ISourceNoiseSuppressor {
     bool truncate{false}, nonfinite{false};
     std::vector<float> process(const float* in, std::size_t n, std::uint32_t) override {
         order->push_back(1);
-        std::vector<float> out(in, in + n);
-        for (auto& s : out) s *= 0.5F;
+        std::vector<float> out(n);
+        for (std::size_t i = 0; i < n; ++i) out[i] = in[i] * 0.5F;
         if (truncate) out.pop_back();
         if (nonfinite) out.front() = std::numeric_limits<float>::quiet_NaN();
         return out;
@@ -27,8 +27,8 @@ struct GainSpy final : audition::dsp::ISourceGain {
     bool nonfinite{false};
     std::vector<float> process(const float* in, std::size_t n, std::uint32_t) override {
         order->push_back(2);
-        std::vector<float> out(in, in + n);
-        for (auto& s : out) s *= 3.0F;
+        std::vector<float> out(n);
+        for (std::size_t i = 0; i < n; ++i) out[i] = in[i] * 3.0F;
         if (nonfinite) out.front() = std::numeric_limits<float>::infinity();
         return out;
     }
