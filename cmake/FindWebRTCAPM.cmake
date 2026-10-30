@@ -24,6 +24,21 @@ if(WebRTCAPM_FOUND AND NOT TARGET WebRTCAPM::APM)
     set_target_properties(WebRTCAPM::APM PROPERTIES
         IMPORTED_LOCATION "${WebRTCAPM_LIBRARY}"
         INTERFACE_INCLUDE_DIRECTORIES "${WebRTCAPM_INCLUDE_DIR}")
+    # Export the same public WebRTC platform definitions as the fetched
+    # target; downstream users may include APM headers via source_gain.hpp.
+    set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+        INTERFACE_COMPILE_DEFINITIONS WEBRTC_LIBRARY_IMPL)
+    if(UNIX)
+        set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+            INTERFACE_COMPILE_DEFINITIONS WEBRTC_POSIX)
+        if(APPLE)
+            set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+                INTERFACE_COMPILE_DEFINITIONS WEBRTC_MAC)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+                INTERFACE_COMPILE_DEFINITIONS WEBRTC_LINUX)
+        endif()
+    endif()
     if(PC_WEBRTC_APM_LINK_LIBRARIES)
         set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
             INTERFACE_LINK_LIBRARIES "${PC_WEBRTC_APM_LINK_LIBRARIES}")
