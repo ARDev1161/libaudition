@@ -1,4 +1,5 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
+#include <audition/dsp/source_speech_chain.hpp>
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <chrono>
@@ -105,6 +106,88 @@ TEST(PerSourceSpeechRuntime, IndependentlySegmentsTwoTracksAndRunsAsyncAsr) {
     EXPECT_EQ(found[1].transcript.text,"19:4");
     EXPECT_EQ(runtime.statistics().completed_segments,2U);
 }
+TEST(PerSourceSpeechRuntime, MutedDspFailurePreservesLaterSpeechOffsetsAndPeer) {
+    // An NS/AGC failure must not drop a chunk before VAD: doing so shifts the
+    // source's audio sample clock and every subsequent ASR sidecar annotation.
+    class IntermittentGain final : public audition::dsp::ISourceGain {
+    public:
+        std::vector<float> process(const float* pcm, std::size_t count,
+                                   std::uint32_t) override {
+            ++calls_;
+            std::vector<float> result(count);
+            for (std::size_t i = 0; i < count; ++i)
+                result[i] = calls_ == 2U ? 1.25F : pcm[i];
+            return result;
+        }
+        double gainDb() const noexcept override { return 0.0; }
+        void reset() noexcept override { calls_ = 0U; }
+    private:
+        std::size_t calls_{0U};
+    };
+
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),options};
+    IntermittentGain gain;
+    const std::vector<float> voice(4U,0.5F), silence(4U,0.0F);
+    auto first = audition::dsp::processSourceSpeechHopOrMute(
+        voice.data(), voice.size(), 16000U, nullptr, &gain);
+    ASSERT_FALSE(first.failed);
+    runtime.push(17U,chunk(first.samples));
+    runtime.push(19U,chunk(voice));
+
+    auto failed = audition::dsp::processSourceSpeechHopOrMute(
+        voice.data(), voice.size(), 16000U, nullptr, &gain);
+    ASSERT_TRUE(failed.failed);
+    EXPECT_EQ(failed.samples,silence);
+    runtime.push(17U,chunk(failed.samples));
+    runtime.push(19U,chunk(silence));
+
+    auto recovered = audition::dsp::processSourceSpeechHopOrMute(
+        voice.data(), voice.size(), 16000U, nullptr, &gain);
+    ASSERT_FALSE(recovered.failed);
+    runtime.push(17U,chunk(recovered.samples));
+    runtime.push(17U,chunk(silence));
+
+    EXPECT_EQ(runtime.trackStatus(17U).received_samples,16U);
+    EXPECT_EQ(runtime.trackStatus(19U).received_samples,8U);
+    EXPECT_EQ(runtime.trackStatus(17U).vad_starts,2U);
+    EXPECT_EQ(runtime.trackStatus(17U).vad_ends,2U);
+
+    std::vector<SourceSpeechResult> results;
+    for (int i = 0; i < 1000 && results.size() < 3U; ++i) {
+        auto ready = runtime.takeResults();
+        results.insert(results.end(),
+            std::make_move_iterator(ready.begin()),
+            std::make_move_iterator(ready.end()));
+        if (results.size() < 3U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(results.size(),3U);
+    const auto match = [&](std::uint64_t id, std::uint64_t start,
+                           std::uint64_t end) {
+        const auto found = std::find_if(results.begin(),results.end(),
+            [&](const SourceSpeechResult& item) {
+                return item.track_id == id &&
+                    item.audio_start_sample == start &&
+                    item.audio_end_sample == end;
+            });
+        ASSERT_NE(found,results.end());
+        if (found != results.end()) {
+            EXPECT_EQ(found->segment_end_reason,"vad_silence");
+            EXPECT_EQ(found->transcript.text,
+                      std::to_string(id) + ":4");
+        }
+    };
+    match(17U,0U,4U);
+    match(17U,8U,12U); // the muted hop [4,8) occupied the audio clock
+    match(19U,0U,4U);  // the second source remained independent
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+}
+
 TEST(PerSourceSpeechRuntime, ForgetAndResetDiscardUnfinishedAudio) {
     ThresholdVad vad;
     PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>()};
