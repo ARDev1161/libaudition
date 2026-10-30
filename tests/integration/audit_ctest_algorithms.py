@@ -36,7 +36,7 @@ CORE = {
     "basic DSP / channel conversions": r"^Dsp\.",
     "WAV parser and streaming I/O": r"^WavIoTest\.",
     "strict timeline JSON parser": r"^RecordingTimelineJson\.",
-    "source noise suppression bypass": r"^SourceNoiseSuppression\\.",
+    "source noise suppression bypass": r"^SourceNoiseSuppression\.",
     "multi-channel audio frontend": r"^AudioFrontend\.",
     "audio quality": r"^AudioQuality\.",
     "speech contracts": r"^SpeechContracts\.",
@@ -67,7 +67,7 @@ BACKENDS = {
     },
     "LIBAUDITION_WITH_WEBRTC_AEC3": {"AEC3": r"^WebRtcAec3Backend\."},
     "LIBAUDITION_WITH_WEBRTC_APM": {
-        "APM noise suppression": r"^WebRtcApmNoiseSuppressor\\.",
+        "APM noise suppression": r"^WebRtcApmNoiseSuppressor\.",
         "APM AGC1/AGC2 streaming": r"^SourceGain\.UnifiedApm",
     },
     "LIBAUDITION_WITH_SHERPA": {
