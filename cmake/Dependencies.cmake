@@ -200,6 +200,11 @@ function(libaudition_find_or_fetch_webrtc_apm)
         DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         FILES_MATCHING PATTERN "libwebrtc-audio-processing-2.so*"
             PATTERN "libwebrtc-audio-processing-2.dylib*")
+    # The header-only AGC adapter is part of libaudition's public API;
+    # consumers must receive matching headers when we bundle fetched APM.
+    install(DIRECTORY
+        "${_apm_prefix}/include/webrtc-audio-processing-2"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 endfunction()
 
 function(libaudition_find_or_fetch_sherpa)
