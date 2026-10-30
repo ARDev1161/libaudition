@@ -1,7 +1,8 @@
 # WebRTC APM migration
 
 Status: **unified AGC1/AGC2 + AEC3 migration implemented**. The
-dedicated WebRTC APM CI #11 passed the AGC and AEC3 functional tests.
+main CI #1842 and dedicated WebRTC APM CI #39 passed at commit
+`f822856`, including installed-package C++17 AEC3 and C++20 AGC1/AGC2\nconsumers.
 The standalone AGC2/AEC3 source, namespace workarounds and their downloader
 have been removed. Main full-demo CI, cross-platform and quality benchmarks
 must be revalidated before release.
@@ -47,8 +48,11 @@ not vendored internal `webrtc::AudioBuffer` types.
 - [x] Remove the standalone `Enaium/webrtc-agc2` and
       `Enaium/webrtc-aec3` implementations, namespace-renaming
       workarounds and `cmake/PatchWebrtcAec3.cmake`.
-- [ ] Update installed CMake exports, documentation and Yocto packaging;
-      verify no duplicate `webrtc::` runtime implementations.
+- [x] Export the installed `audition::backend_webrtc_apm` target and
+      `FindWebRTCAPM.cmake`, install matching fetched APM headers and shared
+      library, and pass the installed C++17/C++20 consumer checks.
+- [ ] Verify Yocto cross-compilation, APM runtime dependencies, and
+      the absence of duplicate `webrtc::` implementations in deployed images.
 
 ## Dependency evaluation
 
