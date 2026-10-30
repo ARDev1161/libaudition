@@ -1945,6 +1945,19 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(level.peak_dbfs + gainDb, 0, 'f', 1)
                     .arg(static_cast<qulonglong>(level.samples));
             }
+            QStringList speechLevelLines;
+            for (const auto& level : snapshot.speech_processing_levels) {
+                speechLevelLines << QString(
+                    "Track #%1: SSS %2 dBFS RMS / speech %3 dBFS RMS"
+                    " (total change %4 dB); peaks %5 → %6 dBFS; %7 matched samples")
+                    .arg(static_cast<qulonglong>(level.track_id))
+                    .arg(level.input_rms_dbfs, 0, 'f', 1)
+                    .arg(level.output_rms_dbfs, 0, 'f', 1)
+                    .arg(level.output_rms_dbfs - level.input_rms_dbfs, 0, 'f', 1)
+                    .arg(level.input_peak_dbfs, 0, 'f', 1)
+                    .arg(level.output_peak_dbfs, 0, 'f', 1)
+                    .arg(static_cast<qulonglong>(level.samples));
+            }
             diagnostics->setText(
                 QString("Classifier: %4\nSpeech: %5\nRaw ALSA input levels: %1\n"
                         "ODAS SSL direction proposals: %2 (strongest raw score: %3) · "
@@ -1955,7 +1968,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(QString::fromStdString(snapshot.classifier_status))
                     .arg(QString::fromStdString(snapshot.speech_status)) +
                 "\nODAS SSS output (same measurement window): " +
-                (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")));
+                (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")) +
+                "\nSpeech path (NS + AGC combined, not measured SNR; only successful matched PCM): " +
+                (speechLevelLines.isEmpty() ? QString{"no speech PCM"} : speechLevelLines.join(" | ")));
         }
         if (!snapshot.error.empty()) {
             stopCapture();

@@ -107,7 +107,12 @@ runs on post-SSS speech PCM before optional AGC, VAD and ASR, while ODAS
 and classification retain unmodified PCM. The speech WAV records the
 post-processing PCM. On preprocessing failure the affected ASR hop is
 skipped with a reported error instead of silently substituting raw PCM.
-The headless `qt_noise_suppression_controls` test checks Qt controls
+Qt's diagnostics additionally show per-source **matched** pre-processing
+and post-processing RMS/peak levels and their combined dB difference, based
+only on successful PCM windows. This is total NS+AGC level change, **not**
+a measure of removed noise, intelligibility or SNR. The accumulators reset
+on changes to NS/AGC, source retirement, ALSA XRUN and each 20-Hz publication
+window. The headless `qt_noise_suppression_controls` test checks Qt controls
 without a microphone. Synthetic tests do not establish real-room SNR,
 latency or ASR WER improvements.
 

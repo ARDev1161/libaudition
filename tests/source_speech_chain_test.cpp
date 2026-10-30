@@ -1,4 +1,5 @@
 #include <audition/dsp/source_speech_chain.hpp>
+#include <audition/dsp/streaming_level_meter.hpp>
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cmath>
@@ -59,6 +60,31 @@ TEST(SourceSpeechChain, RunsNSBeforeAGCWithoutMutatingInput) {
     EXPECT_EQ(order, (std::vector<int>{1}));
     for (std::size_t i = 0; i < pcm.size(); ++i)
         EXPECT_FLOAT_EQ(no_gain[i], pcm[i] * 0.5F);
+}
+
+TEST(SourceSpeechChain, MatchedRmsAndPeakMetersTrackOnlyProcessedSamples) {
+    std::vector<int> order;
+    NsSpy ns; ns.order = &order;
+    GainSpy gain; gain.order = &order;
+    audition::dsp::StreamingLevelMeter raw;
+    audition::dsp::StreamingLevelMeter speech;
+    const std::vector<float> pcm{0.1F, -0.2F, 0.3F, -0.4F};
+    for (int hop = 0; hop < 3; ++hop) {
+        auto output = audition::dsp::processSourceSpeechChain(
+            pcm.data(), pcm.size(), 16000U, &ns, &gain);
+        raw.push(pcm.data(), pcm.size());
+        speech.push(output.data(), output.size());
+    }
+    const auto before = raw.snapshotAndReset();
+    const auto after = speech.snapshotAndReset();
+    ASSERT_EQ(before.sample_count, 3U * pcm.size());
+    ASSERT_EQ(before.sample_count, after.sample_count);
+    EXPECT_NEAR(after.rms_dbfs - before.rms_dbfs,
+                20.0 * std::log10(1.5), 1.e-5);
+    EXPECT_NEAR(after.peak_dbfs - before.peak_dbfs,
+                20.0 * std::log10(1.5), 1.e-5);
+    EXPECT_EQ(raw.snapshotAndReset().sample_count, 0U);
+    EXPECT_EQ(speech.snapshotAndReset().sample_count, 0U);
 }
 
 TEST(SourceSpeechChain, RejectsInvalidInputsAndBackendResults) {

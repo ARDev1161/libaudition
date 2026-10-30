@@ -84,6 +84,17 @@ struct LiveCaptureSnapshot {
     std::vector<double> channel_peak_dbfs{};
     struct SourceLevel { std::uint64_t track_id{0}; double rms_dbfs{0}; double peak_dbfs{0}; std::uint64_t samples{0}; };
     std::vector<SourceLevel> sss_levels{};
+    // Matched successful post-SSS speech PCM, not an estimate of SNR/WER.
+    // RMS and peak are computed over identical input/output sample windows.
+    struct SpeechProcessingLevel {
+        std::uint64_t track_id{0};
+        double input_rms_dbfs{-180.0};
+        double output_rms_dbfs{-180.0};
+        double input_peak_dbfs{-180.0};
+        double output_peak_dbfs{-180.0};
+        std::uint64_t samples{0};
+    };
+    std::vector<SpeechProcessingLevel> speech_processing_levels{};
     struct GainLevel { std::uint64_t track_id{0}; double gain_db{0.0}; };
     std::vector<GainLevel> speech_gain_levels{};
     std::string classification_error{};

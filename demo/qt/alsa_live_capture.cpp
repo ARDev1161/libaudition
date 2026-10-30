@@ -373,6 +373,11 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::uint64_t ignored_asr_results = 0;
         std::string last_asr_language;
         std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceGain>> speechGains;
+        // One bounded pair of meters per live speech source; compare matched
+        // before/after samples, never different track IDs or failed hops.
+        std::map<std::uint64_t,
+            std::pair<audition::dsp::StreamingLevelMeter,
+                      audition::dsp::StreamingLevelMeter>> speechMeters;
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
         std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceNoiseSuppressor>> speechSuppressors;
 #endif
@@ -611,6 +616,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             if (classifier) classifier->forget(trackId);
 #if LIBAUDITION_DEMO_HAS_SHERPA
             speechGains.erase(trackId);
+            speechMeters.erase(trackId);
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
             speechSuppressors.erase(trackId);
 #endif
@@ -672,6 +678,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
 #if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
                     if (enabled) (void)nsLevel(level);
                     speechSuppressors.clear();
+                    speechMeters.clear(); // avoid mixing pre/post toggle windows
 #else
                     if (enabled)
                         throw std::runtime_error("WebRTC APM NS not built");
@@ -697,6 +704,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         (void)audition::dsp::makeSourceGain(implementation.c_str());
                     }
                     speechGains.clear();
+                    speechMeters.clear(); // avoid mixing old/new AGC gains
                     config.speech_agc_enabled = enabled;
                     config.speech_agc_implementation = std::move(implementation);
                     appliedGainRevision = revision;
@@ -744,6 +752,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 filled = 0;
                 for (auto& meter : channelMeters) meter.reset();
                 sssMeters.clear();
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                speechMeters.clear();
+#endif
                 requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
                 failureStage = "ODAS reset after ALSA xrun";
                 engine.reset(); // discontinuous samples must not share ODAS state
@@ -860,6 +871,14 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                             speechView.sequenceNumber()};
                     }
 #endif
+#if LIBAUDITION_DEMO_HAS_SHERPA
+                    if (speech_worker && !speechProcessingFailed) {
+                        auto& meters = speechMeters[sourceId];
+                        meters.first.push(separated.audio.samples().data(),
+                                          separated.audio.samples().size());
+                        meters.second.push(speechSamples->data(), speechSamples->size());
+                    }
+#endif
                     const auto recorded = recorder.append(sourceId, *speechSamples);
                     if (recorded.recording_id != 0) {
                         if (!recordings.active(sourceId) &&
@@ -974,6 +993,20 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     level.rms_dbfs, level.peak_dbfs, level.sample_count});
             }
             sssMeters.clear();
+            std::vector<LiveCaptureSnapshot::SpeechProcessingLevel> speechLevels;
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            speechLevels.reserve(speechMeters.size());
+            for (auto& [trackId, meters] : speechMeters) {
+                const auto raw = meters.first.snapshotAndReset();
+                const auto processed = meters.second.snapshotAndReset();
+                if (raw.sample_count == 0U ||
+                    raw.sample_count != processed.sample_count) continue;
+                speechLevels.push_back({
+                    trackId, raw.rms_dbfs, processed.rms_dbfs,
+                    raw.peak_dbfs, processed.peak_dbfs, raw.sample_count});
+            }
+            speechMeters.clear();
+#endif
             std::lock_guard<std::mutex> lock{mutex_};
             latest_.tracks = std::move(tracks);
 #if LIBAUDITION_DEMO_HAS_SHERPA
@@ -997,6 +1030,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             latest_.channel_rms_dbfs = std::move(rmsDbfs);
             latest_.channel_peak_dbfs = std::move(peakDbfs);
             latest_.sss_levels = std::move(sssLevels);
+            latest_.speech_processing_levels = std::move(speechLevels);
             latest_.speech_gain_levels.clear();
 #if LIBAUDITION_DEMO_HAS_SHERPA
             for (const auto& [id, processor] : speechGains)
