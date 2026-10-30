@@ -13,6 +13,8 @@ namespace audition::dsp {
 // Source-local speech processing: NS -> AGC, never microphone-array PCM.
 // State belongs to the two optional processors, one pair per source.
 // Input is borrowed and unmodified. Output count must equal input count.
+// Every sample must be finite normalized float PCM in [-1, 1]. An adapter
+// cannot silently feed clipping-level samples to ASR or the WAV recorder.
 // Errors propagate: consumers must not silently fall back to raw ASR PCM.
 // Vector-returning processing is not appropriate on a hard RT callback.
 inline std::vector<float> processSourceSpeechChain(
@@ -20,17 +22,23 @@ inline std::vector<float> processSourceSpeechChain(
     ISourceNoiseSuppressor* ns, ISourceGain* gain) {
     if (!sample_rate || (!pcm && count))
         throw std::invalid_argument("Invalid source speech PCM");
-    for (std::size_t i = 0; i < count; ++i)
+    for (std::size_t i = 0; i < count; ++i) {
         if (!std::isfinite(pcm[i]))
             throw std::invalid_argument("Nonfinite source speech PCM");
+        if (std::abs(pcm[i]) > 1.0F)
+            throw std::invalid_argument("Source speech PCM exceeds normalized range");
+    }
     if (!count) return {};
 
     const auto validate = [count](const std::vector<float>& out) {
         if (out.size() != count)
             throw std::runtime_error("Speech DSP changed PCM sample count");
-        for (float sample : out)
+        for (float sample : out) {
             if (!std::isfinite(sample))
                 throw std::runtime_error("Speech DSP returned nonfinite PCM");
+            if (std::abs(sample) > 1.0F)
+                throw std::runtime_error("Speech DSP returned out-of-range PCM");
+        }
     };
 
     std::vector<float> denoised;

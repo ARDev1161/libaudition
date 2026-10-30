@@ -12,25 +12,27 @@
 namespace {
 struct NsSpy final : audition::dsp::ISourceNoiseSuppressor {
     std::vector<int>* order{};
-    bool truncate{false}, nonfinite{false};
+    bool truncate{false}, nonfinite{false}, out_of_range{false};
     std::vector<float> process(const float* in, std::size_t n, std::uint32_t) override {
         order->push_back(1);
         std::vector<float> out(n);
         for (std::size_t i = 0; i < n; ++i) out[i] = in[i] * 0.5F;
         if (truncate) out.pop_back();
         if (nonfinite) out.front() = std::numeric_limits<float>::quiet_NaN();
+        if (out_of_range) out.front() = 1.25F;
         return out;
     }
     void reset() noexcept override {}
 };
 struct GainSpy final : audition::dsp::ISourceGain {
     std::vector<int>* order{};
-    bool nonfinite{false};
+    bool nonfinite{false}, out_of_range{false};
     std::vector<float> process(const float* in, std::size_t n, std::uint32_t) override {
         order->push_back(2);
         std::vector<float> out(n);
         for (std::size_t i = 0; i < n; ++i) out[i] = in[i] * 3.0F;
         if (nonfinite) out.front() = std::numeric_limits<float>::infinity();
+        if (out_of_range) out.front() = -1.25F;
         return out;
     }
     double gainDb() const noexcept override { return 0.0; }
@@ -103,6 +105,48 @@ TEST(SourceSpeechChain, FailedProcessorMutesHopWithoutLeakingRawPcm) {
         nullptr, 0U, 16000U, &ns, &gain);
     EXPECT_FALSE(empty.failed);
     EXPECT_TRUE(empty.samples.empty());
+}
+
+TEST(SourceSpeechChain, RejectsOutOfRangeSamplesBeforeAndAfterAdapters) {
+    std::vector<int> order;
+    NsSpy ns; ns.order = &order;
+    GainSpy gain; gain.order = &order;
+    for (const float invalid : {1.01F, -1.01F}) {
+        EXPECT_THROW((void)audition::dsp::processSourceSpeechChain(
+            &invalid, 1U, 16000U, &ns, &gain), std::invalid_argument);
+        const auto muted = audition::dsp::processSourceSpeechHopOrMute(
+            &invalid, 1U, 16000U, &ns, &gain);
+        EXPECT_TRUE(muted.failed);
+        EXPECT_EQ(muted.samples, (std::vector<float>{0.0F}));
+    }
+    EXPECT_TRUE(order.empty());
+
+    const std::vector<float> input(32U, 0.1F);
+    ns.out_of_range = true;
+    EXPECT_THROW((void)audition::dsp::processSourceSpeechChain(
+        input.data(), input.size(), 16000U, &ns, &gain), std::runtime_error);
+    EXPECT_EQ(order, (std::vector<int>{1}));
+    const auto ns_mute = audition::dsp::processSourceSpeechHopOrMute(
+        input.data(), input.size(), 16000U, &ns, &gain);
+    EXPECT_TRUE(ns_mute.failed);
+    EXPECT_EQ(ns_mute.samples, std::vector<float>(input.size(), 0.0F));
+    ns.out_of_range = false;
+    order.clear();
+
+    gain.out_of_range = true;
+    const auto gain_mute = audition::dsp::processSourceSpeechHopOrMute(
+        input.data(), input.size(), 16000U, &ns, &gain);
+    EXPECT_TRUE(gain_mute.failed);
+    EXPECT_EQ(gain_mute.samples, std::vector<float>(input.size(), 0.0F));
+    EXPECT_EQ(order, (std::vector<int>{1, 2}));
+    gain.out_of_range = false;
+
+    for (const float boundary : {-1.0F, 1.0F}) {
+        const auto output = audition::dsp::processSourceSpeechChain(
+            &boundary, 1U, 16000U, nullptr, nullptr);
+        ASSERT_EQ(output.size(), 1U);
+        EXPECT_EQ(output.front(), boundary);
+    }
 }
 
 TEST(SourceSpeechChain, MatchedRmsAndPeakMetersTrackOnlyProcessedSamples) {

@@ -110,7 +110,11 @@ PCM interval (rather than raw unprocessed audio), with a `speech_preprocessing_f
 the WAV's JSON sidecar (distinct from `recorder_backpressure`). The
 muted samples are also admitted to VAD/ASR
 to preserve source-local sample offsets; the broken NS/AGC instance
-is discarded. The SDK helper `processSourceSpeechHopOrMute` exposes
+is discarded. The C++17 `processSourceSpeechChain` contract validates both input and
+every optional NS/AGC output for finite normalized PCM (inclusive [-1, 1])
+and equal sample counts. Out-of-range or malformed adapter output fails
+closed rather than letting ASR consume samples that the PCM16 WAV writer
+would silently clip. The SDK helper `processSourceSpeechHopOrMute` exposes
 the same explicit fail-closed behavior for consumers, returning the
 error and a failed flag without losing the PCM clock.
 Qt's diagnostics additionally show per-source **matched** pre-processing
