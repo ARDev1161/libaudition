@@ -52,6 +52,10 @@ struct LiveCaptureConfig {
     bool speech_agc_enabled{false};
     std::string speech_agc_implementation{"rms"};
     std::string speech_vad_kind{"silero"};
+    // Applied when constructing a Sherpa VAD session, not live SST tuning.
+    float speech_vad_threshold{0.5F};
+    float speech_vad_min_speech_seconds{0.25F};
+    float speech_vad_min_silence_seconds{0.5F};
     std::string speech_asr_kind{"sensevoice"};
     std::string speech_vad_model_path{};
     std::string speech_asr_model_path{};

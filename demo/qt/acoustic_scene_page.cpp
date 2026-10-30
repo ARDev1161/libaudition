@@ -863,6 +863,34 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         pathEdit->hide();
     }
     speechForm->addRow("VAD engine", vadKind);
+    const auto makeVadControl = [=](const char* objectName,
+                                  double minimum, double maximum,
+                                  double initial, const char* help) {
+        auto* value = new QDoubleSpinBox{speechSettings};
+        value->setObjectName(objectName);
+        value->setRange(minimum, maximum);
+        value->setDecimals(2);
+        value->setSingleStep(0.05);
+        value->setValue(initial);
+        value->setToolTip(help);
+        return value;
+    };
+    auto* vadThreshold = makeVadControl("acousticSceneSpeechVadThreshold",
+        0.05, 0.95, 0.5,
+        "Speech VAD threshold, applied on the next capture start. Lower values "
+        "can detect weaker speech but may raise false positives. This setting "
+        "does not affect ODAS source acquisition (SST).");
+    auto* vadMinSpeech = makeVadControl("acousticSceneSpeechVadMinSpeech",
+        0.0, 2.0, 0.25,
+        "Minimum speech duration (seconds) in Sherpa VAD. Short utterances "
+        "may be rejected at a high setting; applied on next capture start.");
+    auto* vadMinSilence = makeVadControl("acousticSceneSpeechVadMinSilence",
+        0.05, 2.0, 0.5,
+        "Minimum silence duration (seconds) before Sherpa VAD closes an "
+        "utterance; applied on next capture start.");
+    speechForm->addRow("VAD threshold", vadThreshold);
+    speechForm->addRow("Min. speech (s)", vadMinSpeech);
+    speechForm->addRow("Min. silence (s)", vadMinSilence);
     speechForm->addRow("ASR engine", asrKind);
     auto* speechLanguage = new QComboBox{speechSettings};
     speechLanguage->setObjectName("acousticSceneSpeechLanguage");
@@ -1687,6 +1715,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 const auto joiner =
                     std::filesystem::path{speechJoiner->text().toStdString()};
                 config.speech_vad_kind = vadKind->currentData().toString().toStdString();
+                config.speech_vad_threshold = static_cast<float>(vadThreshold->value());
+                config.speech_vad_min_speech_seconds =
+                    static_cast<float>(vadMinSpeech->value());
+                config.speech_vad_min_silence_seconds =
+                    static_cast<float>(vadMinSilence->value());
                 config.speech_asr_kind = asrKind->currentData().toString().toStdString();
                 const bool needsTokens = config.speech_asr_kind != "whispercpp";
                 const bool needsDecoder = config.speech_asr_kind == "whisper" ||

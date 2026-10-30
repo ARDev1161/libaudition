@@ -10,6 +10,7 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QDialog>
+#include <QDoubleSpinBox>
 #include <QPointer>
 #include <QSlider>
 #include <QCoreApplication>
@@ -458,6 +459,38 @@ QString testWorld(QMainWindow& window, const QTemporaryDir& dir) {
     static_cast<void>(dir);
     throw std::runtime_error{"Qt demo was built without WORLD"};
 #endif
+}
+
+QString testVadTuningControls(QMainWindow& window) {
+    auto* root = qobject_cast<QTabWidget*>(window.centralWidget());
+    auto* panel = requireTab(root, "Acoustic scene");
+    auto* kind = panel->findChild<QComboBox*>("acousticSceneVadKind");
+    auto* threshold =
+        panel->findChild<QDoubleSpinBox*>("acousticSceneSpeechVadThreshold");
+    auto* minSpeech =
+        panel->findChild<QDoubleSpinBox*>("acousticSceneSpeechVadMinSpeech");
+    auto* minSilence =
+        panel->findChild<QDoubleSpinBox*>("acousticSceneSpeechVadMinSilence");
+    if (!kind || !threshold || !minSpeech || !minSilence)
+        throw std::runtime_error{"Speech VAD tuning controls missing"};
+    if (std::abs(threshold->value() - 0.5) > 0.001 ||
+        std::abs(minSpeech->value() - 0.25) > 0.001 ||
+        std::abs(minSilence->value() - 0.5) > 0.001)
+        throw std::runtime_error{"Speech VAD defaults diverged from Sherpa"};
+    threshold->setValue(0.3);
+    minSpeech->setValue(0.1);
+    minSilence->setValue(0.25);
+    if (std::abs(threshold->value() - 0.3) > 0.001 ||
+        std::abs(minSpeech->value() - 0.1) > 0.001 ||
+        std::abs(minSilence->value() - 0.25) > 0.001)
+        throw std::runtime_error{"Speech VAD controls did not retain settings"};
+    // Both supported Sherpa VAD variants share these validated options.
+    kind->setCurrentIndex(1);
+    if (std::abs(threshold->value() - 0.3) > 0.001 ||
+        std::abs(minSpeech->value() - 0.1) > 0.001 ||
+        std::abs(minSilence->value() - 0.25) > 0.001)
+        throw std::runtime_error{"VAD kind switch lost tuning options"};
+    return "qt-model-self-test=ok backend=speech-vad-tuning";
 }
 
 QString testNsControls(QMainWindow& window) {
@@ -927,6 +960,8 @@ bool runQtModelFixtureSelfTest(
             result = testAlsaCaptureErrors(window);
         } else if (which == "ns-controls") {
             result = testNsControls(window);
+        } else if (which == "vad-tuning") {
+            result = testVadTuningControls(window);
         } else if (which == "playback-lifecycle") {
             result = testPlaybackLifecycle(dir);
         } else if (which == "source-track-lifecycle") {

@@ -659,6 +659,22 @@ runs while each backend executes and that actions are disabled until
 completion. AASIST exercises the discard path and recovery. Qt's Concurrent
 module is required only for the optional demo, not for libaudition itself.
 
+### Live speech VAD tuning
+
+In the **Acoustic scene** tab, enable **Transcribe separated sources** and
+adjust **VAD threshold**, **Min. speech (s)** and **Min. silence (s)**.
+The default values are the Sherpa Silero/TEN defaults (0.50, 0.25 s,
+0.50 s). Lowering the VAD threshold can help when *an ODAS source
+already exists* but speech is not marked active; shorter minimum speech
+can admit brief utterances. These controls take effect at the next
+**Start live capture**, not halfway through an active VAD session.
+They do **not** change ODAS SSL proposals or SST acquisition: for a
+silent **Tracked sources** table, inspect ALSA/SSL levels and use the
+separate native ODAS SST tuning controls. Lower thresholds may increase
+false positives, and their effects must be measured using recorded speech.
+The hardware-free `qt_vad_tuning_controls` test validates UI control
+defaults and edits only; it does not establish real-speech accuracy.
+
 ### Sherpa VAD
 
 The VAD subtab (Silero and TEN) uses the worker-based execution controller:

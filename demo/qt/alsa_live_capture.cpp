@@ -388,11 +388,17 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             audition::SherpaVadOptions vad_options{};
             vad_options.sample_rate_hz = config.sample_rate_hz;
             if (config.speech_vad_kind == "ten") {
-                vad_options.model = audition::SherpaTenVadModel{
-                    config.speech_vad_model_path};
+                audition::SherpaTenVadModel model{config.speech_vad_model_path};
+                model.threshold = config.speech_vad_threshold;
+                model.min_speech_duration = config.speech_vad_min_speech_seconds;
+                model.min_silence_duration = config.speech_vad_min_silence_seconds;
+                vad_options.model = std::move(model);
             } else {
-                vad_options.model = audition::SherpaSileroVadModel{
-                    config.speech_vad_model_path};
+                audition::SherpaSileroVadModel model{config.speech_vad_model_path};
+                model.threshold = config.speech_vad_threshold;
+                model.min_speech_duration = config.speech_vad_min_speech_seconds;
+                model.min_silence_duration = config.speech_vad_min_silence_seconds;
+                vad_options.model = std::move(model);
             }
             speech_vad = std::make_unique<audition::SherpaVad>(std::move(vad_options));
             std::shared_ptr<audition::IAsrEngine> asr;
