@@ -249,7 +249,8 @@ WebRtcAec3EchoCanceller& WebRtcAec3EchoCanceller::operator=(
     WebRtcAec3EchoCanceller&&) noexcept = default;
 
 BackendInfo WebRtcAec3EchoCanceller::backendInfo() const {
-    return {"webrtc-apm-aec3", "2.x"};
+    // Preserve the public backend identifier across the APM migration.
+    return {"webrtc-aec3", "2.x"};
 }
 
 std::unique_ptr<IEchoCancellerSession> WebRtcAec3EchoCanceller::createSession(
