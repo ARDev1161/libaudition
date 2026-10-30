@@ -1,6 +1,7 @@
 #include <audition/dsp/source_gain.hpp>
 #include <gtest/gtest.h>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 TEST(SourceGain, FactoryAndValidation) {
@@ -100,6 +101,35 @@ TEST(SourceGain, UnifiedApmAgc1AndAgc2HandleUnalignedHopsAndReset) {
         EXPECT_DOUBLE_EQ(gain->gainDb(), 0.0);
         EXPECT_EQ(gain->process(speech.data(), speech.size(), 16000U).size(),
                   speech.size());
+    }
+}
+
+// A rejected chunk must not leak a valid prefix into the next 10-ms APM
+// frame. Compare against an independent engine that never received it.
+TEST(SourceGain, UnifiedApmRejectsNonfiniteChunkWithoutMutatingStream) {
+    for (const char* implementation : {"webrtc_apm_agc1", "webrtc_apm_agc2"}) {
+        auto subject = audition::dsp::makeSourceGain(implementation);
+        auto control = audition::dsp::makeSourceGain(implementation);
+        const std::vector<float> prefix(64U, 0.002F);
+        EXPECT_EQ(subject->process(prefix.data(), prefix.size(), 16000U),
+                  control->process(prefix.data(), prefix.size(), 16000U));
+
+        std::vector<float> invalid(96U, 0.003F);
+        for (const float bad : {std::numeric_limits<float>::quiet_NaN(),
+                                std::numeric_limits<float>::infinity(),
+                                -std::numeric_limits<float>::infinity()}) {
+            invalid[48U] = bad;
+            EXPECT_THROW((void)subject->process(
+                             invalid.data(), invalid.size(), 16000U),
+                         std::invalid_argument);
+        }
+
+        const std::vector<float> recovery(160U, 0.004F);
+        for (int frame = 0; frame < 4; ++frame) {
+            EXPECT_EQ(subject->process(recovery.data(), recovery.size(), 16000U),
+                      control->process(recovery.data(), recovery.size(), 16000U));
+            EXPECT_DOUBLE_EQ(subject->gainDb(), control->gainDb());
+        }
     }
 }
 #endif

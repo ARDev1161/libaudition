@@ -190,12 +190,17 @@ public:
             throw std::invalid_argument("WebRTC APM needs 16/32/48 kHz mono PCM");
         if (engine_ && sample_rate != sample_rate_)
             throw std::invalid_argument("WebRTC APM sample rate changed; reset first");
+        // Reject the entire chunk before changing any streaming state.
+        // Otherwise a NaN/Inf mid-chunk can leave valid-looking PCM queued
+        // from a rejected call and contaminate the next source segment.
+        for (std::size_t i = 0; i < count; ++i) {
+            if (!std::isfinite(pcm[i]))
+                throw std::invalid_argument("Nonfinite WebRTC APM PCM");
+        }
         if (!engine_) initialize(sample_rate);
 
         std::vector<float> result(count, 0.0F);
         for (std::size_t i = 0; i < count; ++i) {
-            if (!std::isfinite(pcm[i]))
-                throw std::invalid_argument("Nonfinite WebRTC APM PCM");
             input_.push_back(pcm[i]);
             if (input_.size() == frame_size_) {
                 std::vector<float> processed(frame_size_);
