@@ -140,6 +140,64 @@ jobs:
         run: cmake --build --preset minimal --parallel
 
 
+  speexdsp-agc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SpeexDSP development headers and library
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libspeexdsp-dev
+      - name: Configure optional SpeexDSP source gain without Qt
+        run: >-
+          cmake -S . -B build-speexdsp -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SPEEXDSP_AGC=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build the Speex-enabled library and tests
+        run: cmake --build build-speexdsp --parallel 3
+      - name: Run real SpeexDSP gain regression tests
+        run: ctest --test-dir build-speexdsp --no-tests=error -R '^SourceGain[.]Speex' --output-on-failure
+      - name: Install exported SpeexDSP gain target
+        run: cmake --install build-speexdsp --prefix "$PWD/install-speexdsp"
+      - name: Build and run independent C++17 SpeexDSP consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-speex-consumer
+          cat > /tmp/libaudition-speex-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_speex_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_speexdsp)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-speex-consumer/main.cpp <<'CPP'
+          #include <audition/dsp/source_gain.hpp>
+          #include <cmath>
+          #include <vector>
+          int main() {
+              auto gain = audition::dsp::makeSourceGain("speex");
+              const std::vector<float> pcm(128U, 0.003F);
+              for (int i = 0; i < 40; ++i) {
+                  const auto output = gain->process(pcm.data(), pcm.size(), 16000U);
+                  if (output.size() != pcm.size()) return 1;
+                  for (float sample : output)
+                      if (!std::isfinite(sample) || std::abs(sample) > 1.0F) return 2;
+              }
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-speex-consumer \
+            -B /tmp/libaudition-speex-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-speexdsp"
+          cmake --build /tmp/libaudition-speex-consumer/build --parallel
+          /tmp/libaudition-speex-consumer/build/consumer
+
   efficientat-real-weights:
     runs-on: ubuntu-latest
     steps:

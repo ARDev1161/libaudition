@@ -166,6 +166,9 @@ target_link_libraries(libaudition_tests PRIVATE
     audition::spatial
     GTest::gtest_main)
 libaudition_configure_target(libaudition_tests)
+if(LIBAUDITION_WITH_SPEEXDSP_AGC)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_speexdsp)
+endif()
 if(LIBAUDITION_WITH_WEBRTC_APM)
     target_link_libraries(libaudition_tests PRIVATE WebRTCAPM::APM)
     target_compile_definitions(libaudition_tests PRIVATE LIBAUDITION_WITH_WEBRTC_APM=1)

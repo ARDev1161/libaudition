@@ -46,6 +46,31 @@ ctest --test-dir build-sherpa -L speech-integration --output-on-failure
 ctest --test-dir build-qt -L qt --output-on-failure
 ```
 
+## Optional SpeexDSP AGC
+
+The SpeexDSP gain baseline is a header-only optional backend. For a reusable
+installed SDK target, configure `LIBAUDITION_WITH_SPEEXDSP_AGC=ON`, install
+SpeexDSP development headers/library and link `audition::backend_speexdsp`
+from an independent C++17 consumer. This target propagates the include paths,
+link library and `LIBAUDITION_WITH_SPEEXDSP_AGC=1` definition. The minimal
+build remains independent of SpeexDSP, and Qt retains its existing opportunistic
+auto-detection when the SDK-wide option is disabled.
+
+```sh
+# Ubuntu/Debian prerequisite: sudo apt-get install libspeexdsp-dev
+cmake -S . -B build-speexdsp -G Ninja \
+  -DLIBAUDITION_WITH_SPEEXDSP_AGC=ON \
+  -DLIBAUDITION_WITH_SPDLOG=OFF \
+  -DLIBAUDITION_BUILD_TESTS=ON
+cmake --build build-speexdsp --parallel
+ctest --test-dir build-speexdsp -R '^SourceGain[.]Speex' \
+  --no-tests=error --output-on-failure
+```
+
+The dedicated `speexdsp-agc` CI job also installs the package and compiles
+an external C++17 consumer. These tests check bounded output, nonfinite input
+rejection and state recovery, not speech-quality metrics or WER.
+
 ## Instrumented C++ core coverage
 
 The `cpp-coverage` GitHub Actions job compiles a separate Debug configuration

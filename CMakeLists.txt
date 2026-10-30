@@ -15,6 +15,8 @@ option(LIBAUDITION_BUILD_DOCS "Build Doxygen documentation" OFF)
 option(LIBAUDITION_WITH_SPDLOG "Build the spdlog logging adapter" ON)
 option(LIBAUDITION_WITH_ODAS "Build the direct libodas spatial-audio backend" OFF)
 option(LIBAUDITION_WITH_LIBSAMPLERATE "Build the libsamplerate resampling backend" OFF)
+option(LIBAUDITION_WITH_SPEEXDSP_AGC
+    "Export the optional SpeexDSP per-source AGC processor for library consumers" OFF)
 option(LIBAUDITION_WITH_WEBRTC_AEC3 "Build the WebRTC AEC3 echo-cancellation backend" OFF)
 option(LIBAUDITION_WITH_WEBRTC_APM
     "Enable unified WebRTC APM 2.x (AGC1/AGC2 and AEC3) backend"
@@ -54,6 +56,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(Dependencies)
+if(LIBAUDITION_WITH_SPEEXDSP_AGC)
+    find_package(SpeexDSP REQUIRED)
+endif()
 if(LIBAUDITION_WITH_WEBRTC_APM)
     libaudition_find_or_fetch_webrtc_apm()
 endif()
@@ -94,6 +99,26 @@ endif()
 if(LIBAUDITION_WITH_LIBSAMPLERATE)
     libaudition_find_or_fetch_samplerate()
     add_subdirectory(backends/samplerate)
+endif()
+
+# Source gain is header-only; export the SpeexDSP link and compile contract
+# explicitly so non-Qt C++17 consumers can select it without manual flags.
+if(LIBAUDITION_WITH_SPEEXDSP_AGC)
+    add_library(libaudition_backend_speexdsp INTERFACE)
+    add_library(audition::backend_speexdsp ALIAS libaudition_backend_speexdsp)
+    set_target_properties(libaudition_backend_speexdsp PROPERTIES
+        EXPORT_NAME backend_speexdsp)
+    target_link_libraries(libaudition_backend_speexdsp
+        INTERFACE SpeexDSP::SpeexDSP)
+    target_compile_definitions(libaudition_backend_speexdsp
+        INTERFACE LIBAUDITION_WITH_SPEEXDSP_AGC=1)
+    target_compile_features(libaudition_backend_speexdsp
+        INTERFACE cxx_std_17)
+    target_include_directories(libaudition_backend_speexdsp INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    install(TARGETS libaudition_backend_speexdsp
+        EXPORT libauditionTargets)
 endif()
 
 # Expose the APM-backed gain processors as an installable dependency target.
@@ -250,5 +275,6 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindODAS.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSampleRate.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSherpaOnnx.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSpeexDSP.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindWebRTCAPM.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")

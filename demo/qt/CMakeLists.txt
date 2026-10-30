@@ -1,7 +1,9 @@
 option(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC
     "Enable SpeexDSP AGC in the Qt acoustic scene when available" ON)
 set(LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC OFF)
-if(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC)
+if(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC AND LIBAUDITION_WITH_SPEEXDSP_AGC)
+    set(LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC ON)
+elseif(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(SPEEXDSP QUIET IMPORTED_TARGET speexdsp)
@@ -257,8 +259,14 @@ if(BUILD_TESTING AND LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
 endif()
 
 if(LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC)
-    target_link_libraries(libaudition_qt_demo PRIVATE PkgConfig::SPEEXDSP)
-    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_SPEEXDSP_AGC=1)
+    if(LIBAUDITION_WITH_SPEEXDSP_AGC)
+        target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_speexdsp)
+    else()
+        # Preserve the demo's historical optional auto-discovery even when
+        # the installed SDK's SpeexDSP target is disabled.
+        target_link_libraries(libaudition_qt_demo PRIVATE PkgConfig::SPEEXDSP)
+        target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_SPEEXDSP_AGC=1)
+    endif()
 else()
     target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_SPEEXDSP_AGC=0)
 endif()
