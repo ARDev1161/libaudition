@@ -672,6 +672,12 @@ They do **not** change ODAS SSL proposals or SST acquisition: for a
 silent **Tracked sources** table, inspect ALSA/SSL levels and use the
 separate native ODAS SST tuning controls. Lower thresholds may increase
 false positives, and their effects must be measured using recorded speech.
+The same **Min. speech** setting is also applied to the
+`PerSourceSpeechRuntime` voiced-sample minimum, so the generic ASR
+segmenter does not reject utterances already admitted by a more permissive
+Sherpa VAD. A configured zero-second minimum maps to one voiced sample,
+the smallest value supported by the runtime. This is an admission
+threshold, not a guarantee of correct transcription.
 The hardware-free `qt_vad_tuning_controls` test validates UI control
 defaults and edits only; it does not establish real-speech accuracy.
 

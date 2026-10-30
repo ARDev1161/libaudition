@@ -447,6 +447,15 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             }
             audition::PerSourceSpeechOptions pipeline_options{};
             pipeline_options.sample_rate_hz = config.sample_rate_hz;
+            // Sherpa VAD and our independent segment assembler both enforce
+            // a minimum voiced duration. Match them: the runtime's default
+            // 100-ms filter would otherwise silently reject a short phrase
+            // admitted by a lower configured VAD minimum (e.g. 50 ms).
+            // The runtime requires at least one voiced sample.
+            pipeline_options.min_speech_samples = static_cast<std::size_t>(
+                std::max(1L, std::lround(
+                    static_cast<double>(config.speech_vad_min_speech_seconds) *
+                    static_cast<double>(config.sample_rate_hz))));
             speech_runtime = std::make_unique<audition::PerSourceSpeechRuntime>(
                 *speech_vad, std::move(asr), pipeline_options);
             audition::SpeechPcmIngressOptions ingress_options{};
