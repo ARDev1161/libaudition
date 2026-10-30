@@ -96,6 +96,28 @@ if(LIBAUDITION_WITH_LIBSAMPLERATE)
     add_subdirectory(backends/samplerate)
 endif()
 
+# Expose the APM-backed gain processors as an installable dependency target.
+# The gain adapter lives in a public header; consumers need both the APM
+# include paths and the compile definition when using its factory.
+if(LIBAUDITION_WITH_WEBRTC_APM)
+    add_library(libaudition_backend_webrtc_apm INTERFACE)
+    add_library(audition::backend_webrtc_apm ALIAS libaudition_backend_webrtc_apm)
+    set_target_properties(libaudition_backend_webrtc_apm PROPERTIES
+        EXPORT_NAME backend_webrtc_apm)
+    target_link_libraries(libaudition_backend_webrtc_apm
+        INTERFACE WebRTCAPM::APM)
+    target_compile_definitions(libaudition_backend_webrtc_apm
+        INTERFACE LIBAUDITION_WITH_WEBRTC_APM=1)
+    target_compile_features(libaudition_backend_webrtc_apm
+        INTERFACE cxx_std_20)
+    target_include_directories(libaudition_backend_webrtc_apm
+        INTERFACE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    install(TARGETS libaudition_backend_webrtc_apm
+        EXPORT libauditionTargets)
+endif()
+
 if(LIBAUDITION_WITH_WEBRTC_AEC3)
     add_subdirectory(backends/webrtc_aec3)
 endif()
@@ -228,4 +250,5 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindODAS.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSampleRate.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSherpaOnnx.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindWebRTCAPM.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")
