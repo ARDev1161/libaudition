@@ -60,6 +60,10 @@ BACKENDS = {
         "ODAS DOA/track numeric gates": r"^audio_integration_near_plane_(static|moving|two)$",
     },
     "LIBAUDITION_WITH_LIBSAMPLERATE": {"resampler": r"^SamplerateBackend\."},
+    "LIBAUDITION_WITH_SPEEXDSP_AGC": {
+        "SpeexDSP uneven hops and reset": r"^SourceGain\.SpeexHandlesUnevenInputFramesAndReset$",
+        "SpeexDSP invalid input and recovery": r"^SourceGain\.SpeexRejectsNonfiniteChunkWithoutMutatingStream$",
+    },
     "LIBAUDITION_WITH_WEBRTC_AEC3": {"AEC3": r"^WebRtcAec3Backend\."},
     "LIBAUDITION_WITH_WEBRTC_APM": {
         "APM AGC1/AGC2 streaming": r"^SourceGain\.UnifiedApm",
