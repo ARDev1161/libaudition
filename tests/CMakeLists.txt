@@ -838,6 +838,18 @@ target_link_libraries(recording_audio_apis_test PRIVATE audition::core audition:
 libaudition_configure_target(recording_audio_apis_test)
 add_test(NAME recording_audio_apis_test COMMAND recording_audio_apis_test)
 
+# Hardware-free integration: live speech DSP success/failure, WAV PCM samples,
+# JSON failure-gap reasons, independent sources and retired track-ID reuse.
+add_executable(source_speech_recording_integration_test
+    source_speech_recording_integration_test.cpp)
+target_link_libraries(source_speech_recording_integration_test PRIVATE
+    Threads::Threads audition::core audition::dsp audition::io audition::pipeline)
+libaudition_configure_target(source_speech_recording_integration_test)
+add_test(NAME source_speech_recording_integration_test
+    COMMAND source_speech_recording_integration_test)
+set_tests_properties(source_speech_recording_integration_test PROPERTIES
+    LABELS "speech;recording;wav-integration;error-recovery" TIMEOUT 30)
+
 # Recording session acceptance: reusable identity, timeline, gap and JSON APIs.
 add_executable(source_recording_session_test source_recording_session_test.cpp)
 target_link_libraries(source_recording_session_test PRIVATE
