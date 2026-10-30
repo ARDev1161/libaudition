@@ -128,7 +128,7 @@ dsp/basic.cpp dsp/audio_frontend.cpp dsp/quality.cpp
 BACKEND_SOURCE_UNITS = {
     "odas": "odas_options.cpp odas_config.cpp odas_runtime.cpp odas_spatial_engine.cpp",
     "samplerate": "samplerate_resampler.cpp",
-    "webrtc_aec3": "webrtc_aec3_echo_canceller.cpp",
+    "webrtc_aec3": "webrtc_apm_echo_canceller.cpp",
     "sherpa": """sherpa_config.cpp sherpa_vad.cpp sherpa_offline_asr.cpp
         sherpa_streaming_asr.cpp sherpa_keyword_spotter.cpp sherpa_language_identifier.cpp
         sherpa_audio_tagger.cpp sherpa_speech_denoiser_config.cpp
