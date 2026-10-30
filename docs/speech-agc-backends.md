@@ -36,6 +36,25 @@ and playback reference and belongs before ODAS.
 The reported `gainDb()` is the energy ratio measured per processed
 frame, not an internal WebRTC gain target.
 
+## Downstream CMake consumers
+
+A libaudition build with unified APM enabled exports the
+`audition::backend_webrtc_apm` INTERFACE target. It propagates the APM
+include paths, link dependency and `LIBAUDITION_WITH_WEBRTC_APM=1`, so
+applications using `<audition/dsp/source_gain.hpp>` do not need to
+configure WebRTC macros manually.
+
+```cmake
+find_package(libaudition CONFIG REQUIRED)
+target_link_libraries(my_robot PRIVATE audition::backend_webrtc_apm)
+```
+
+The installed package also provides `FindWebRTCAPM.cmake`. When APM was
+fetched as part of the libaudition build, the installation includes its
+matching shared library and public development headers. If a system APM was
+used, install the compatible system `webrtc-audio-processing-2`
+development package on downstream machines.
+
 ## SpeexDSP
 
 On Ubuntu/Debian install `libspeexdsp-dev`. Configure with
