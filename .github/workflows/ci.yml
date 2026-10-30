@@ -768,6 +768,44 @@ jobs:
           LD_LIBRARY_PATH="$PWD/install-aec3/lib:${LD_LIBRARY_PATH:-}"             /tmp/libaudition-aec3-consumer/build/consumer
 
 
+      - name: Verify installed unified APM AGC1/AGC2 from C++20 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-apm-gain-consumer
+          cat > /tmp/libaudition-apm-gain-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_apm_gain_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_webrtc_apm)
+          target_compile_features(consumer PRIVATE cxx_std_20)
+          CMAKE
+          cat > /tmp/libaudition-apm-gain-consumer/main.cpp <<'CPP'
+          #include <audition/dsp/source_gain.hpp>
+          #include <cmath>
+          #include <vector>
+          int main() {
+              std::vector<float> pcm(160, 0.003F);
+              for (const auto* name : {"webrtc_apm_agc1", "webrtc_apm_agc2"}) {
+                  auto gain = audition::dsp::makeSourceGain(name);
+                  for (int i = 0; i < 50; ++i) {
+                      auto output = gain->process(pcm.data(), pcm.size(), 16000U);
+                      if (output.size() != pcm.size()) return 1;
+                      for (auto sample : output)
+                          if (!std::isfinite(sample)) return 2;
+                  }
+              }
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-apm-gain-consumer \
+            -B /tmp/libaudition-apm-gain-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-aec3"
+          cmake --build /tmp/libaudition-apm-gain-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-aec3/lib:${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-apm-gain-consumer/build/consumer
+
+
   qt-odas-sherpa-classifier:
     runs-on: ubuntu-latest
     steps:
