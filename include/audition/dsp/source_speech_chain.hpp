@@ -45,7 +45,15 @@ inline std::vector<float> processSourceSpeechChain(
         return amplified;
     }
     if (ns) return denoised;
-    return {pcm, pcm + count};
+    // Keep the empty and invalid-pointer cases above explicit. In optimized
+    // GCC builds a pointer-range vector constructor can be inlined into a
+    // memcpy with a spurious -Wnonnull when testing the rejected null input.
+    // An indexed copy preserves the validated count without constructing
+    // a potentially null pointer range.
+    std::vector<float> passthrough(count);
+    for (std::size_t i = 0; i < count; ++i)
+        passthrough[i] = pcm[i];
+    return passthrough;
 }
 
 } // namespace audition::dsp
