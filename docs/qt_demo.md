@@ -200,6 +200,17 @@ offline WAV replay. The click-to-ASR feature remains separate future work.
 
 #### Live capture liveness
 
+Recoverable ALSA overrun/suspend responses (`-EPIPE` /
+`-ESTRPIPE`) are handled consistently whether they arrive from
+`snd_pcm_readi()` or from `snd_pcm_wait()` (including a zero-frame
+read). Recovery discards the incomplete hop, prepares the PCM stream,
+resets ODAS and its source generations, then continues accepting audio.
+This is a discontinuity, not an ordinary acoustic pause. Other ALSA
+errors still terminate capture and are reported; recurring XRUNs should
+be investigated as device or scheduling issues rather than hidden by
+adjusting VAD/ODAS sensitivity.
+
+
 The Qt status line independently monitors the capture hop counter.
 After 15 seconds without an initial completed ALSA/ODAS hop it shows a
 **slow initialization** warning. After the first completed hop, a

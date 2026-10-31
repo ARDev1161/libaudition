@@ -686,6 +686,37 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             1U, static_cast<std::uint64_t>(
                 std::round(static_cast<double>(config.sample_rate_hz) /
                            (20.0 * static_cast<double>(config.hop_size)))));
+        // Both readi() and wait() may report the same recoverable ALSA
+        // overrun/suspend. Never terminate capture just because the error
+        // first surfaced during wait for the next available PCM period.
+        const auto recoverAlsaDiscontinuity = [&]() {
+            ++xruns;
+            filled = 0;
+            for (auto& meter : channelMeters) meter.reset();
+            sssMeters.clear();
+            odasStageMonitor.reset(); // start a fresh continuous ODAS epoch
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            speechMeters.clear();
+#endif
+            failureStage = "ALSA overrun recovery";
+            requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
+            failureStage = "ODAS reset after ALSA xrun";
+            engine.reset(); // discontinuous samples cannot share ODAS state
+            drainClassification();
+            source_lifecycle.clear([&](std::uint64_t id) {
+                retireSource(id);
+            });
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            drainAsr();
+#endif
+        };
+        const auto handleAlsaWait = [&](int waited) {
+            if (waited == -EPIPE || waited == -ESTRPIPE) {
+                recoverAlsaDiscontinuity();
+            } else if (waited < 0 && waited != -EINTR) {
+                throw std::runtime_error{errorText("ALSA wait", waited)};
+            }
+        };
         while (!stop_requested_.load()) {
 #if LIBAUDITION_DEMO_HAS_SHERPA
             {
@@ -758,46 +789,28 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 }
             }
             // readi() can return a short interleaved frame count.
+            failureStage = "ALSA read / wait";
             const auto result = snd_pcm_readi(
                 pcm.get(), native.data() + filled * channelCount,
                 static_cast<snd_pcm_uframes_t>(hop - filled));
             if (result == -EAGAIN) {
-                const int waited = snd_pcm_wait(pcm.get(), 100);
-                if (waited < 0 && waited != -EINTR) {
-                    throw std::runtime_error{errorText("ALSA wait", waited)};
-                }
+                handleAlsaWait(snd_pcm_wait(pcm.get(), 100));
                 continue;
             }
             if (result == -EINTR) {
                 continue;
             }
             if (result == -EPIPE || result == -ESTRPIPE) {
-                ++xruns;
-                filled = 0;
-                for (auto& meter : channelMeters) meter.reset();
-                sssMeters.clear();
-                odasStageMonitor.reset(); // compare only one continuous ODAS epoch
-#if LIBAUDITION_DEMO_HAS_SHERPA
-                speechMeters.clear();
-#endif
-                requireAlsa(snd_pcm_prepare(pcm.get()), "ALSA overrun recovery");
-                failureStage = "ODAS reset after ALSA xrun";
-                engine.reset(); // discontinuous samples must not share ODAS state
-                drainClassification();
-                source_lifecycle.clear([&](std::uint64_t id) {
-                    retireSource(id);
-                });
-#if LIBAUDITION_DEMO_HAS_SHERPA
-                drainAsr();
-#endif
+                recoverAlsaDiscontinuity();
                 continue;
             }
             if (result < 0) {
                 throw std::runtime_error{errorText("ALSA capture", static_cast<int>(result))};
             }
             if (result == 0) {
-                // Do not spin if a plugin reports no samples.
-                (void)snd_pcm_wait(pcm.get(), 50);
+                // Do not spin if a plugin reports no samples. Some plugins
+                // report an XRUN only when wait() is called, not on readi().
+                handleAlsaWait(snd_pcm_wait(pcm.get(), 50));
                 continue;
             }
             filled += static_cast<std::size_t>(result);
@@ -827,6 +840,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             failureStage = "ODAS process";
             const auto resultFrame = engine.process(block.view());
             ++hops;
+            failureStage = "source lifecycle / recording / speech processing";
             // Observe all ODAS hops, including those skipped by the UI
             // stride. A positive SSL score is a proposal, not a tracked ID.
             const bool hasPositiveSsl = std::any_of(
@@ -986,6 +1000,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             if (hops % visualStride != 0U) {
                 continue;
             }
+            failureStage = "capture snapshot publication";
             std::vector<AcousticSceneTrack> tracks;
             tracks.reserve(resultFrame.tracks.size());
             for (const auto& t : resultFrame.tracks) {
