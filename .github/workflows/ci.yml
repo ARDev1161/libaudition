@@ -140,6 +140,64 @@ jobs:
         run: cmake --build --preset minimal --parallel
 
 
+  speexdsp-agc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SpeexDSP development headers and library
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libspeexdsp-dev
+      - name: Configure optional SpeexDSP source gain without Qt
+        run: >-
+          cmake -S . -B build-speexdsp -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBAUDITION_WITH_SPEEXDSP_AGC=ON
+          -DLIBAUDITION_WITH_SPDLOG=OFF
+          -DLIBAUDITION_BUILD_QT_DEMO=OFF
+          -DLIBAUDITION_BUILD_TESTS=ON
+          -DLIBAUDITION_BUILD_EXAMPLES=OFF
+          -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build the Speex-enabled library and tests
+        run: cmake --build build-speexdsp --parallel 3
+      - name: Run real SpeexDSP gain regression tests
+        run: ctest --test-dir build-speexdsp --no-tests=error -R '^SourceGain[.]Speex' --output-on-failure
+      - name: Install exported SpeexDSP gain target
+        run: cmake --install build-speexdsp --prefix "$PWD/install-speexdsp"
+      - name: Build and run independent C++17 SpeexDSP consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-speex-consumer
+          cat > /tmp/libaudition-speex-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_speex_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_speexdsp)
+          target_compile_features(consumer PRIVATE cxx_std_17)
+          CMAKE
+          cat > /tmp/libaudition-speex-consumer/main.cpp <<'CPP'
+          #include <audition/dsp/source_gain.hpp>
+          #include <cmath>
+          #include <vector>
+          int main() {
+              auto gain = audition::dsp::makeSourceGain("speex");
+              const std::vector<float> pcm(128U, 0.003F);
+              for (int i = 0; i < 40; ++i) {
+                  const auto output = gain->process(pcm.data(), pcm.size(), 16000U);
+                  if (output.size() != pcm.size()) return 1;
+                  for (float sample : output)
+                      if (!std::isfinite(sample) || std::abs(sample) > 1.0F) return 2;
+              }
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-speex-consumer \
+            -B /tmp/libaudition-speex-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-speexdsp"
+          cmake --build /tmp/libaudition-speex-consumer/build --parallel
+          /tmp/libaudition-speex-consumer/build/consumer
+
   efficientat-real-weights:
     runs-on: ubuntu-latest
     steps:
@@ -708,11 +766,11 @@ jobs:
       - name: Install Qt 5 Widgets
         run: |
           sudo apt-get update
-          sudo apt-get install -y qtbase5-dev
+          sudo apt-get install -y qtbase5-dev gdb meson ninja-build libabsl-dev pkg-config
       - name: Configure WebRTC AEC3 backend
         run: >-
           cmake -S . -B build-aec3 -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DLIBAUDITION_WITH_WEBRTC_AEC3=ON
           -DLIBAUDITION_WITH_SPDLOG=OFF
           -DLIBAUDITION_BUILD_TESTS=ON
@@ -728,7 +786,18 @@ jobs:
       - name: Qt async aec3 functional smoke test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --no-tests=error --test-dir build-aec3 -R '^qt_aec3$' --output-on-failure
+        shell: bash
+        run: |
+          set +e
+          ctest --no-tests=error --test-dir build-aec3 -R '^qt_aec3$' --output-on-failure
+          result=$?
+          if [ "$result" -ne 0 ]; then
+            echo "::group::AEC3 failure backtrace"
+            gdb --batch -ex run -ex 'thread apply all bt 24' --args \
+              build-aec3/demo/qt/libaudition_qt_demo --model-self-test=aec3
+            echo "::endgroup::"
+          fi
+          exit "$result"
       - name: Test
         run: ctest --no-tests=error --test-dir build-aec3 --output-on-failure
       - name: Install
@@ -755,6 +824,44 @@ jobs:
           cmake -S /tmp/libaudition-aec3-consumer             -B /tmp/libaudition-aec3-consumer/build -G Ninja             -DCMAKE_PREFIX_PATH="$PWD/install-aec3"
           cmake --build /tmp/libaudition-aec3-consumer/build --parallel
           LD_LIBRARY_PATH="$PWD/install-aec3/lib:${LD_LIBRARY_PATH:-}"             /tmp/libaudition-aec3-consumer/build/consumer
+
+
+      - name: Verify installed unified APM AGC1/AGC2 from C++20 consumer
+        shell: bash
+        run: |
+          mkdir -p /tmp/libaudition-apm-gain-consumer
+          cat > /tmp/libaudition-apm-gain-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_apm_gain_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_webrtc_apm)
+          target_compile_features(consumer PRIVATE cxx_std_20)
+          CMAKE
+          cat > /tmp/libaudition-apm-gain-consumer/main.cpp <<'CPP'
+          #include <audition/dsp/source_gain.hpp>
+          #include <cmath>
+          #include <vector>
+          int main() {
+              std::vector<float> pcm(160, 0.003F);
+              for (const auto* name : {"webrtc_apm_agc1", "webrtc_apm_agc2"}) {
+                  auto gain = audition::dsp::makeSourceGain(name);
+                  for (int i = 0; i < 50; ++i) {
+                      auto output = gain->process(pcm.data(), pcm.size(), 16000U);
+                      if (output.size() != pcm.size()) return 1;
+                      for (auto sample : output)
+                          if (!std::isfinite(sample)) return 2;
+                  }
+              }
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-apm-gain-consumer \
+            -B /tmp/libaudition-apm-gain-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-aec3"
+          cmake --build /tmp/libaudition-apm-gain-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-aec3/lib:${LD_LIBRARY_PATH:-}" \
+            /tmp/libaudition-apm-gain-consumer/build/consumer
 
 
   qt-odas-sherpa-classifier:
@@ -1657,7 +1764,7 @@ jobs:
             -B /tmp/libaudition-gtsam-consumer/build -G Ninja \
             -DCMAKE_PREFIX_PATH="$PWD/install-gtsam"
           cmake --build /tmp/libaudition-gtsam-consumer/build --parallel
-          LD_LIBRARY_PATH="$PWD/install-gtsam/lib:\${LD_LIBRARY_PATH:-}" \
+          LD_LIBRARY_PATH="$PWD/install-gtsam/lib:${LD_LIBRARY_PATH:-}" \
             /tmp/libaudition-gtsam-consumer/build/consumer
 
   full-demo-combination:
@@ -1673,7 +1780,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config qt6-base-dev \
             qt6-multimedia-dev doxygen libasound2-dev libfftw3-dev \
-            libconfig-dev libpulse-dev
+            libconfig-dev libpulse-dev meson libabsl-dev
       - name: Configure all software backend options from public CMake preset
         run: cmake --preset full-demo-no-model-download
       - name: Build combined Qt executable and all active backend dependencies
@@ -1682,3 +1789,4 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --no-tests=error --test-dir build/full-demo-no-model-download -R '^qt_self_test$' --output-on-failure
+

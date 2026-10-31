@@ -36,6 +36,8 @@ CORE = {
     "basic DSP / channel conversions": r"^Dsp\.",
     "WAV parser and streaming I/O": r"^WavIoTest\.",
     "strict timeline JSON parser": r"^RecordingTimelineJson\.",
+    "source noise suppression bypass": r"^SourceNoiseSuppression\.",
+    "source speech processing chain": r"^SourceSpeechChain\.",
     "multi-channel audio frontend": r"^AudioFrontend\.",
     "audio quality": r"^AudioQuality\.",
     "speech contracts": r"^SpeechContracts\.",
@@ -60,7 +62,16 @@ BACKENDS = {
         "ODAS DOA/track numeric gates": r"^audio_integration_near_plane_(static|moving|two)$",
     },
     "LIBAUDITION_WITH_LIBSAMPLERATE": {"resampler": r"^SamplerateBackend\."},
+    "LIBAUDITION_WITH_SPEEXDSP_AGC": {
+        "SpeexDSP uneven hops and reset": r"^SourceGain\.SpeexHandlesUnevenInputFramesAndReset$",
+        "SpeexDSP invalid input and recovery": r"^SourceGain\.SpeexRejectsNonfiniteChunkWithoutMutatingStream$",
+    },
     "LIBAUDITION_WITH_WEBRTC_AEC3": {"AEC3": r"^WebRtcAec3Backend\."},
+    "LIBAUDITION_WITH_WEBRTC_APM": {
+        "APM noise suppression": r"^WebRtcApmNoiseSuppressor\.",
+        "APM NS+AGC2 combined streaming": r"^SourceSpeechChain\.WebRtcNSAGC2IndependentSourcesAndChunkBoundaries$",
+        "APM AGC1/AGC2 streaming": r"^SourceGain\.UnifiedApm",
+    },
     "LIBAUDITION_WITH_SHERPA": {
         "Sherpa configuration": r"^SherpaConfig\.",
         "Sherpa VAD": r"^SherpaVad\.",
@@ -78,6 +89,9 @@ BACKENDS = {
         "offline and streaming denoising constraints": r"^SherpaDenoiserContract\.",
         "diarization clustering and timing constraints": r"^SherpaDiarizationContract\.",
         "speaker embedding model constraints": r"^SherpaSpeakerEmbeddingContract\.",
+    },
+    "LIBAUDITION_WITH_WHISPERCPP": {
+        "whisper.cpp adapter smoke": r"^whispercpp_adapter_smoke$",
     },
     "LIBAUDITION_WITH_CLAP": {
         "CLAP audio frontend": r"^ClapFrontend\.",
@@ -122,7 +136,7 @@ dsp/basic.cpp dsp/audio_frontend.cpp dsp/quality.cpp
 BACKEND_SOURCE_UNITS = {
     "odas": "odas_options.cpp odas_config.cpp odas_runtime.cpp odas_spatial_engine.cpp",
     "samplerate": "samplerate_resampler.cpp",
-    "webrtc_aec3": "webrtc_aec3_echo_canceller.cpp",
+    "webrtc_aec3": "webrtc_apm_echo_canceller.cpp",
     "sherpa": """sherpa_config.cpp sherpa_vad.cpp sherpa_offline_asr.cpp
         sherpa_streaming_asr.cpp sherpa_keyword_spotter.cpp sherpa_language_identifier.cpp
         sherpa_audio_tagger.cpp sherpa_speech_denoiser_config.cpp
@@ -130,6 +144,7 @@ BACKEND_SOURCE_UNITS = {
         sherpa_speaker_config.cpp sherpa_speaker_embedder.cpp sherpa_speaker_verifier.cpp
         sherpa_speaker_identifier.cpp sherpa_speaker_diarizer.cpp
         sherpa_tts_config.cpp sherpa_tts.cpp""",
+    "whispercpp": "whispercpp_asr.cpp",
     "clap": "clap_features.cpp clap_audio_embedder.cpp roberta_tokenizer.cpp clap_text_encoder.cpp clap_open_vocabulary_classifier.cpp",
     "yamnet": "yamnet_audio_tagger.cpp",
     "efficientat": "efficientat_audio_tagger.cpp frontend.cpp resampler.cpp",

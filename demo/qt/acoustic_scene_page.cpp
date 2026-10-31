@@ -2,6 +2,7 @@
 #include "alsa_live_capture.hpp"
 #include "odas_respeaker_profile.hpp"
 #include "acoustic_sphere_widget.hpp"
+#include "live_capture_progress_monitor.hpp"
 #include "wav_io.hpp"
 #include "playback_normalizer.hpp"
 #include "recording_timeline_view.hpp"
@@ -29,6 +30,10 @@
 #include <QComboBox>
 #include <QFileDialog>
 #include <QFile>
+#include <QDir>
+#include <QFileInfo>
+#include <QStandardItemModel>
+#include <QSettings>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -37,6 +42,8 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMessageBox>
+#include <QCoreApplication>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -52,10 +59,12 @@
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -222,9 +231,27 @@ QString directionSummary(const AcousticSceneTrack& track) {
 QDialog* createRecordingPlaybackDialog(
     QWidget* parent, std::uint64_t id, const QString& sourcePath,
     std::uint64_t sampleCount) {
+    return createRecordingPlaybackDialog(parent, id, sourcePath, sampleCount, {}, {});
+}
+
+QDialog* createRecordingPlaybackDialog(
+    QWidget* parent, std::uint64_t id, const QString& sourcePath,
+    std::uint64_t sampleCount,
+    std::function<std::pair<QString, QString>()> liveAnnotations) {
+    return createRecordingPlaybackDialog(parent, id, sourcePath, sampleCount,
+                                         std::move(liveAnnotations), {});
+}
+
+QDialog* createRecordingPlaybackDialog(
+    QWidget* parent, std::uint64_t id, const QString& sourcePath,
+    std::uint64_t sampleCount,
+    std::function<std::pair<QString, QString>()> liveAnnotations,
+    std::function<QString()> asrDiagnostics) {
 #if !LIBAUDITION_DEMO_HAS_MULTIMEDIA
     static_cast<void>(sourcePath);
     static_cast<void>(sampleCount);
+    static_cast<void>(liveAnnotations);
+    static_cast<void>(asrDiagnostics);
 #endif
         auto* dialog = new QDialog(parent);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -248,10 +275,49 @@ QDialog* createRecordingPlaybackDialog(
         auto* soundLane = new demo::RecordingTimelineView(dialog);
         auto* speechTitle = new QLabel{"Transcript / ASR", dialog};
         auto* speechLane = new demo::RecordingTimelineView(dialog);
+        auto* currentSound = new QLineEdit{dialog};
+        currentSound->setObjectName("recordingPlaybackCurrentSound");
+        currentSound->setReadOnly(true);
+        currentSound->setPlaceholderText("Waiting for sound classification…");
+        auto* currentSpeech = new QLineEdit{dialog};
+        currentSpeech->setObjectName("recordingPlaybackCurrentSpeech");
+        currentSpeech->setReadOnly(true);
+        currentSpeech->setPlaceholderText("Waiting for ASR…");
         column->addWidget(soundTitle);
+        column->addWidget(currentSound);
         column->addWidget(soundLane);
         column->addWidget(speechTitle);
+        column->addWidget(currentSpeech);
         column->addWidget(speechLane);
+        auto* showAsrLog = new QPushButton{"Source log…", dialog};
+        showAsrLog->setObjectName("recordingPlaybackSourceLog");
+        column->addWidget(showAsrLog);
+        QObject::connect(showAsrLog, &QPushButton::clicked, dialog, [=]() {
+            auto* logDialog = new QDialog{dialog};
+            logDialog->setAttribute(Qt::WA_DeleteOnClose);
+            logDialog->setWindowTitle(QString("Source #%1 · Source diagnostics").arg(id));
+            logDialog->resize(850, 450);
+            auto* logLayout = new QVBoxLayout{logDialog};
+            auto* logText = new QPlainTextEdit{logDialog};
+            logText->setReadOnly(true);
+            logText->setObjectName("recordingPlaybackSourceLogText");
+            logText->setPlaceholderText("No source events recorded yet.");
+            logLayout->addWidget(logText);
+            auto* updateLog = new QTimer{logDialog};
+            const auto refreshLog = [=]() {
+                const QString next = asrDiagnostics ? asrDiagnostics() : QString{};
+                if (next != logText->toPlainText()) {
+                    const auto scrollbar = logText->verticalScrollBar();
+                    const bool atBottom = scrollbar->value() >= scrollbar->maximum() - 2;
+                    logText->setPlainText(next);
+                    if (atBottom) scrollbar->setValue(scrollbar->maximum());
+                }
+            };
+            QObject::connect(updateLog, &QTimer::timeout, logDialog, refreshLog);
+            updateLog->start(500);
+            refreshLog();
+            logDialog->show();
+        });
         column->addWidget(normalize);
         column->addWidget(gainLabel);
         column->addWidget(playback);
@@ -309,20 +375,55 @@ QDialog* createRecordingPlaybackDialog(
                                  .arg((duration / 1000) % 60, 2, 10, QChar('0')));
                          });
         QObject::connect(progress, &QSlider::sliderMoved, media, &QMediaPlayer::setPosition);
-        {
-            const auto annotationPath = std::filesystem::path{
-                sourcePath.toStdString() + ".json"};
-            try {
-                const auto timeline = audition::readRecordingTimelineJson(annotationPath);
-                const auto rate = timeline.sampleRateHz();
-                const auto duration = rate == 0 ? 0 :
-                    static_cast<qint64>(sampleCount * 1000ULL / rate);
-                soundLane->load(timeline, true, duration);
-                speechLane->load(timeline, false, duration);
-            } catch (const std::exception&) {
-                // WAV playback remains available without a completed sidecar.
+        const auto annotationPath = std::filesystem::path{
+            sourcePath.toStdString() + ".json"};
+        auto timeline = std::make_shared<std::optional<audition::RecordingTimeline>>();
+        auto* annotationTimer = new QTimer{dialog};
+        const auto refreshAnnotations = [=]() {
+            if (!*timeline && std::filesystem::is_regular_file(annotationPath)) {
+                try {
+                    *timeline = audition::readRecordingTimelineJson(annotationPath);
+                    const auto rate = (*timeline)->sampleRateHz();
+                    const auto duration = rate == 0 ? 0 :
+                        static_cast<qint64>(sampleCount * 1000ULL / rate);
+                    soundLane->load(**timeline, true, duration);
+                    speechLane->load(**timeline, false, duration);
+                } catch (const std::exception&) {
+                    // Sidecar may not yet be complete; retry while playing.
+                }
             }
-        }
+            if (*timeline) {
+                const auto rate = (*timeline)->sampleRateHz();
+                const auto sample = rate == 0 ? 0ULL :
+                    static_cast<std::uint64_t>(std::max<qint64>(0, media->position())) *
+                    static_cast<std::uint64_t>(rate) / 1000ULL;
+                QString sound;
+                double bestScore = -1.0;
+                for (const auto& event : (*timeline)->sounds()) {
+                    if (event.start_sample <= sample && sample <= event.end_sample &&
+                        event.confidence >= bestScore) {
+                        bestScore = event.confidence;
+                        sound = QString::fromStdString(event.label);
+                    }
+                }
+                QString speech;
+                for (const auto& event : (*timeline)->speech()) {
+                    if (event.start_sample <= sample)
+                        speech += QString::fromStdString(event.text) + " ";
+                }
+                currentSound->setText(sound);
+                currentSpeech->setText(speech.trimmed());
+            } else if (liveAnnotations) {
+                const auto snapshot = liveAnnotations();
+                currentSound->setText(snapshot.first);
+                currentSpeech->setText(snapshot.second);
+            }
+            currentSound->setCursorPosition(static_cast<int>(currentSound->text().size()));
+            currentSpeech->setCursorPosition(static_cast<int>(currentSpeech->text().size()));
+        };
+        QObject::connect(annotationTimer, &QTimer::timeout, dialog, refreshAnnotations);
+        annotationTimer->start(250);
+        refreshAnnotations();
         soundLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
         speechLane->setSeekHandler([media](qint64 ms) { media->setPosition(ms); });
         QObject::connect(media, &QMediaPlayer::positionChanged, dialog,
@@ -592,11 +693,29 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     sstRelease->setRange(0.05, 0.94);
     sstRelease->setSingleStep(0.01);
     sstRelease->setValue(0.25);
-    auto* sstTimeout = new QSpinBox{page};
-    sstTimeout->setRange(25, 1000);
-    sstTimeout->setSingleStep(25);
-    sstTimeout->setValue(125);
-    sstTimeout->setSuffix(" hops");
+    const QString acquireHelp = QStringLiteral(
+        "ODAS SST source acquisition threshold (GMM mean, unitless; not dB).\\n"
+        "Higher values make new tracks harder to acquire, reducing false sources "
+        "but potentially missing quiet or distant speakers.\\n"
+        "Lower values detect weaker sources sooner but may create noise tracks.\\n"
+        "Start at 0.34; adjust in small steps (0.02-0.05). "
+        "Keep Acquire above Inactive.");
+    const QString inactiveHelp = QStringLiteral(
+        "ODAS SST inactive/release threshold (GMM mean, unitless; not dB).\\n"
+        "Below this level, an existing track tends toward inactivity and "
+        "eventual retirement after the Inactive timeout.\\n"
+        "Higher values release weak tracks more readily; lower values hold "
+        "tracks longer, including possible noise or ghost sources.\\n"
+        "Start at 0.25; adjust in small steps (0.02-0.05). "
+        "Keep Inactive below Acquire.");
+    sstOnset->setToolTip(acquireHelp);
+    sstRelease->setToolTip(inactiveHelp);
+    auto* sstTimeout = new QDoubleSpinBox{page};
+    sstTimeout->setDecimals(2);
+    sstTimeout->setRange(0.10, 10.00);
+    sstTimeout->setSingleStep(0.10);
+    sstTimeout->setValue(1.00);
+    sstTimeout->setSuffix(" s");
     configForm->addRow("ODAS SST tuning", tuneSst);
     configForm->addRow("Acquisition GMM mean", sstOnset);
     configForm->addRow("Inactive GMM mean", sstRelease);
@@ -693,7 +812,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     layout->addWidget(enableTagging);
     layout->addWidget(taggingSettings);
     taggingSettings->setVisible(enableTagging->isChecked());
-    auto* enableSpeech = new QCheckBox{"Transcribe separated sources (Silero + SenseVoice)", page};
+    auto* enableSpeech = new QCheckBox{"Transcribe separated sources (select VAD / ASR)", page};
     enableSpeech->setObjectName("acousticSceneEnableSpeech");
 #if LIBAUDITION_DEMO_HAS_SHERPA && defined(LIBAUDITION_DEMO_SILERO_VAD_MODEL) && defined(LIBAUDITION_DEMO_SENSEVOICE_MODEL) && defined(LIBAUDITION_DEMO_SENSEVOICE_TOKENS)
     enableSpeech->setChecked(true);
@@ -719,9 +838,281 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechVad->setPlaceholderText("Silero VAD model .onnx");
     speechAsr->setPlaceholderText("SenseVoice model .onnx");
     speechTokens->setPlaceholderText("SenseVoice tokens.txt");
-    speechForm->addRow("Silero VAD", speechVad);
-    speechForm->addRow("SenseVoice ONNX", speechAsr);
-    speechForm->addRow("SenseVoice tokens", speechTokens);
+    auto* vadKind = new QComboBox{speechSettings};
+    vadKind->setObjectName("acousticSceneVadKind");
+    vadKind->addItem("Silero VAD", QStringLiteral("silero"));
+    vadKind->addItem("TEN VAD", QStringLiteral("ten"));
+    auto* asrKind = new QComboBox{speechSettings};
+    asrKind->setObjectName("acousticSceneAsrKind");
+    asrKind->addItem("SenseVoice (Sherpa)", QStringLiteral("sensevoice"));
+    asrKind->addItem("Whisper (Sherpa ONNX)", QStringLiteral("whisper"));
+    asrKind->addItem("Paraformer (Sherpa)", QStringLiteral("paraformer"));
+    asrKind->addItem("NeMo CTC (Sherpa)", QStringLiteral("nemo_ctc"));
+    asrKind->addItem("Zipformer CTC (Sherpa)", QStringLiteral("zipformer_ctc"));
+    asrKind->addItem("WeNet CTC (Sherpa)", QStringLiteral("wenet_ctc"));
+    asrKind->addItem("Transducer (Sherpa)", QStringLiteral("transducer"));
+#if LIBAUDITION_DEMO_HAS_WHISPERCPP
+    asrKind->addItem("whisper.cpp (GGML)", QStringLiteral("whispercpp"));
+#endif
+    auto* speechDecoder = new QLineEdit{speechSettings};
+    speechDecoder->setPlaceholderText("Decoder ONNX");
+    auto* speechJoiner = new QLineEdit{speechSettings};
+    speechJoiner->setPlaceholderText("Transducer joiner.onnx");
+    // Internal model paths are not form controls. Hide the backing editors
+    // explicitly: unlaid-out child widgets otherwise appear at (0, 0).
+    for (auto* pathEdit : {speechVad, speechAsr, speechTokens,
+                           speechDecoder, speechJoiner}) {
+        pathEdit->hide();
+    }
+    speechForm->addRow("VAD engine", vadKind);
+    const auto makeVadControl = [=](const char* objectName,
+                                  double minimum, double maximum,
+                                  double initial, const char* help) {
+        auto* value = new QDoubleSpinBox{speechSettings};
+        value->setObjectName(objectName);
+        value->setRange(minimum, maximum);
+        value->setDecimals(2);
+        value->setSingleStep(0.05);
+        value->setValue(initial);
+        value->setToolTip(help);
+        return value;
+    };
+    auto* vadThreshold = makeVadControl("acousticSceneSpeechVadThreshold",
+        0.05, 0.95, 0.5,
+        "Speech VAD threshold, applied on the next capture start. Lower values "
+        "can detect weaker speech but may raise false positives. This setting "
+        "does not affect ODAS source acquisition (SST).");
+    auto* vadMinSpeech = makeVadControl("acousticSceneSpeechVadMinSpeech",
+        0.0, 2.0, 0.25,
+        "Minimum speech duration (seconds) in Sherpa VAD. Short utterances "
+        "may be rejected at a high setting; applied on next capture start.");
+    auto* vadMinSilence = makeVadControl("acousticSceneSpeechVadMinSilence",
+        0.05, 2.0, 0.5,
+        "Minimum silence duration (seconds) before Sherpa VAD closes an "
+        "utterance; applied on next capture start.");
+    speechForm->addRow("VAD threshold", vadThreshold);
+    speechForm->addRow("Min. speech (s)", vadMinSpeech);
+    speechForm->addRow("Min. silence (s)", vadMinSilence);
+    speechForm->addRow("ASR engine", asrKind);
+    auto* speechLanguage = new QComboBox{speechSettings};
+    speechLanguage->setObjectName("acousticSceneSpeechLanguage");
+    speechLanguage->addItem("Automatic", QStringLiteral("auto"));
+    speechLanguage->addItem("English", QStringLiteral("en"));
+    speechLanguage->addItem("Chinese", QStringLiteral("zh"));
+    speechLanguage->addItem("Japanese", QStringLiteral("ja"));
+    speechLanguage->addItem("Korean", QStringLiteral("ko"));
+    speechLanguage->addItem("Cantonese", QStringLiteral("yue"));
+    speechLanguage->setToolTip("SenseVoice supports auto, zh, en, ja, ko, yue. Russian requires a different ASR model.");
+    speechForm->addRow("ASR language", speechLanguage);
+    // Keep model files isolated per backend. Switching to a different
+    // architecture must never silently reuse incompatible weights.
+    auto vadPaths = std::make_shared<std::map<QString, QString>>();
+    (*vadPaths)["silero"] = speechVad->text();
+    auto asrPaths = std::make_shared<std::map<QString, QStringList>>();
+    (*asrPaths)["sensevoice"] = QStringList{
+        speechAsr->text(), speechDecoder->text(),
+        speechJoiner->text(), speechTokens->text()};
+    // A bounded set of known locations, plus a user-selectable model root.
+    auto* modelRoot = new QLineEdit{speechSettings};
+    modelRoot->setObjectName("acousticSceneModelRoot");
+    QSettings modelSettings{QSettings::IniFormat, QSettings::UserScope,
+                            "libaudition", "qt-demo"};
+    QString defaultModelRoot = QDir::current().absoluteFilePath("demo-models");
+#ifdef LIBAUDITION_DEMO_SILERO_VAD_MODEL
+    defaultModelRoot = QFileInfo(
+        QString::fromUtf8(LIBAUDITION_DEMO_SILERO_VAD_MODEL)).dir().absolutePath();
+#endif
+    modelRoot->setText(modelSettings.value(
+        "speech/model_root", defaultModelRoot).toString());
+    auto* scanModels = new QPushButton{"Scan models", speechSettings};
+    auto* browseModels = new QPushButton{"Browse directory…", speechSettings};
+    auto* rootRow = new QWidget{speechSettings};
+    auto* rootLayout = new QHBoxLayout{rootRow};
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->addWidget(modelRoot, 1);
+    rootLayout->addWidget(browseModels);
+    rootLayout->addWidget(scanModels);
+    speechForm->addRow("Model directory", rootRow);
+    QObject::connect(browseModels, &QPushButton::clicked, speechSettings, [=]() {
+        const auto dir = QFileDialog::getExistingDirectory(
+            speechSettings, "Select model directory", modelRoot->text());
+        if (!dir.isEmpty()) modelRoot->setText(dir);
+    });
+    QObject::connect(modelRoot, &QLineEdit::textChanged, speechSettings,
+                     [](const QString& value) {
+        QSettings settings{QSettings::IniFormat, QSettings::UserScope,
+                           "libaudition", "qt-demo"};
+        settings.setValue("speech/model_root", value);
+    });
+    const auto locate = [=](const QStringList& candidates) -> QString {
+        const QStringList roots{
+            modelRoot->text(),
+            QFileInfo(modelRoot->text()).dir().absolutePath(),
+            QDir::current().absoluteFilePath("demo-models"),
+            QDir::current().absoluteFilePath("models")
+        };
+        for (const auto& root : roots) {
+            for (const auto& name : candidates) {
+                const auto path = QDir(root).absoluteFilePath(name);
+                if (QFileInfo(path).isFile()) return path;
+            }
+        }
+        return {};
+    };
+    const auto scan = [=]() {
+        const auto fileOk = [](const QString& path) {
+            return !path.isEmpty() && QFileInfo(path).isFile();
+        };
+        const auto fillVad = [&](const QString& kind, const QStringList& names) {
+            auto& path = (*vadPaths)[kind];
+            if (!fileOk(path)) path = locate(names);
+        };
+        fillVad("silero", {"speech/silero_vad.onnx", "silero_vad.onnx"});
+        fillVad("ten", {"speech/ten-vad.onnx", "speech/ten_vad.onnx",
+                        "ten-vad.onnx", "ten_vad.onnx"});
+        const auto fillAsr = [&](const QString& kind, const QStringList& model,
+                                 const QStringList& decoder, const QStringList& joiner,
+                                 const QStringList& tokens) {
+            auto& paths = (*asrPaths)[kind];
+            while (paths.size() < 4) paths << QString{};
+            if (!fileOk(paths[0])) paths[0] = locate(model);
+            if (!decoder.isEmpty() && !fileOk(paths[1])) paths[1] = locate(decoder);
+            if (!joiner.isEmpty() && !fileOk(paths[2])) paths[2] = locate(joiner);
+            if (!tokens.isEmpty() && !fileOk(paths[3])) paths[3] = locate(tokens);
+        };
+        fillAsr("sensevoice", {"speech/sensevoice.int8.onnx",
+                 "speech/sensevoice.onnx"}, {}, {},
+                {"speech/sensevoice.tokens.txt"});
+        fillAsr("whisper", {"whisper/encoder.onnx", "speech/whisper/encoder.onnx"},
+                {"whisper/decoder.onnx", "speech/whisper/decoder.onnx"}, {},
+                {"whisper/tokens.txt", "speech/whisper/tokens.txt"});
+        fillAsr("paraformer", {"paraformer/model.onnx",
+                 "speech/paraformer/model.onnx"}, {}, {},
+                {"paraformer/tokens.txt", "speech/paraformer/tokens.txt"});
+        fillAsr("nemo_ctc", {"nemo_ctc/model.onnx"}, {}, {},
+                {"nemo_ctc/tokens.txt"});
+        fillAsr("zipformer_ctc", {"zipformer_ctc/model.onnx"}, {}, {},
+                {"zipformer_ctc/tokens.txt"});
+        fillAsr("wenet_ctc", {"wenet_ctc/model.onnx"}, {}, {},
+                {"wenet_ctc/tokens.txt"});
+        fillAsr("transducer", {"transducer/encoder.onnx"},
+                {"transducer/decoder.onnx"}, {"transducer/joiner.onnx"},
+                {"transducer/tokens.txt"});
+        fillAsr("whispercpp", {"whisper/ggml-small.bin", "whisper/ggml-base.bin",
+                "ggml-small.bin", "ggml-base.bin"}, {}, {}, {});
+        const auto check = [&](const QString& kind, bool vad) -> QString {
+            if (vad) {
+                return fileOk((*vadPaths)[kind]) ? QString{} :
+                    QString{"Missing compatible VAD ONNX model"};
+            }
+            const auto files = (*asrPaths)[kind];
+            const bool decoder = kind == "whisper" || kind == "transducer";
+            const bool joiner = kind == "transducer";
+            const bool tokens = kind != "whispercpp";
+            QStringList missing;
+            if (!fileOk(files.value(0))) missing << "model/encoder";
+            if (decoder && !fileOk(files.value(1))) missing << "decoder";
+            if (joiner && !fileOk(files.value(2))) missing << "joiner";
+            if (tokens && !fileOk(files.value(3))) missing << "tokens";
+            return missing.isEmpty() ? QString{} :
+                "Missing " + missing.join(", ") + " for " + kind;
+        };
+        const auto mark = [&](QComboBox* combo, bool vad) {
+            auto* items = qobject_cast<QStandardItemModel*>(combo->model());
+            for (int i = 0; i < combo->count(); ++i) {
+                const auto key = combo->itemData(i).toString();
+                const auto error = check(key, vad);
+                combo->setItemData(i, error.isEmpty() ? QString{"Ready"} :
+                    error + ". Install files under Model directory, then Scan models.",
+                    Qt::ToolTipRole);
+                if (items && items->item(i))
+                    items->item(i)->setEnabled(error.isEmpty());
+            }
+        };
+        mark(vadKind, true);
+        mark(asrKind, false);
+        const auto vadValue = vadKind->currentData().toString();
+        const auto asrValue = asrKind->currentData().toString();
+        if (fileOk((*vadPaths)[vadValue])) speechVad->setText((*vadPaths)[vadValue]);
+        const auto paths = (*asrPaths)[asrValue];
+        if (fileOk(paths.value(0))) speechAsr->setText(paths.value(0));
+        if (fileOk(paths.value(1))) speechDecoder->setText(paths.value(1));
+        if (fileOk(paths.value(2))) speechJoiner->setText(paths.value(2));
+        if (fileOk(paths.value(3))) speechTokens->setText(paths.value(3));
+    };
+    QObject::connect(scanModels, &QPushButton::clicked, speechSettings, scan);
+    auto currentVadKind = std::make_shared<QString>("silero");
+    auto currentAsrKind = std::make_shared<QString>("sensevoice");
+    QObject::connect(vadKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     speechSettings, [=](int) {
+        (*vadPaths)[*currentVadKind] = speechVad->text();
+        const auto next = vadKind->currentData().toString();
+        *currentVadKind = next;
+        speechVad->setText((*vadPaths)[next]);
+    });
+    QObject::connect(asrKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     speechSettings, [=](int) {
+        (*asrPaths)[*currentAsrKind] = QStringList{
+            speechAsr->text(), speechDecoder->text(),
+            speechJoiner->text(), speechTokens->text()};
+        const auto next = asrKind->currentData().toString();
+        *currentAsrKind = next;
+        const auto paths = (*asrPaths)[next];
+        speechAsr->setText(paths.value(0));
+        speechDecoder->setText(paths.value(1));
+        speechJoiner->setText(paths.value(2));
+        speechTokens->setText(paths.value(3));
+    });
+    const auto refreshSpeechInputs = [=]() {
+        const auto kind = asrKind->currentData().toString();
+        const bool whisperOnnx = kind == "whisper";
+        const bool whisperCpp = kind == "whispercpp";
+        // Model paths remain internal; the user selects a model directory,
+        // not individual model files.
+        // Keep language choices valid for the selected recognizer.
+        const auto previous = speechLanguage->currentData().toString();
+        speechLanguage->clear();
+        speechLanguage->addItem("Automatic", QStringLiteral("auto"));
+        speechLanguage->addItem("English", QStringLiteral("en"));
+        if (whisperOnnx || whisperCpp)
+            speechLanguage->addItem("Russian", QStringLiteral("ru"));
+        speechLanguage->addItem("Chinese", QStringLiteral("zh"));
+        speechLanguage->addItem("Japanese", QStringLiteral("ja"));
+        speechLanguage->addItem("Korean", QStringLiteral("ko"));
+        if (kind == "sensevoice")
+            speechLanguage->addItem("Cantonese", QStringLiteral("yue"));
+        // Short ODAS/VAD chunks are unreliable for automatic language
+        // identification. When switching from another backend's automatic
+        // setting, prefer Russian for multilingual Whisper in this demo.
+        // Explicit user language selections are still preserved.
+        const auto preferred = (whisperOnnx || whisperCpp) &&
+                               (previous.isEmpty() || previous == "auto")
+                                   ? QStringLiteral("ru") : previous;
+        const int found = speechLanguage->findData(preferred);
+        speechLanguage->setCurrentIndex(found >= 0 ? found : 0);
+        speechAsr->setPlaceholderText(whisperCpp ? "GGML Whisper model .bin" :
+                                      whisperOnnx ? "Whisper encoder.onnx" :
+                                                   "SenseVoice model.onnx");
+        speechVad->setPlaceholderText(
+            vadKind->currentData().toString() == "ten" ?
+            "TEN VAD model.onnx" : "Silero VAD model.onnx");
+    };
+    QObject::connect(asrKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     speechSettings, [=](int) { refreshSpeechInputs(); });
+    QObject::connect(vadKind, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     speechSettings, [=](int) { refreshSpeechInputs(); });
+    refreshSpeechInputs();
+    scan();
+    // Prefer multilingual Whisper when its downloaded encoder/decoder/tokens
+    // are ready. Retain SenseVoice as a usable fallback for minimal installs.
+    const int whisperIndex = asrKind->findData(QStringLiteral("whisper"));
+    auto* asrItems = qobject_cast<QStandardItemModel*>(asrKind->model());
+    if (whisperIndex >= 0 && asrItems && asrItems->item(whisperIndex) &&
+        asrItems->item(whisperIndex)->isEnabled()) {
+        asrKind->setCurrentIndex(whisperIndex);
+        refreshSpeechInputs();
+        scan();
+    }
     layout->addWidget(enableSpeech);
     layout->addWidget(speechSettings);
     speechSettings->setVisible(enableSpeech->isChecked());
@@ -801,22 +1192,67 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     tracks->setObjectName("acousticSceneTracks");
     tracks->setHorizontalHeaderLabels({
         "ID", "Azimuth", "Elevation", "Activity", "Activity type", "Transcript", "AGC gain", "Recording"});
-    tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    // Keep column widths user-adjustable rather than forcing equal stretching.
+    tracks->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    // Transcript consumes remaining viewport width; fixed neighboring columns
+    // remain manually resizable and Recording stays at the right edge.
+    tracks->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
+    tracks->horizontalHeader()->setStretchLastSection(false);
+    tracks->setColumnWidth(0, 55);
+    tracks->setColumnWidth(1, 85);
+    tracks->setColumnWidth(2, 90);
+    tracks->setColumnWidth(3, 85);
+    tracks->setColumnWidth(4, 115);
+    tracks->setColumnWidth(5, 220);
+    tracks->setColumnWidth(6, 90);
+    tracks->setColumnWidth(7, 100);
     tracks->verticalHeader()->hide();
     tracks->setEditTriggers(QAbstractItemView::NoEditTriggers);
     auto* speechAgc = new QCheckBox{"Adaptive speech gain (VAD / ASR only)", sidebar};
     speechAgc->setObjectName("acousticSceneSpeechAgc");
-    speechAgc->setChecked(false);
+    speechAgc->setChecked(true);
     auto* agcImplementation = new QComboBox{sidebar};
     agcImplementation->setObjectName("acousticSceneSpeechAgcImplementation");
     agcImplementation->addItem("RMS AGC", QStringLiteral("rms"));
-    agcImplementation->setEnabled(false);
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+    agcImplementation->addItem("WebRTC APM AGC1", QStringLiteral("webrtc_apm_agc1"));
+    agcImplementation->addItem("WebRTC APM AGC2", QStringLiteral("webrtc_apm_agc2"));
+#endif
+#if defined(LIBAUDITION_WITH_SPEEXDSP_AGC) && LIBAUDITION_WITH_SPEEXDSP_AGC
+    agcImplementation->addItem("SpeexDSP AGC", QStringLiteral("speex"));
+    agcImplementation->setCurrentIndex(agcImplementation->count() - 1);
+#endif
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+    agcImplementation->setCurrentIndex(
+        agcImplementation->findData(QStringLiteral("webrtc_apm_agc2")));
+#endif
+    agcImplementation->setEnabled(speechAgc->isChecked());
     QObject::connect(speechAgc, &QCheckBox::toggled,
                      agcImplementation, &QWidget::setEnabled);
     auto* agcRow = new QHBoxLayout;
     agcRow->addWidget(speechAgc);
     agcRow->addWidget(agcImplementation);
     sideLayout->addLayout(agcRow);
+    auto* speechNs = new QCheckBox{"Noise suppression (speech VAD / ASR only)", sidebar};
+    speechNs->setObjectName("acousticSceneSpeechNs");
+    speechNs->setChecked(false);
+    auto* nsLevel = new QComboBox{sidebar};
+    nsLevel->setObjectName("acousticSceneSpeechNsLevel");
+    nsLevel->addItem("Low", QStringLiteral("low"));
+    nsLevel->addItem("Moderate", QStringLiteral("moderate"));
+    nsLevel->addItem("High", QStringLiteral("high"));
+    nsLevel->addItem("Very high", QStringLiteral("very_high"));
+#if !defined(LIBAUDITION_WITH_WEBRTC_APM) || !LIBAUDITION_WITH_WEBRTC_APM
+    speechNs->setEnabled(false);
+    speechNs->setToolTip("Requires LIBAUDITION_WITH_WEBRTC_APM=ON");
+#endif
+    nsLevel->setEnabled(false);
+    QObject::connect(speechNs, &QCheckBox::toggled,
+                     nsLevel, &QWidget::setEnabled);
+    auto* nsRow = new QHBoxLayout;
+    nsRow->addWidget(speechNs);
+    nsRow->addWidget(nsLevel);
+    sideLayout->addLayout(nsRow);
     sideLayout->addWidget(new QLabel{"Tracked sources", sidebar});
     sideLayout->addWidget(tracks);
     // Native ODAS SST controls. A short debounce avoids rebuilding ODAS for
@@ -831,13 +1267,17 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     liveRelease->setObjectName("acousticSceneLiveSstRelease");
     liveRelease->setRange(5, 94);
     liveRelease->setValue(25);
+    liveOnset->setToolTip(acquireHelp);
+    liveRelease->setToolTip(inactiveHelp);
     auto* liveTimeout = new QSlider{Qt::Horizontal, liveSstControls};
     liveTimeout->setObjectName("acousticSceneLiveSstTimeout");
-    liveTimeout->setRange(25, 500);
-    liveTimeout->setValue(125);
+    liveTimeout->setRange(10, 1000); // hundredths of a second
+    liveTimeout->setValue(100);
     auto* onsetValue = new QLabel{"0.34", liveSstControls};
+    onsetValue->setToolTip(acquireHelp);
     auto* releaseValue = new QLabel{"0.25", liveSstControls};
-    auto* timeoutValue = new QLabel{"125 hops", liveSstControls};
+    releaseValue->setToolTip(inactiveHelp);
+    auto* timeoutValue = new QLabel{"1.00 s", liveSstControls};
     const auto addLiveSlider = [&](const QString& sliderTitle, QSlider* slider,
                                    QLabel* value) {
         auto* container = new QWidget{liveSstControls};
@@ -857,7 +1297,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     const auto scheduleLiveSst = [=]() {
         onsetValue->setText(QString::number(liveOnset->value() / 100.0, 'f', 2));
         releaseValue->setText(QString::number(liveRelease->value() / 100.0, 'f', 2));
-        timeoutValue->setText(QString("%1 hops").arg(liveTimeout->value()));
+        timeoutValue->setText(QString("%1 s").arg(liveTimeout->value() / 100.0, 0, 'f', 2));
         if (liveRelease->value() >= liveOnset->value()) {
             liveSstDebounce->stop();
             return;
@@ -885,8 +1325,12 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         "Hover: direction, activity, sound class (if model loaded)\n"
         "ASR transcripts are shown per tracked source when enabled.", sidebar});
     split->addWidget(sidebar);
-    split->setStretchFactor(0, 3);
-    split->setStretchFactor(1, 2);
+    // Default the sphere viewport to roughly square rather than giving it
+    // most of the window width. Users can still drag the splitter freely.
+    split->setChildrenCollapsible(false);
+    split->setStretchFactor(0, 0);
+    split->setStretchFactor(1, 1);
+    split->setSizes({420, 740});
     layout->addWidget(split, 1);
 
     auto replay = std::make_shared<SceneReplay>();
@@ -901,9 +1345,24 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         std::uint64_t samples{0};
         std::uint64_t lostSamples{0};
         QString error{};
+        QString asrLog{};
+        QString sourceLog{};
+        QString loggedAsr{};
+        QString lastClassification{};
+        bool loggedActive{false};
+        qint64 lastLevelLogMs{0};
+        double lastGainDb{0.0};
+        bool hasGain{false};
+        std::uint64_t loggedVadStarts{0};
+        std::uint64_t loggedVadEnds{0};
+        std::uint64_t loggedSpeechPreprocessingFailures{0};
+        bool recordingObserved{false};
+        bool recordingWasActive{false};
+        std::uint64_t lastLostSamples{0};
     };
     auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
     auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
+    auto recordingTranscripts = std::make_shared<std::map<std::uint64_t, std::string>>();
     auto lastTableUpdate = std::make_shared<qint64>(0);
     auto rowIndex = std::make_shared<std::map<std::uint64_t, int>>();
     auto* playerButton = new QPushButton{"Play", sidebar};
@@ -919,7 +1378,16 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         const auto iter = history->find(id);
         if (iter == history->end() || iter->second.wav.isEmpty()) return;
         createRecordingPlaybackDialog(page, id,
-            iter->second.wav, iter->second.samples);
+            iter->second.wav, iter->second.samples,
+            [history, id]() -> std::pair<QString, QString> {
+                const auto found = history->find(id);
+                if (found == history->end()) return {};
+                return {QString::fromStdString(found->second.track.classification_label),
+                        QString::fromStdString(found->second.track.transcript)};
+            }, [history, id]() -> QString {
+                const auto found = history->find(id);
+                return found == history->end() ? QString{} : found->second.sourceLog;
+            });
     });
 
     auto display = [=](const std::vector<AcousticSceneTrack>& values) {
@@ -951,6 +1419,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                         [&](const AcousticSceneTrack& track) {return track.id == r.track_id;});
                     if (it != values.end()) entry.track = *it;
                 }
+                if (const auto recognized = recordingTranscripts->find(r.id);
+                    recognized != recordingTranscripts->end())
+                    entry.track.transcript = recognized->second;
             }
         }
         int row = 0;
@@ -967,7 +1438,13 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 QString::number(el, 'f', 1) + "°",
                 QString::number(track.activity, 'f', 2),
                 QString::fromStdString(track.classification_label),
-                QString::fromStdString(track.transcript),
+                [&track]() {
+                    const auto full = QString::fromStdString(track.transcript);
+                    constexpr qsizetype kVisibleCharacters = 150;
+                    return full.size() > kVisibleCharacters
+                        ? QStringLiteral("…") + full.right(kVisibleCharacters)
+                        : full;
+                }(),
                 (!entry.active || !speechAgc->isChecked()) ? QStringLiteral("—") :
                     (gainByTrack->count(track.id)
                         ? QString("%1 dB").arg(gainByTrack->at(track.id), 0, 'f', 1)
@@ -996,7 +1473,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 item->setForeground(entry.active ? tracks->palette().text().color()
                                                  : QColor(135, 135, 135));
                 item->setData(Qt::UserRole, QVariant::fromValue(static_cast<qulonglong>(pair.first)));
-                item->setToolTip(entry.error);
+                item->setToolTip(col == 5
+                    ? QString::fromStdString(track.transcript) : entry.error);
             }
             if (track.id == sphere->selectedTrack() && entry.active)
                 selected->setText(directionSummary(track));
@@ -1047,13 +1525,31 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     QObject::connect(agcImplementation,
                      QOverload<int>::of(&QComboBox::currentIndexChanged),
                      page, [=](int) { updateSpeechGain(); });
+    const auto updateSpeechNs = [=]() {
+        capture->setSpeechNoiseSuppression(
+            speechNs->isChecked() && enableSpeech->isChecked(),
+            nsLevel->currentData().toString().toStdString());
+    };
+    QObject::connect(speechNs, &QCheckBox::toggled, page,
+                     [=](bool) { updateSpeechNs(); });
+    QObject::connect(nsLevel,
+                     QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     page, [=](int) { updateSpeechNs(); });
 
+    // ODAS expects an integer number of hops, but the UI presents wall time.
+    // Recompute when hop size or sample rate changes, preserving seconds.
+    const auto timeoutHops = [=](double seconds) -> std::uint32_t {
+        const auto samplesPerSecond = static_cast<double>(captureRate->value());
+        const auto samplesPerHop = static_cast<double>(hop->value());
+        return static_cast<std::uint32_t>(std::max(
+            1L, std::lround(seconds * samplesPerSecond / samplesPerHop)));
+    };
     QObject::connect(liveSstDebounce, &QTimer::timeout, page, [=]() {
         if (liveRelease->value() >= liveOnset->value())
             return;
         capture->setSstTuning(liveOnset->value() / 100.0,
                               liveRelease->value() / 100.0,
-                              static_cast<std::uint32_t>(liveTimeout->value()));
+                              timeoutHops(liveTimeout->value() / 100.0));
     });
     // The sliders are the active tuning source for each new capture.
     QObject::connect(sstOnset, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
@@ -1064,8 +1560,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                      page, [=](double value) {
         liveRelease->setValue(static_cast<int>(std::lround(value * 100.0)));
     });
-    QObject::connect(sstTimeout, QOverload<int>::of(&QSpinBox::valueChanged),
-                     page, [=](int value) { liveTimeout->setValue(value); });
+    QObject::connect(sstTimeout, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                     page, [=](double value) {
+        liveTimeout->setValue(static_cast<int>(std::lround(value * 100.0)));
+    });
     QObject::connect(liveOnset, &QSlider::valueChanged, page, [=](int value) {
         sstOnset->setValue(value / 100.0);
     });
@@ -1073,22 +1571,48 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         sstRelease->setValue(value / 100.0);
     });
     QObject::connect(liveTimeout, &QSlider::valueChanged, page, [=](int value) {
-        sstTimeout->setValue(value);
+        sstTimeout->setValue(value / 100.0);
     });
 
     auto* liveTimer = new QTimer{page};
     liveTimer->setInterval(50);
     auto seenGeneration = std::make_shared<std::uint64_t>(0);
+    auto captureProgress = std::make_shared<demo::LiveCaptureProgressMonitor>();
 
     const auto stopCapture = [=]() {
+        const bool hadLiveSession = liveTimer->isActive();
         liveTimer->stop();
         capture->stop(); // joins safely before the widget can be destroyed
-        // The recorder is closed when capture exits. Keep its history visible
-        // and mark all retained generations as inactive for the stopped session.
-        if (!recordingInfo->empty()) {
-            for (auto& item : *recordingInfo) item.second.active = false;
-            *lastTableUpdate = 0;
-            display({});
+        // Synthetic/replay setup calls stopCapture() even when capture never
+        // started. Only publish the final recording snapshot for an actual
+        // live session, or the empty publication will throttle the following
+        // synthetic 3D table render for 500 ms.
+        if (hadLiveSession) {
+        // The final ASR result and WAV length may arrive AFTER the last
+        // 20-Hz UI snapshot, while shutdown drains the worker and recorder.
+        const auto finalSnapshot = capture->snapshot();
+        recordingInfo->clear();
+        for (const auto& r : finalSnapshot.recordings)
+            (*recordingInfo)[r.id] = r;
+        *recordingTranscripts = finalSnapshot.recording_transcripts;
+        *lastTableUpdate = 0;
+        display({});
+        const auto timestamp = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
+        for (auto& [recordingId, entry] : *history) {
+            const auto log = finalSnapshot.asr_logs.find(recordingId);
+            if (log == finalSnapshot.asr_logs.end()) continue;
+            const QString updated = QString::fromStdString(log->second);
+            if (updated == entry.loggedAsr) continue;
+            const QString delta = updated.startsWith(entry.loggedAsr)
+                ? updated.mid(entry.loggedAsr.size()) : updated;
+            for (const auto& line : delta.split('\n', Qt::SkipEmptyParts))
+                entry.sourceLog += timestamp + " [ASR] " + line + "\n";
+            constexpr qsizetype kMaxLogCharacters = 65536;
+            if (entry.sourceLog.size() > kMaxLogCharacters)
+                entry.sourceLog.remove(0, entry.sourceLog.size() - kMaxLogCharacters);
+            entry.asrLog = updated;
+            entry.loggedAsr = updated;
+        }
         }
         stopLive->setEnabled(false);
         startLive->setEnabled(
@@ -1206,9 +1730,11 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.tune_sst = tuneSst->isChecked();
             config.sst_onset = sstOnset->value();
             config.sst_release = sstRelease->value();
-            config.sst_inactive_hops = static_cast<std::uint32_t>(sstTimeout->value());
+            config.sst_inactive_hops = timeoutHops(sstTimeout->value());
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
+            config.speech_ns_enabled = speechNs->isChecked() && config.transcribe_sources;
+            config.speech_ns_level = nsLevel->currentData().toString().toStdString();
             config.speech_agc_enabled = speechAgc->isChecked() && config.transcribe_sources;
             config.speech_agc_implementation =
                 agcImplementation->currentData().toString().toStdString();
@@ -1216,16 +1742,41 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 const auto vad = std::filesystem::path{speechVad->text().toStdString()};
                 const auto model = std::filesystem::path{speechAsr->text().toStdString()};
                 const auto tokens = std::filesystem::path{speechTokens->text().toStdString()};
-                if (config.sample_rate_hz != 16000U ||
-                    !std::filesystem::is_regular_file(vad) ||
-                    !std::filesystem::is_regular_file(model) ||
-                    !std::filesystem::is_regular_file(tokens)) {
-                    throw std::runtime_error{
-                        "ASR requires 16 kHz and existing Silero/SenseVoice ONNX + tokens"};
-                }
+                const auto decoder =
+                    std::filesystem::path{speechDecoder->text().toStdString()};
+                const auto joiner =
+                    std::filesystem::path{speechJoiner->text().toStdString()};
+                config.speech_vad_kind = vadKind->currentData().toString().toStdString();
+                config.speech_vad_threshold = static_cast<float>(vadThreshold->value());
+                config.speech_vad_min_speech_seconds =
+                    static_cast<float>(vadMinSpeech->value());
+                config.speech_vad_min_silence_seconds =
+                    static_cast<float>(vadMinSilence->value());
+                config.speech_asr_kind = asrKind->currentData().toString().toStdString();
+                const bool needsTokens = config.speech_asr_kind != "whispercpp";
+                const bool needsDecoder = config.speech_asr_kind == "whisper" ||
+                    config.speech_asr_kind == "transducer";
+                const bool needsJoiner = config.speech_asr_kind == "transducer";
+                if (config.sample_rate_hz != 16000U)
+                    throw std::runtime_error{"Speech requires a 16000 Hz capture rate"};
+                const auto requireModel = [](const std::filesystem::path& file,
+                                             const char* label) {
+                    if (file.empty() || !std::filesystem::is_regular_file(file))
+                        throw std::runtime_error{std::string{label} +
+                            " is missing or invalid: " + file.string()};
+                };
+                requireModel(vad, "VAD model");
+                requireModel(model, "ASR model / encoder");
+                if (needsTokens) requireModel(tokens, "ASR tokens");
+                if (needsDecoder) requireModel(decoder, "ASR decoder");
+                if (needsJoiner) requireModel(joiner, "ASR joiner");
                 config.speech_vad_model_path = vad.string();
                 config.speech_asr_model_path = model.string();
+                config.speech_asr_decoder_path = decoder.string();
+                config.speech_asr_joiner_path = joiner.string();
                 config.speech_asr_tokens_path = tokens.string();
+                config.speech_asr_language =
+                    speechLanguage->currentData().toString().toStdString();
             }
             if (config.classify_sources) {
                 const auto modelFile =
@@ -1281,12 +1832,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             sphere->clearTracks();
             history->clear();
             recordingInfo->clear();
+            recordingTranscripts->clear();
             rowIndex->clear();
             *lastTableUpdate = 0;
             tracks->setRowCount(0);
             selected->setText("Click a live track to inspect its direction.");
             capture->start(std::move(config));
             *seenGeneration = 0;
+            captureProgress->reset(demo::LiveCaptureProgressMonitor::Clock::now());
             startLive->setEnabled(false);
             stopLive->setEnabled(true);
             refreshDevices->setEnabled(false);
@@ -1314,22 +1867,140 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             diagnostics->setText("Waiting for first ALSA audio frames…");
             liveTimer->start();
         } catch (const std::exception& error) {
-            status->setText(QString("Live capture configuration error: ") +
-                            QString::fromUtf8(error.what()));
+            const QString detail = QString::fromUtf8(error.what());
+            status->setText("Live capture configuration error: " + detail);
+            diagnostics->setText("Capture was not started: " + detail);
+            const auto args = QCoreApplication::arguments();
+            const bool automatedTest = args.contains("--self-test") ||
+                std::any_of(args.cbegin(), args.cend(), [](const QString& arg) {
+                    return arg.startsWith("--model-self-test=");
+                });
+            if (!automatedTest)
+                QMessageBox::warning(page, "Cannot start live capture", detail);
         }
     });
 #endif
 
     QObject::connect(liveTimer, &QTimer::timeout, page, [=]() {
         const auto snapshot = capture->snapshot();
+        const auto progress = captureProgress->observe(snapshot.processed_hops,
+            demo::LiveCaptureProgressMonitor::Clock::now());
         if (snapshot.generation != *seenGeneration) {
             *seenGeneration = snapshot.generation;
             recordingInfo->clear();
             for (const auto& r : snapshot.recordings) (*recordingInfo)[r.id] = r;
+            *recordingTranscripts = snapshot.recording_transcripts;
             gainByTrack->clear();
+            for (auto& entry : *history) {
+                const auto log = snapshot.asr_logs.find(entry.first);
+                if (log != snapshot.asr_logs.end()) {
+                    const QString newAsr = QString::fromStdString(log->second);
+                    if (newAsr != entry.second.asrLog) {
+                        // ASR diagnostics remain raw and unmodified.
+                        entry.second.asrLog = newAsr;
+                    }
+                }
+            }
             for (const auto& level : snapshot.speech_gain_levels)
                 (*gainByTrack)[level.track_id] = level.gain_db;
             display(snapshot.tracks);
+            // Build a bounded, source-specific event history. Never spam the
+            // application console and never log unchanged fields each frame.
+            const auto timestamp = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
+            const auto appendEvent = [&](HistoryEntry& entry, const QString& event) {
+                entry.sourceLog += timestamp + " " + event + "\n";
+                constexpr qsizetype kMaxChars = 65536;
+                if (entry.sourceLog.size() > kMaxChars) {
+                    const auto boundary = entry.sourceLog.indexOf(
+                        '\n', entry.sourceLog.size() - kMaxChars);
+                    entry.sourceLog.remove(0, boundary >= 0 ?
+                        boundary + 1 : entry.sourceLog.size() - kMaxChars);
+                }
+            };
+            for (auto& [id, entry] : *history) {
+                if (entry.active != entry.loggedActive) {
+                    appendEvent(entry, entry.active ?
+                        "[TRACK] acquired" : "[TRACK] inactive/retired");
+                    entry.loggedActive = entry.active;
+                }
+                const auto label = QString::fromStdString(entry.track.classification_label);
+                if (!label.isEmpty() && label != entry.lastClassification) {
+                    appendEvent(entry, QString("[CLASS] %1 (p=%2)")
+                        .arg(label).arg(entry.track.classification_probability, 0, 'f', 3));
+                    entry.lastClassification = label;
+                }
+                if (entry.asrLog != entry.loggedAsr) {
+                    // Keep the raw segment boundaries and full model response.
+                    const QString delta = entry.asrLog.startsWith(entry.loggedAsr) ?
+                        entry.asrLog.mid(entry.loggedAsr.size()) : entry.asrLog;
+                    for (const auto& line : delta.split('\n', Qt::SkipEmptyParts))
+                        appendEvent(entry, "[ASR] " + line);
+                    entry.loggedAsr = entry.asrLog;
+                }
+                const auto vad = snapshot.vad_states.find(entry.track.id);
+                if (vad != snapshot.vad_states.end()) {
+                    if (vad->second.starts != entry.loggedVadStarts) {
+                        appendEvent(entry, QString("[VAD] speech_start count=%1")
+                            .arg(static_cast<qulonglong>(vad->second.starts)));
+                        entry.loggedVadStarts = vad->second.starts;
+                    }
+                    if (vad->second.ends != entry.loggedVadEnds) {
+                        appendEvent(entry, QString("[VAD] speech_end count=%1")
+                            .arg(static_cast<qulonglong>(vad->second.ends)));
+                        entry.loggedVadEnds = vad->second.ends;
+                    }
+                }
+                const auto preprocessing =
+                    snapshot.speech_preprocessing_failures.find(entry.track.id);
+                if (entry.active &&
+                    preprocessing != snapshot.speech_preprocessing_failures.end() &&
+                    preprocessing->second.failed_hops >
+                        entry.loggedSpeechPreprocessingFailures) {
+                    const auto& failure = preprocessing->second;
+                    appendEvent(entry, QString("[SPEECH DSP] muted hops=%1"
+                        " (muted samples=%2), latest error: %3")
+                        .arg(static_cast<qulonglong>(failure.failed_hops))
+                        .arg(static_cast<qulonglong>(failure.muted_samples))
+                        .arg(QString::fromStdString(failure.last_error)));
+                    entry.loggedSpeechPreprocessingFailures = failure.failed_hops;
+                }
+                const auto gain = gainByTrack->find(entry.track.id);
+                const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                if (entry.active && gain != gainByTrack->end() &&
+                    (!entry.hasGain || (now - entry.lastLevelLogMs > 3000 &&
+                     std::abs(gain->second - entry.lastGainDb) >= 1.0))) {
+                    appendEvent(entry, QString("[AGC] gain=%1 dB")
+                        .arg(gain->second, 0, 'f', 1));
+                    entry.lastGainDb = gain->second;
+                    entry.lastLevelLogMs = now;
+                    entry.hasGain = true;
+                }
+                const auto recording = recordingInfo->find(id);
+                if (recording != recordingInfo->end()) {
+                    const auto& wav = recording->second;
+                    if (!entry.recordingObserved) {
+                        appendEvent(entry, QString("[RECORDING] %1 (%2)")
+                            .arg(QString::fromStdString(wav.path))
+                            .arg(wav.active ? "active" : "completed"));
+                        entry.recordingObserved = true;
+                    } else if (entry.recordingWasActive && !wav.active) {
+                        appendEvent(entry, QString("[RECORDING] completed, samples=%1")
+                            .arg(static_cast<qulonglong>(wav.samples)));
+                    }
+                    entry.recordingWasActive = wav.active;
+                    if (wav.lost_samples > entry.lastLostSamples) {
+                        appendEvent(entry, QString("[RECORDING GAP] lost samples=%1")
+                            .arg(static_cast<qulonglong>(wav.lost_samples)));
+                        entry.lastLostSamples = wav.lost_samples;
+                    }
+                }
+                if (recording != recordingInfo->end() &&
+                    !recording->second.error.empty()) {
+                    const auto error = QString::fromStdString(recording->second.error);
+                    if (!entry.sourceLog.contains("[RECORDING ERROR] " + error))
+                        appendEvent(entry, "[RECORDING ERROR] " + error);
+                }
+            }
             sphere->setPotentials(snapshot.potentials);
             if (!snapshot.classification_error.empty()) {
                 deviceStatus->setText(
@@ -1359,6 +2030,46 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(level.peak_dbfs + gainDb, 0, 'f', 1)
                     .arg(static_cast<qulonglong>(level.samples));
             }
+            QStringList speechLevelLines;
+            for (const auto& level : snapshot.speech_processing_levels) {
+                speechLevelLines << QString(
+                    "Track #%1: SSS %2 dBFS RMS / speech %3 dBFS RMS"
+                    " (total change %4 dB); peaks %5 → %6 dBFS; %7 matched samples")
+                    .arg(static_cast<qulonglong>(level.track_id))
+                    .arg(level.input_rms_dbfs, 0, 'f', 1)
+                    .arg(level.output_rms_dbfs, 0, 'f', 1)
+                    .arg(level.output_rms_dbfs - level.input_rms_dbfs, 0, 'f', 1)
+                    .arg(level.input_peak_dbfs, 0, 'f', 1)
+                    .arg(level.output_peak_dbfs, 0, 'f', 1)
+                    .arg(static_cast<qulonglong>(level.samples));
+            }
+            const auto& stages = snapshot.odas_stages;
+            const double hopSeconds = static_cast<double>(hop->value()) /
+                                      static_cast<double>(captureRate->value());
+            const auto elapsed = [=](std::uint64_t count) {
+                return QString::number(static_cast<double>(count) *
+                                       hopSeconds, 'f', 2) + " s";
+            };
+            const auto firstAt = [&](std::optional<std::uint64_t> index) {
+                return index ? elapsed(*index) : QString{"not observed"};
+            };
+            const QString odasStages = QString(
+                "ODAS stages (since capture/XRUN reset, %1 hops): "
+                "SSL-positive=%2, SST-tracked=%3, SSS-audio=%4; "
+                "SSL-positive without SST=%5 (current streak %6, max %7); "
+                "SST without SSS=%8; first SSL/SST/SSS at %9 / %10 / %11. "
+                "SSL candidates are not identified sources.")
+                .arg(static_cast<qulonglong>(stages.processed_hops))
+                .arg(static_cast<qulonglong>(stages.positive_ssl_hops))
+                .arg(static_cast<qulonglong>(stages.sst_track_hops))
+                .arg(static_cast<qulonglong>(stages.sss_audio_hops))
+                .arg(elapsed(stages.ssl_without_sst_hops))
+                .arg(elapsed(stages.consecutive_ssl_without_sst_hops))
+                .arg(elapsed(stages.longest_ssl_without_sst_hops))
+                .arg(elapsed(stages.sst_without_sss_hops))
+                .arg(firstAt(stages.first_positive_ssl_hop))
+                .arg(firstAt(stages.first_sst_track_hop))
+                .arg(firstAt(stages.first_sss_audio_hop));
             diagnostics->setText(
                 QString("Classifier: %4\nSpeech: %5\nRaw ALSA input levels: %1\n"
                         "ODAS SSL direction proposals: %2 (strongest raw score: %3) · "
@@ -1368,18 +2079,46 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(strongest, 0, 'f', 3)
                     .arg(QString::fromStdString(snapshot.classifier_status))
                     .arg(QString::fromStdString(snapshot.speech_status)) +
+                "\n" + odasStages +
                 "\nODAS SSS output (same measurement window): " +
-                (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")));
+                (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")) +
+                "\nSpeech path (NS + AGC combined, not measured SNR; only successful matched PCM): " +
+                (speechLevelLines.isEmpty() ? QString{"no speech PCM"} : speechLevelLines.join(" | ")));
         }
         if (!snapshot.error.empty()) {
             stopCapture();
-            status->setText("Live ALSA/ODAS error: " +
-                            QString::fromStdString(snapshot.error));
+            const QString detail = QString::fromStdString(snapshot.error);
+            status->setText("Live ALSA/ODAS error: " + detail);
+            diagnostics->setText("Live capture stopped: " + detail);
+            const auto args = QCoreApplication::arguments();
+            const bool automatedTest = args.contains("--self-test") ||
+                std::any_of(args.cbegin(), args.cend(), [](const QString& arg) {
+                    return arg.startsWith("--model-self-test=");
+                });
+            if (!automatedTest)
+                QMessageBox::warning(page, "Live capture failed", detail);
             return;
         }
         if (!snapshot.running) {
             stopCapture();
             status->setText("Live capture completed or device disconnected.");
+            return;
+        }
+        if (progress.state ==
+                demo::LiveCaptureProgressMonitor::State::SlowStartup) {
+            status->setText(
+                QString("ALSA/ODAS initialization still pending: no completed "
+                        "audio hop for %1 s. Check device/model initialization.")
+                    .arg(static_cast<double>(progress.since_progress.count()) / 1000.0, 0, 'f', 1));
+            return;
+        }
+        if (progress.state ==
+                demo::LiveCaptureProgressMonitor::State::Stalled) {
+            status->setText(
+                QString("ALSA → ODAS stalled: no completed audio hop for "
+                        "%1 s; capture thread still reports running. "
+                        "Check ALSA input/ODAS processing, not SST/VAD sensitivity.")
+                    .arg(static_cast<double>(progress.since_progress.count()) / 1000.0, 0, 'f', 1));
             return;
         }
         status->setText(
@@ -1433,6 +2172,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         replay->frames.clear();
         *cursor = 0;
         play->setEnabled(false);
+        // The example must always start with exactly its three synthetic
+        // tracks, even when invoked directly after a live recording session.
+        recordingInfo->clear();
+        recordingTranscripts->clear();
+        history->clear();
+        rowIndex->clear();
+        tracks->setRowCount(0);
+        *lastTableUpdate = 0;
         sphere->clearTracks();
         diagnostics->setText("Synthetic example (no live microphone levels).");
         const std::vector<AcousticSceneTrack> sample{

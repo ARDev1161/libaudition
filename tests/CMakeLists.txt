@@ -153,6 +153,8 @@ add_executable(libaudition_tests
     bounded_speech_pcm_ingress_test.cpp
     async_speech_ingress_worker_test.cpp
     source_gain_test.cpp
+    source_noise_suppression_test.cpp
+    source_speech_chain_test.cpp
     acoustic_presence_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
@@ -166,6 +168,15 @@ target_link_libraries(libaudition_tests PRIVATE
     audition::spatial
     GTest::gtest_main)
 libaudition_configure_target(libaudition_tests)
+if(LIBAUDITION_WITH_SPEEXDSP_AGC)
+    target_link_libraries(libaudition_tests PRIVATE audition::backend_speexdsp)
+endif()
+if(LIBAUDITION_WITH_WEBRTC_APM)
+    target_link_libraries(libaudition_tests PRIVATE WebRTCAPM::APM)
+    target_compile_definitions(libaudition_tests PRIVATE LIBAUDITION_WITH_WEBRTC_APM=1)
+    target_compile_features(libaudition_tests PRIVATE cxx_std_20)
+endif()
+
 # With the optional reference suite, the synthesized ONNX fixture is
 # created before every discovered GTest, including tests of the model adapter.
 # Avoid relying on CI step ordering or a pre-existing fixture directory.
@@ -826,6 +837,18 @@ add_executable(recording_audio_apis_test recording_audio_apis_test.cpp)
 target_link_libraries(recording_audio_apis_test PRIVATE audition::core audition::io)
 libaudition_configure_target(recording_audio_apis_test)
 add_test(NAME recording_audio_apis_test COMMAND recording_audio_apis_test)
+
+# Hardware-free integration: live speech DSP success/failure, WAV PCM samples,
+# JSON failure-gap reasons, independent sources and retired track-ID reuse.
+add_executable(source_speech_recording_integration_test
+    source_speech_recording_integration_test.cpp)
+target_link_libraries(source_speech_recording_integration_test PRIVATE
+    Threads::Threads audition::core audition::dsp audition::io audition::pipeline)
+libaudition_configure_target(source_speech_recording_integration_test)
+add_test(NAME source_speech_recording_integration_test
+    COMMAND source_speech_recording_integration_test)
+set_tests_properties(source_speech_recording_integration_test PROPERTIES
+    LABELS "speech;recording;wav-integration;error-recovery" TIMEOUT 30)
 
 # Recording session acceptance: reusable identity, timeline, gap and JSON APIs.
 add_executable(source_recording_session_test source_recording_session_test.cpp)

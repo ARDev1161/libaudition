@@ -42,6 +42,8 @@ struct SourceSpeechResult {
     std::uint64_t track_id{0};
     std::uint64_t generation{0};
     Transcript transcript{};
+    std::string segment_end_reason{}; // vad_silence, max_duration, retired
+    bool repetition_detected{false};
     Timestamp start_time{};
     Timestamp end_time{};
     // Half-open offsets in samples since this source generation began.
@@ -59,6 +61,8 @@ struct SourceSpeechDrain {
 struct SourceSpeechTrackStatus {
     bool exists{false};
     bool speech_active{false};
+    std::uint64_t vad_starts{0};
+    std::uint64_t vad_ends{0};
     std::size_t buffered_samples{0};
     std::size_t voiced_samples{0};
     std::optional<std::string> error{};
@@ -126,6 +130,8 @@ private:
         std::size_t trailing_silence_samples{0U};
         std::size_t voiced_samples{0U};
         bool speech_active{false};
+        std::uint64_t vad_starts{0};
+        std::uint64_t vad_ends{0};
         std::optional<std::string> error{};
         Timestamp start_time{};
         std::uint64_t start_sample{0};
@@ -139,8 +145,9 @@ private:
         std::uint64_t generation{0};
         SpeechSegment segment{};
         std::uint64_t start_sample{0};
+        std::string end_reason{};
     };
-    void queueSegment(std::uint64_t track_id, Track& track);
+    void queueSegment(std::uint64_t track_id, Track& track, const char* reason);
     void workerLoop();
     void completeJobLocked(std::uint64_t generation);
     const IVoiceActivityDetector& vad_;

@@ -1,3 +1,21 @@
+option(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC
+    "Enable SpeexDSP AGC in the Qt acoustic scene when available" ON)
+set(LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC OFF)
+if(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC AND LIBAUDITION_WITH_SPEEXDSP_AGC)
+    set(LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC ON)
+elseif(LIBAUDITION_DEMO_WITH_SPEEXDSP_AGC)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(SPEEXDSP QUIET IMPORTED_TARGET speexdsp)
+        if(SPEEXDSP_FOUND)
+            set(LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC ON)
+        endif()
+    endif()
+    if(NOT LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC)
+        message(STATUS "SpeexDSP AGC requested but speexdsp was not found; using RMS AGC only")
+    endif()
+endif()
+
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Concurrent REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Concurrent REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Multimedia QUIET)
@@ -52,6 +70,7 @@ target_compile_definitions(libaudition_qt_demo PRIVATE
     LIBAUDITION_DEMO_HAS_SAMPLERATE=$<BOOL:${LIBAUDITION_WITH_LIBSAMPLERATE}>
     LIBAUDITION_DEMO_HAS_AEC3=$<BOOL:${LIBAUDITION_WITH_WEBRTC_AEC3}>
     LIBAUDITION_DEMO_HAS_SHERPA=$<BOOL:${LIBAUDITION_WITH_SHERPA}>
+    LIBAUDITION_DEMO_HAS_WHISPERCPP=$<BOOL:${LIBAUDITION_WITH_WHISPERCPP}>
     LIBAUDITION_DEMO_HAS_SHERPA_TTS=$<AND:$<BOOL:${LIBAUDITION_WITH_SHERPA}>,$<BOOL:${LIBAUDITION_SHERPA_ENABLE_TTS}>>
     LIBAUDITION_DEMO_HAS_CLAP=$<BOOL:${LIBAUDITION_WITH_CLAP}>
     LIBAUDITION_DEMO_HAS_YAMNET=$<BOOL:${LIBAUDITION_WITH_YAMNET}>
@@ -121,6 +140,10 @@ if(LIBAUDITION_WITH_SHERPA)
     target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_sherpa)
 endif()
 
+if(LIBAUDITION_WITH_WHISPERCPP)
+    target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_whispercpp)
+endif()
+
 if(LIBAUDITION_WITH_CLAP)
     target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_clap)
 endif()
@@ -182,8 +205,12 @@ if(BUILD_TESTING)
     if(LIBAUDITION_WITH_WEBRTC_AEC3)
         libaudition_add_qt_check(aec3 --model-self-test=aec3)
     endif()
+    if(LIBAUDITION_WITH_WEBRTC_APM)
+        libaudition_add_qt_check(noise_suppression_controls --model-self-test=ns-controls)
+    endif()
     if(LIBAUDITION_WITH_SHERPA)
         libaudition_add_qt_check(sherpa_errors --model-self-test=sherpa-errors)
+        libaudition_add_qt_check(vad_tuning_controls --model-self-test=vad-tuning)
     endif()
     if(LIBAUDITION_WITH_WORLD)
         libaudition_add_qt_check(world --model-self-test=world)
@@ -191,6 +218,18 @@ if(BUILD_TESTING)
     if(LIBAUDITION_WITH_GTSAM)
         libaudition_add_qt_check(gtsam --model-self-test=gtsam)
     endif()
+endif()
+
+# APM 2.x is a single public DSP API. Keep it separate from the old
+# independently extracted WebRTC backends during the migration.
+if(LIBAUDITION_WITH_WEBRTC_APM)
+    target_link_libraries(libaudition_qt_demo PRIVATE WebRTCAPM::APM)
+    target_compile_definitions(libaudition_qt_demo PRIVATE
+        LIBAUDITION_WITH_WEBRTC_APM=1)
+    target_compile_features(libaudition_qt_demo PRIVATE cxx_std_20)
+else()
+    target_compile_definitions(libaudition_qt_demo PRIVATE
+        LIBAUDITION_WITH_WEBRTC_APM=0)
 endif()
 
 # The model-backed checks require independently downloaded real weights.
@@ -222,3 +261,17 @@ if(BUILD_TESTING AND LIBAUDITION_REGISTER_REAL_QT_MODEL_TESTS)
         libaudition_add_qt_real_check(aasist)
     endif()
 endif()
+
+if(LIBAUDITION_DEMO_HAS_SPEEXDSP_AGC)
+    if(LIBAUDITION_WITH_SPEEXDSP_AGC)
+        target_link_libraries(libaudition_qt_demo PRIVATE audition::backend_speexdsp)
+    else()
+        # Preserve the demo's historical optional auto-discovery even when
+        # the installed SDK's SpeexDSP target is disabled.
+        target_link_libraries(libaudition_qt_demo PRIVATE PkgConfig::SPEEXDSP)
+        target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_SPEEXDSP_AGC=1)
+    endif()
+else()
+    target_compile_definitions(libaudition_qt_demo PRIVATE LIBAUDITION_WITH_SPEEXDSP_AGC=0)
+endif()
+

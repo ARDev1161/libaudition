@@ -1,12 +1,15 @@
 #pragma once
 
 #include "acoustic_sphere_widget.hpp"
+#include "odas_stage_monitor.hpp"
+#include <audition/dsp/source_speech_failure_tracker.hpp>
 
 #include <atomic>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <map>
 #include <string>
 #include <thread>
 #include <vector>
@@ -45,11 +48,22 @@ struct LiveCaptureConfig {
     std::vector<std::string> tagging_vocabulary_labels{};
     bool tagging_efficientat_model{false};
     bool transcribe_sources{false};
+    bool speech_ns_enabled{false};
+    std::string speech_ns_level{"moderate"};
     bool speech_agc_enabled{false};
     std::string speech_agc_implementation{"rms"};
+    std::string speech_vad_kind{"silero"};
+    // Applied when constructing a Sherpa VAD session, not live SST tuning.
+    float speech_vad_threshold{0.5F};
+    float speech_vad_min_speech_seconds{0.25F};
+    float speech_vad_min_silence_seconds{0.5F};
+    std::string speech_asr_kind{"sensevoice"};
     std::string speech_vad_model_path{};
     std::string speech_asr_model_path{};
+    std::string speech_asr_decoder_path{};
+    std::string speech_asr_joiner_path{};
     std::string speech_asr_tokens_path{};
+    std::string speech_asr_language{"auto"};
 };
 
 struct LiveCaptureSnapshot {
@@ -58,6 +72,11 @@ struct LiveCaptureSnapshot {
     std::uint64_t processed_hops{0};
     std::uint64_t recoveries{0};
     std::vector<AcousticSceneTrack> tracks{};
+    // Keyed by recording ID, not a reusable numeric ODAS track ID.
+    std::map<std::uint64_t, std::string> asr_logs{};
+    std::map<std::uint64_t, std::string> recording_transcripts{};
+    struct VadState { bool active{false}; std::uint64_t starts{0}; std::uint64_t ends{0}; };
+    std::map<std::uint64_t, VadState> vad_states{};
     struct RecordedTrack {
         std::uint64_t id{0};
         std::uint64_t track_id{0};
@@ -69,10 +88,28 @@ struct LiveCaptureSnapshot {
     };
     std::vector<RecordedTrack> recordings{};
     std::vector<AcousticScenePotential> potentials{};
+    // Since capture start or most recent ALSA XRUN/ODAS reset.
+    OdasStageStatistics odas_stages{};
     std::vector<double> channel_rms_dbfs{};
     std::vector<double> channel_peak_dbfs{};
     struct SourceLevel { std::uint64_t track_id{0}; double rms_dbfs{0}; double peak_dbfs{0}; std::uint64_t samples{0}; };
     std::vector<SourceLevel> sss_levels{};
+    // Matched successful post-SSS speech PCM, not an estimate of SNR/WER.
+    // RMS and peak are computed over identical input/output sample windows.
+    struct SpeechProcessingLevel {
+        std::uint64_t track_id{0};
+        double input_rms_dbfs{-180.0};
+        double output_rms_dbfs{-180.0};
+        double input_peak_dbfs{-180.0};
+        double output_peak_dbfs{-180.0};
+        std::uint64_t samples{0};
+    };
+    std::vector<SpeechProcessingLevel> speech_processing_levels{};
+    // Cumulative during this capture, source-local state retires with ODAS ID.
+    std::uint64_t speech_preprocessing_failures_total{0};
+    std::uint64_t speech_preprocessing_failures_untracked{0};
+    std::map<std::uint64_t, audition::dsp::SourceSpeechFailureStats>
+        speech_preprocessing_failures{};
     struct GainLevel { std::uint64_t track_id{0}; double gain_db{0.0}; };
     std::vector<GainLevel> speech_gain_levels{};
     std::string classification_error{};
@@ -96,6 +133,7 @@ public:
     void stop();
     void setSstTuning(double onset, double release, std::uint32_t timeout_hops);
     void setSpeechGain(bool enabled, std::string implementation);
+    void setSpeechNoiseSuppression(bool enabled, std::string level);
     [[nodiscard]] LiveCaptureSnapshot snapshot() const;
     [[nodiscard]] static std::vector<AlsaCaptureDevice> discover();
 
@@ -113,6 +151,9 @@ private:
         std::uint64_t revision{0};
     };
     SstTuningRequest requested_sst_{};
+    bool speech_ns_enabled_{false};
+    std::string speech_ns_level_{"moderate"};
+    std::uint64_t speech_ns_revision_{0};
     bool speech_gain_enabled_{false};
     std::string speech_gain_implementation_{"rms"};
     std::uint64_t speech_gain_revision_{0};

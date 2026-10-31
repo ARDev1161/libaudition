@@ -15,13 +15,25 @@ option(LIBAUDITION_BUILD_DOCS "Build Doxygen documentation" OFF)
 option(LIBAUDITION_WITH_SPDLOG "Build the spdlog logging adapter" ON)
 option(LIBAUDITION_WITH_ODAS "Build the direct libodas spatial-audio backend" OFF)
 option(LIBAUDITION_WITH_LIBSAMPLERATE "Build the libsamplerate resampling backend" OFF)
+option(LIBAUDITION_WITH_SPEEXDSP_AGC
+    "Export the optional SpeexDSP per-source AGC processor for library consumers" OFF)
 option(LIBAUDITION_WITH_WEBRTC_AEC3 "Build the WebRTC AEC3 echo-cancellation backend" OFF)
+option(LIBAUDITION_WITH_WEBRTC_APM
+    "Enable unified WebRTC APM 2.x (AGC1/AGC2 and AEC3) backend"
+    ${LIBAUDITION_WITH_WEBRTC_AEC3})
+if(LIBAUDITION_WITH_WEBRTC_AEC3 AND NOT LIBAUDITION_WITH_WEBRTC_APM)
+    message(STATUS "AEC3 now uses unified WebRTC APM; enabling APM")
+    set(LIBAUDITION_WITH_WEBRTC_APM ON CACHE BOOL
+        "Enable unified WebRTC APM" FORCE)
+endif()
 option(LIBAUDITION_WITH_SHERPA "Build sherpa-onnx speech backends" OFF)
+option(LIBAUDITION_WITH_WHISPERCPP "Build optional whisper.cpp ASR backend (system library)" OFF)
 option(LIBAUDITION_WITH_CLAP "Build the CLAP ONNX audio-embedding backend" OFF)
 option(LIBAUDITION_WITH_YAMNET "Build the YAMNet ONNX AudioSet classifier" ${LIBAUDITION_BUILD_QT_DEMO})
 option(LIBAUDITION_WITH_EFFICIENTAT "Build experimental EfficientAT log-mel ONNX adapter" OFF)
 option(LIBAUDITION_DEMO_FETCH_YAMNET_MODEL "Download the demo YAMNet model and labels at configure time" ${LIBAUDITION_BUILD_QT_DEMO})
 option(LIBAUDITION_DEMO_FETCH_SPEECH_MODELS "Download Silero VAD and SenseVoice INT8 for the Qt demo at configure time" ${LIBAUDITION_BUILD_QT_DEMO})
+option(LIBAUDITION_DEMO_FETCH_EXTRA_SPEECH_MODELS "Download extended VAD and offline ASR demo model packs (large downloads)" ${LIBAUDITION_BUILD_QT_DEMO})
 option(LIBAUDITION_WITH_AASIST "Build the AASIST ONNX authenticity backend" OFF)
 option(LIBAUDITION_WITH_WORLD "Build the WORLD voice-traits backend" OFF)
 option(LIBAUDITION_WITH_GTSAM "Build the GTSAM spatial-fusion backend" OFF)
@@ -44,6 +56,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(Dependencies)
+if(LIBAUDITION_WITH_SPEEXDSP_AGC)
+    find_package(SpeexDSP REQUIRED)
+endif()
+if(LIBAUDITION_WITH_WEBRTC_APM)
+    libaudition_find_or_fetch_webrtc_apm()
+endif()
 
 function(libaudition_configure_target target)
     target_compile_features(${target} PUBLIC cxx_std_17)
@@ -83,14 +101,59 @@ if(LIBAUDITION_WITH_LIBSAMPLERATE)
     add_subdirectory(backends/samplerate)
 endif()
 
+# Source gain is header-only; export the SpeexDSP link and compile contract
+# explicitly so non-Qt C++17 consumers can select it without manual flags.
+if(LIBAUDITION_WITH_SPEEXDSP_AGC)
+    add_library(libaudition_backend_speexdsp INTERFACE)
+    add_library(audition::backend_speexdsp ALIAS libaudition_backend_speexdsp)
+    set_target_properties(libaudition_backend_speexdsp PROPERTIES
+        EXPORT_NAME backend_speexdsp)
+    target_link_libraries(libaudition_backend_speexdsp
+        INTERFACE SpeexDSP::SpeexDSP)
+    target_compile_definitions(libaudition_backend_speexdsp
+        INTERFACE LIBAUDITION_WITH_SPEEXDSP_AGC=1)
+    target_compile_features(libaudition_backend_speexdsp
+        INTERFACE cxx_std_17)
+    target_include_directories(libaudition_backend_speexdsp INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    install(TARGETS libaudition_backend_speexdsp
+        EXPORT libauditionTargets)
+endif()
+
+# Expose the APM-backed gain processors as an installable dependency target.
+# The gain adapter lives in a public header; consumers need both the APM
+# include paths and the compile definition when using its factory.
+if(LIBAUDITION_WITH_WEBRTC_APM)
+    add_library(libaudition_backend_webrtc_apm INTERFACE)
+    add_library(audition::backend_webrtc_apm ALIAS libaudition_backend_webrtc_apm)
+    set_target_properties(libaudition_backend_webrtc_apm PROPERTIES
+        EXPORT_NAME backend_webrtc_apm)
+    target_link_libraries(libaudition_backend_webrtc_apm
+        INTERFACE WebRTCAPM::APM)
+    target_compile_definitions(libaudition_backend_webrtc_apm
+        INTERFACE LIBAUDITION_WITH_WEBRTC_APM=1)
+    target_compile_features(libaudition_backend_webrtc_apm
+        INTERFACE cxx_std_20)
+    target_include_directories(libaudition_backend_webrtc_apm
+        INTERFACE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    install(TARGETS libaudition_backend_webrtc_apm
+        EXPORT libauditionTargets)
+endif()
+
 if(LIBAUDITION_WITH_WEBRTC_AEC3)
-    libaudition_find_or_fetch_webrtc_aec3()
     add_subdirectory(backends/webrtc_aec3)
 endif()
 
 if(LIBAUDITION_WITH_SHERPA)
     libaudition_find_or_fetch_sherpa()
     add_subdirectory(backends/sherpa)
+endif()
+
+if(LIBAUDITION_WITH_WHISPERCPP)
+    add_subdirectory(backends/whispercpp)
 endif()
 
 if(LIBAUDITION_WITH_CLAP)
@@ -132,7 +195,7 @@ if(LIBAUDITION_BUILD_QT_DEMO)
     if(LIBAUDITION_WITH_YAMNET AND LIBAUDITION_DEMO_FETCH_YAMNET_MODEL)
         include(cmake/FetchDemoYamnet.cmake)
     endif()
-    if(LIBAUDITION_WITH_SHERPA AND LIBAUDITION_DEMO_FETCH_SPEECH_MODELS)
+    if(LIBAUDITION_WITH_SHERPA AND (LIBAUDITION_DEMO_FETCH_SPEECH_MODELS OR LIBAUDITION_DEMO_FETCH_EXTRA_SPEECH_MODELS))
         include(cmake/FetchDemoSpeechModels.cmake)
     endif()
     add_subdirectory(demo/qt)
@@ -212,4 +275,6 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindODAS.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSampleRate.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSherpaOnnx.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSpeexDSP.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindWebRTCAPM.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libaudition")

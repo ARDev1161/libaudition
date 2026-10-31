@@ -362,6 +362,39 @@ int main() {
     assert(multilabel.sounds()[4].confidence==0.0);
     assert(records.retainedRecordings()==0U);
 
+    // A muted speech DSP hop is not a recorder queue drop. Adjacent gaps
+    // coalesce only when their reasons agree; old callers keep the original
+    // recorder_backpressure default.
+    const auto gap_reasons_path = root / "gap-reasons.wav";
+    records.begin(95U, 795U, gap_reasons_path, 16000U, origin);
+    records.addGap(95U, 0U, 20U);
+    records.addGap(95U, 20U, 15U,
+        audition::recording::RecordingGapReason::SpeechPreprocessingFailure);
+    records.addGap(95U, 35U, 25U,
+        audition::recording::RecordingGapReason::SpeechPreprocessingFailure);
+    records.addGap(95U, 60U, 10U);
+    bool invalid_reason_rejected = false;
+    try {
+        records.addGap(95U, 70U, 5U,
+            static_cast<audition::recording::RecordingGapReason>(255));
+    } catch (const std::invalid_argument&) {
+        invalid_reason_rejected = true;
+    }
+    assert(invalid_reason_rejected && records.active(95U));
+    records.retire(95U, std::nullopt);
+    const auto gap_reasons = audition::readRecordingTimelineJson(
+        fs::path{gap_reasons_path.string() + ".json"});
+    assert(gap_reasons.gaps().size() == 3U);
+    assert(gap_reasons.gaps()[0].start_sample == 0U &&
+           gap_reasons.gaps()[0].end_sample == 20U &&
+           gap_reasons.gaps()[0].reason == "recorder_backpressure");
+    assert(gap_reasons.gaps()[1].start_sample == 20U &&
+           gap_reasons.gaps()[1].end_sample == 60U &&
+           gap_reasons.gaps()[1].reason == "speech_preprocessing_failure");
+    assert(gap_reasons.gaps()[2].start_sample == 60U &&
+           gap_reasons.gaps()[2].end_sample == 70U &&
+           gap_reasons.gaps()[2].reason == "recorder_backpressure");
+
     auto meter = audition::dsp::StreamingLevelMeter{};
     meter.push(0.5f);
     meter.push(-0.5f);
