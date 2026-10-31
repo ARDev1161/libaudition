@@ -1580,8 +1580,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto captureProgress = std::make_shared<demo::LiveCaptureProgressMonitor>();
 
     const auto stopCapture = [=]() {
+        const bool hadLiveSession = liveTimer->isActive();
         liveTimer->stop();
         capture->stop(); // joins safely before the widget can be destroyed
+        // Synthetic/replay setup calls stopCapture() even when capture never
+        // started. Only publish the final recording snapshot for an actual
+        // live session, or the empty publication will throttle the following
+        // synthetic 3D table render for 500 ms.
+        if (hadLiveSession) {
         // The final ASR result and WAV length may arrive AFTER the last
         // 20-Hz UI snapshot, while shutdown drains the worker and recorder.
         const auto finalSnapshot = capture->snapshot();
@@ -1606,6 +1612,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 entry.sourceLog.remove(0, entry.sourceLog.size() - kMaxLogCharacters);
             entry.asrLog = updated;
             entry.loggedAsr = updated;
+        }
         }
         stopLive->setEnabled(false);
         startLive->setEnabled(
@@ -2165,6 +2172,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         replay->frames.clear();
         *cursor = 0;
         play->setEnabled(false);
+        // The example must always start with exactly its three synthetic
+        // tracks, even when invoked directly after a live recording session.
+        recordingInfo->clear();
+        recordingTranscripts->clear();
+        history->clear();
+        rowIndex->clear();
+        tracks->setRowCount(0);
+        *lastTableUpdate = 0;
         sphere->clearTracks();
         diagnostics->setText("Synthetic example (no live microphone levels).");
         const std::vector<AcousticSceneTrack> sample{
