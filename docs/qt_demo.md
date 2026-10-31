@@ -198,6 +198,27 @@ When Sherpa is absent, the checkbox is disabled and the column says
 Classification in this release applies to **live ALSA** tracks, not
 offline WAV replay. The click-to-ASR feature remains separate future work.
 
+#### ODAS SSL → SST → SSS acquisition diagnostics
+
+The **Acoustic scene** diagnostics panel counts every processed ODAS hop
+(not only UI refreshes) since capture start or the latest ALSA XRUN.
+`SSL-positive` counts hops with any finite positive raw SSL proposal,
+`SST-tracked` counts hops with one or more tracked sources, and
+`SSS-audio` counts hops containing at least one separated PCM frame.
+It also shows the total/current/maximum **SSL-positive without SST**
+duration, **SST without SSS** duration, and first-observed stage times.
+
+These are **frame counts**, not unique source counts or proof that an
+SSL proposal and a later SST track describe the same physical sound.
+If ALSA levels are present and SSL candidates persist without SST tracks,
+investigate microphone geometry and the native SST onset/release settings,
+not post-SSS VAD/AGC. If SST is present but SSS absent, inspect ODAS source
+separation. If SSS is present but no VAD/ASR occurs, inspect speech gain,
+VAD minimum durations, ingress drop counters and ASR status. Avoid setting
+thresholds from a single noisy-room trace; record reference speech and
+silence first. A headless lifecycle test covers stage-counter semantics
+but does not measure real-room detection sensitivity.
+
 #### If the 3D sphere initially remains empty
 
 An empty sphere does **not** imply ALSA has failed: the GUI used to display

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "acoustic_sphere_widget.hpp"
+#include "odas_stage_monitor.hpp"
 #include <audition/dsp/source_speech_failure_tracker.hpp>
 
 #include <atomic>
@@ -85,6 +86,8 @@ struct LiveCaptureSnapshot {
     };
     std::vector<RecordedTrack> recordings{};
     std::vector<AcousticScenePotential> potentials{};
+    // Since capture start or most recent ALSA XRUN/ODAS reset.
+    OdasStageStatistics odas_stages{};
     std::vector<double> channel_rms_dbfs{};
     std::vector<double> channel_peak_dbfs{};
     struct SourceLevel { std::uint64_t track_id{0}; double rms_dbfs{0}; double peak_dbfs{0}; std::uint64_t samples{0}; };

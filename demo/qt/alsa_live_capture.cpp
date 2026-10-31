@@ -471,6 +471,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         }
 #endif
         audition::pipeline::SourceTrackLifecycle source_lifecycle;
+        OdasStageMonitor odasStageMonitor;
         const auto session_stamp = std::chrono::steady_clock::now().time_since_epoch().count();
         audition::recording::SourceWavRecorder recorder{
             std::filesystem::temp_directory_path() / "libaudition-recordings" /
@@ -775,6 +776,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 filled = 0;
                 for (auto& meter : channelMeters) meter.reset();
                 sssMeters.clear();
+                odasStageMonitor.reset(); // compare only one continuous ODAS epoch
 #if LIBAUDITION_DEMO_HAS_SHERPA
                 speechMeters.clear();
 #endif
@@ -825,6 +827,16 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             failureStage = "ODAS process";
             const auto resultFrame = engine.process(block.view());
             ++hops;
+            // Observe all ODAS hops, including those skipped by the UI
+            // stride. A positive SSL score is a proposal, not a tracked ID.
+            const bool hasPositiveSsl = std::any_of(
+                resultFrame.potential_sources.begin(),
+                resultFrame.potential_sources.end(),
+                [](const auto& proposal) {
+                    return std::isfinite(proposal.score) && proposal.score > 0.0;
+                });
+            odasStageMonitor.observe(hasPositiveSsl,
+                !resultFrame.tracks.empty(), !resultFrame.separated_frames.empty());
             { // Recording is independent of classifier and ASR toggles.
                 std::set<std::uint64_t> present;
                 for (const auto& track : resultFrame.tracks) {
@@ -1076,6 +1088,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                                                item.samples, item.active, item.lost_samples, item.error});
             }
             latest_.potentials = std::move(proposals);
+            latest_.odas_stages = odasStageMonitor.snapshot();
             latest_.channel_rms_dbfs = std::move(rmsDbfs);
             latest_.channel_peak_dbfs = std::move(peakDbfs);
             latest_.sss_levels = std::move(sssLevels);

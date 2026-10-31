@@ -2006,6 +2006,33 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(level.output_peak_dbfs, 0, 'f', 1)
                     .arg(static_cast<qulonglong>(level.samples));
             }
+            const auto& stages = snapshot.odas_stages;
+            const double hopSeconds = static_cast<double>(hop->value()) /
+                                      static_cast<double>(captureRate->value());
+            const auto elapsed = [=](std::uint64_t count) {
+                return QString::number(static_cast<double>(count) *
+                                       hopSeconds, 'f', 2) + " s";
+            };
+            const auto firstAt = [&](std::optional<std::uint64_t> index) {
+                return index ? elapsed(*index) : QString{"not observed"};
+            };
+            const QString odasStages = QString(
+                "ODAS stages (since capture/XRUN reset, %1 hops): "
+                "SSL-positive=%2, SST-tracked=%3, SSS-audio=%4; "
+                "SSL-positive without SST=%5 (current streak %6, max %7); "
+                "SST without SSS=%8; first SSL/SST/SSS at %9 / %10 / %11. "
+                "SSL candidates are not identified sources.")
+                .arg(static_cast<qulonglong>(stages.processed_hops))
+                .arg(static_cast<qulonglong>(stages.positive_ssl_hops))
+                .arg(static_cast<qulonglong>(stages.sst_track_hops))
+                .arg(static_cast<qulonglong>(stages.sss_audio_hops))
+                .arg(elapsed(stages.ssl_without_sst_hops))
+                .arg(elapsed(stages.consecutive_ssl_without_sst_hops))
+                .arg(elapsed(stages.longest_ssl_without_sst_hops))
+                .arg(elapsed(stages.sst_without_sss_hops))
+                .arg(firstAt(stages.first_positive_ssl_hop))
+                .arg(firstAt(stages.first_sst_track_hop))
+                .arg(firstAt(stages.first_sss_audio_hop));
             diagnostics->setText(
                 QString("Classifier: %4\nSpeech: %5\nRaw ALSA input levels: %1\n"
                         "ODAS SSL direction proposals: %2 (strongest raw score: %3) · "
@@ -2015,6 +2042,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                     .arg(strongest, 0, 'f', 3)
                     .arg(QString::fromStdString(snapshot.classifier_status))
                     .arg(QString::fromStdString(snapshot.speech_status)) +
+                "\n" + odasStages +
                 "\nODAS SSS output (same measurement window): " +
                 (sssLevelLines.isEmpty() ? QString{"no separated PCM"} : sssLevelLines.join(" | ")) +
                 "\nSpeech path (NS + AGC combined, not measured SNR; only successful matched PCM): " +

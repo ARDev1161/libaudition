@@ -2,6 +2,7 @@
 #include "acoustic_scene_page.hpp"
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
+#include "odas_stage_monitor.hpp"
 #include "wav_io.hpp"
 
 #include <audition/audio/audio_buffer.hpp>
@@ -880,6 +881,34 @@ QString testPlaybackLifecycle(const QTemporaryDir& dir) {
 }
 
 QString testSourceTrackLifecycle() {
+    // Stage monitor must sample every hop rather than only rendered frames,
+    // and reset cleanly after an ALSA XRUN without persisting stale streaks.
+    demo::OdasStageMonitor stages;
+    stages.observe(false, false, false); // no candidate and no track
+    stages.observe(true, false, false);
+    stages.observe(true, false, false);
+    stages.observe(true, true, false);
+    stages.observe(false, true, true);
+    auto stage = stages.snapshot();
+    if (stage.processed_hops != 5U || stage.positive_ssl_hops != 3U ||
+        stage.sst_track_hops != 2U || stage.sss_audio_hops != 1U ||
+        stage.ssl_without_sst_hops != 2U ||
+        stage.consecutive_ssl_without_sst_hops != 0U ||
+        stage.longest_ssl_without_sst_hops != 2U ||
+        stage.sst_without_sss_hops != 1U ||
+        stage.first_positive_ssl_hop != 1U ||
+        stage.first_sst_track_hop != 3U ||
+        stage.first_sss_audio_hop != 4U)
+        throw std::runtime_error{"ODAS acquisition stage accounting failed"};
+    stages.reset();
+    stages.observe(true, false, false);
+    stage = stages.snapshot();
+    if (stage.processed_hops != 1U ||
+        stage.consecutive_ssl_without_sst_hops != 1U ||
+        stage.first_sst_track_hop.has_value() ||
+        stage.first_sss_audio_hop.has_value())
+        throw std::runtime_error{"ODAS stage reset retained stale state"};
+
     demo::SourceTrackLifecycle lifecycle;
     std::vector<std::uint64_t> retired;
     const auto forget = [&](std::uint64_t id) { retired.push_back(id); };
