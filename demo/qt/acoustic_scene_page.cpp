@@ -2078,7 +2078,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             status->setText(
                 QString("ALSA/ODAS initialization still pending: no completed "
                         "audio hop for %1 s. Check device/model initialization.")
-                    .arg(progress.since_progress.count() / 1000.0, 0, 'f', 1));
+                    .arg(static_cast<double>(progress.since_progress.count()) / 1000.0, 0, 'f', 1));
             return;
         }
         if (progress.state ==
@@ -2087,7 +2087,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                 QString("ALSA → ODAS stalled: no completed audio hop for "
                         "%1 s; capture thread still reports running. "
                         "Check ALSA input/ODAS processing, not SST/VAD sensitivity.")
-                    .arg(progress.since_progress.count() / 1000.0, 0, 'f', 1));
+                    .arg(static_cast<double>(progress.since_progress.count()) / 1000.0, 0, 'f', 1));
             return;
         }
         status->setText(
