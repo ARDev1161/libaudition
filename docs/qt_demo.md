@@ -198,6 +198,20 @@ When Sherpa is absent, the checkbox is disabled and the column says
 Classification in this release applies to **live ALSA** tracks, not
 offline WAV replay. The click-to-ASR feature remains separate future work.
 
+#### Live capture liveness
+
+The Qt status line independently monitors the capture hop counter.
+After 15 seconds without an initial completed ALSA/ODAS hop it shows a
+**slow initialization** warning. After the first completed hop, a
+3-second period with no new completed hops shows **ALSA → ODAS stalled**.
+This only diagnoses lack of pipeline progress: it cannot distinguish
+a blocked ALSA read from an ODAS processing stall. The live session is
+not stopped or automatically restarted by this warning. A quiet room
+with continuously arriving audio hops remains **LIVE**, even with zero
+tracked sources and no ASR results. Recording/classification and VAD
+settings do not influence this liveness decision. A hardware-free test
+exercises startup, stall, recovery and restart states.
+
 #### ODAS SSL → SST → SSS acquisition diagnostics
 
 The **Acoustic scene** diagnostics panel counts every processed ODAS hop

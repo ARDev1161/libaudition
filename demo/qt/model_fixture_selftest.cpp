@@ -3,6 +3,7 @@
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
 #include "odas_stage_monitor.hpp"
+#include "live_capture_progress_monitor.hpp"
 #include "wav_io.hpp"
 
 #include <audition/audio/audio_buffer.hpp>
@@ -881,6 +882,26 @@ QString testPlaybackLifecycle(const QTemporaryDir& dir) {
 }
 
 QString testSourceTrackLifecycle() {
+    // GUI heartbeat must distinguish a quiet room (hops keep arriving)
+    // from blocked ALSA/ODAS processing (hops stop advancing).
+    demo::LiveCaptureProgressMonitor progress;
+    using Progress = demo::LiveCaptureProgressMonitor;
+    const auto start = Progress::Clock::now();
+    if (progress.observe(0U, start).state != Progress::State::Starting ||
+        progress.observe(0U, start + std::chrono::seconds{16}).state !=
+            Progress::State::SlowStartup ||
+        progress.observe(16U, start + std::chrono::seconds{16}).state !=
+            Progress::State::Flowing ||
+        progress.observe(16U, start + std::chrono::seconds{20}).state !=
+            Progress::State::Stalled ||
+        progress.observe(17U, start + std::chrono::seconds{21}).state !=
+            Progress::State::Flowing)
+        throw std::runtime_error{"ALSA/ODAS heartbeat watchdog state incorrect"};
+    progress.reset(start + std::chrono::seconds{30});
+    if (progress.observe(0U, start + std::chrono::seconds{31}).state !=
+        Progress::State::Starting)
+        throw std::runtime_error{"Capture restart preserved previous stalled state"};
+
     // Stage monitor must sample every hop rather than only rendered frames,
     // and reset cleanly after an ALSA XRUN without persisting stale streaks.
     demo::OdasStageMonitor stages;

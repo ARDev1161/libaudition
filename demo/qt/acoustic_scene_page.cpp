@@ -2,6 +2,7 @@
 #include "alsa_live_capture.hpp"
 #include "odas_respeaker_profile.hpp"
 #include "acoustic_sphere_widget.hpp"
+#include "live_capture_progress_monitor.hpp"
 #include "wav_io.hpp"
 #include "playback_normalizer.hpp"
 #include "recording_timeline_view.hpp"
@@ -58,6 +59,7 @@
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -1571,6 +1573,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     auto* liveTimer = new QTimer{page};
     liveTimer->setInterval(50);
     auto seenGeneration = std::make_shared<std::uint64_t>(0);
+    auto captureProgress = std::make_shared<demo::LiveCaptureProgressMonitor>();
 
     const auto stopCapture = [=]() {
         liveTimer->stop();
@@ -1806,6 +1809,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             selected->setText("Click a live track to inspect its direction.");
             capture->start(std::move(config));
             *seenGeneration = 0;
+            captureProgress->reset(demo::LiveCaptureProgressMonitor::Clock::now());
             startLive->setEnabled(false);
             stopLive->setEnabled(true);
             refreshDevices->setEnabled(false);
@@ -1849,6 +1853,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
 
     QObject::connect(liveTimer, &QTimer::timeout, page, [=]() {
         const auto snapshot = capture->snapshot();
+        const auto progress = captureProgress->observe(snapshot.processed_hops,
+            demo::LiveCaptureProgressMonitor::Clock::now());
         if (snapshot.generation != *seenGeneration) {
             *seenGeneration = snapshot.generation;
             recordingInfo->clear();
@@ -2065,6 +2071,23 @@ QWidget* createAcousticScenePage(QWidget* parent) {
         if (!snapshot.running) {
             stopCapture();
             status->setText("Live capture completed or device disconnected.");
+            return;
+        }
+        if (progress.state ==
+                demo::LiveCaptureProgressMonitor::State::SlowStartup) {
+            status->setText(
+                QString("ALSA/ODAS initialization still pending: no completed "
+                        "audio hop for %1 s. Check device/model initialization.")
+                    .arg(progress.since_progress.count() / 1000.0, 0, 'f', 1));
+            return;
+        }
+        if (progress.state ==
+                demo::LiveCaptureProgressMonitor::State::Stalled) {
+            status->setText(
+                QString("ALSA → ODAS stalled: no completed audio hop for "
+                        "%1 s; capture thread still reports running. "
+                        "Check ALSA input/ODAS processing, not SST/VAD sensitivity.")
+                    .arg(progress.since_progress.count() / 1000.0, 0, 'f', 1));
             return;
         }
         status->setText(
