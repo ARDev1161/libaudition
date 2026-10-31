@@ -448,6 +448,15 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             }
             audition::PerSourceSpeechOptions pipeline_options{};
             pipeline_options.sample_rate_hz = config.sample_rate_hz;
+            // Sherpa VAD reports speech activity only after its onset
+            // decision. At 16 kHz, the generic 200-ms pre-roll can cut the
+            // first syllable: a real ReSpeaker trace showed a 400-ms
+            // recording-to-ASR gap with ~650-ms VAD onset latency.
+            // Preserve up to the first second of each already-separated
+            // ODAS source for the offline recognizer. This cannot recover
+            // speech that preceded ODAS source acquisition itself.
+            pipeline_options.pre_roll_samples =
+                static_cast<std::size_t>(config.sample_rate_hz);
             // Sherpa VAD and our independent segment assembler both enforce
             // a minimum voiced duration. Match them: the runtime's default
             // 100-ms filter would otherwise silently reject a short phrase

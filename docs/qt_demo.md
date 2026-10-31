@@ -724,6 +724,23 @@ module is required only for the optional demo, not for libaudition itself.
 
 ### Live speech VAD tuning
 
+**Live speech onset retention (ReSpeaker):** The Qt capture adapter
+configures a 1-second per-source pre-roll for VAD/ASR, rather than the
+generic runtime's 200-ms default. Sherpa's model-based speech onset can
+lag behind the first audible syllable; before this change one real-device
+trace had a 400-ms gap from the first recorded SSS sample to the ASR
+segment start. The longer ring keeps PCM already separated by ODAS
+until VAD declares speech, without sending the entire stream to ASR.
+The `samples=[start,end)` offsets in **Source log…** can be used to
+verify the first segment's start against the WAV recording's sample 0.
+A short quiet preamble may be included in the ASR segment by design.
+
+This only recovers audio received **after SST/SSS has acquired the
+source**; speech before ODAS creates a track remains unavailable to the
+source-specific recorder and VAD. A simulated delayed-onset regression
+verifies that the first syllable and segment timestamp survive a
+625-ms VAD detection delay, but does not establish real-world WER.
+
 In the **Acoustic scene** tab, enable **Transcribe separated sources** and
 adjust **VAD threshold**, **Min. speech (s)** and **Min. silence (s)**.
 The default values are the Sherpa Silero/TEN defaults (0.50, 0.25 s,

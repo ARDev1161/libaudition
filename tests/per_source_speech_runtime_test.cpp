@@ -314,6 +314,67 @@ TEST(PerSourceSpeechRuntime, ContinuousSpeechCrossesSegmentCapWithoutDroppingSam
     EXPECT_EQ(runtime.statistics().dropped_segments, 0U);
 }
 
+namespace {
+class DelayedOnsetVadSession final : public IVadSession {
+public:
+    void reset() override { voiced_samples_ = 0U; }
+    VadResult process(AudioView audio) override {
+        if (audio.data()[0] < 0.2F) return {std::nullopt, false};
+        voiced_samples_ += audio.sampleCount();
+        // Model-based onset may lag the beginning of audible speech.
+        // Simulate a 625-ms delay with 1,000-sample / 16-kHz chunks.
+        return {std::nullopt, voiced_samples_ >= 10000U};
+    }
+private:
+    std::size_t voiced_samples_{0U};
+};
+class DelayedOnsetVad final : public IVoiceActivityDetector {
+public:
+    BackendInfo backendInfo() const override {return {"late-onset-vad","1"};}
+    AudioRequirements audioRequirements() const override {return {};}
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<DelayedOnsetVadSession>();
+    }
+};
+}
+
+TEST(PerSourceSpeechRuntime, OneSecondPreRollPreservesBeginningAfterDelayedVadOnset) {
+    DelayedOnsetVad vad;
+    PerSourceSpeechOptions options{};
+    options.sample_rate_hz = 16000U;
+    options.min_speech_samples = 4000U;
+    // The Qt live Sherpa path opts into a full second of pre-roll. The
+    // generic 200-ms default would drop 5,800 leading samples here.
+    options.pre_roll_samples = options.sample_rate_hz;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),options};
+    const std::vector<float> first_syllable(1000U,0.45F);
+    const std::vector<float> continued_speech(1000U,0.5F);
+    const std::vector<float> silence(1000U,0.0F);
+    const AudioFormat format{16000U,1U,AudioLayout::Interleaved};
+    const auto send = [&](const std::vector<float>& pcm, std::size_t index) {
+        const auto timestamp = Timestamp{
+            1000000000LL + static_cast<std::int64_t>(index) * 62500000LL,
+            {ClockDomain::Monotonic,1U}};
+        runtime.push(55U,AudioView{
+            pcm.data(),pcm.size(),format,timestamp});
+    };
+    for (std::size_t i=0U; i<16U; ++i)
+        send(i==0U ? first_syllable : continued_speech,i);
+    send(silence,16U);
+
+    const auto result = awaitSpeech(runtime,1U);
+    ASSERT_EQ(result.size(),1U);
+    EXPECT_EQ(result[0].audio_start_sample,0U);
+    EXPECT_EQ(result[0].audio_end_sample,16000U);
+    EXPECT_EQ(result[0].start_time.nanoseconds(),1000000000LL);
+    EXPECT_EQ(result[0].transcript.text,"55:16000");
+    EXPECT_EQ(result[0].segment_end_reason,"vad_silence");
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+    EXPECT_EQ(runtime.trackStatus(55U).vad_starts,1U);
+    EXPECT_EQ(runtime.trackStatus(55U).vad_ends,1U);
+}
+
 TEST(PerSourceSpeechRuntime, PostRollUsesExactRequestedSampleCount) {
     ThresholdVad vad;
     PerSourceSpeechOptions opts{};
