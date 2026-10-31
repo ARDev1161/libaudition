@@ -72,7 +72,9 @@ struct LiveCaptureSnapshot {
     std::uint64_t processed_hops{0};
     std::uint64_t recoveries{0};
     std::vector<AcousticSceneTrack> tracks{};
+    // Keyed by recording ID, not a reusable numeric ODAS track ID.
     std::map<std::uint64_t, std::string> asr_logs{};
+    std::map<std::uint64_t, std::string> recording_transcripts{};
     struct VadState { bool active{false}; std::uint64_t starts{0}; std::uint64_t ends{0}; };
     std::map<std::uint64_t, VadState> vad_states{};
     struct RecordedTrack {

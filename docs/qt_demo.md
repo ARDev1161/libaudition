@@ -198,6 +198,23 @@ When Sherpa is absent, the checkbox is disabled and the column says
 Classification in this release applies to **live ALSA** tracks, not
 offline WAV replay. The click-to-ASR feature remains separate future work.
 
+#### Final ASR and WAV history at capture stop
+
+Speech log and full-transcript display entries are now keyed by **WAV
+recording ID** rather than recyclable ODAS numeric track IDs.
+A late ASR completion from a retired source generation therefore cannot
+be shown as the new generation's transcript. Their memory lifetime
+follows the recorder's bounded completed-recording history.
+
+When a user stops capture, the worker drains outstanding source retirement
+and ASR results, closes WAV writers and publishes a final recording snapshot
+before the Qt UI marks tracks inactive. This retains the last completed
+utterance, final sample counts and final raw ASR lines in the history
+panel even if they arrived after the previous periodic UI refresh. ASR
+completions are subject to the existing bounded shutdown deadline (10 s);
+jobs exceeding that deadline cannot be promised in the final snapshot.
+Real-device behavior still needs verification.
+
 #### Live capture liveness
 
 Recoverable ALSA overrun/suspend responses (`-EPIPE` /

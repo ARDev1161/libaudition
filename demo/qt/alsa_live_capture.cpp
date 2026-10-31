@@ -6,6 +6,7 @@
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
 #include "speech_epoch_recording_cleanup.hpp"
+#include "speech_recording_log_router.hpp"
 #include <audition/recording/source_wav_recorder.hpp>
 #include <audition/recording/source_recording_session.hpp>
 #include <audition/dsp/streaming_level_meter.hpp>
@@ -369,7 +370,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         std::unique_ptr<audition::PerSourceSpeechRuntime> speech_runtime;
         std::unique_ptr<audition::AsyncSpeechIngressWorker> speech_worker;
         std::map<std::uint64_t, std::string> transcripts;
-        std::map<std::uint64_t, std::string> asrLogs;
+        SpeechRecordingLogRouter speechLogRouter;
         std::uint64_t ignored_asr_results = 0;
         std::string last_asr_language;
         std::map<std::uint64_t, std::unique_ptr<audition::dsp::ISourceGain>> speechGains;
@@ -517,8 +518,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 const auto mapped = epoch_recordings.find(key);
                 switch (event.kind) {
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Bound:
-                    if (mapped!=epoch_recordings.end() && event.generation)
+                    if (mapped!=epoch_recordings.end() && event.generation) {
                         recordings.bindRecordingAsr(mapped->second,*event.generation);
+                        speechLogRouter.bind(*event.generation, mapped->second);
+                    }
                     break;
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Retired:
                     if (mapped!=epoch_recordings.end()) {
@@ -530,8 +533,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     if (!event.generation) ++retirement_capacity_drops;
                     break;
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Forgot:
-                    if (event.generation)
+                    if (event.generation) {
                         recordings.cancelGeneration(*event.generation);
+                        speechLogRouter.unbind(*event.generation);
+                    }
                     // Only epochs older than this invalidation may be removed.
                     // A new Bound may already have been applied for this ID.
                     clearForgottenSpeechRecordingEpochs(
@@ -539,8 +544,10 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                         event.source_id,event.epoch);
                     break;
                 case audition::AsyncSpeechIngressWorker::Acknowledgement::Kind::Error:
-                    if (event.generation)
+                    if (event.generation) {
                         recordings.cancelGeneration(*event.generation);
+                        speechLogRouter.unbind(*event.generation);
+                    }
                     ++speech_worker_errors;
                     last_speech_worker_error=event.error.substr(0,200);
                     break;
@@ -589,16 +596,13 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     result.transcript.language.c_str(),
                     result.segment_end_reason.c_str(),
                     result.repetition_detected ? "yes" : "no");
-                auto& log = asrLogs[result.track_id];
-                log += header;
-                log += result.transcript.text;
-                log += '\n';
-                constexpr std::size_t kMaxLogBytes = 32768;
-                if (log.size() > kMaxLogBytes) {
-                    const auto boundary = log.find('\n', log.size() - kMaxLogBytes);
-                    log.erase(0, boundary == std::string::npos ?
-                                  log.size() - kMaxLogBytes : boundary + 1);
-                }
+                // Bind the raw response to its recording generation rather
+                // than its reusable numeric track ID. Retired generations
+                // may finish after a newer track has acquired the same ID.
+                const std::string raw = std::string{header} +
+                    result.transcript.text + '\n';
+                (void)speechLogRouter.append(
+                    result.generation, raw, result.transcript.text);
                 last_asr_language = result.transcript.language;
                 recordings.addSpeech(result);
                 const auto active = speech_runtime->activeGeneration(result.track_id);
@@ -626,6 +630,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             for (const auto generation : batch.ready_retired_generations) {
                 recordings.completeGeneration(generation);
                 speech_runtime->releaseRetired(generation);
+                speechLogRouter.unbind(generation);
             }
             } catch (const std::exception& e) {
                 reportRecoverable("ASR completion", e);
@@ -1086,7 +1091,6 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             std::lock_guard<std::mutex> lock{mutex_};
             latest_.tracks = std::move(tracks);
 #if LIBAUDITION_DEMO_HAS_SHERPA
-            latest_.asr_logs = asrLogs;
             latest_.vad_states.clear();
             if (speech_runtime) {
                 for (const auto& track : latest_.tracks) {
@@ -1098,7 +1102,16 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             }
 #endif
             latest_.recordings.clear();
-            for (const auto& item : recorder.entries()) {
+            const auto recordedEntries = recorder.entries();
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            std::set<std::uint64_t> retainedRecordings;
+            for (const auto& item : recordedEntries)
+                retainedRecordings.insert(item.recording_id);
+            speechLogRouter.retain(retainedRecordings);
+            latest_.asr_logs = speechLogRouter.logs();
+            latest_.recording_transcripts = speechLogRouter.transcripts();
+#endif
+            for (const auto& item : recordedEntries) {
                 latest_.recordings.push_back({item.recording_id, item.track_id, item.path,
                                                item.samples, item.active, item.lost_samples, item.error});
             }
@@ -1226,6 +1239,28 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
         }
 #endif
         recordings.flushAll();
+        // The last utterance can finish during the bounded ASR drain above.
+        // Publish its recording-specific text and completed WAV metadata
+        // AFTER all producers/recorders have finished, not just at 20 Hz.
+        recorder.closeAll();
+        const auto finishedRecordings = recorder.entries();
+        {
+            std::lock_guard<std::mutex> lock{mutex_};
+            latest_.recordings.clear();
+            for (const auto& item : finishedRecordings) {
+                latest_.recordings.push_back({item.recording_id, item.track_id,
+                    item.path, item.samples, false, item.lost_samples, item.error});
+            }
+#if LIBAUDITION_DEMO_HAS_SHERPA
+            std::set<std::uint64_t> retainedRecordings;
+            for (const auto& item : finishedRecordings)
+                retainedRecordings.insert(item.recording_id);
+            speechLogRouter.retain(retainedRecordings);
+            latest_.asr_logs = speechLogRouter.logs();
+            latest_.recording_transcripts = speechLogRouter.transcripts();
+#endif
+            ++latest_.generation;
+        }
     } catch (const std::exception& error) {
         const auto message = failureStage + ": " + error.what();
         std::fprintf(stderr, "[libaudition] live capture terminated: %s\n",

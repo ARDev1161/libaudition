@@ -2,6 +2,7 @@
 #include "acoustic_scene_page.hpp"
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
+#include "speech_recording_log_router.hpp"
 #include "odas_stage_monitor.hpp"
 #include "live_capture_progress_monitor.hpp"
 #include "wav_io.hpp"
@@ -882,6 +883,27 @@ QString testPlaybackLifecycle(const QTemporaryDir& dir) {
 }
 
 QString testSourceTrackLifecycle() {
+    // A recycled ODAS track ID must not mix late old-generation ASR with
+    // a new recording. Cancellation and recorder-history pruning are scoped.
+    demo::SpeechRecordingLogRouter logs;
+    logs.bind(31U, 101U);
+    logs.bind(32U, 102U);
+    if (!logs.append(31U, "old frame\n", "first") ||
+        !logs.append(32U, "new frame\n", "second") ||
+        !logs.append(31U, "late old frame\n", "late") ||
+        logs.logs().at(101U) != "old frame\nlate old frame\n" ||
+        logs.logs().at(102U) != "new frame\n" ||
+        logs.transcripts().at(101U) != "first late" ||
+        logs.transcripts().at(102U) != "second")
+        throw std::runtime_error{"Late ASR was routed to a reused recording"};
+    logs.unbind(31U);
+    if (logs.append(31U, "stale\n", "stale"))
+        throw std::runtime_error{"Cancelled generation still accepted ASR"};
+    logs.retain({102U});
+    if (logs.logs().size() != 1U || logs.transcripts().size() != 1U ||
+        logs.logs().count(101U) != 0U)
+        throw std::runtime_error{"Completed recording log was not bounded"};
+
     // GUI heartbeat must distinguish a quiet room (hops keep arriving)
     // from blocked ALSA/ODAS processing (hops stop advancing).
     demo::LiveCaptureProgressMonitor progress;

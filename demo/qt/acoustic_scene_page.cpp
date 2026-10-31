@@ -1362,6 +1362,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     };
     auto history = std::make_shared<std::map<std::uint64_t, HistoryEntry>>();
     auto recordingInfo = std::make_shared<std::map<std::uint64_t, demo::LiveCaptureSnapshot::RecordedTrack>>();
+    auto recordingTranscripts = std::make_shared<std::map<std::uint64_t, std::string>>();
     auto lastTableUpdate = std::make_shared<qint64>(0);
     auto rowIndex = std::make_shared<std::map<std::uint64_t, int>>();
     auto* playerButton = new QPushButton{"Play", sidebar};
@@ -1418,6 +1419,9 @@ QWidget* createAcousticScenePage(QWidget* parent) {
                         [&](const AcousticSceneTrack& track) {return track.id == r.track_id;});
                     if (it != values.end()) entry.track = *it;
                 }
+                if (const auto recognized = recordingTranscripts->find(r.id);
+                    recognized != recordingTranscripts->end())
+                    entry.track.transcript = recognized->second;
             }
         }
         int row = 0;
@@ -1578,12 +1582,30 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     const auto stopCapture = [=]() {
         liveTimer->stop();
         capture->stop(); // joins safely before the widget can be destroyed
-        // The recorder is closed when capture exits. Keep its history visible
-        // and mark all retained generations as inactive for the stopped session.
-        if (!recordingInfo->empty()) {
-            for (auto& item : *recordingInfo) item.second.active = false;
-            *lastTableUpdate = 0;
-            display({});
+        // The final ASR result and WAV length may arrive AFTER the last
+        // 20-Hz UI snapshot, while shutdown drains the worker and recorder.
+        const auto finalSnapshot = capture->snapshot();
+        recordingInfo->clear();
+        for (const auto& r : finalSnapshot.recordings)
+            (*recordingInfo)[r.id] = r;
+        *recordingTranscripts = finalSnapshot.recording_transcripts;
+        *lastTableUpdate = 0;
+        display({});
+        const auto timestamp = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
+        for (auto& [recordingId, entry] : *history) {
+            const auto log = finalSnapshot.asr_logs.find(recordingId);
+            if (log == finalSnapshot.asr_logs.end()) continue;
+            const QString updated = QString::fromStdString(log->second);
+            if (updated == entry.loggedAsr) continue;
+            const QString delta = updated.startsWith(entry.loggedAsr)
+                ? updated.mid(entry.loggedAsr.size()) : updated;
+            for (const auto& line : delta.split('\n', Qt::SkipEmptyParts))
+                entry.sourceLog += timestamp + " [ASR] " + line + "\n";
+            constexpr qsizetype kMaxLogCharacters = 65536;
+            if (entry.sourceLog.size() > kMaxLogCharacters)
+                entry.sourceLog.remove(0, entry.sourceLog.size() - kMaxLogCharacters);
+            entry.asrLog = updated;
+            entry.loggedAsr = updated;
         }
         stopLive->setEnabled(false);
         startLive->setEnabled(
@@ -1803,6 +1825,7 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             sphere->clearTracks();
             history->clear();
             recordingInfo->clear();
+            recordingTranscripts->clear();
             rowIndex->clear();
             *lastTableUpdate = 0;
             tracks->setRowCount(0);
@@ -1859,9 +1882,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             *seenGeneration = snapshot.generation;
             recordingInfo->clear();
             for (const auto& r : snapshot.recordings) (*recordingInfo)[r.id] = r;
+            *recordingTranscripts = snapshot.recording_transcripts;
             gainByTrack->clear();
             for (auto& entry : *history) {
-                const auto log = snapshot.asr_logs.find(entry.second.track.id);
+                const auto log = snapshot.asr_logs.find(entry.first);
                 if (log != snapshot.asr_logs.end()) {
                     const QString newAsr = QString::fromStdString(log->second);
                     if (newAsr != entry.second.asrLog) {
