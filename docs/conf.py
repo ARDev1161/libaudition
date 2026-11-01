@@ -30,7 +30,7 @@ myst_heading_anchors = 3
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 breathe_projects = {
-    "libaudition": str(ROOT / "docs" / "_build" / "doxygen" / "xml")
+    "libaudition": str(ROOT / "docs" / "_build" / "xml")
 }
 breathe_default_project = "libaudition"
 
