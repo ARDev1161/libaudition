@@ -39,7 +39,7 @@ html_title = "libaudition documentation"
 html_baseurl = "https://ardev1161.github.io/libaudition/"
 html_theme_options = {
     "source_repository": "https://github.com/ARDev1161/libaudition/",
-    "source_branch": "main",
+    "source_branch": "documentation",
     "source_directory": "docs/",
 }
 
