@@ -473,6 +473,31 @@ TEST(PerSourceSpeechRuntime, NativeBoundariesPreserveFirstSyllableWithoutPreRoll
     EXPECT_EQ(runtime.statistics().dropped_segments,0U);
 }
 
+TEST(PerSourceSpeechRuntime, NativeAcceptedShortCommandBypassesGenericMinimum) {
+    NativeBoundaryVad vad;
+    PerSourceSpeechOptions options{};
+    options.sample_rate_hz = 16000U;
+    // Higher generic minimum deliberately excludes this native segment.
+    // The backend already admitted it: do not throw its PCM away.
+    options.min_speech_samples = 4000U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),options};
+    const std::vector<float> short_command(1600U,0.5F);
+    const std::vector<float> silence(1600U,0.0F);
+    runtime.push(22U,chunk(short_command));
+    runtime.push(22U,chunk(silence));
+    const auto results = awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].transcript.text,"22:1600");
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,1600U);
+    EXPECT_EQ(results[0].segment_end_reason,"vad_native");
+    EXPECT_EQ(runtime.trackStatus(22U).queued_segments,1U);
+    EXPECT_EQ(runtime.trackStatus(22U).dropped_segments,0U);
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+}
+
 TEST(PerSourceSpeechRuntime, NativeBoundaryFlushesLastPhraseAtRetirement) {
     NativeBoundaryVad vad;
     PerSourceSpeechOptions opts{};

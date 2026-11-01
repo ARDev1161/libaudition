@@ -731,7 +731,10 @@ speech runtime, instead of discarding native segments and inferring
 onset from a delayed `IsDetected()` flag. The runtime submits this PCM
 and the exact backend offsets to ASR, splits long segments to the
 configured cap, and flushes unfinished speech on source retirement.
-Generic activity-only VADs keep the bounded pre/post-roll segmenter.
+Generic activity-only VADs keep the bounded pre/post-roll segmenter
+and its minimum voiced-duration filter. Completed native segments are
+treated as already admitted by their VAD, so the generic minimum does
+not silently discard a short accepted command a second time.
 The backend's onset is a model estimate, not a ground-truth phoneme
 boundary; it cannot recover audio before ODAS source acquisition.
 

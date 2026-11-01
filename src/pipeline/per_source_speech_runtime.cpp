@@ -148,7 +148,10 @@ void PerSourceSpeechRuntime::queueNativeSegments(
         }
         const auto segment_length = native.samples.size();
         track.native_emitted_until = native.start_sample + segment_length;
-        if (segment_length < options_.min_speech_samples) continue;
+        // A completed native VAD segment has already passed the backend's
+        // own speech/end-point decision. Applying the generic minimum again
+        // would silently drop short commands even though native VAD accepted
+        // them. min_speech_samples remains enforced on activity-only VAD.
         std::size_t offset = 0U;
         while (offset < segment_length) {
             const auto count = std::min(options_.max_segment_samples,
