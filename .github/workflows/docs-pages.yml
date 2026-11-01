@@ -42,6 +42,10 @@ jobs:
           test -s docs/_build/html/_static/diagram-viewer.js
           test -s docs/_build/html/_static/diagram-viewer.css
           grep -q 'diagram-viewer.js' docs/_build/html/functional_architecture.html
+          grep -q 'diagram-viewer.js' docs/_build/html/index.html
+          # The landing-page block must be parsed as a Mermaid directive,
+          # not a syntax-highlighted text fence with no interactive SVG.
+          grep -Eq '(mermaid-diagram|class="mermaid")' docs/_build/html/index.html
       - name: Upload GitHub Pages artifact
         if: github.ref == 'refs/heads/documentation'
         uses: actions/upload-pages-artifact@v3
