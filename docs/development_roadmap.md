@@ -1,6 +1,6 @@
 # libaudition — development roadmap
 
-> Status: proposed technical plan (23 October 2026). This document describes intended work, not a delivery commitment or a claim that all listed features are implemented.
+> Status: proposed technical plan (updated 1 November 2026). This document describes intended work, not a delivery commitment or a claim that all listed features are implemented.
 
 ## Scope and baseline
 
@@ -9,6 +9,18 @@
 The v1.0 release candidate is not equivalent to a published stable release. The development plan must distinguish **present implementation**, **proposed work**, and **measured validation**. A passing unit test does not establish model accuracy or hardware real-time behavior.
 
 The existing implementation history and released-version planning remain in [roadmap.md](roadmap.md). This document covers proposed work beyond the present release candidate.
+
+## Long-term vision (proposed post-v1.0)
+
+**libaudition aims to be a hardware-agnostic, application-independent C++17 toolkit for machine hearing**, from reusable DSP through spatial/speech/semantic perception to time-aware acoustic scenes, optional memory and attention-oriented analysis. It supports three composable usage tiers:
+
+1. **DSP toolkit** — buffers, clocks, calibrated filtering and array transforms; no ML dependency.
+2. **Acoustic perception** — source localization, tracking, separation, speech, speaker identity, sound categories and timed events.
+3. **Cognitive audition** — an acoustic scene with uncertainty, evidence provenance, optional memory, novelty and suggestions for deeper analysis.
+
+All tiers are **audio-only**. Robot actions, policy, ROS 2, camera/radar fusion, task relevance enforcement, scheduling and data-retention decisions remain application responsibilities. Maintain the lightweight default build, replaceable optional backends, C++17 public API, bounded state and explicit time/source identities. No future research milestone is a prerequisite for the existing v1.0 release candidate. Prefer integrating proven backends to reimplementing entire research engines without demonstrated benefit.
+
+**Claims of parity or superiority over HARK or ODAS require evidence** from the same multichannel recordings, geometry, calibration, downstream ASR and held-out scoring; a 16-mic research demonstration cannot be treated as a four-mic performance requirement.
 
 ## Diagram
 
@@ -116,6 +128,113 @@ direction TB
  E04 --> M6G
  E05 --> M6G
 end
+subgraph ADD["M1–M6 proposed incremental extensions"]
+direction TB
+ D06["D06 (M1) — Expose cross-spectral covariance and inter-channel phase/level differences (IPD/ILD) with explicit geometry and spectral scaling"]
+ T06["T06 (M2) — Trace source-generation epochs, sample offsets, source leakage and ASR attribution across gaps, reset and reuse"]
+ S06["S06 (M3) — Evaluate localizer/tracker/separator interface split and source-specific baselines before adding advanced methods"]
+ V06["V06 (M4) — Benchmark overlapped speech and target-speaker extraction, preserving verbatim ASR and attribution evidence"]
+ I06["I06 (M5) — Standardize acoustic source/event evidence and bounded prototype references before constructing scenes or memory"]
+ E06["E06 (M6) — Publish typed backend/model capability manifests and opt-in profiles for future processing-graph consumers"]
+end
+subgraph M7["M7 — Advanced spatial perception / P1 (proposed)"]
+direction TB
+ SP01["SP-01 — Introduce separately pluggable acoustic localizer, tracker, separator and spatial-mask contracts; keep ISpatialAudioEngine compatible"]
+ SP02["SP-02 — Measure array impulse/transfer functions and version direct-path versus room-dependent calibration with geometry and uncertainty"]
+ SP03["SP-03 — Benchmark noise-aware GEVD-MUSIC, multi-peak source counts and covariance regularization"]
+ SP04["SP-04 — Evaluate robust MVDR/LCMV and GHDSS-style separation with residual-leakage postfilters against ODAS"]
+ SP05["SP-05 — Evaluate optional WPE dereverberation and causal neural spatial masks without mandatory ML dependencies"]
+ SP06["SP-06 — Offer direction-conditioned and enrolled-speaker target extraction with ambiguity and reject outputs"]
+ SP07["SP-07 — Research spatial-energy maps and sound-event localization/detection subject to array-resolution limits"]
+ SP08["SP-08 — Define an acoustic ego-noise model; robot motor and state inputs remain in consuming adapters"]
+ M7G{{"M7 gate — Reference matched-array, matched-input DOA, SI-SDRi, leakage, source-specific WER, CPU and latency against ODAS and lawful HARK baseline."}}
+ SP01 --> M7G
+ SP02 --> M7G
+ SP03 --> M7G
+ SP04 --> M7G
+ SP05 --> M7G
+ SP06 --> M7G
+ SP07 --> M7G
+ SP08 --> M7G
+end
+subgraph M8["M8 — Acoustic scene model / P1 (proposed)"]
+direction TB
+ SC01["SC-01 — Define bounded, versioned AcousticSceneSnapshot plus timestamped source/event deltas and epoch-safe updates"]
+ SC02["SC-02 — Represent Source–Event–Speaker–Observation relationships without conflating distinct identity types"]
+ SC03["SC-03 — Describe acoustic-only spatial, temporal and co-occurrence relations; avoid unsupported causal conclusions"]
+ SC04["SC-04 — Retain alternative hypotheses, absence of evidence, uncertainty and conservative association rules"]
+ SC05["SC-05 — Attach timestamps, model/config provenance, quality and validity spans to every observation"]
+ SC06["SC-06 — Detect acoustic scene arrivals, endings, reappearance candidates, ambience changes and stable background"]
+ SC07["SC-07 — Aggregate overlapping source-specific events into bounded replayable episodes"]
+ M8G{{"M8 gate — Independent scene-ID, link precision/recall, event-lifecycle and evidence-consistency tests across overlaps, reset, silence and track handoff."}}
+ SC01 --> M8G
+ SC02 --> M8G
+ SC03 --> M8G
+ SC04 --> M8G
+ SC05 --> M8G
+ SC06 --> M8G
+ SC07 --> M8G
+end
+subgraph M9["M9 — Auditory attention and adaptive processing / P1–P2 (proposed)"]
+direction TB
+ AT01["AT-01 — Estimate acoustic salience from onset, novelty, persistence, urgency cues and evidence reliability"]
+ AT02["AT-02 — Keep measured salience separate from external task relevance supplied by the application"]
+ AT03["AT-03 — Model habituation, change-triggered re-alert and bounded long-running activity state"]
+ AT04["AT-04 — Expose suggested source analysis depth, deadlines and cost without silently changing models"]
+ AT05["AT-05 — Document opt-in eco, balanced and quality reference configurations and explicit fallback"]
+ AT06["AT-06 — Offer caller-owned scheduling recommendations for graceful overload degradation"]
+ AT07["AT-07 — Measure CPU/energy/latency benefits against recall, misses, WER, starvation and regressions"]
+ M9G{{"M9 gate — Measured resource savings without unacceptable loss of event recall or speech quality; no robot/actuator decisions inside core."}}
+ AT01 --> M9G
+ AT02 --> M9G
+ AT03 --> M9G
+ AT04 --> M9G
+ AT05 --> M9G
+ AT06 --> M9G
+ AT07 --> M9G
+end
+subgraph M10["M10 — Acoustic memory and semantic intelligence / P1–P2 (proposed)"]
+direction TB
+ AM01["AM-01 — Provide bounded optional short-term acoustic context and pre-roll without requiring stored PCM"]
+ AM02["AM-02 — Define versioned episodic source/event indexes with application-owned persistence and retention"]
+ AM03["AM-03 — Support controlled few-shot familiar-sound enrollment, prototype updates, rejection and contamination prevention"]
+ AM04["AM-04 — Evaluate context-aware anomaly detection under domain shift with false alarms per hour"]
+ AM05["AM-05 — Add audio-to-audio and text-to-audio retrieval through versioned embeddings"]
+ AM06["AM-06 — Evaluate optional acoustic captions with grounded claims, uncertainty and licensing metadata"]
+ AM07["AM-07 — Research evidence-bound audio question-answering that may abstain when audio evidence is insufficient"]
+ AM08["AM-08 — Support explicit forgetting, expiry, deletion and redaction requests through consumer-facing contracts"]
+ M10G{{"M10 gate — Held-out retrieval, novelty and anomaly metrics; verified identity isolation, opt-in storage, bounded retention and model provenance."}}
+ AM01 --> M10G
+ AM02 --> M10G
+ AM03 --> M10G
+ AM04 --> M10G
+ AM05 --> M10G
+ AM06 --> M10G
+ AM07 --> M10G
+ AM08 --> M10G
+end
+subgraph M11["M11 — Pipeline SDK and observability / P2 (proposed)"]
+direction TB
+ SDK01["SDK-01 — Design typed processing DAG nodes and port compatibility, lifecycle and memory-budget contracts"]
+ SDK02["SDK-02 — Serialize validated YAML/JSON configurations as adapters over authoritative typed C++ configs"]
+ SDK03["SDK-03 — Version graph schemas, migrations, dry-run diagnostics and configuration failures"]
+ SDK04["SDK-04 — Supply documented opt-in speech, robotics and acoustic-monitoring recipes with measured costs"]
+ SDK05["SDK-05 — Inspect graph processing: stage timings, audio leakage, source epochs, backpressure and errors"]
+ SDK06["SDK-06 — Replay deterministic multichannel sessions with configuration, model hashes, discontinuities and observations"]
+ SDK07["SDK-07 — Explore an optional visual graph editor outside core using the same graph validation API"]
+ SDK08["SDK-08 — Expose explicit capability and model manifests and auditable backend selection"]
+ SDK09["SDK-09 — Research a separately versioned plugin ABI only after proven demand; do not promise an ABI today"]
+ M11G{{"M11 gate — Independent installed non-Qt C++17 consumer can validate a graph, reject mismatched ports, replay evidence and inspect bounded runtime telemetry."}}
+ SDK01 --> M11G
+ SDK02 --> M11G
+ SDK03 --> M11G
+ SDK04 --> M11G
+ SDK05 --> M11G
+ SDK06 --> M11G
+ SDK07 --> M11G
+ SDK08 --> M11G
+ SDK09 --> M11G
+end
 subgraph QA["Cross-cutting verification / P0"]
 direction TB
  Q01["Q01 — Maintain dataset/model manifests (SHA-256, licensing, geometry, sample rate, annotations)."]
@@ -124,7 +243,14 @@ direction TB
  Q04["Q04 — Measure task metrics: DOA error, ID switches, WER, DER, classification F1/mAP and AEC ERLE."]
  Q05["Q05 — Record runtime p50/p95/p99, throughput, RAM, alloc count, drops and power by platform."]
  Q06["Q06 — Establish baseline-relative regression limits; skipped external corpora are not passes."]
- Q01 --> Q02 --> Q03 --> Q04 --> Q05 --> Q06
+ Q07["Q07 — Compare spatial methods on identical raw multichannel audio, geometry, downstream ASR and scored SI-SDRi/SI-SIR/leakage/DOA/WER"]
+ Q08["Q08 — Benchmark class- and speaker-conditioned extraction, association and explicit unknown/rejection behavior"]
+ Q09["Q09 — Score uncertainty calibration and abstentions under room, array, direction and domain changes"]
+ Q10["Q10 — Test scene association, alternative hypotheses, event relations, source generations and identity contamination"]
+ Q11["Q11 — Stress concurrent sources and models, worker failures, restarts, memory bounds and p50/p95/p99 end-to-end latency"]
+ Q12["Q12 — Compare adaptive processing CPU/RAM/energy savings against miss rate, event recall, WER and starvation"]
+ Q13["Q13 — Verify corpus and model licensing, provenance, storage opt-in, forgetting, deletion and consumer privacy boundaries"]
+ Q01 --> Q02 --> Q03 --> Q04 --> Q05 --> Q06 --> Q07 --> Q08 --> Q09 --> Q10 --> Q11 --> Q12 --> Q13
 end
 subgraph EXP["Optional research / not release blockers"]
 direction TB
@@ -152,6 +278,28 @@ Q06 -. verification .-> M3G
 Q06 -. verification .-> M4G
 Q06 -. verification .-> M5G
 Q06 -. verification .-> M6G
+Q13 -. verification .-> M7G
+Q13 -. verification .-> M8G
+Q13 -. verification .-> M9G
+Q13 -. verification .-> M10G
+Q13 -. verification .-> M11G
+D06 --> M1G
+T06 --> M2G
+S06 --> M3G
+V06 --> M4G
+I06 --> M5G
+E06 --> M6G
+M1G --> SP01
+M2G --> SP01
+M3G --> SP02
+M3G --> SC01
+M5G --> SC01
+M8G --> AT01
+M8G --> AM01
+M6G --> SDK01
+M7G --> SDK04
+M9G --> SDK04
+M10G --> SDK04
 M3G -. research .-> X01
 M5G -. research .-> X03
 BOUNDARY["Responsibility boundary<br/>libaudition: audio-only inference and observations<br/>Applications: ROS 2, TF, cameras, radar, PDDL and action policy"]
@@ -161,8 +309,8 @@ classDef gate fill:#edf1f3,stroke:#60717a,color:#23303a,stroke-width:1.2px
 classDef quality fill:#f4f0e7,stroke:#9b8b69,color:#403b2d
 classDef research fill:#f2f2f2,stroke:#9a9a9a,color:#4c4c4c
 class ROOT,BOUNDARY headline
-class M0G,M1G,M2G,M3G,M4G,M5G,M6G gate
-class Q01,Q02,Q03,Q04,Q05,Q06 quality
+class M0G,M1G,M2G,M3G,M4G,M5G,M6G,M7G,M8G,M9G,M10G,M11G gate
+class Q01,Q02,Q03,Q04,Q05,Q06,Q07,Q08,Q09,Q10,Q11,Q12,Q13 quality
 class X01,X02,X03,X04,X05 research
 ```
 
@@ -253,6 +401,85 @@ Stages identify **logical prerequisites**, not mandatory sequential implementati
 
 **Acceptance gate M6:** Independent consumer build and documented measured runtime/memory profile for supported targets.
 
+## Incremental extensions of existing milestones (post-v1.0)
+
+- **D06 (M1):** Expose cross-spectral covariance and inter-channel phase/level differences (IPD/ILD) with explicit geometry and spectral scaling.
+- **T06 (M2):** Trace source-generation epochs, sample offsets, source leakage and ASR attribution across gaps, reset and reuse.
+- **S06 (M3):** Evaluate localizer/tracker/separator interface split and source-specific baselines before adding advanced methods.
+- **V06 (M4):** Benchmark overlapped speech and target-speaker extraction, preserving verbatim ASR and attribution evidence.
+- **I06 (M5):** Standardize acoustic source/event evidence and bounded prototype references before constructing scenes or memory.
+- **E06 (M6):** Publish typed backend/model capability manifests and opt-in profiles for future processing-graph consumers.
+
+These supplement the existing M1–M6 definitions and are not retroactive release blockers. M3 retains the existing ODAS integration and its planned basic alternatives; M7 addresses advanced spatial research and quality parity.
+
+## Proposed advanced milestones M7–M11
+
+The following are planned capabilities, **not implemented feature claims**. Work can overlap where prerequisites and measurements permit. A custom algorithm should be justified by portability, measurable performance, capability gaps or licensing, rather than treating all research ideas as mandatory reinventions.
+
+### M7. Advanced spatial perception (P1)
+
+- **SP-01:** Introduce separately pluggable acoustic localizer, tracker, separator and spatial-mask contracts; keep ISpatialAudioEngine compatible.
+- **SP-02:** Measure array impulse/transfer functions and version direct-path versus room-dependent calibration with geometry and uncertainty.
+- **SP-03:** Benchmark noise-aware GEVD-MUSIC, multi-peak source counts and covariance regularization.
+- **SP-04:** Evaluate robust MVDR/LCMV and GHDSS-style separation with residual-leakage postfilters against ODAS.
+- **SP-05:** Evaluate optional WPE dereverberation and causal neural spatial masks without mandatory ML dependencies.
+- **SP-06:** Offer direction-conditioned and enrolled-speaker target extraction with ambiguity and reject outputs.
+- **SP-07:** Research spatial-energy maps and sound-event localization/detection subject to array-resolution limits.
+- **SP-08:** Define an acoustic ego-noise model; robot motor and state inputs remain in consuming adapters.
+
+**M7 acceptance gate:** Reference matched-array, matched-input DOA, SI-SDRi, leakage, source-specific WER, CPU and latency against ODAS and lawful HARK baseline.
+
+### M8. Acoustic scene model (P1)
+
+- **SC-01:** Define bounded, versioned AcousticSceneSnapshot plus timestamped source/event deltas and epoch-safe updates.
+- **SC-02:** Represent Source–Event–Speaker–Observation relationships without conflating distinct identity types.
+- **SC-03:** Describe acoustic-only spatial, temporal and co-occurrence relations; avoid unsupported causal conclusions.
+- **SC-04:** Retain alternative hypotheses, absence of evidence, uncertainty and conservative association rules.
+- **SC-05:** Attach timestamps, model/config provenance, quality and validity spans to every observation.
+- **SC-06:** Detect acoustic scene arrivals, endings, reappearance candidates, ambience changes and stable background.
+- **SC-07:** Aggregate overlapping source-specific events into bounded replayable episodes.
+
+**M8 acceptance gate:** Independent scene-ID, link precision/recall, event-lifecycle and evidence-consistency tests across overlaps, reset, silence and track handoff.
+
+### M9. Auditory attention and adaptive processing (P1–P2)
+
+- **AT-01:** Estimate acoustic salience from onset, novelty, persistence, urgency cues and evidence reliability.
+- **AT-02:** Keep measured salience separate from external task relevance supplied by the application.
+- **AT-03:** Model habituation, change-triggered re-alert and bounded long-running activity state.
+- **AT-04:** Expose suggested source analysis depth, deadlines and cost without silently changing models.
+- **AT-05:** Document opt-in eco, balanced and quality reference configurations and explicit fallback.
+- **AT-06:** Offer caller-owned scheduling recommendations for graceful overload degradation.
+- **AT-07:** Measure CPU/energy/latency benefits against recall, misses, WER, starvation and regressions.
+
+**M9 acceptance gate:** Measured resource savings without unacceptable loss of event recall or speech quality; no robot/actuator decisions inside core.
+
+### M10. Acoustic memory and semantic intelligence (P1–P2)
+
+- **AM-01:** Provide bounded optional short-term acoustic context and pre-roll without requiring stored PCM.
+- **AM-02:** Define versioned episodic source/event indexes with application-owned persistence and retention.
+- **AM-03:** Support controlled few-shot familiar-sound enrollment, prototype updates, rejection and contamination prevention.
+- **AM-04:** Evaluate context-aware anomaly detection under domain shift with false alarms per hour.
+- **AM-05:** Add audio-to-audio and text-to-audio retrieval through versioned embeddings.
+- **AM-06:** Evaluate optional acoustic captions with grounded claims, uncertainty and licensing metadata.
+- **AM-07:** Research evidence-bound audio question-answering that may abstain when audio evidence is insufficient.
+- **AM-08:** Support explicit forgetting, expiry, deletion and redaction requests through consumer-facing contracts.
+
+**M10 acceptance gate:** Held-out retrieval, novelty and anomaly metrics; verified identity isolation, opt-in storage, bounded retention and model provenance.
+
+### M11. Pipeline SDK and observability (P2)
+
+- **SDK-01:** Design typed processing DAG nodes and port compatibility, lifecycle and memory-budget contracts.
+- **SDK-02:** Serialize validated YAML/JSON configurations as adapters over authoritative typed C++ configs.
+- **SDK-03:** Version graph schemas, migrations, dry-run diagnostics and configuration failures.
+- **SDK-04:** Supply documented opt-in speech, robotics and acoustic-monitoring recipes with measured costs.
+- **SDK-05:** Inspect graph processing: stage timings, audio leakage, source epochs, backpressure and errors.
+- **SDK-06:** Replay deterministic multichannel sessions with configuration, model hashes, discontinuities and observations.
+- **SDK-07:** Explore an optional visual graph editor outside core using the same graph validation API.
+- **SDK-08:** Expose explicit capability and model manifests and auditable backend selection.
+- **SDK-09:** Research a separately versioned plugin ABI only after proven demand; do not promise an ABI today.
+
+**M11 acceptance gate:** Independent installed non-Qt C++17 consumer can validate a graph, reject mismatched ports, replay evidence and inspect bounded runtime telemetry.
+
 ## Cross-cutting verification (P0)
 
 - **Q01:** Maintain dataset/model manifests (SHA-256, licensing, geometry, sample rate, annotations).
@@ -261,6 +488,13 @@ Stages identify **logical prerequisites**, not mandatory sequential implementati
 - **Q04:** Measure task metrics: DOA error, ID switches, WER, DER, classification F1/mAP and AEC ERLE.
 - **Q05:** Record runtime p50/p95/p99, throughput, RAM, alloc count, drops and power by platform.
 - **Q06:** Establish baseline-relative regression limits; skipped external corpora are not passes.
+- **Q07:** Compare spatial methods on identical raw multichannel audio, geometry, downstream ASR and scored SI-SDRi/SI-SIR/leakage/DOA/WER.
+- **Q08:** Benchmark class- and speaker-conditioned extraction, association and explicit unknown/rejection behavior.
+- **Q09:** Score uncertainty calibration and abstentions under room, array, direction and domain changes.
+- **Q10:** Test scene association, alternative hypotheses, event relations, source generations and identity contamination.
+- **Q11:** Stress concurrent sources and models, worker failures, restarts, memory bounds and p50/p95/p99 end-to-end latency.
+- **Q12:** Compare adaptive processing CPU/RAM/energy savings against miss rate, event recall, WER and starvation.
+- **Q13:** Verify corpus and model licensing, provenance, storage opt-in, forgetting, deletion and consumer privacy boundaries.
 
 **Evidence requirements:** Each reported benchmark must identify library commit, dataset/annotation revision, model hash, array geometry, configuration, scoring definition and hardware. Numerical release thresholds must be based on recorded baselines, not invented in advance.
 
@@ -287,3 +521,7 @@ The library ends at audio-derived signals, source tracking, classification, spee
 3. Maintain source-local identity and clock semantics, bounded resource consumption and error recovery.
 4. Profile physical platforms separately; do not transfer x86 accuracy or timing claims to RK3588 without measurement.
 5. Update this roadmap only when acceptance evidence, dependencies or engineering priorities change.
+6. M7–M11 must not delay v1.0 stability, source lifecycle fixes or Qt speech reliability.
+7. Compare advanced algorithms on matched recordings before claiming superiority over ODAS/HARK; record microphone geometry and array count.
+8. Preserve ambiguity, abstentions and evidence provenance; acoustic co-occurrence does not by itself imply causality or a human identity.
+9. Scene, memory, attention and DAG capabilities must remain modular, resource-bounded and application-independent.
