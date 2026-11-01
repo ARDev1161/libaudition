@@ -1,0 +1,47 @@
+"""Sphinx website for libaudition.
+
+Build Doxygen XML first: doxygen docs/Doxyfile.pages
+Then run: sphinx-build -b html docs docs/_build/html
+"""
+
+from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parents[1]
+project = "libaudition"
+author = "libaudition contributors"
+
+cmake_text = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+version_match = re.search(r"project\(libaudition VERSION ([0-9.]+)", cmake_text)
+version = version_match.group(1) if version_match else "dev"
+release = version
+
+extensions = [
+    "myst_parser",
+    "sphinxcontrib.mermaid",
+    "breathe",
+]
+
+source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
+root_doc = "index"
+myst_fence_as_directive = ["mermaid"]
+myst_heading_anchors = 3
+
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+breathe_projects = {
+    "libaudition": str(ROOT / "docs" / "_build" / "doxygen" / "xml")
+}
+breathe_default_project = "libaudition"
+
+html_theme = "furo"
+html_title = "libaudition documentation"
+html_baseurl = "https://ardev1161.github.io/libaudition/"
+html_theme_options = {
+    "source_repository": "https://github.com/ARDev1161/libaudition/",
+    "source_branch": "main",
+    "source_directory": "docs/",
+}
+
+# Historical reports remain searchable without appearing in the sidebar.
+suppress_warnings = ["toc.not_included"]
