@@ -6,50 +6,148 @@ The library provides reusable algorithms and acoustic observations. Applications
 
 ## Modular architecture
 
-libaudition is made of small, composable C++17 modules. The diagram shows **which parts provide the foundations, processing and composition**; it is a module map, **not** a mandatory audio-processing order or a fixed threading model. Applications select only the components they need.
+This repository-oriented diagram is adapted from the [GitDiagram overview](https://gitdiagram.com/ardev1161/libaudition), expanded to include the optional spatial, speech, audio, speaker and semantic backends as well as the identity and temporal layers. **Solid arrows** illustrate possible data flow; **dashed arrows** show optional compositions or replaceable adapters. It is **not** a fixed processing pipeline or a declaration that every backend is installed.
+
+Click a linked node to inspect its implementation on GitHub. Click the diagram background to open the zoomable viewer. Applications still own capture, worker scheduling, recordings and robot/ROS 2 behavior; a mono-only application can bypass ODAS.
 
 ```mermaid
 flowchart TB
-    APP["Consumer application<br/>(robot / ROS 2 / desktop / CLI)"]
-    subgraph SDK["libaudition — reusable C++17 modules"]
-        direction TB
-        subgraph COMPOSE["Composition and state"]
-            direction LR
-            PIPE["pipeline"]
-            MEM["memory"]
-            MODEL["model"]
-            LOG["logging"]
-        end
-        subgraph SIGNAL["Signal processing and I/O"]
-            direction LR
-            DSP["dsp"]
-            SPAT["spatial"]
-            IO["io"]
-        end
-        PORTS["interfaces — backend-neutral contracts"]
-        CORE["core — common audio and time types"]
-        PIPE --> PORTS
-        MEM --> PORTS
-        MODEL --> PORTS
-        SPAT --> PORTS
-        PORTS --> CORE
-        DSP --> CORE
-        IO --> CORE
-        LOG --> CORE
-    end
-    subgraph OPTIONAL["Optional backend adapters"]
-        direction LR
-        GEO["Spatial<br/>ODAS / GTSAM"]
-        FRONT["Audio frontend<br/>libsamplerate / WebRTC APM / SpeexDSP"]
-        ML["Speech, audio and voice ML<br/>sherpa-onnx / whisper.cpp<br/>YAMNet / EfficientAT / CLAP / WORLD / AASIST"]
-    end
-    APP --> PIPE
-    APP --> DSP
-    APP --> IO
-    GEO -.->|implements| PORTS
-    FRONT -.->|implements| PORTS
-    ML -.->|implements| PORTS
+  %% A curated, repository-grounded composition map, not a fixed runtime.
+  APP(["Consumer application<br/>capture / scheduling / policy"])
+
+  subgraph AUDIO["Audio / DSP and reusable contracts"]
+    direction LR
+    BUF["AudioBuffer / AudioView<br/>core"]
+    IO["WAV I/O / timeline<br/>io"]
+    FRONT["Audio frontend<br/>dsp"]
+    PORTS["Backend-neutral interfaces"]
+    ENHANCE["Resampling / WebRTC APM<br/>optional"]
+  end
+
+  subgraph SPATIAL["Spatial perception"]
+    direction LR
+    ODAS["ODAS engine<br/>DOA / tracking / separation"]
+    TRACK["SpatialTrack + separated PCM"]
+    RANGE["SPL / range prior / smoothing"]
+    FUSION["GTSAM spatial fusion<br/>optional"]
+  end
+
+  subgraph SPEECH["Per-source speech and voice"]
+    direction LR
+    INGRESS["Async speech ingress"]
+    SPEECH_RT["PerSourceSpeechRuntime"]
+    VAD["VAD: Silero / TEN<br/>sherpa-onnx"]
+    ASR["ASR: sherpa-onnx / whisper.cpp"]
+    SPKR["Speaker embedding / identity<br/>sherpa-onnx"]
+    VOICE["WORLD voice traits<br/>optional"]
+    TTS["TTS via sherpa-onnx<br/>optional output"]
+  end
+
+  subgraph SEMANTICS["Sound semantics"]
+    direction LR
+    CLASS_RT["Source classification runtime"]
+    TAG["YAMNet / EfficientAT / sherpa<br/>optional sound taggers"]
+    CLAP["CLAP audio embeddings"]
+    AUTH["AASIST authenticity<br/>optional"]
+  end
+
+  subgraph MEMORY["Identity and acoustic memory"]
+    direction LR
+    ID_COORD["SpatialIdentityCoordinator"]
+    RESOLVER["Heuristic source resolver"]
+    PROTOTYPE["Sound prototype matching"]
+  end
+
+  subgraph EVENTS["Temporal analysis and events"]
+    direction LR
+    DETECT["Temporal event detector"]
+    PATTERN["Recurrence / DTW / patterns"]
+    ASSEMBLER["AcousticEventAssembler"]
+  end
+
+  RESULT["Acoustic observations / events<br/>returned to application"]
+
+  APP -->|"supplies PCM"| BUF
+  APP -.->|"uses when needed"| IO
+  BUF --> FRONT
+  BUF -->|"calibrated array channels"| ODAS
+  FRONT -.->|"optional frontend"| ENHANCE
+  FRONT -->|"mono / non-spatial path"| INGRESS
+  ODAS -->|"tracks and separated audio"| TRACK
+  TRACK -->|"per-track PCM"| INGRESS
+  TRACK -->|"per-track PCM"| CLASS_RT
+  TRACK -->|"track evidence"| ID_COORD
+  RANGE -.-> ID_COORD
+  FUSION -.->|"optional fusion"| ID_COORD
+  ID_COORD --> RESOLVER
+  INGRESS --> SPEECH_RT
+  VAD -.->|"selected engine"| SPEECH_RT
+  ASR -.->|"selected engine"| SPEECH_RT
+  SPKR -.->|"optional voice evidence"| RESOLVER
+  FRONT -.->|"voice analysis"| VOICE
+  CLASS_RT -->|"scores"| DETECT
+  TAG -.->|"selected classifier"| CLASS_RT
+  CLAP -.->|"embeddings / labels"| CLASS_RT
+  BUF -.->|"authenticity analysis"| AUTH
+  RESOLVER -->|"AcousticSourceId"| ASSEMBLER
+  SPEECH_RT -->|"transcripts / segments"| ASSEMBLER
+  DETECT -->|"start / end events"| ASSEMBLER
+  PATTERN -.->|"temporal evidence"| ASSEMBLER
+  ASSEMBLER --> RESULT
+  RESULT --> APP
+  APP -.->|"explicit synthesis"| TTS
+  PORTS -.->|"implemented by adapters"| TAG
+  PORTS -.->|"implemented by adapters"| VAD
+  PORTS -.->|"implemented by adapters"| ODAS
+
+  %% Click nodes for actual source locations; names are from verified paths.
+  click BUF "https://github.com/ARDev1161/libaudition/blob/main/include/audition/audio/audio_buffer.hpp" "Public audio buffer" _blank
+  click IO "https://github.com/ARDev1161/libaudition/blob/main/src/io/wav_io.cpp" "WAV I/O" _blank
+  click FRONT "https://github.com/ARDev1161/libaudition/blob/main/src/dsp/audio_frontend.cpp" "Audio frontend" _blank
+  click PORTS "https://github.com/ARDev1161/libaudition/tree/main/include/audition" "Public contracts" _blank
+  click ENHANCE "https://github.com/ARDev1161/libaudition/blob/main/backends/webrtc_aec3/src/webrtc_apm_echo_canceller.cpp" "WebRTC APM adapter" _blank
+  click ODAS "https://github.com/ARDev1161/libaudition/blob/main/backends/odas/src/odas_spatial_engine.cpp" "ODAS adapter" _blank
+  click TRACK "https://github.com/ARDev1161/libaudition/blob/main/backends/odas/src/detail/odas_runtime.hpp" "ODAS runtime" _blank
+  click RANGE "https://github.com/ARDev1161/libaudition/blob/main/src/spatial/level_range_prior.cpp" "Range prior" _blank
+  click FUSION "https://github.com/ARDev1161/libaudition/blob/main/backends/gtsam/src/gtsam_spatial_fusion.cpp" "GTSAM spatial fusion" _blank
+  click INGRESS "https://github.com/ARDev1161/libaudition/blob/main/include/audition/speech/async_speech_ingress_worker.hpp" "Async speech ingress" _blank
+  click SPEECH_RT "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/per_source_speech_runtime.cpp" "Per-source speech runtime" _blank
+  click VAD "https://github.com/ARDev1161/libaudition/blob/main/backends/sherpa/src/sherpa_vad.cpp" "Sherpa VAD" _blank
+  click ASR "https://github.com/ARDev1161/libaudition/blob/main/backends/whispercpp/src/whispercpp_asr.cpp" "whisper.cpp ASR adapter" _blank
+  click SPKR "https://github.com/ARDev1161/libaudition/blob/main/backends/sherpa/src/sherpa_speaker_embedder.cpp" "Speaker embedding" _blank
+  click VOICE "https://github.com/ARDev1161/libaudition/blob/main/backends/world/src/world_voice_traits_estimator.cpp" "WORLD voice traits" _blank
+  click TTS "https://github.com/ARDev1161/libaudition/blob/main/backends/sherpa/src/sherpa_tts.cpp" "Optional sherpa TTS" _blank
+  click CLASS_RT "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/source_classification_runtime.cpp" "Classification runtime" _blank
+  click TAG "https://github.com/ARDev1161/libaudition/blob/main/backends/yamnet/src/yamnet_audio_tagger.cpp" "YAMNet adapter" _blank
+  click CLAP "https://github.com/ARDev1161/libaudition/blob/main/backends/clap/src/clap_audio_embedder.cpp" "CLAP adapter" _blank
+  click AUTH "https://github.com/ARDev1161/libaudition/blob/main/backends/aasist/src/aasist_authenticity_detector.cpp" "AASIST authenticity" _blank
+  click ID_COORD "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/spatial_identity.cpp" "Spatial identity coordinator" _blank
+  click RESOLVER "https://github.com/ARDev1161/libaudition/blob/main/src/memory/source_identity_resolver.cpp" "Persistent source resolver" _blank
+  click PROTOTYPE "https://github.com/ARDev1161/libaudition/blob/main/src/memory/sound_prototype_matcher.cpp" "Sound prototype matcher" _blank
+  click DETECT "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/temporal_acoustic_event_detector.cpp" "Temporal event detector" _blank
+  click PATTERN "https://github.com/ARDev1161/libaudition/blob/main/include/audition/temporal/streaming_pattern_matcher.hpp" "Temporal pattern matching" _blank
+  click ASSEMBLER "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/acoustic_event_assembler.cpp" "Acoustic event assembler" _blank
+
+  classDef toneBlue fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef toneAmber fill:#fef3c7,stroke:#d97706,color:#78350f
+  classDef toneMint fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef toneRose fill:#ffe4e6,stroke:#e11d48,color:#881337
+  classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,color:#312e81
+  classDef toneTeal fill:#ccfbf1,stroke:#0f766e,color:#134e4a
+  classDef toneNeutral fill:#f8fafc,stroke:#334155,color:#0f172a
+
+  class BUF,IO,FRONT,PORTS,ENHANCE toneBlue
+  class ODAS,TRACK,RANGE,FUSION toneAmber
+  class INGRESS,SPEECH_RT,VAD,ASR,SPKR,VOICE,TTS toneMint
+  class CLASS_RT,TAG,CLAP,AUTH toneTeal
+  class ID_COORD,RESOLVER,PROTOTYPE toneIndigo
+  class DETECT,PATTERN,ASSEMBLER toneRose
+  class APP,RESULT toneNeutral
 ```
+
+**Source identity is separate from speaker identity:** an ODAS `SpatialTrackId` is temporary, a resolved `AcousticSourceId` is a persistent acoustic hypothesis, and `SpeakerId` describes a person speaking. The `SpatialIdentityCoordinator` composes spatial evidence and a resolver without forcing a particular fusion backend. Denoising/AEC belongs to a speech-oriented branch, not ahead of multichannel localization by default.
+
+For the detailed algorithm inventory and alternate compositions, see the [functional architecture and algorithm map](functional_architecture.md).
 
 ### Main modules
 
