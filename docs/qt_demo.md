@@ -735,15 +735,15 @@ Generic activity-only VADs keep the bounded pre/post-roll segmenter.
 The backend's onset is a model estimate, not a ground-truth phoneme
 boundary; it cannot recover audio before ODAS source acquisition.
 
-**Live speech onset retention (ReSpeaker):** The Qt capture adapter
-configures a 1-second per-source pre-roll for **activity-only VAD
-fallback**. Native Sherpa Silero/TEN segmentation instead uses its
-own exact completed-segment PCM and start offsets. Before this change
-one real-device trace had a 400-ms gap from the first recorded SSS
-sample to the old ASR segment start. Inspect `samples=[start,end)`
-in **Source log…** against the recording's first sample: a positive
-start is now the native VAD's onset estimate, not the generic
-pre-roll cutoff.
+**Live speech onset retention (ReSpeaker):** The Qt Sherpa Silero/TEN
+adapter no longer requests a fixed 1-second application pre-roll.
+It uses native completed-segment PCM and start offsets; the generic
+200-ms pre-roll remains the default for VAD backends that only
+report speech activity. Before this change one real-device trace had
+a 400-ms gap from the first recorded SSS sample to the old ASR
+segment start. Inspect `samples=[start,end)` in **Source log…**
+against the WAV recording's first sample: a positive start is now
+the native model's own onset estimate, not an application cutoff.
 
 This only recovers audio received **after SST/SSS has acquired the
 source**; speech before ODAS creates a track remains unavailable to the

@@ -358,6 +358,11 @@ TEST(SherpaVad, LoadsPinnedSileroFixtureAndProcessesAudioWhenAvailable) {
     for (int i = 0; i < 10; ++i) {
         const auto result = session->process(silence.view());
         EXPECT_FALSE(result.speech_probability.has_value());
+        ASSERT_TRUE(result.completed_segments.has_value());
+        EXPECT_TRUE(result.completed_segments->empty());
     }
+    const auto flushed = session->flush();
+    ASSERT_TRUE(flushed.completed_segments.has_value());
+    EXPECT_TRUE(flushed.completed_segments->empty());
     EXPECT_NO_THROW(session->reset());
 }
