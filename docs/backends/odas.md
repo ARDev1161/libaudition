@@ -85,9 +85,14 @@ Although the upstream configuration parser mentions `DMVDR`, the pinned
 `mod_sss_process()` implementation does not implement that mode, so
 `libaudition` intentionally does not expose it.
 
-The default output is the separated, pre-speech-postfilter stream. Applications
-that specifically want ODAS post-filtered speech can select
-`OdasSeparatedOutput::Postfiltered`.
+The reusable backend defaults to delay-and-sum and pre-postfilter output.
+The **Qt live Acoustic scene** instead starts with DGSS and multi-source
+postfiltered output to improve speaker isolation, with two comboboxes for
+comparison against delay-and-sum or raw separated audio. DGSS and postfilter
+are not guarantees of speaker isolation in a reflective room. Record
+multichannel fixtures, measure per-track desired/interfering speech energies,
+and compare identical ASR prompts under both modes. The change does not
+alter native SST or any other library client's defaults.
 
 ## State and reset
 
