@@ -104,32 +104,32 @@ flowchart TB
   PORTS -.->|"implemented by adapters"| ODAS
 
   %% Source file links are resolved at Sphinx build time to the matching Doxygen HTML pages.
-  click BUF "https://github.com/ARDev1161/libaudition/blob/main/include/audition/audio/audio_buffer.hpp" "Public audio buffer" _blank
-  click IO "https://github.com/ARDev1161/libaudition/blob/main/src/io/wav_io.cpp" "WAV I/O" _blank
-  click FRONT "https://github.com/ARDev1161/libaudition/blob/main/src/dsp/audio_frontend.cpp" "Audio frontend" _blank
+  click BUF "doxygen-file:include/audition/audio/audio_buffer.hpp" "Public audio buffer" _blank
+  click IO "doxygen-file:src/io/wav_io.cpp" "WAV I/O" _blank
+  click FRONT "doxygen-file:src/dsp/audio_frontend.cpp" "Audio frontend" _blank
   click PORTS "doxygen/annotated.html" "Browse Doxygen class and interface index" _blank
-  click ENHANCE "https://github.com/ARDev1161/libaudition/blob/main/backends/webrtc_aec3/src/webrtc_apm_echo_canceller.cpp" "WebRTC APM adapter" _blank
-  click ODAS "https://github.com/ARDev1161/libaudition/blob/main/backends/odas/src/odas_spatial_engine.cpp" "ODAS adapter" _blank
-  click TRACK "https://github.com/ARDev1161/libaudition/blob/main/backends/odas/src/detail/odas_runtime.hpp" "ODAS runtime" _blank
-  click RANGE "https://github.com/ARDev1161/libaudition/blob/main/src/spatial/level_range_prior.cpp" "Range prior" _blank
-  click FUSION "https://github.com/ARDev1161/libaudition/blob/main/backends/gtsam/src/gtsam_spatial_fusion.cpp" "GTSAM spatial fusion" _blank
-  click INGRESS "https://github.com/ARDev1161/libaudition/blob/main/include/audition/speech/async_speech_ingress_worker.hpp" "Async speech ingress" _blank
-  click SPEECH_RT "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/per_source_speech_runtime.cpp" "Per-source speech runtime" _blank
-  click VAD "https://github.com/ARDev1161/libaudition/blob/main/backends/sherpa/src/sherpa_vad.cpp" "Sherpa VAD" _blank
-  click ASR "https://github.com/ARDev1161/libaudition/blob/main/backends/whispercpp/src/whispercpp_asr.cpp" "whisper.cpp ASR adapter" _blank
-  click SPKR "https://github.com/ARDev1161/libaudition/blob/main/backends/sherpa/src/sherpa_speaker_embedder.cpp" "Speaker embedding" _blank
-  click VOICE "https://github.com/ARDev1161/libaudition/blob/main/backends/world/src/world_voice_traits_estimator.cpp" "WORLD voice traits" _blank
-  click TTS "https://github.com/ARDev1161/libaudition/blob/main/backends/sherpa/src/sherpa_tts.cpp" "Optional sherpa TTS" _blank
-  click CLASS_RT "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/source_classification_runtime.cpp" "Classification runtime" _blank
-  click TAG "https://github.com/ARDev1161/libaudition/blob/main/backends/yamnet/src/yamnet_audio_tagger.cpp" "YAMNet adapter" _blank
-  click CLAP "https://github.com/ARDev1161/libaudition/blob/main/backends/clap/src/clap_audio_embedder.cpp" "CLAP adapter" _blank
-  click AUTH "https://github.com/ARDev1161/libaudition/blob/main/backends/aasist/src/aasist_authenticity_detector.cpp" "AASIST authenticity" _blank
-  click ID_COORD "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/spatial_identity.cpp" "Spatial identity coordinator" _blank
-  click RESOLVER "https://github.com/ARDev1161/libaudition/blob/main/src/memory/source_identity_resolver.cpp" "Persistent source resolver" _blank
-  click PROTOTYPE "https://github.com/ARDev1161/libaudition/blob/main/src/memory/sound_prototype_matcher.cpp" "Sound prototype matcher" _blank
-  click DETECT "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/temporal_acoustic_event_detector.cpp" "Temporal event detector" _blank
-  click PATTERN "https://github.com/ARDev1161/libaudition/blob/main/include/audition/temporal/streaming_pattern_matcher.hpp" "Temporal pattern matching" _blank
-  click ASSEMBLER "https://github.com/ARDev1161/libaudition/blob/main/src/pipeline/acoustic_event_assembler.cpp" "Acoustic event assembler" _blank
+  click ENHANCE "doxygen-file:backends/webrtc_aec3/src/webrtc_apm_echo_canceller.cpp" "WebRTC APM adapter" _blank
+  click ODAS "doxygen-file:backends/odas/src/odas_spatial_engine.cpp" "ODAS adapter" _blank
+  click TRACK "doxygen-file:backends/odas/src/detail/odas_runtime.hpp" "ODAS runtime" _blank
+  click RANGE "doxygen-file:src/spatial/level_range_prior.cpp" "Range prior" _blank
+  click FUSION "doxygen-file:backends/gtsam/src/gtsam_spatial_fusion.cpp" "GTSAM spatial fusion" _blank
+  click INGRESS "doxygen-file:include/audition/speech/async_speech_ingress_worker.hpp" "Async speech ingress" _blank
+  click SPEECH_RT "doxygen-file:src/pipeline/per_source_speech_runtime.cpp" "Per-source speech runtime" _blank
+  click VAD "doxygen-file:backends/sherpa/src/sherpa_vad.cpp" "Sherpa VAD" _blank
+  click ASR "doxygen-file:backends/whispercpp/src/whispercpp_asr.cpp" "whisper.cpp ASR adapter" _blank
+  click SPKR "doxygen-file:backends/sherpa/src/sherpa_speaker_embedder.cpp" "Speaker embedding" _blank
+  click VOICE "doxygen-file:backends/world/src/world_voice_traits_estimator.cpp" "WORLD voice traits" _blank
+  click TTS "doxygen-file:backends/sherpa/src/sherpa_tts.cpp" "Optional sherpa TTS" _blank
+  click CLASS_RT "doxygen-file:src/pipeline/source_classification_runtime.cpp" "Classification runtime" _blank
+  click TAG "doxygen-file:backends/yamnet/src/yamnet_audio_tagger.cpp" "YAMNet adapter" _blank
+  click CLAP "doxygen-file:backends/clap/src/clap_audio_embedder.cpp" "CLAP adapter" _blank
+  click AUTH "doxygen-file:backends/aasist/src/aasist_authenticity_detector.cpp" "AASIST authenticity" _blank
+  click ID_COORD "doxygen-file:src/pipeline/spatial_identity.cpp" "Spatial identity coordinator" _blank
+  click RESOLVER "doxygen-file:src/memory/source_identity_resolver.cpp" "Persistent source resolver" _blank
+  click PROTOTYPE "doxygen-file:src/memory/sound_prototype_matcher.cpp" "Sound prototype matcher" _blank
+  click DETECT "doxygen-file:src/pipeline/temporal_acoustic_event_detector.cpp" "Temporal event detector" _blank
+  click PATTERN "doxygen-file:include/audition/temporal/streaming_pattern_matcher.hpp" "Temporal pattern matching" _blank
+  click ASSEMBLER "doxygen-file:src/pipeline/acoustic_event_assembler.cpp" "Acoustic event assembler" _blank
 
   classDef toneBlue fill:#dbeafe,stroke:#2563eb,color:#172554
   classDef toneAmber fill:#fef3c7,stroke:#d97706,color:#78350f
