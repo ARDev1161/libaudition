@@ -20,13 +20,26 @@ Doxygen outputs XML into docs/_build/xml. Sphinx reads that directory through Br
 
 ## Publishing to GitHub Pages
 
-The [docs-pages workflow](https://github.com/ARDev1161/libaudition/blob/main/.github/workflows/docs-pages.yml) builds documentation on relevant pull requests and deploys on a push to main or a manual workflow run on main. It publishes through the official GitHub Pages Actions deployment, not a separate gh-pages source branch.
+The [docs-pages workflow](https://github.com/ARDev1161/libaudition/blob/documentation/.github/workflows/docs-pages.yml) builds documentation and deploys on every push to the independent `documentation` branch. The entire website configuration and its workflow are maintained on that branch; no merge into `main` is required. It publishes through the official GitHub Pages Actions deployment, not a separate `gh-pages` source branch.
 
 A repository administrator must select **Settings → Pages → Build and deployment → Source: GitHub Actions** once. The expected project-site URL is:
 
 https://ardev1161.github.io/libaudition/
 
-The actual site is available only after the workflow successfully deploys and GitHub Pages is enabled. Changes in documentation branches are validated by CI; publishing them requires merging into main.
+The actual site is available only after the workflow successfully deploys and GitHub Pages is enabled. Pushes to `documentation` run both the Sphinx/Doxygen build and the deployment. Changes to `main` are **not** automatically reflected until `main` is merged into `documentation`.
+
+## Updating documentation with recent library changes
+
+To refresh API documentation and existing guides without modifying `main`, bring the new commits into the site branch:
+
+~~~sh
+git fetch origin
+git switch documentation
+git merge origin/main
+git push origin documentation
+~~~
+
+Resolve any conflicting Markdown changes before pushing. The `documentation` branch remains the only publishing source.
 
 ## Maintenance
 
