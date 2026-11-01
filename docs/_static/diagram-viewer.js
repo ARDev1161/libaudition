@@ -161,10 +161,8 @@
   }
   function attach() {
     document.querySelectorAll(SELECTOR).forEach((svg) => {
-      // The viewer moves the original SVG into its overlay: never decorate it there.
+      // The original SVG is temporarily moved into the viewer while open.
       if (svg.closest(".diagram-viewer-overlay")) return;
-      // Prefer the outer Sphinx container. Mermaid may nest an inner .mermaid
-      // element which clips or obscures controls appended directly to it.
       const source = svg.closest(".mermaid-diagram")
         || svg.closest(".mermaid-container")
         || svg.closest(".mermaid")
@@ -172,12 +170,38 @@
       if (!source || source.dataset.diagramViewerReady === "true") return;
       source.dataset.diagramViewerReady = "true";
       source.classList.add("diagram-viewer-source");
-      const launch = button("⛶", "Open diagram (wheel zoom, drag to move)", () => {
-        const current = source.querySelector("svg");
-        if (current) open(current, launch);
-      });
-      launch.className = "diagram-viewer-open";
-      source.append(launch);
+      // Preserve the Mermaid group's existing accessibility label, if present.
+      if (!source.hasAttribute("tabindex")) source.tabIndex = 0;
+      if (!source.hasAttribute("role")) source.setAttribute("role", "button");
+      if (!source.hasAttribute("aria-label")) {
+        source.setAttribute("aria-label", "Open diagram in zoomable viewer");
+      }
+      source.setAttribute("aria-haspopup", "dialog");
+      source.title = "Click to expand diagram";
+
+      const launch = (event) => {
+        if (event.defaultPrevented) return;
+        if (event.type === "click") {
+          if (event.button !== 0 || event.ctrlKey || event.metaKey ||
+              event.altKey || event.shiftKey) return;
+          // Keep clickable nodes and the extension's own controls working.
+          if (event.target.closest("a, button, input, textarea, select, summary")) return;
+        } else if (event.type === "keydown") {
+          // Don't hijack keyboard activation on interactive descendants.
+          if (event.target !== source ||
+              (event.key !== "Enter" && event.key !== " ")) return;
+        } else {
+          return;
+        }
+        const current = source.querySelector(
+          "svg[id^='mermaid-'], svg[aria-roledescription='flowchart'], .mermaid svg, svg"
+        );
+        if (!current) return;
+        event.preventDefault();
+        open(current, source);
+      };
+      source.addEventListener("click", launch);
+      source.addEventListener("keydown", launch);
     });
   }
   function init() {
