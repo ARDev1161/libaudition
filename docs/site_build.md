@@ -26,7 +26,7 @@ A repository administrator must select **Settings → Pages → Build and deploy
 
 https://ardev1161.github.io/libaudition/
 
-The actual site is available only after the workflow successfully deploys and GitHub Pages is enabled. Pushes to `documentation` run both the Sphinx/Doxygen build and the deployment. Changes to `main` are **not** automatically reflected until `main` is merged into `documentation`.
+The actual site is available only after the workflow successfully deploys and GitHub Pages is enabled. If Pages was changed from **Deploy from a branch** to **GitHub Actions** after the last documentation push, make another commit to `documentation` to start the deployment workflow; changing the repository setting alone does not trigger a Sphinx build. Pushes to `documentation` run both the Sphinx/Doxygen build and the deployment. Changes to `main` are **not** automatically reflected until `main` is merged into `documentation`.
 
 ## Updating documentation with recent library changes
 
