@@ -85,16 +85,19 @@ flowchart TB
   ASR -.->|"selected engine"| SPEECH_RT
   SPKR -.->|"optional voice evidence"| RESOLVER
   FRONT -.->|"voice analysis"| VOICE
+  VOICE -.->|"voice measurements"| RESULT
   CLASS_RT -->|"scores"| DETECT
   TAG -.->|"selected classifier"| CLASS_RT
   CLAP -.->|"embeddings / labels"| CLASS_RT
   BUF -.->|"authenticity analysis"| AUTH
+  AUTH -.->|"spoof evidence"| RESULT
   RESOLVER -->|"AcousticSourceId"| ASSEMBLER
+  PROTOTYPE -.->|"optional sound fingerprints"| RESOLVER
   SPEECH_RT -->|"transcripts / segments"| ASSEMBLER
   DETECT -->|"start / end events"| ASSEMBLER
   PATTERN -.->|"temporal evidence"| ASSEMBLER
   ASSEMBLER --> RESULT
-  RESULT --> APP
+  %% The application consumes RESULT; avoid a graph cycle back to APP.
   APP -.->|"explicit synthesis"| TTS
   PORTS -.->|"implemented by adapters"| TAG
   PORTS -.->|"implemented by adapters"| VAD
