@@ -74,6 +74,14 @@ def rewrite_architecture_links(source: str, build_dir: Path = BUILD_DIR) -> str:
             for path, url in pages.items()
             if path == target or path.endswith("/" + target)
         }
+        if not matches:
+            # Some Doxygen versions emit only the basename in <location>.
+            # Accept that fallback only when it is unambiguous.
+            basename = target.rsplit("/", 1)[-1]
+            matches = {
+                url for path, url in pages.items()
+                if path.rsplit("/", 1)[-1] == basename
+            }
         if len(matches) != 1:
             raise RuntimeError(
                 f"Cannot uniquely resolve {target} to a Doxygen HTML page "
