@@ -35,6 +35,9 @@ struct PerSourceSpeechOptions {
     // prepended to the first native segment when its start is in range.
     // 0 disables first-utterance recovery.
     std::uint32_t native_initial_context_ms{1000U};
+    // Opt-in ASR-worker-only segment gain. The VAD and persisted WAV
+    // continue receiving the original (possibly AGC-processed) PCM.
+    bool normalize_asr_segments{false};
     std::size_t post_roll_samples{4800}; // 300ms @ 16kHz
     std::size_t max_segment_samples{160000};
     // Bounds retained ASR result text (including token and word strings).
@@ -54,6 +57,8 @@ struct SourceSpeechResult {
     // Half-open offsets in samples since this source generation began.
     std::uint64_t audio_start_sample{0};
     std::uint64_t audio_end_sample{0};
+    // Extra ASR-only gain, independent of streaming AGC and WAV playback.
+    double asr_input_gain_db{0.0};
 };
 
 // Atomic consumer snapshot: results and completed retired generations

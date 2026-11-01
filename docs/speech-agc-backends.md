@@ -13,6 +13,30 @@ comparisons, since the normal source WAV no longer provides both signals.
 | WebRTC APM AGC1 | Optional | `WebRTC APM AGC1` | Unified WebRTC APM 2.x |
 | WebRTC APM AGC2 | Optional | `WebRTC APM AGC2` | Unified WebRTC APM 2.x |
 
+## Offline ASR-only segment normalization
+
+The Qt Acoustic scene offers **Normalize completed ASR segments (quiet speech)**
+(default ON; takes effect at the next capture start). It is intentionally
+separate from source streaming AGC1/AGC2 and runs **only inside the ASR worker
+after VAD segment completion**. The VAD, source WAV, ODAS tracking, classifier
+and recording-relative sample offsets are unchanged.
+
+The C++17 library exposes `<audition/dsp/asr_segment_normalizer.hpp>`.
+Opt-in `PerSourceSpeechOptions::normalize_asr_segments` (default OFF for
+SDK users) uses a target RMS of -26 dBFS, maximum +18 dB boost, -3 dBFS
+peak ceiling, and no amplification below -65 dBFS RMS. The helper
+validates the complete input before mutating it, performs only bounded
+linear gain, and preserves exact sample count and timestamps. The Source
+log's `asr_gain=..._dB` field reports this **extra** ASR input gain, not
+the real-time AGC2 gain nor the player-only normalization gain.
+
+This is an experimental intelligibility comparison, not a noise
+suppression or SNR improvement. If ODAS separation suppressed
+consonants, or VAD retained mostly noise, multiplying samples cannot
+restore speech. Compare quiet spoken phrases with this checkbox ON/OFF
+while keeping microphone distance, streaming AGC, NS and VAD unchanged;
+report native segment offsets, text and `asr_gain` for both runs.
+
 ## Unified WebRTC APM
 
 The library uses **one pinned Freedesktop WebRTC Audio Processing Module**

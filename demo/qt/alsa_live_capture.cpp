@@ -448,6 +448,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             }
             audition::PerSourceSpeechOptions pipeline_options{};
             pipeline_options.sample_rate_hz = config.sample_rate_hz;
+            pipeline_options.normalize_asr_segments =
+                config.speech_asr_normalize_segments;
             // Native Sherpa VAD supplies completed PCM with its own
             // sample-accurate onset and lookback. No fixed 1-second
             // application pre-roll is required for this backend.
@@ -589,7 +591,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 char header[256]{};
                 std::snprintf(header, sizeof(header),
                     "track=%llu generation=%llu segment=%llu samples=[%llu,%llu) "
-                    "seconds=[%.3f,%.3f) language=%s end=%s repetition=%s text=",
+                    "seconds=[%.3f,%.3f) language=%s end=%s repetition=%s asr_gain=%.1f_dB text=",
                     static_cast<unsigned long long>(result.track_id),
                     static_cast<unsigned long long>(result.generation),
                     static_cast<unsigned long long>(result.transcript.segment_id.value()),
@@ -599,7 +601,8 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     static_cast<double>(result.audio_end_sample) / config.sample_rate_hz,
                     result.transcript.language.c_str(),
                     result.segment_end_reason.c_str(),
-                    result.repetition_detected ? "yes" : "no");
+                    result.repetition_detected ? "yes" : "no",
+                    result.asr_input_gain_db);
                 // Bind the raw response to its recording generation rather
                 // than its reusable numeric track ID. Retired generations
                 // may finish after a newer track has acquired the same ID.

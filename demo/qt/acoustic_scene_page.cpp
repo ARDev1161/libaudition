@@ -893,6 +893,14 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     speechForm->addRow("VAD threshold", vadThreshold);
     speechForm->addRow("Min. speech (s)", vadMinSpeech);
     speechForm->addRow("Min. silence (s)", vadMinSilence);
+    auto* normalizeAsr = new QCheckBox{"Normalize completed ASR segments (quiet speech)", speechSettings};
+    normalizeAsr->setObjectName("acousticSceneNormalizeAsrSegments");
+    normalizeAsr->setChecked(true);
+    normalizeAsr->setToolTip(
+        "Offline ASR only. Target -26 dBFS RMS, up to +18 dB, "
+        "-3 dBFS peak ceiling, no boost below -65 dBFS RMS. "
+        "Does not change ODAS, VAD or WAV; takes effect on next capture.");
+    speechForm->addRow("ASR input", normalizeAsr);
     speechForm->addRow("ASR engine", asrKind);
     auto* speechLanguage = new QComboBox{speechSettings};
     speechLanguage->setObjectName("acousticSceneSpeechLanguage");
@@ -1738,6 +1746,8 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.speech_agc_enabled = speechAgc->isChecked() && config.transcribe_sources;
             config.speech_agc_implementation =
                 agcImplementation->currentData().toString().toStdString();
+            config.speech_asr_normalize_segments =
+                normalizeAsr->isChecked() && config.transcribe_sources;
             if (config.transcribe_sources) {
                 const auto vad = std::filesystem::path{speechVad->text().toStdString()};
                 const auto model = std::filesystem::path{speechAsr->text().toStdString()};

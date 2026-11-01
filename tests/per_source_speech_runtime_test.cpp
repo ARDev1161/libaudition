@@ -1,5 +1,6 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <audition/dsp/source_speech_chain.hpp>
+#include <audition/dsp/asr_segment_normalizer.hpp>
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <chrono>
@@ -48,6 +49,43 @@ AudioView chunk(const std::vector<float>& values) {
         {16000U,1U,AudioLayout::Interleaved},Timestamp{}};
 }
 }
+TEST(AsrSegmentNormalizer, RaisesQuietSpeechButPreservesSampleCount) {
+    std::vector<float> speech(3200U,0.005F); // -46 dBFS
+    const auto stats = audition::dsp::normalizeAsrSegment(
+        audition::Span<float>{speech.data(),speech.size()});
+    EXPECT_NEAR(stats.input_rms_dbfs,-46.0206,0.05);
+    EXPECT_NEAR(stats.applied_gain_db,18.0,0.01); // explicit boost cap
+    EXPECT_NEAR(stats.output_rms_dbfs,-28.0206,0.05);
+    ASSERT_EQ(speech.size(),3200U);
+    EXPECT_NEAR(speech.front(),0.005*std::pow(10.0,18.0/20.0),1e-5);
+}
+
+TEST(AsrSegmentNormalizer, DoesNotBoostSilenceOrBelowGate) {
+    for (float value : {0.0F,0.00001F}) {
+        std::vector<float> original(1600U,value);
+        const auto copy=original;
+        const auto stats=audition::dsp::normalizeAsrSegment(
+            audition::Span<float>{original.data(),original.size()});
+        EXPECT_DOUBLE_EQ(stats.applied_gain_db,0.0);
+        EXPECT_EQ(original,copy);
+    }
+}
+
+TEST(AsrSegmentNormalizer, PeakCeilingLimitsBoostAndRejectsBadPCM) {
+    std::vector<float> pcm(1600U,0.005F);
+    pcm[10U]=0.5F;
+    const auto stats=audition::dsp::normalizeAsrSegment(
+        audition::Span<float>{pcm.data(),pcm.size()});
+    EXPECT_GT(stats.applied_gain_db,0.0);
+    EXPECT_LT(stats.applied_gain_db,4.0); // ceiling at 0.7079
+    EXPECT_LE(pcm[10U],0.7080F);
+    const auto bad=std::vector<float>{0.001F,std::numeric_limits<float>::quiet_NaN()};
+    std::vector<float> invalid=bad;
+    EXPECT_THROW((void)audition::dsp::normalizeAsrSegment(
+        audition::Span<float>{invalid.data(),invalid.size()}),std::invalid_argument);
+    EXPECT_EQ(invalid.front(),bad.front()); // reject before mutation
+}
+
 TEST(PerSourceSpeechRuntime, CountersAreSourceLocalAndResetOnReuse) {
     ThresholdVad vad;
     PerSourceSpeechOptions options{};

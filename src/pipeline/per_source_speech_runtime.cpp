@@ -1,4 +1,5 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
+#include <audition/dsp/asr_segment_normalizer.hpp>
 #include <algorithm>
 #include <cstddef>
 #include <cmath>
@@ -524,6 +525,12 @@ void PerSourceSpeechRuntime::workerLoop() {
             jobs_.pop_front();
         }
         try {
+            double asr_input_gain_db = 0.0;
+            if (options_.normalize_asr_segments) {
+                const auto stats = dsp::normalizeAsrSegment(
+                    job.segment.audio.mutableSamples());
+                asr_input_gain_db = stats.applied_gain_db;
+            }
             auto transcript = asr_->transcribe(job.segment);
             std::lock_guard<std::mutex> guard{mutex_};
             const auto current = tracks_.find(job.track_id);
@@ -541,7 +548,8 @@ void PerSourceSpeechRuntime::workerLoop() {
                         job.segment.audio.captureTime(),
                         job.segment.audio.captureTime().advancedBy(job.segment.audio.duration()),
                         job.start_sample,
-                        job.start_sample + job.segment.audio.samples().size()});
+                        job.start_sample + job.segment.audio.samples().size(),
+                        asr_input_gain_db});
                     // Prevent unbounded accumulation when application does not poll.
                     if (results_.size() > options_.max_pending_segments) {
                         results_.erase(results_.begin());

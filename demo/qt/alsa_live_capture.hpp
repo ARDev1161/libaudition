@@ -52,6 +52,7 @@ struct LiveCaptureConfig {
     std::string speech_ns_level{"moderate"};
     bool speech_agc_enabled{false};
     std::string speech_agc_implementation{"rms"};
+    bool speech_asr_normalize_segments{false};
     std::string speech_vad_kind{"silero"};
     // Applied when constructing a Sherpa VAD session, not live SST tuning.
     float speech_vad_threshold{0.5F};
