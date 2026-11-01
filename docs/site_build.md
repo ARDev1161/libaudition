@@ -4,13 +4,14 @@ The GitHub Pages site combines existing Markdown/Mermaid guides with the C++17 A
 
 ## Build locally
 
-Install Doxygen (1.9.2 or newer) and Python 3.12 or another supported Python 3 version, then run from the repository root:
+Install Doxygen (1.9.2 or newer), Graphviz (`dot`) and Python 3.12 or another supported Python 3 version, then run from the repository root:
 
 ~~~sh
 python3 -m venv .venv-docs
 . .venv-docs/bin/activate
 python -m pip install -r docs/requirements.txt
 doxygen docs/Doxyfile.pages
+python3 docs/doxygen_links.py --check
 sphinx-build -b html docs docs/_build/html
 cp -a docs/_build/doxygen docs/_build/html/doxygen
 ~~~
@@ -36,6 +37,14 @@ On any documentation page containing Mermaid, **click directly on a diagram** to
 Architecture diagrams also contain **repository-source links on individual nodes**: activate a linked node to open its GitHub source file in a new tab, or click the diagram background to expand it. Mermaid's default security mode disables node links; `docs/conf.py` explicitly uses `mermaid_config = {"securityLevel": "loose"}` for these reviewed, repository-maintained diagrams. Do not embed untrusted or dynamically supplied Mermaid input.
 
 The viewer is implemented in `docs/_static/diagram-viewer.js` and `diagram-viewer.css`, enabled site-wide through `docs/conf.py`. It moves the original rendered SVG into the overlay and restores it on close, avoiding rasterization or duplicated SVG IDs. The GitHub Pages workflow checks JS syntax and verifies that Sphinx includes these assets.
+
+## Doxygen graphs and architecture links
+
+The standalone [Doxygen HTML reference](https://ardev1161.github.io/libaudition/doxygen/index.html) includes Graphviz-generated inheritance/class hierarchy, collaboration, include/included-by, directory, group-dependency and call/caller graphs where source relationships exist. Graphs use SVG with interactive hyperlinks. The build needs the system `graphviz` package in addition to `doxygen`. For heavily connected functions the node/depth limits in `docs/Doxyfile.pages` bound graph size.
+
+Doxygen scans **public headers and implementations** (`include/`, `src/`, `backends/`) to document file-level source browsing as well as classes. Tests and build directories are excluded from the scan.
+
+The [homepage subsystem diagram](index.md#modular-architecture) links directly to the **matching Doxygen file page** rather than GitHub. The source Markdown keeps reviewed repository-relative source pointers; the Sphinx `source-read` hook calls `docs/doxygen_links.py` to resolve each pointer to the exact generated Doxygen file ID from XML. If any file cannot be resolved or the HTML target is absent, the docs CI fails rather than publishing broken links. The class/interface node links to Doxygen's class index. Directly clicking a linked diagram node opens Doxygen in another tab; clicking the background opens the SVG zoom viewer.
 
 ## Publishing to GitHub Pages
 
