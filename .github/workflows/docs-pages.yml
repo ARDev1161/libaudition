@@ -66,7 +66,7 @@ jobs:
           grep -Eq '(mermaid-diagram|class="mermaid")' docs/_build/html/index.html
           # Guard source-linked nodes and the trusted Mermaid link setting.
           grep -q 'click ODAS' docs/_build/html/index.html
-          grep -Eq 'click ODAS.*doxygen/.*\\.html' docs/_build/html/index.html
+          grep -Eq 'click ODAS.*doxygen/.*\.html' docs/_build/html/index.html
           grep -q '"securityLevel": "loose"' docs/_build/html/_static/sphinxcontrib-mermaid/config.json
       - name: Upload GitHub Pages artifact
         if: github.ref == 'refs/heads/documentation'
