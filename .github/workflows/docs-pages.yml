@@ -1,7 +1,8 @@
 name: Documentation site
 
 # The documentation website lives entirely on the dedicated documentation branch.
-# No commit or workflow on main is required.
+# The main branch has a small optional sync/deploy bridge for automatic refreshes;
+# direct documentation pushes still build and deploy with this workflow.
 on:
   push:
     branches: [documentation]
