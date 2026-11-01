@@ -59,3 +59,15 @@ html_theme_options = {
 
 # Historical reports remain searchable without appearing in the sidebar.
 suppress_warnings = ["toc.not_included"]
+
+# Map Mermaid nodes to the generated Doxygen file pages using XML refids.
+# Doxygen must finish before Sphinx starts. Never embed unstable guessed URLs.
+def _resolve_diagram_links(app, docname, source):
+    if docname != "index" or app.builder.format != "html":
+        return
+    from doxygen_links import rewrite_architecture_links
+    source[0] = rewrite_architecture_links(source[0], ROOT / "docs" / "_build")
+
+
+def setup(app):
+    app.connect("source-read", _resolve_diagram_links)
