@@ -34,6 +34,15 @@ breathe_projects = {
 }
 breathe_default_project = "libaudition"
 
+# Mermaid's plugin fullscreen control is replaced by a lightweight viewer
+# with ordinary mouse-wheel zoom, pointer-centered scaling and drag-to-pan.
+# It applies to all Mermaid diagrams, including functional_architecture.md.
+mermaid_fullscreen = False
+
+html_static_path = ["_static"]
+html_js_files = ["diagram-viewer.js"]
+html_css_files = ["diagram-viewer.css"]
+
 html_theme = "furo"
 html_title = "libaudition documentation"
 html_baseurl = "https://ardev1161.github.io/libaudition/"
