@@ -1,5 +1,13 @@
 # Architecture
 
+## Repository subsystem map
+
+The [clickable modular architecture map on the homepage](index.md#modular-architecture)
+is a source-linked, GitDiagram-inspired guide to the actual library subsystems:
+audio/DSP, spatial processing, per-source speech, sound semantics, identity,
+and temporal events. It distinguishes possible data flow from optional adapters;
+it is not a required execution order.
+
 ## Functional overview
 
 Start with the [functional architecture and algorithm map](functional_architecture.md).
