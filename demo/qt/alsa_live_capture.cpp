@@ -881,6 +881,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 });
             odasStageMonitor.observe(hasPositiveSsl,
                 !resultFrame.tracks.empty(), !resultFrame.separated_frames.empty());
+            std::set<std::uint64_t> audible;
             { // Recording is independent of classifier and ASR toggles.
                 std::set<std::uint64_t> present;
                 std::map<std::uint64_t, const std::vector<float>*> sssById;
@@ -891,7 +892,6 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                     present.insert(id);
                     sssById[id] = &separated.audio.samples();
                 }
-                std::set<std::uint64_t> audible;
                 for (const auto id : present) {
                     const auto found = sssById.find(id);
                     const bool awake = found == sssById.end()
