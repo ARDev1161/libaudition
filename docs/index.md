@@ -8,7 +8,7 @@ The library provides reusable algorithms and acoustic observations. Applications
 
 libaudition is made of small, composable C++17 modules. The diagram shows **which parts provide the foundations, processing and composition**; it is a module map, **not** a mandatory audio-processing order or a fixed threading model. Applications select only the components they need.
 
-~~~{mermaid}
+```mermaid
 flowchart TB
     APP["Consumer application<br/>(robot / ROS 2 / desktop / CLI)"]
     subgraph SDK["libaudition — reusable C++17 modules"]
@@ -49,7 +49,7 @@ flowchart TB
     GEO -.->|implements| PORTS
     FRONT -.->|implements| PORTS
     ML -.->|implements| PORTS
-~~~
+```
 
 ### Main modules
 
