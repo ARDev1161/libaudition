@@ -31,10 +31,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y doxygen
           python -m pip install -r docs/requirements.txt
+      - name: Check Mermaid viewer JavaScript syntax
+        run: node --check docs/_static/diagram-viewer.js
       - name: Extract C++ API from public headers
         run: doxygen docs/Doxyfile.pages
       - name: Build HTML site
         run: sphinx-build -b html --keep-going docs docs/_build/html
+      - name: Verify interactive viewer is bundled
+        run: |
+          test -s docs/_build/html/_static/diagram-viewer.js
+          test -s docs/_build/html/_static/diagram-viewer.css
+          grep -q 'diagram-viewer.js' docs/_build/html/functional_architecture.html
       - name: Upload GitHub Pages artifact
         if: github.ref == 'refs/heads/documentation'
         uses: actions/upload-pages-artifact@v3
