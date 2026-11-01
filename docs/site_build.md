@@ -21,6 +21,10 @@ Open docs/_build/html/index.html in a browser. The docs build does **not** enabl
 
 Doxygen runs in two modes: **public-header XML** in `docs/_build/public_xml` for the concise Sphinx/Breathe API, and **full implementation XML** in `docs/_build/xml` together with standalone **HTML/Graphviz** output in `docs/_build/doxygen`. The final copy into `docs/_build/html/doxygen` publishes a fully navigable class/namespace/file API browser alongside Sphinx. Its public URL is [Doxygen HTML API reference](https://ardev1161.github.io/libaudition/doxygen/index.html). All generated outputs stay in the git-ignored `docs/_build` directory.
 
+## Displayed release version
+
+The Furo sidebar title displays the library's **public API release** (for example `v1.0.0-rc.1`) automatically. `docs/conf.py` reads `project(libaudition VERSION ...)` and `LIBAUDITION_PUBLIC_VERSION` from the repository's `CMakeLists.txt`, so prerelease suffixes are not lost. No separate website version should be maintained. The Pages workflows verify that the rendered homepage includes this release.
+
 ## Responsive page layout
 
 On wide desktop screens, `docs/_static/layout.css` removes Furo's narrow fixed article-width limit and lets the main text column fill the available space between the navigation sidebar and the on-page table of contents. The layout remains responsive, using Furo's original rules on smaller screens. This affects **all documentation pages**, not just Mermaid diagrams.
