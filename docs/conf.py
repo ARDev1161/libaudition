@@ -41,7 +41,7 @@ mermaid_fullscreen = False
 
 html_static_path = ["_static"]
 html_js_files = ["diagram-viewer.js"]
-html_css_files = ["diagram-viewer.css"]
+html_css_files = ["layout.css", "diagram-viewer.css"]
 
 html_theme = "furo"
 html_title = "libaudition documentation"
