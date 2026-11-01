@@ -720,6 +720,43 @@ QWidget* createAcousticScenePage(QWidget* parent) {
     configForm->addRow("Acquisition GMM mean", sstOnset);
     configForm->addRow("Inactive GMM mean", sstRelease);
     configForm->addRow("Inactive timeout", sstTimeout);
+    auto* sssMode = new QComboBox{page};
+    sssMode->setObjectName("acousticSceneSssSeparation");
+    sssMode->addItem("Geometric source separation (DGSS)", "dgss");
+    sssMode->addItem("Delay-and-sum (baseline)", "delay_and_sum");
+    sssMode->setToolTip("DGSS can reduce competing speaker bleed. "
+                        "Requires capture restart.");
+    auto* sssOutput = new QComboBox{page};
+    sssOutput->setObjectName("acousticSceneSssOutput");
+    sssOutput->addItem("Postfiltered (multi-source)", "postfiltered");
+    sssOutput->addItem("Separated only (unfiltered)", "separated");
+    sssOutput->setToolTip("ODAS postfilter reduces residual competing "
+                          "speech; compare with unfiltered.");
+    auto* silenceTimeout = new QDoubleSpinBox{page};
+    silenceTimeout->setObjectName("acousticSceneSourceSilenceTimeout");
+    silenceTimeout->setRange(0.0, 15.0);
+    silenceTimeout->setDecimals(1);
+    silenceTimeout->setSingleStep(0.5);
+    silenceTimeout->setValue(3.0);
+    silenceTimeout->setSuffix(" s");
+    silenceTimeout->setSpecialValueText("Disabled");
+    silenceTimeout->setToolTip("After continuous low-energy separated PCM, "
+        "close the source WAV/ASR generation and hide its row; ODAS SST "
+        "remains untouched. Loud audio can rearm the same ID.");
+    auto* silenceThreshold = new QDoubleSpinBox{page};
+    silenceThreshold->setObjectName("acousticSceneSourceSilenceDbfs");
+    silenceThreshold->setRange(-100.0, -20.0);
+    silenceThreshold->setDecimals(0);
+    silenceThreshold->setSingleStep(5.0);
+    silenceThreshold->setValue(-55.0);
+    silenceThreshold->setSuffix(" dBFS");
+    silenceThreshold->setToolTip("Fixed RMS threshold before AGC, not VAD "
+        "silence. Raising it may remove quiet speech; lower values can keep "
+        "bleeding sources. Re-entry requires 6 dB above this threshold.");
+    configForm->addRow("Separation algorithm", sssMode);
+    configForm->addRow("Separated output", sssOutput);
+    configForm->addRow("Source silence timeout", silenceTimeout);
+    configForm->addRow("Source silence level", silenceThreshold);
     configRow->addLayout(configForm);
     layout->addLayout(configRow);
 
@@ -1739,6 +1776,10 @@ QWidget* createAcousticScenePage(QWidget* parent) {
             config.sst_onset = sstOnset->value();
             config.sst_release = sstRelease->value();
             config.sst_inactive_hops = timeoutHops(sstTimeout->value());
+            config.sss_separation_mode = sssMode->currentData().toString().toStdString();
+            config.sss_output = sssOutput->currentData().toString().toStdString();
+            config.source_silence_seconds = silenceTimeout->value();
+            config.source_silence_threshold_dbfs = silenceThreshold->value();
             config.classify_sources = enableTagging->isChecked();
             config.transcribe_sources = enableSpeech->isChecked();
             config.speech_ns_enabled = speechNs->isChecked() && config.transcribe_sources;
