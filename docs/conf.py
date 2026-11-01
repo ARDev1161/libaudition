@@ -27,6 +27,11 @@ root_doc = "index"
 myst_fence_as_directive = ["mermaid"]
 myst_heading_anchors = 3
 
+# The curated, repository-owned architecture maps link nodes to public source
+# files. Mermaid disables click directives in its default strict mode.
+# 'loose' is intentional here: diagram Markdown is reviewed in this repo.
+mermaid_config = {"securityLevel": "loose"}
+
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 breathe_projects = {
