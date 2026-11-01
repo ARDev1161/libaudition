@@ -41,6 +41,9 @@ jobs:
         run: |
           test -s docs/_build/html/_static/diagram-viewer.js
           test -s docs/_build/html/_static/diagram-viewer.css
+          test -s docs/_build/html/_static/layout.css
+          grep -q 'layout.css' docs/_build/html/index.html
+          grep -q 'layout.css' docs/_build/html/functional_architecture.html
           grep -q 'diagram-viewer.js' docs/_build/html/functional_architecture.html
           grep -q 'diagram-viewer.js' docs/_build/html/index.html
           # The landing-page block must be parsed as a Mermaid directive,
