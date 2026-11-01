@@ -18,7 +18,7 @@ jobs:
   build:
     name: Build Sphinx + Doxygen docs
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,12 +29,16 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y doxygen
+          sudo apt-get install -y doxygen graphviz
           python -m pip install -r docs/requirements.txt
       - name: Check Mermaid viewer JavaScript syntax
         run: node --check docs/_static/diagram-viewer.js
       - name: Extract C++ API from public headers
         run: doxygen docs/Doxyfile.pages
+      - name: Validate architecture links and Graphviz output
+        run: |
+          python3 docs/doxygen_links.py --check
+          find docs/_build/doxygen -name '*.svg' -print -quit | grep -q .
       - name: Build Sphinx and bundle standalone Doxygen HTML
         run: |
           sphinx-build -b html --keep-going docs docs/_build/html
@@ -60,6 +64,7 @@ jobs:
           grep -Eq '(mermaid-diagram|class="mermaid")' docs/_build/html/index.html
           # Guard source-linked nodes and the trusted Mermaid link setting.
           grep -q 'click ODAS' docs/_build/html/index.html
+          grep -Eq 'click ODAS.*doxygen/.*\\.html' docs/_build/html/index.html
           grep -q '"securityLevel": "loose"' docs/_build/html/_static/sphinxcontrib-mermaid/config.json
       - name: Upload GitHub Pages artifact
         if: github.ref == 'refs/heads/documentation'
