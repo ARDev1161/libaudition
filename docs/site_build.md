@@ -26,11 +26,17 @@ A repository administrator must select **Settings → Pages → Build and deploy
 
 https://ardev1161.github.io/libaudition/
 
-The actual site is available only after the workflow successfully deploys and GitHub Pages is enabled. If Pages was changed from **Deploy from a branch** to **GitHub Actions** after the last documentation push, make another commit to `documentation` to start the deployment workflow; changing the repository setting alone does not trigger a Sphinx build. Pushes to `documentation` run both the Sphinx/Doxygen build and the deployment. Changes to `main` are **not** automatically reflected until `main` is merged into `documentation`.
+The actual site is available only after the workflow successfully deploys and GitHub Pages is enabled. If Pages was changed from **Deploy from a branch** to **GitHub Actions** after the last documentation push, make another commit to `documentation` to start the deployment workflow; changing the repository setting alone does not trigger a Sphinx build. Pushes to `documentation` run both the Sphinx/Doxygen build and the deployment. Direct pushes to `documentation` publish the site immediately. Once the small [automatic refresh workflow PR #71](https://github.com/ARDev1161/libaudition/pull/71) is merged into `main`, pushes to `main` will also rebuild and publish the website.
 
-## Updating documentation with recent library changes
+## Automatic updates from main
 
-To refresh API documentation and existing guides without modifying `main`, bring the new commits into the site branch:
+Once [PR #71](https://github.com/ARDev1161/libaudition/pull/71) is merged, the minimal `.github/workflows/docs-sync.yml` in `main` runs for every push to `main`. It checks out `documentation`, merges the new library history, builds Doxygen XML + Sphinx, pushes the synchronized source branch, and deploys the built site.
+
+**Why both workflows deploy:** GitHub does not start another workflow from a push made using the default `GITHUB_TOKEN`. The main-branch synchronization workflow must therefore deploy its own build. Direct manual pushes to `documentation` continue to use the documentation branch's existing workflow.
+
+The synchronization is non-destructive: it uses a normal Git merge (not a force push), prioritizes `main` for overlapping text edits, and fails instead of publishing stale content if there are unresolved conflicts or the build fails. Check the [Actions dashboard](https://github.com/ARDev1161/libaudition/actions) for failures.
+
+Until PR #71 is merged, updates from `main` still require a manual merge:
 
 ~~~sh
 git fetch origin
@@ -38,8 +44,6 @@ git switch documentation
 git merge origin/main
 git push origin documentation
 ~~~
-
-Resolve any conflicting Markdown changes before pushing. The `documentation` branch remains the only publishing source.
 
 ## Maintenance
 
