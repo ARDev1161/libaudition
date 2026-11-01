@@ -517,7 +517,7 @@ TEST(PerSourceSpeechRuntime, NativeFirstUtteranceRecoversRecordedInitialPCM) {
     LateNativeFirstOnsetVad vad;
     PerSourceSpeechOptions options{};
     options.min_speech_samples = 4000U;
-    options.native_initial_context_samples = 16000U;
+    options.native_initial_context_ms = 1000U;
     PerSourceSpeechRuntime runtime{
         vad,std::make_shared<FirstSampleAsr>(),options};
     std::vector<float> phrase(16000U,0.5F);
@@ -542,7 +542,7 @@ TEST(PerSourceSpeechRuntime, NativeInitialContextCanBeDisabled) {
     LateNativeFirstOnsetVad vad;
     PerSourceSpeechOptions options{};
     options.min_speech_samples = 4000U;
-    options.native_initial_context_samples = 0U;
+    options.native_initial_context_ms = 0U;
     PerSourceSpeechRuntime runtime{
         vad,std::make_shared<FirstSampleAsr>(),options};
     std::vector<float> phrase(16000U,0.5F);
@@ -555,6 +555,40 @@ TEST(PerSourceSpeechRuntime, NativeInitialContextCanBeDisabled) {
     EXPECT_EQ(results[0].audio_start_sample,4192U);
     EXPECT_EQ(results[0].audio_end_sample,16000U);
     EXPECT_EQ(results[0].transcript.text,"first-syllable-lost");
+}
+
+TEST(PerSourceSpeechRuntime, NativeInitialContextDurationScalesWithSampleRate) {
+    LateNativeFirstOnsetVad vad;
+    const AudioFormat format{8000U,1U,AudioLayout::Interleaved};
+    std::vector<float> phrase(8000U,0.5F);
+    std::fill(phrase.begin(),phrase.begin()+4192U,0.45F);
+    const std::vector<float> quiet(1000U,0.0F);
+    const Timestamp origin{1000000000LL,{ClockDomain::Monotonic,1U}};
+    for (const auto [context_ms, expected_start] :
+         {std::pair<std::uint32_t,std::uint64_t>{1000U,0U},
+          std::pair<std::uint32_t,std::uint64_t>{500U,4192U}}) {
+        PerSourceSpeechOptions options{};
+        options.sample_rate_hz = 8000U;
+        options.native_initial_context_ms = context_ms;
+        options.min_speech_samples = 1U;
+        PerSourceSpeechRuntime runtime{
+            vad,std::make_shared<FirstSampleAsr>(),options};
+        runtime.push(31U,AudioView{
+            phrase.data(),phrase.size(),format,origin});
+        runtime.push(31U,AudioView{
+            quiet.data(),quiet.size(),format,
+            Timestamp{2000000000LL,{ClockDomain::Monotonic,1U}}});
+        const auto results = awaitSpeech(runtime,1U);
+        ASSERT_EQ(results.size(),1U);
+        EXPECT_EQ(results[0].audio_start_sample,expected_start);
+        EXPECT_EQ(results[0].audio_end_sample,8000U);
+        EXPECT_EQ(results[0].transcript.text,
+            expected_start==0U ? "first-syllable-preserved" : "first-syllable-lost");
+    }
+    PerSourceSpeechOptions invalid{};
+    invalid.native_initial_context_ms = 1001U;
+    EXPECT_THROW((PerSourceSpeechRuntime{
+        vad,std::make_shared<MockAsr>(),invalid}),std::invalid_argument);
 }
 
 TEST(PerSourceSpeechRuntime, NativeAcceptedShortCommandBypassesGenericMinimum) {

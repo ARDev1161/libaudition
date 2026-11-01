@@ -30,11 +30,11 @@ struct PerSourceSpeechOptions {
     std::size_t max_retired_generations{64};
     std::size_t min_speech_samples{1600};
     std::size_t pre_roll_samples{3200}; // 200ms @ 16kHz; activity-only VAD
-    // At most the first second of a source's post-AGC PCM. When the first
-    // native VAD onset falls within this prefix, include samples from
-    // source sample zero; a delayed native onset should not chop its
-    // initial syllable. 0 disables the native first-utterance prefix.
-    std::size_t native_initial_context_samples{16000}; // 1s @ 16kHz
+    // Preserve at most the first second of a source's post-AGC PCM.
+    // Duration is independent of 8/16/48-kHz input. The prefix is
+    // prepended to the first native segment when its start is in range.
+    // 0 disables first-utterance recovery.
+    std::uint32_t native_initial_context_ms{1000U};
     std::size_t post_roll_samples{4800}; // 300ms @ 16kHz
     std::size_t max_segment_samples{160000};
     // Bounds retained ASR result text (including token and word strings).
@@ -166,6 +166,8 @@ private:
     const IVoiceActivityDetector& vad_;
     std::shared_ptr<const IAsrEngine> asr_;
     PerSourceSpeechOptions options_{};
+    // Resolved once from the requested duration and runtime sample rate.
+    std::size_t native_initial_context_samples_{0U};
     std::map<std::uint64_t, Track> tracks_{};
     // Globally unique generation; avoids retaining unbounded historical IDs.
     std::uint64_t next_generation_{1};

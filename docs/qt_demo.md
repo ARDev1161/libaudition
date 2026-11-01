@@ -750,8 +750,10 @@ then the original native segment, with no synthesized silence.
 The buffer is released on the first completion. Subsequent native
 utterances use their own onset offsets, and a track that stays idle
 for over one second is not fed distant, unrelated audio from its start.
-`native_initial_context_samples = 0` disables this first-utterance
-recovery for API consumers. Activity-only VADs still use their
+`native_initial_context_ms = 0` disables this first-utterance
+recovery for API consumers. The default duration is 1000 ms and is
+converted to samples at the configured speech input rate (8/16/48 kHz),
+rather than assuming 16 kHz. Activity-only VADs still use their
 generic 200-ms rolling pre-roll. Inspect `samples=[start,end)`
 in **Source log…** to verify ASR onset relative to the WAV.
 

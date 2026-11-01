@@ -76,10 +76,16 @@ PerSourceSpeechRuntime::PerSourceSpeechRuntime(
         !options_.max_result_text_bytes || !options_.max_result_items ||
         options_.max_segment_samples < options_.min_speech_samples ||
         options_.pre_roll_samples > options_.max_segment_samples ||
-        options_.native_initial_context_samples > options_.sample_rate_hz ||
+        options_.native_initial_context_ms > 1000U ||
         options_.post_roll_samples > options_.max_segment_samples) {
         throw std::invalid_argument{"Invalid per-source speech runtime configuration"};
     }
+    // Compute a bounded prefix in samples for this particular backend.
+    // Intermediate arithmetic uses u64 so rates near uint32_t max do
+    // not overflow when converting milliseconds to samples.
+    native_initial_context_samples_ = static_cast<std::size_t>(
+        static_cast<std::uint64_t>(options_.sample_rate_hz) *
+        options_.native_initial_context_ms / 1000U);
     // Bound synchronous inspection and VAD work per call. Longer source
     // audio must be divided into contiguous chunks by the application.
     if (options_.max_input_chunk_samples == 0U)
@@ -289,8 +295,8 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         track.native_segments = true;
         if (track.native_emitted_until == 0U &&
             track.native_initial_pcm.size() <
-                options_.native_initial_context_samples) {
-            const auto available = options_.native_initial_context_samples -
+                native_initial_context_samples_) {
+            const auto available = native_initial_context_samples_ -
                 track.native_initial_pcm.size();
             const auto count = std::min(available,audio.sampleCount());
             track.native_initial_pcm.insert(track.native_initial_pcm.end(),
