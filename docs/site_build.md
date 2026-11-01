@@ -16,7 +16,7 @@ sphinx-build -b html docs docs/_build/html
 
 Open docs/_build/html/index.html in a browser. The docs build does **not** enable optional C++ backends or download model weights.
 
-Doxygen outputs XML into docs/_build/doxygen/xml. Sphinx reads that directory through Breathe. Both build outputs belong in docs/_build, which must remain ignored by git.
+Doxygen outputs XML into docs/_build/xml. Sphinx reads that directory through Breathe. Both build outputs belong in docs/_build, which must remain ignored by git.
 
 ## Publishing to GitHub Pages
 
