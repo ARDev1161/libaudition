@@ -20,7 +20,7 @@ Doxygen outputs XML into docs/_build/xml. Sphinx reads that directory through Br
 
 ## Interactive Mermaid diagrams
 
-On any documentation page containing Mermaid, use the **⛶** button in the corner of the diagram to open the zoomable SVG viewer. In that viewer:
+On any documentation page containing Mermaid, **click directly on a diagram** to open its zoomable SVG viewer (no floating button). Keyboard users can focus the diagram with Tab and press **Enter** or **Space**. In the viewer:
 
 - **Mouse wheel:** zoom in or out around the cursor (no Ctrl key required).
 - **Left-button drag:** pan around a zoomed diagram.
