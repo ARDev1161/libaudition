@@ -14,7 +14,16 @@ author = "libaudition contributors"
 cmake_text = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
 version_match = re.search(r"project\(libaudition VERSION ([0-9.]+)", cmake_text)
 version = version_match.group(1) if version_match else "dev"
-release = version
+# The CMake package version is numeric, but public API releases may be
+# prereleases such as 1.0.0-rc.1. Display the actual public identity.
+public_version_match = re.search(
+    r'set\(LIBAUDITION_PUBLIC_VERSION\s+"([^"]+)"\)', cmake_text
+)
+release = (
+    public_version_match.group(1).replace("${PROJECT_VERSION}", version)
+    if public_version_match
+    else version
+)
 
 extensions = [
     "myst_parser",
@@ -49,7 +58,7 @@ html_js_files = ["diagram-viewer.js"]
 html_css_files = ["layout.css", "diagram-viewer.css"]
 
 html_theme = "furo"
-html_title = "libaudition documentation"
+html_title = f"libaudition v{release} documentation"
 html_baseurl = "https://ardev1161.github.io/libaudition/"
 html_theme_options = {
     "source_repository": "https://github.com/ARDev1161/libaudition/",
