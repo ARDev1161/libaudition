@@ -155,7 +155,8 @@ add_executable(libaudition_tests
     source_gain_test.cpp
     source_noise_suppression_test.cpp
     source_speech_chain_test.cpp
-    acoustic_presence_test.cpp)
+    acoustic_presence_test.cpp
+    source_silence_timeout_test.cpp)
 target_link_libraries(libaudition_tests PRIVATE
     audition::core
     audition::interfaces
