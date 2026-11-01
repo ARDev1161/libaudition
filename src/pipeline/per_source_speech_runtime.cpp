@@ -1,5 +1,6 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
 #include <limits>
 #include <sstream>
@@ -128,6 +129,58 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track, const 
     track.voiced_samples = 0U;
 }
 
+void PerSourceSpeechRuntime::queueNativeSegments(
+    std::uint64_t id, Track& track, std::vector<VadSpeechSegment> segments,
+    const char* reason) {
+    for (auto& native : segments) {
+        if (native.samples.empty()) continue;
+        if (native.start_sample > track.received_samples ||
+            native.samples.size() > track.received_samples - native.start_sample)
+            throw std::out_of_range{"Native VAD segment exceeds source PCM timeline"};
+        // Backend lookback can overlap neighboring utterances. Do not send
+        // the same source samples to ASR twice.
+        if (native.start_sample < track.native_emitted_until) {
+            const auto overlap = track.native_emitted_until - native.start_sample;
+            if (overlap >= native.samples.size()) continue;
+            native.samples.erase(native.samples.begin(),
+                native.samples.begin() + static_cast<std::ptrdiff_t>(overlap));
+            native.start_sample = track.native_emitted_until;
+        }
+        const auto segment_length = native.samples.size();
+        track.native_emitted_until = native.start_sample + segment_length;
+        if (segment_length < options_.min_speech_samples) continue;
+        std::size_t offset = 0U;
+        while (offset < segment_length) {
+            const auto count = std::min(options_.max_segment_samples,
+                                        segment_length - offset);
+            if (jobs_.size() >= options_.max_pending_segments) {
+                ++dropped_;
+                ++track.dropped_segments;
+            } else {
+                const auto start = native.start_sample + offset;
+                const auto ns = static_cast<std::int64_t>(
+                    static_cast<double>(start) * 1000000000.0 /
+                    static_cast<double>(options_.sample_rate_hz));
+                SpeechSegment segment{};
+                segment.segment_id = SpeechSegmentId{next_segment_++};
+                segment.track_id = SpatialTrackId{id};
+                segment.audio = AudioBuffer{
+                    std::vector<float>{
+                        native.samples.begin() + static_cast<std::ptrdiff_t>(offset),
+                        native.samples.begin() + static_cast<std::ptrdiff_t>(offset+count)},
+                    {options_.sample_rate_hz, 1U, AudioLayout::Interleaved},
+                    track.source_start_time.advancedBy(Duration{ns})};
+                jobs_.push_back({id,track.generation,std::move(segment),
+                                 start,reason});
+                ++track.queued_segments;
+                ++pending_by_generation_[track.generation];
+                cv_.notify_one();
+            }
+            offset += count;
+        }
+    }
+}
+
 void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
     if (audio.sampleCount() > options_.max_input_chunk_samples)
         throw std::length_error{"Speech PCM chunk exceeds configured input capacity"};
@@ -159,6 +212,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
             ++dropped_;
         }
         track.generation = next_generation_++;
+        track.source_start_time = audio.captureTime();
         it = tracks_.emplace(id, std::move(track)).first;
     }
     auto& track = it->second;
@@ -178,9 +232,9 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         }
     }
 
-    bool active = false;
+    VadResult vad_result{};
     try {
-        active = track.vad->process(audio).speech_active;
+        vad_result = track.vad->process(audio);
     } catch (const std::exception& e) {
         track.error = e.what();
     } catch (...) {
@@ -200,9 +254,21 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
                            track.received_samples;
     const auto chunk_start = track.received_samples;
     track.received_samples += std::min(accepted, remaining);
-    if (active && !track.speech_active) ++track.vad_starts;
-    if (!active && track.speech_active) ++track.vad_ends;
-    track.speech_active = active;
+    if (vad_result.speech_active && !track.speech_active) ++track.vad_starts;
+    if (!vad_result.speech_active && track.speech_active) ++track.vad_ends;
+    track.speech_active = vad_result.speech_active;
+    if (vad_result.completed_segments) {
+        track.native_segments = true;
+        // Native VAD supplied actual onset sample offsets and PCM, so
+        // the generic pre/post-roll must not cut or duplicate those samples.
+        queueNativeSegments(id,track,
+            std::move(*vad_result.completed_segments),"vad_native");
+        return;
+    }
+    if (track.native_segments) {
+        throw std::logic_error{"VAD changed from native segments to activity-only"};
+    }
+    const bool active = vad_result.speech_active;
     const auto advanceTime = [&](std::size_t sample_offset) {
         const auto ns = static_cast<std::int64_t>(
             static_cast<double>(sample_offset) * 1000000000.0 /
@@ -284,7 +350,16 @@ std::optional<std::uint64_t> PerSourceSpeechRuntime::retire(std::uint64_t id) {
     if (retired_generations_.size() >= options_.max_retired_generations)
         return std::nullopt;
     const auto generation = it->second.generation;
-    if (!it->second.speech.empty()) queueSegment(id, it->second, "retired");
+    if (it->second.native_segments) {
+        // Native VAD may still be tracking a phrase when ODAS retires.
+        auto pending = it->second.vad->flush();
+        if (!pending.completed_segments)
+            throw std::logic_error{"Native VAD flush omitted segment contract"};
+        queueNativeSegments(id,it->second,
+            std::move(*pending.completed_segments),"retired");
+    } else if (!it->second.speech.empty()) {
+        queueSegment(id,it->second,"retired");
+    }
     retired_generations_.insert(generation);
     tracks_.erase(it);
     return generation;

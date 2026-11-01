@@ -724,16 +724,26 @@ module is required only for the optional demo, not for libaudition itself.
 
 ### Live speech VAD tuning
 
+**Native VAD-aware segmentation (Silero/TEN):** The pinned Sherpa-ONNX
+VAD exposes completed segments with an absolute start-sample offset and
+its buffered PCM. The Sherpa adapter now forwards both to the generic
+speech runtime, instead of discarding native segments and inferring
+onset from a delayed `IsDetected()` flag. The runtime submits this PCM
+and the exact backend offsets to ASR, splits long segments to the
+configured cap, and flushes unfinished speech on source retirement.
+Generic activity-only VADs keep the bounded pre/post-roll segmenter.
+The backend's onset is a model estimate, not a ground-truth phoneme
+boundary; it cannot recover audio before ODAS source acquisition.
+
 **Live speech onset retention (ReSpeaker):** The Qt capture adapter
-configures a 1-second per-source pre-roll for VAD/ASR, rather than the
-generic runtime's 200-ms default. Sherpa's model-based speech onset can
-lag behind the first audible syllable; before this change one real-device
-trace had a 400-ms gap from the first recorded SSS sample to the ASR
-segment start. The longer ring keeps PCM already separated by ODAS
-until VAD declares speech, without sending the entire stream to ASR.
-The `samples=[start,end)` offsets in **Source log…** can be used to
-verify the first segment's start against the WAV recording's sample 0.
-A short quiet preamble may be included in the ASR segment by design.
+configures a 1-second per-source pre-roll for **activity-only VAD
+fallback**. Native Sherpa Silero/TEN segmentation instead uses its
+own exact completed-segment PCM and start offsets. Before this change
+one real-device trace had a 400-ms gap from the first recorded SSS
+sample to the old ASR segment start. Inspect `samples=[start,end)`
+in **Source log…** against the recording's first sample: a positive
+start is now the native VAD's onset estimate, not the generic
+pre-roll cutoff.
 
 This only recovers audio received **after SST/SSS has acquired the
 source**; speech before ODAS creates a track remains unavailable to the

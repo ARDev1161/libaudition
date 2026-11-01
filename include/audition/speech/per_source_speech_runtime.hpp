@@ -127,6 +127,9 @@ private:
         std::unique_ptr<IVadSession> vad{};
         std::vector<float> speech{};
         std::deque<float> pre_roll{};
+        bool native_segments{false};
+        Timestamp source_start_time{};
+        std::uint64_t native_emitted_until{0U};
         std::size_t trailing_silence_samples{0U};
         std::size_t voiced_samples{0U};
         bool speech_active{false};
@@ -148,6 +151,8 @@ private:
         std::string end_reason{};
     };
     void queueSegment(std::uint64_t track_id, Track& track, const char* reason);
+    void queueNativeSegments(std::uint64_t track_id, Track& track,
+                             std::vector<VadSpeechSegment> segments, const char* reason);
     void workerLoop();
     void completeJobLocked(std::uint64_t generation);
     const IVoiceActivityDetector& vad_;
