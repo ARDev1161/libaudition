@@ -10,6 +10,7 @@ Install Doxygen (1.9.2 or newer), Graphviz (`dot`) and Python 3.12 or another su
 python3 -m venv .venv-docs
 . .venv-docs/bin/activate
 python -m pip install -r docs/requirements.txt
+doxygen docs/Doxyfile.public
 doxygen docs/Doxyfile.pages
 python3 docs/doxygen_links.py --check
 sphinx-build -b html docs docs/_build/html
@@ -18,7 +19,7 @@ cp -a docs/_build/doxygen docs/_build/html/doxygen
 
 Open docs/_build/html/index.html in a browser. The docs build does **not** enable optional C++ backends or download model weights.
 
-Doxygen outputs **XML** into `docs/_build/xml` for Sphinx/Breathe, and simultaneously generates its standalone **HTML** in `docs/_build/doxygen`. The final copy into `docs/_build/html/doxygen` publishes a fully navigable class/namespace/file API browser alongside Sphinx. Its public URL is [Doxygen HTML API reference](https://ardev1161.github.io/libaudition/doxygen/index.html). All generated outputs stay in the git-ignored `docs/_build` directory.
+Doxygen runs in two modes: **public-header XML** in `docs/_build/public_xml` for the concise Sphinx/Breathe API, and **full implementation XML** in `docs/_build/xml` together with standalone **HTML/Graphviz** output in `docs/_build/doxygen`. The final copy into `docs/_build/html/doxygen` publishes a fully navigable class/namespace/file API browser alongside Sphinx. Its public URL is [Doxygen HTML API reference](https://ardev1161.github.io/libaudition/doxygen/index.html). All generated outputs stay in the git-ignored `docs/_build` directory.
 
 ## Responsive page layout
 
