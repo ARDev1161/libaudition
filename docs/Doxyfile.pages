@@ -1,0 +1,21 @@
+# Public-header XML for the Sphinx/Breathe GitHub Pages build.
+# Run from the repository root: doxygen docs/Doxyfile.pages
+PROJECT_NAME           = libaudition
+PROJECT_BRIEF          = "Composable C++17 acoustic perception toolkit"
+OUTPUT_DIRECTORY       = docs/_build/doxygen
+INPUT                  = include
+FILE_PATTERNS          = *.h *.hpp
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+GENERATE_HTML          = NO
+GENERATE_XML           = YES
+GENERATE_LATEX         = NO
+XML_OUTPUT             = xml
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+JAVADOC_AUTOBRIEF      = YES
+FULL_PATH_NAMES        = YES
+HAVE_DOT               = NO
