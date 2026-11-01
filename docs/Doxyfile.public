@@ -1,0 +1,21 @@
+# Minimal header-only XML input for Sphinx/Breathe.
+# The full standalone Doxygen HTML/Graphviz site uses docs/Doxyfile.pages.
+PROJECT_NAME           = libaudition
+PROJECT_BRIEF          = "Composable C++17 acoustic perception toolkit"
+OUTPUT_DIRECTORY       = docs/_build
+INPUT                  = include
+FILE_PATTERNS          = *.h *.hpp
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+GENERATE_HTML          = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = public_xml
+GENERATE_LATEX         = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+JAVADOC_AUTOBRIEF      = YES
+FULL_PATH_NAMES        = YES
+HAVE_DOT               = NO
