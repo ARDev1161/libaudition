@@ -1,26 +1,51 @@
-# Public C++ API reference: XML for Breathe + standalone navigable HTML.
-# Both formats are derived from the same public headers.
+# Standalone, searchable Doxygen HTML with Graphviz + XML for Breathe.
 # Run from the repository root: doxygen docs/Doxyfile.pages
+# Include implementations so the architecture's file links resolve to Doxygen.
 PROJECT_NAME           = libaudition
 PROJECT_BRIEF          = "Composable C++17 acoustic perception toolkit"
 OUTPUT_DIRECTORY       = docs/_build
-INPUT                  = include
-FILE_PATTERNS          = *.h *.hpp
+INPUT                  = include src backends
+FILE_PATTERNS          = *.h *.hpp *.cpp
 RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */tests/* */build/* */_build/*
 EXTRACT_ALL            = YES
 EXTRACT_PRIVATE        = NO
 EXTRACT_STATIC         = NO
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
 GENERATE_HTML          = YES
-HTML_OUTPUT             = doxygen
-GENERATE_TREEVIEW       = YES
-SEARCHENGINE            = YES
-SERVER_BASED_SEARCH     = NO
+HTML_OUTPUT            = doxygen
+GENERATE_TREEVIEW      = YES
+SEARCHENGINE           = YES
+SERVER_BASED_SEARCH    = NO
 GENERATE_XML           = YES
-GENERATE_LATEX         = NO
 XML_OUTPUT             = xml
+GENERATE_LATEX         = NO
 QUIET                  = YES
 WARN_IF_UNDOCUMENTED   = NO
 WARN_IF_DOC_ERROR      = YES
 JAVADOC_AUTOBRIEF      = YES
 FULL_PATH_NAMES        = YES
-HAVE_DOT               = NO
+STRIP_FROM_PATH        = .
+# Enable Doxygen's Graphviz graph families in the standalone HTML site.
+HAVE_DOT               = YES
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+CLASS_GRAPH            = YES
+COLLABORATION_GRAPH    = YES
+GRAPHICAL_HIERARCHY    = YES
+GROUP_GRAPHS           = YES
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
+DIRECTORY_GRAPH        = YES
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+UML_LOOK               = YES
+TEMPLATE_RELATIONS     = YES
+# Keep broad call/caller graphs bounded so CI and pages stay usable.
+DOT_GRAPH_MAX_NODES    = 80
+MAX_DOT_GRAPH_DEPTH    = 3
+DOT_NUM_THREADS        = 2
+DOT_CLEANUP            = YES
