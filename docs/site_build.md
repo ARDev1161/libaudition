@@ -12,11 +12,12 @@ python3 -m venv .venv-docs
 python -m pip install -r docs/requirements.txt
 doxygen docs/Doxyfile.pages
 sphinx-build -b html docs docs/_build/html
+cp -a docs/_build/doxygen docs/_build/html/doxygen
 ~~~
 
 Open docs/_build/html/index.html in a browser. The docs build does **not** enable optional C++ backends or download model weights.
 
-Doxygen outputs XML into docs/_build/xml. Sphinx reads that directory through Breathe. Both build outputs belong in docs/_build, which must remain ignored by git.
+Doxygen outputs **XML** into `docs/_build/xml` for Sphinx/Breathe, and simultaneously generates its standalone **HTML** in `docs/_build/doxygen`. The final copy into `docs/_build/html/doxygen` publishes a fully navigable class/namespace/file API browser alongside Sphinx. Its public URL is [Doxygen HTML API reference](https://ardev1161.github.io/libaudition/doxygen/index.html). All generated outputs stay in the git-ignored `docs/_build` directory.
 
 ## Responsive page layout
 
@@ -36,7 +37,7 @@ The viewer is implemented in `docs/_static/diagram-viewer.js` and `diagram-viewe
 
 ## Publishing to GitHub Pages
 
-The [docs-pages workflow](https://github.com/ARDev1161/libaudition/blob/documentation/.github/workflows/docs-pages.yml) builds documentation and deploys on every push to the independent `documentation` branch. The entire website configuration and its workflow are maintained on that branch; no merge into `main` is required. It publishes through the official GitHub Pages Actions deployment, not a separate `gh-pages` source branch.
+The [docs-pages workflow](https://github.com/ARDev1161/libaudition/blob/documentation/.github/workflows/docs-pages.yml) builds **both** Sphinx and standalone Doxygen HTML, bundles them into one GitHub Pages artifact, and deploys on every push to the independent `documentation` branch. The entire website configuration and its workflow are maintained on that branch; no merge into `main` is required. It publishes through the official GitHub Pages Actions deployment, not a separate `gh-pages` source branch.
 
 A repository administrator must select **Settings → Pages → Build and deployment → Source: GitHub Actions** once. The expected project-site URL is:
 
