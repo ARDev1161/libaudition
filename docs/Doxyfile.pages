@@ -1,4 +1,5 @@
-# Public-header XML for the Sphinx/Breathe GitHub Pages build.
+# Public C++ API reference: XML for Breathe + standalone navigable HTML.
+# Both formats are derived from the same public headers.
 # Run from the repository root: doxygen docs/Doxyfile.pages
 PROJECT_NAME           = libaudition
 PROJECT_BRIEF          = "Composable C++17 acoustic perception toolkit"
@@ -9,7 +10,11 @@ RECURSIVE              = YES
 EXTRACT_ALL            = YES
 EXTRACT_PRIVATE        = NO
 EXTRACT_STATIC         = NO
-GENERATE_HTML          = NO
+GENERATE_HTML          = YES
+HTML_OUTPUT             = doxygen
+GENERATE_TREEVIEW       = YES
+SEARCHENGINE            = YES
+SERVER_BASED_SEARCH     = NO
 GENERATE_XML           = YES
 GENERATE_LATEX         = NO
 XML_OUTPUT             = xml
