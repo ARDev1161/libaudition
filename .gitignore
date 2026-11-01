@@ -8,3 +8,5 @@ compile_commands.json
 .DS_Store
 /docs/html/
 /docs/xml/
+/docs/_build/
+/.venv-docs/
