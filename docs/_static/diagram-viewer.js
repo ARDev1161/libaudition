@@ -4,7 +4,11 @@
  */
 (() => {
   "use strict";
-  const SELECTOR = ".mermaid svg, .mermaid-container svg, .mermaid-diagram svg";
+  // Support both Sphinx Mermaid wrappers and directly rendered Mermaid SVGs.
+  const SELECTOR = [
+    ".mermaid-diagram svg", ".mermaid-container svg", ".mermaid svg",
+    "svg[id^='mermaid-']", "svg[aria-roledescription='flowchart']"
+  ].join(", ");
   const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
   let overlay, viewport, stage, zoomLabel, closeButton, active;
 
@@ -157,7 +161,14 @@
   }
   function attach() {
     document.querySelectorAll(SELECTOR).forEach((svg) => {
-      const source = svg.closest(".mermaid, .mermaid-container, .mermaid-diagram");
+      // The viewer moves the original SVG into its overlay: never decorate it there.
+      if (svg.closest(".diagram-viewer-overlay")) return;
+      // Prefer the outer Sphinx container. Mermaid may nest an inner .mermaid
+      // element which clips or obscures controls appended directly to it.
+      const source = svg.closest(".mermaid-diagram")
+        || svg.closest(".mermaid-container")
+        || svg.closest(".mermaid")
+        || svg.parentElement;
       if (!source || source.dataset.diagramViewerReady === "true") return;
       source.dataset.diagramViewerReady = "true";
       source.classList.add("diagram-viewer-source");
