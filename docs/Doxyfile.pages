@@ -2,7 +2,7 @@
 # Run from the repository root: doxygen docs/Doxyfile.pages
 PROJECT_NAME           = libaudition
 PROJECT_BRIEF          = "Composable C++17 acoustic perception toolkit"
-OUTPUT_DIRECTORY       = docs/_build/doxygen
+OUTPUT_DIRECTORY       = docs/_build
 INPUT                  = include
 FILE_PATTERNS          = *.h *.hpp
 RECURSIVE              = YES
