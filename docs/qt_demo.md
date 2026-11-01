@@ -738,15 +738,22 @@ not silently discard a short accepted command a second time.
 The backend's onset is a model estimate, not a ground-truth phoneme
 boundary; it cannot recover audio before ODAS source acquisition.
 
-**Live speech onset retention (ReSpeaker):** The Qt Sherpa Silero/TEN
-adapter no longer requests a fixed 1-second application pre-roll.
-It uses native completed-segment PCM and start offsets; the generic
-200-ms pre-roll remains the default for VAD backends that only
-report speech activity. Before this change one real-device trace had
-a 400-ms gap from the first recorded SSS sample to the old ASR
-segment start. Inspect `samples=[start,end)` in **Source log…**
-against the WAV recording's first sample: a positive start is now
-the native model's own onset estimate, not an application cutoff.
+**Live speech onset retention (ReSpeaker):** Sherpa Silero/TEN
+provides native completed-segment PCM and start offsets. However,
+a real 60-cm ReSpeaker recording of "Привет, робот" included speech
+at source sample zero while the native VAD segment began at sample
+4192 (262 ms). The generic runtime therefore also retains the
+**first second of actual source PCM** (after speech AGC) until its first
+native VAD completion. If that first native onset falls within the
+retained prefix, ASR is fed the contiguous recording from sample zero,
+then the original native segment, with no synthesized silence.
+The buffer is released on the first completion. Subsequent native
+utterances use their own onset offsets, and a track that stays idle
+for over one second is not fed distant, unrelated audio from its start.
+`native_initial_context_samples = 0` disables this first-utterance
+recovery for API consumers. Activity-only VADs still use their
+generic 200-ms rolling pre-roll. Inspect `samples=[start,end)`
+in **Source log…** to verify ASR onset relative to the WAV.
 
 This only recovers audio received **after SST/SSS has acquired the
 source**; speech before ODAS creates a track remains unavailable to the

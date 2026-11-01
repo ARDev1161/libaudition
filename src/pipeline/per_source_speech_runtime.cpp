@@ -76,6 +76,7 @@ PerSourceSpeechRuntime::PerSourceSpeechRuntime(
         !options_.max_result_text_bytes || !options_.max_result_items ||
         options_.max_segment_samples < options_.min_speech_samples ||
         options_.pre_roll_samples > options_.max_segment_samples ||
+        options_.native_initial_context_samples > options_.sample_rate_hz ||
         options_.post_roll_samples > options_.max_segment_samples) {
         throw std::invalid_argument{"Invalid per-source speech runtime configuration"};
     }
@@ -137,6 +138,27 @@ void PerSourceSpeechRuntime::queueNativeSegments(
         if (native.start_sample > track.received_samples ||
             native.samples.size() > track.received_samples - native.start_sample)
             throw std::out_of_range{"Native VAD segment exceeds source PCM timeline"};
+        // Native VAD start is an estimate. At source acquisition the
+        // recorded PCM can already contain the first syllable, while the
+        // model reports onset 200-400 ms later. For the first utterance
+        // only, restore *actual* post-AGC samples from sample zero, if
+        // the source was acquired within the bounded initial context.
+        // No silence is synthesized, and a long-lived idle track is not
+        // transcribed from an unrelated, minutes-old beginning.
+        if (track.native_emitted_until == 0U && native.start_sample != 0U &&
+            native.start_sample <= track.native_initial_pcm.size()) {
+            const auto prefix_size =
+                static_cast<std::size_t>(native.start_sample);
+            std::vector<float> recovered;
+            recovered.reserve(prefix_size + native.samples.size());
+            recovered.insert(recovered.end(),track.native_initial_pcm.begin(),
+                track.native_initial_pcm.begin() +
+                    static_cast<std::ptrdiff_t>(prefix_size));
+            recovered.insert(recovered.end(),native.samples.begin(),
+                native.samples.end());
+            native.samples = std::move(recovered);
+            native.start_sample = 0U;
+        }
         // Backend lookback can overlap neighboring utterances. Do not send
         // the same source samples to ASR twice.
         if (native.start_sample < track.native_emitted_until) {
@@ -148,6 +170,9 @@ void PerSourceSpeechRuntime::queueNativeSegments(
         }
         const auto segment_length = native.samples.size();
         track.native_emitted_until = native.start_sample + segment_length;
+        // Once the first native utterance is completed, release the
+        // initial buffer; subsequent utterances retain native boundaries.
+        track.native_initial_pcm.clear();
         // A completed native VAD segment has already passed the backend's
         // own speech/end-point decision. Applying the generic minimum again
         // would silently drop short commands even though native VAD accepted
@@ -262,6 +287,15 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
     track.speech_active = vad_result.speech_active;
     if (vad_result.completed_segments) {
         track.native_segments = true;
+        if (track.native_emitted_until == 0U &&
+            track.native_initial_pcm.size() <
+                options_.native_initial_context_samples) {
+            const auto available = options_.native_initial_context_samples -
+                track.native_initial_pcm.size();
+            const auto count = std::min(available,audio.sampleCount());
+            track.native_initial_pcm.insert(track.native_initial_pcm.end(),
+                audio.data(),audio.data()+count);
+        }
         // Native VAD supplied actual onset sample offsets and PCM, so
         // the generic pre/post-roll must not cut or duplicate those samples.
         queueNativeSegments(id,track,

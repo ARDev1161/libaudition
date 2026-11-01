@@ -473,6 +473,90 @@ TEST(PerSourceSpeechRuntime, NativeBoundariesPreserveFirstSyllableWithoutPreRoll
     EXPECT_EQ(runtime.statistics().dropped_segments,0U);
 }
 
+namespace {
+// A native VAD reports an onset 4,192 samples into an already recorded
+// source. The PCM before it contains the first syllable, and must reach
+// ASR even if VAD ends the utterance much later.
+class LateNativeFirstOnsetSession final : public IVadSession {
+public:
+    void reset() override { voiced_.clear(); }
+    VadResult process(AudioView audio) override {
+        VadResult result{};
+        result.completed_segments.emplace();
+        if (!audio.sampleCount()) return result;
+        if (audio.data()[0] > 0.2F) {
+            voiced_.insert(voiced_.end(),audio.data(),
+                            audio.data()+audio.sampleCount());
+            result.speech_active = true;
+        } else if (!voiced_.empty()) {
+            constexpr std::size_t kDelayedOnset = 4192U;
+            if (voiced_.size() > kDelayedOnset)
+                result.completed_segments->push_back({
+                    kDelayedOnset,
+                    std::vector<float>{
+                        voiced_.begin()+static_cast<std::ptrdiff_t>(kDelayedOnset),
+                        voiced_.end()}});
+            voiced_.clear();
+        }
+        return result;
+    }
+private:
+    std::vector<float> voiced_{};
+};
+class LateNativeFirstOnsetVad final : public IVoiceActivityDetector {
+public:
+    BackendInfo backendInfo() const override {return {"late-native-onset","1"};}
+    AudioRequirements audioRequirements() const override {return {};}
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<LateNativeFirstOnsetSession>();
+    }
+};
+}
+
+TEST(PerSourceSpeechRuntime, NativeFirstUtteranceRecoversRecordedInitialPCM) {
+    LateNativeFirstOnsetVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4000U;
+    options.native_initial_context_samples = 16000U;
+    PerSourceSpeechRuntime runtime{
+        vad,std::make_shared<FirstSampleAsr>(),options};
+    std::vector<float> phrase(16000U,0.5F);
+    std::fill(phrase.begin(),phrase.begin()+4192U,0.45F);
+    const std::vector<float> quiet(8000U,0.0F);
+    const AudioFormat format{16000U,1U,AudioLayout::Interleaved};
+    runtime.push(31U,AudioView{phrase.data(),phrase.size(),format,
+        Timestamp{1000000000LL,{ClockDomain::Monotonic,1U}}});
+    runtime.push(31U,AudioView{quiet.data(),quiet.size(),format,
+        Timestamp{2000000000LL,{ClockDomain::Monotonic,1U}}});
+    const auto results = awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].transcript.text,"first-syllable-preserved");
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,16000U);
+    EXPECT_EQ(results[0].start_time.nanoseconds(),1000000000LL);
+    EXPECT_EQ(results[0].segment_end_reason,"vad_native");
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+}
+
+TEST(PerSourceSpeechRuntime, NativeInitialContextCanBeDisabled) {
+    LateNativeFirstOnsetVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4000U;
+    options.native_initial_context_samples = 0U;
+    PerSourceSpeechRuntime runtime{
+        vad,std::make_shared<FirstSampleAsr>(),options};
+    std::vector<float> phrase(16000U,0.5F);
+    std::fill(phrase.begin(),phrase.begin()+4192U,0.45F);
+    const std::vector<float> quiet(1000U,0.0F);
+    runtime.push(31U,chunk(phrase));
+    runtime.push(31U,chunk(quiet));
+    const auto results = awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].audio_start_sample,4192U);
+    EXPECT_EQ(results[0].audio_end_sample,16000U);
+    EXPECT_EQ(results[0].transcript.text,"first-syllable-lost");
+}
+
 TEST(PerSourceSpeechRuntime, NativeAcceptedShortCommandBypassesGenericMinimum) {
     NativeBoundaryVad vad;
     PerSourceSpeechOptions options{};

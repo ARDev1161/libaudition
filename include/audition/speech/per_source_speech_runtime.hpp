@@ -29,7 +29,12 @@ struct PerSourceSpeechOptions {
     // Caps retired generations awaiting client-side sidecar/result release.
     std::size_t max_retired_generations{64};
     std::size_t min_speech_samples{1600};
-    std::size_t pre_roll_samples{3200}; // 200ms @ 16kHz
+    std::size_t pre_roll_samples{3200}; // 200ms @ 16kHz; activity-only VAD
+    // At most the first second of a source's post-AGC PCM. When the first
+    // native VAD onset falls within this prefix, include samples from
+    // source sample zero; a delayed native onset should not chop its
+    // initial syllable. 0 disables the native first-utterance prefix.
+    std::size_t native_initial_context_samples{16000}; // 1s @ 16kHz
     std::size_t post_roll_samples{4800}; // 300ms @ 16kHz
     std::size_t max_segment_samples{160000};
     // Bounds retained ASR result text (including token and word strings).
@@ -128,6 +133,9 @@ private:
         std::vector<float> speech{};
         std::deque<float> pre_roll{};
         bool native_segments{false};
+        // Held until the first complete native utterance, then released.
+        // Unlike a rolling ring, the beginning survives VAD endpoint delay.
+        std::vector<float> native_initial_pcm{};
         Timestamp source_start_time{};
         std::uint64_t native_emitted_until{0U};
         std::size_t trailing_silence_samples{0U};
