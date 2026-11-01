@@ -81,7 +81,8 @@ The adapters implement selected interfaces and are enabled independently at buil
 - [Source code](https://github.com/ARDev1161/libaudition)
 - [Current release-candidate status](release_v1_rc1.md)
 - [Functional architecture and algorithm map](functional_architecture.md)
-- [C++ API reference](api.rst)
+- [C++ API reference in Sphinx](api.rst)
+- [Full Doxygen HTML reference](https://ardev1161.github.io/libaudition/doxygen/index.html) — searchable classes, namespaces and public headers
 
 ~~~{toctree}
 :caption: Getting started
@@ -126,6 +127,7 @@ backends/gtsam
 :maxdepth: 2
 
 api
+Doxygen HTML API <https://ardev1161.github.io/libaudition/doxygen/index.html>
 ~~~
 
 ~~~{toctree}
