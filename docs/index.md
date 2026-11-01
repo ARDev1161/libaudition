@@ -8,7 +8,7 @@ The library provides reusable algorithms and acoustic observations. Applications
 
 This repository-oriented diagram is adapted from the [GitDiagram overview](https://gitdiagram.com/ardev1161/libaudition), expanded to include the optional spatial, speech, audio, speaker and semantic backends as well as the identity and temporal layers. **Solid arrows** illustrate possible data flow; **dashed arrows** show optional compositions or replaceable adapters. It is **not** a fixed processing pipeline or a declaration that every backend is installed.
 
-Click a linked node to inspect its implementation on GitHub. Click the diagram background to open the zoomable viewer. Applications still own capture, worker scheduling, recordings and robot/ROS 2 behavior; a mono-only application can bypass ODAS.
+Click a linked node to open its **Doxygen API/file reference**, including generated Graphviz diagrams and source browsing. Click the diagram background to open the zoomable viewer. Applications still own capture, worker scheduling, recordings and robot/ROS 2 behavior; a mono-only application can bypass ODAS.
 
 ```mermaid
 flowchart TB
@@ -103,11 +103,11 @@ flowchart TB
   PORTS -.->|"implemented by adapters"| VAD
   PORTS -.->|"implemented by adapters"| ODAS
 
-  %% Click nodes for actual source locations; names are from verified paths.
+  %% Source file links are resolved at Sphinx build time to the matching Doxygen HTML pages.
   click BUF "https://github.com/ARDev1161/libaudition/blob/main/include/audition/audio/audio_buffer.hpp" "Public audio buffer" _blank
   click IO "https://github.com/ARDev1161/libaudition/blob/main/src/io/wav_io.cpp" "WAV I/O" _blank
   click FRONT "https://github.com/ARDev1161/libaudition/blob/main/src/dsp/audio_frontend.cpp" "Audio frontend" _blank
-  click PORTS "https://github.com/ARDev1161/libaudition/tree/main/include/audition" "Public contracts" _blank
+  click PORTS "doxygen/annotated.html" "Browse Doxygen class and interface index" _blank
   click ENHANCE "https://github.com/ARDev1161/libaudition/blob/main/backends/webrtc_aec3/src/webrtc_apm_echo_canceller.cpp" "WebRTC APM adapter" _blank
   click ODAS "https://github.com/ARDev1161/libaudition/blob/main/backends/odas/src/odas_spatial_engine.cpp" "ODAS adapter" _blank
   click TRACK "https://github.com/ARDev1161/libaudition/blob/main/backends/odas/src/detail/odas_runtime.hpp" "ODAS runtime" _blank
