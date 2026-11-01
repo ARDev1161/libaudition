@@ -1,7 +1,10 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
+#include <audition/dsp/asr_segment_normalizer.hpp>
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -37,6 +40,31 @@ bool transcriptWithinBudget(const Transcript& transcript,
         if (!consume(word.text)) return false;
     return true;
 }
+// Diagnostic only: preserve the original transcript, including hallucinations.
+bool hasRepetition(const std::string& text) {
+    std::istringstream words{text};
+    std::vector<std::string> tokens;
+    std::string word;
+    while (words >> word) {
+        word.erase(std::remove_if(word.begin(), word.end(),
+            [](unsigned char c) { return c == ',' || c == '.' || c == '!' || c == '?'; }),
+            word.end());
+        if (!word.empty()) tokens.push_back(word);
+    }
+    for (std::size_t width = 1; width <= 4; ++width) {
+        for (std::size_t start = 0; start + 4 * width <= tokens.size(); ++start) {
+            bool repeated = true;
+            for (std::size_t i = width; i < 4 * width; ++i) {
+                if (tokens[start + i] != tokens[start + i % width]) {
+                    repeated = false;
+                    break;
+                }
+            }
+            if (repeated) return true;
+        }
+    }
+    return false;
+}
 } // namespace
 
 PerSourceSpeechRuntime::PerSourceSpeechRuntime(
@@ -49,9 +77,16 @@ PerSourceSpeechRuntime::PerSourceSpeechRuntime(
         !options_.max_result_text_bytes || !options_.max_result_items ||
         options_.max_segment_samples < options_.min_speech_samples ||
         options_.pre_roll_samples > options_.max_segment_samples ||
+        options_.native_initial_context_ms > 1000U ||
         options_.post_roll_samples > options_.max_segment_samples) {
         throw std::invalid_argument{"Invalid per-source speech runtime configuration"};
     }
+    // Compute a bounded prefix in samples for this particular backend.
+    // Intermediate arithmetic uses u64 so rates near uint32_t max do
+    // not overflow when converting milliseconds to samples.
+    native_initial_context_samples_ = static_cast<std::size_t>(
+        static_cast<std::uint64_t>(options_.sample_rate_hz) *
+        options_.native_initial_context_ms / 1000U);
     // Bound synchronous inspection and VAD work per call. Longer source
     // audio must be divided into contiguous chunks by the application.
     if (options_.max_input_chunk_samples == 0U)
@@ -77,7 +112,8 @@ PerSourceSpeechRuntime::~PerSourceSpeechRuntime() {
     if (worker_.joinable()) worker_.join();
 }
 
-void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
+void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track, const char* reason) {
+    const auto segment_samples = track.speech.size();
     if (track.voiced_samples >= options_.min_speech_samples) {
         if (jobs_.size() >= options_.max_pending_segments) {
             ++dropped_;
@@ -90,15 +126,94 @@ void PerSourceSpeechRuntime::queueSegment(std::uint64_t id, Track& track) {
                 {options_.sample_rate_hz, 1U, AudioLayout::Interleaved},
                 track.start_time};
             jobs_.push_back({id, track.generation, std::move(segment),
-                             track.start_sample});
+                             track.start_sample, reason});
             ++track.queued_segments;
             ++pending_by_generation_[track.generation];
             cv_.notify_one();
         }
     }
-    track.start_sample += track.speech.size();
+    track.start_sample += segment_samples;
     track.speech.clear();
     track.voiced_samples = 0U;
+}
+
+void PerSourceSpeechRuntime::queueNativeSegments(
+    std::uint64_t id, Track& track, std::vector<VadSpeechSegment> segments,
+    const char* reason) {
+    for (auto& native : segments) {
+        if (native.samples.empty()) continue;
+        if (native.start_sample > track.received_samples ||
+            native.samples.size() > track.received_samples - native.start_sample)
+            throw std::out_of_range{"Native VAD segment exceeds source PCM timeline"};
+        // Native VAD start is an estimate. At source acquisition the
+        // recorded PCM can already contain the first syllable, while the
+        // model reports onset 200-400 ms later. For the first utterance
+        // only, restore *actual* post-AGC samples from sample zero, if
+        // the source was acquired within the bounded initial context.
+        // No silence is synthesized, and a long-lived idle track is not
+        // transcribed from an unrelated, minutes-old beginning.
+        if (track.native_emitted_until == 0U && native.start_sample != 0U &&
+            native.start_sample <= track.native_initial_pcm.size()) {
+            const auto prefix_size =
+                static_cast<std::size_t>(native.start_sample);
+            std::vector<float> recovered;
+            recovered.reserve(prefix_size + native.samples.size());
+            recovered.insert(recovered.end(),track.native_initial_pcm.begin(),
+                track.native_initial_pcm.begin() +
+                    static_cast<std::ptrdiff_t>(prefix_size));
+            recovered.insert(recovered.end(),native.samples.begin(),
+                native.samples.end());
+            native.samples = std::move(recovered);
+            native.start_sample = 0U;
+        }
+        // Backend lookback can overlap neighboring utterances. Do not send
+        // the same source samples to ASR twice.
+        if (native.start_sample < track.native_emitted_until) {
+            const auto overlap = track.native_emitted_until - native.start_sample;
+            if (overlap >= native.samples.size()) continue;
+            native.samples.erase(native.samples.begin(),
+                native.samples.begin() + static_cast<std::ptrdiff_t>(overlap));
+            native.start_sample = track.native_emitted_until;
+        }
+        const auto segment_length = native.samples.size();
+        track.native_emitted_until = native.start_sample + segment_length;
+        // Once the first native utterance is completed, release the
+        // initial buffer; subsequent utterances retain native boundaries.
+        track.native_initial_pcm.clear();
+        // A completed native VAD segment has already passed the backend's
+        // own speech/end-point decision. Applying the generic minimum again
+        // would silently drop short commands even though native VAD accepted
+        // them. min_speech_samples remains enforced on activity-only VAD.
+        std::size_t offset = 0U;
+        while (offset < segment_length) {
+            const auto count = std::min(options_.max_segment_samples,
+                                        segment_length - offset);
+            if (jobs_.size() >= options_.max_pending_segments) {
+                ++dropped_;
+                ++track.dropped_segments;
+            } else {
+                const auto start = native.start_sample + offset;
+                const auto ns = static_cast<std::int64_t>(
+                    static_cast<double>(start) * 1000000000.0 /
+                    static_cast<double>(options_.sample_rate_hz));
+                SpeechSegment segment{};
+                segment.segment_id = SpeechSegmentId{next_segment_++};
+                segment.track_id = SpatialTrackId{id};
+                segment.audio = AudioBuffer{
+                    std::vector<float>{
+                        native.samples.begin() + static_cast<std::ptrdiff_t>(offset),
+                        native.samples.begin() + static_cast<std::ptrdiff_t>(offset+count)},
+                    {options_.sample_rate_hz, 1U, AudioLayout::Interleaved},
+                    track.source_start_time.advancedBy(Duration{ns})};
+                jobs_.push_back({id,track.generation,std::move(segment),
+                                 start,reason});
+                ++track.queued_segments;
+                ++pending_by_generation_[track.generation];
+                cv_.notify_one();
+            }
+            offset += count;
+        }
+    }
 }
 
 void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
@@ -132,6 +247,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
             ++dropped_;
         }
         track.generation = next_generation_++;
+        track.source_start_time = audio.captureTime();
         it = tracks_.emplace(id, std::move(track)).first;
     }
     auto& track = it->second;
@@ -151,9 +267,9 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         }
     }
 
-    bool active = false;
+    VadResult vad_result{};
     try {
-        active = track.vad->process(audio).speech_active;
+        vad_result = track.vad->process(audio);
     } catch (const std::exception& e) {
         track.error = e.what();
     } catch (...) {
@@ -173,7 +289,30 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
                            track.received_samples;
     const auto chunk_start = track.received_samples;
     track.received_samples += std::min(accepted, remaining);
-    track.speech_active = active;
+    if (vad_result.speech_active && !track.speech_active) ++track.vad_starts;
+    if (!vad_result.speech_active && track.speech_active) ++track.vad_ends;
+    track.speech_active = vad_result.speech_active;
+    if (vad_result.completed_segments) {
+        track.native_segments = true;
+        if (track.native_emitted_until == 0U &&
+            track.native_initial_pcm.size() <
+                native_initial_context_samples_) {
+            const auto available = native_initial_context_samples_ -
+                track.native_initial_pcm.size();
+            const auto count = std::min(available,audio.sampleCount());
+            track.native_initial_pcm.insert(track.native_initial_pcm.end(),
+                audio.data(),audio.data()+count);
+        }
+        // Native VAD supplied actual onset sample offsets and PCM, so
+        // the generic pre/post-roll must not cut or duplicate those samples.
+        queueNativeSegments(id,track,
+            std::move(*vad_result.completed_segments),"vad_native");
+        return;
+    }
+    if (track.native_segments) {
+        throw std::logic_error{"VAD changed from native segments to activity-only"};
+    }
+    const bool active = vad_result.speech_active;
     const auto advanceTime = [&](std::size_t sample_offset) {
         const auto ns = static_cast<std::int64_t>(
             static_cast<double>(sample_offset) * 1000000000.0 /
@@ -212,7 +351,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
             track.voiced_samples += take;
             offset += take;
             if (track.speech.size() == options_.max_segment_samples) {
-                queueSegment(id, track);
+                queueSegment(id, track, "max_duration");
                 // Continue in the same capture chunk; no samples may be
                 // dropped at a max-duration boundary.
                 track.start_time = advanceTime(offset);
@@ -222,7 +361,7 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
         }
     } else if (!track.speech.empty()) {
         if (options_.post_roll_samples == 0U) {
-            queueSegment(id, track);
+            queueSegment(id, track, "vad_silence");
             track.trailing_silence_samples = 0U;
             rememberSilence(0U);
         } else {
@@ -234,7 +373,8 @@ void PerSourceSpeechRuntime::push(std::uint64_t id, AudioView audio) {
             track.trailing_silence_samples += take;
             if (track.speech.size() == options_.max_segment_samples ||
                 track.trailing_silence_samples >= options_.post_roll_samples) {
-                queueSegment(id, track);
+                queueSegment(id, track, track.speech.size() == options_.max_segment_samples
+                    ? "max_duration" : "vad_silence");
                 track.trailing_silence_samples = 0U;
                 rememberSilence(take);
             }
@@ -254,7 +394,16 @@ std::optional<std::uint64_t> PerSourceSpeechRuntime::retire(std::uint64_t id) {
     if (retired_generations_.size() >= options_.max_retired_generations)
         return std::nullopt;
     const auto generation = it->second.generation;
-    if (!it->second.speech.empty()) queueSegment(id, it->second);
+    if (it->second.native_segments) {
+        // Native VAD may still be tracking a phrase when ODAS retires.
+        auto pending = it->second.vad->flush();
+        if (!pending.completed_segments)
+            throw std::logic_error{"Native VAD flush omitted segment contract"};
+        queueNativeSegments(id,it->second,
+            std::move(*pending.completed_segments),"retired");
+    } else if (!it->second.speech.empty()) {
+        queueSegment(id,it->second,"retired");
+    }
     retired_generations_.insert(generation);
     tracks_.erase(it);
     return generation;
@@ -357,7 +506,9 @@ SourceSpeechTrackStatus PerSourceSpeechRuntime::trackStatus(
     std::lock_guard<std::mutex> guard{mutex_};
     const auto it = tracks_.find(track_id);
     if (it == tracks_.end()) return {};
-    return {true, it->second.speech_active, it->second.speech.size(),
+    return {true, it->second.speech_active,
+            it->second.vad_starts, it->second.vad_ends,
+            it->second.speech.size(),
             it->second.voiced_samples, it->second.error,
             it->second.received_samples, it->second.queued_segments,
             it->second.dropped_segments};
@@ -374,6 +525,12 @@ void PerSourceSpeechRuntime::workerLoop() {
             jobs_.pop_front();
         }
         try {
+            double asr_input_gain_db = 0.0;
+            if (options_.normalize_asr_segments) {
+                const auto stats = dsp::normalizeAsrSegment(
+                    job.segment.audio.mutableSamples());
+                asr_input_gain_db = stats.applied_gain_db;
+            }
             auto transcript = asr_->transcribe(job.segment);
             std::lock_guard<std::mutex> guard{mutex_};
             const auto current = tracks_.find(job.track_id);
@@ -385,11 +542,14 @@ void PerSourceSpeechRuntime::workerLoop() {
                     error_ = "ASR transcript exceeds configured result budget";
                     ++dropped_;
                 } else {
+                    const bool repetition = hasRepetition(transcript.text);
                     results_.push_back({job.track_id, job.generation, std::move(transcript),
+                        job.end_reason, repetition,
                         job.segment.audio.captureTime(),
                         job.segment.audio.captureTime().advancedBy(job.segment.audio.duration()),
                         job.start_sample,
-                        job.start_sample + job.segment.audio.samples().size()});
+                        job.start_sample + job.segment.audio.samples().size(),
+                        asr_input_gain_db});
                     // Prevent unbounded accumulation when application does not poll.
                     if (results_.size() > options_.max_pending_segments) {
                         results_.erase(results_.begin());

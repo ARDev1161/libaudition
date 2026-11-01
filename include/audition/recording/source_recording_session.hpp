@@ -35,6 +35,13 @@ struct SourceRecordingDrops {
     std::uint64_t sound{0};
     std::uint64_t gaps{0};
 };
+
+// Fixed reason vocabulary keeps recording metadata bounded and prevents
+// missing/invalid speech DSP hops being mislabeled as WAV queue pressure.
+enum class RecordingGapReason : std::uint8_t {
+    RecorderBackpressure,
+    SpeechPreprocessingFailure
+};
 class SourceRecordingSession final {
 public:
     SourceRecordingSession() = default;
@@ -167,7 +174,19 @@ public:
         seen_windows_.insert(key);
     }
     void addGap(std::uint64_t track_id, std::uint64_t start,
-                std::uint64_t samples) {
+                std::uint64_t samples,
+                RecordingGapReason reason = RecordingGapReason::RecorderBackpressure) {
+        const char* reason_text = nullptr;
+        switch (reason) {
+        case RecordingGapReason::RecorderBackpressure:
+            reason_text = "recorder_backpressure";
+            break;
+        case RecordingGapReason::SpeechPreprocessingFailure:
+            reason_text = "speech_preprocessing_failure";
+            break;
+        default:
+            throw std::invalid_argument("Unknown recording gap reason");
+        }
         const auto id = recordingId(track_id);
         if (!id || !samples) return;
         if (samples > std::numeric_limits<std::uint64_t>::max() - start)
@@ -176,13 +195,13 @@ public:
         const auto& gaps = state.timeline.gaps();
         // Adjacent gaps merge without consuming a second event slot.
         const bool merges = !gaps.empty() && gaps.back().end_sample == start &&
-                            gaps.back().reason == "recorder_backpressure";
+                            gaps.back().reason == reason_text;
         if (!merges && gaps.size() >= options_.max_gap_events) {
             ++drops_.gaps;
             return;
         }
         state.timeline.add(TimelineGapEvent{
-            *id, start, start + samples, "recorder_backpressure"});
+            *id, start, start + samples, reason_text});
     }
     // Retire the producer-side WAV before the queued VAD worker has
     // processed final PCM. A delayed acknowledgement must be matched by

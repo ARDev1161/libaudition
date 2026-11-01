@@ -23,13 +23,18 @@ the BSD-2-Clause license, pinned to commit
 `c96f5e3de9c4488f4e6c97f59f5245f22fda22f7`. The license text is retained
 in `LICENSES/libsamplerate.txt`.
 
-The optional AEC backend currently uses the standalone `Enaium/webrtc-aec3`
-extraction pinned to commit `2cec2f52e26646f93bd2d5498bbabf59cba18da9`.
-Its repository root declares BSD-3-Clause in `LICENSE`. Copied WebRTC source
-headers also reference an upstream `PATENTS` file, while the extraction root
-does not contain that file. For that reason the adapter is opt-in and this
-exact extraction/provenance must receive a final redistribution/patent-file
-audit before it is treated as a default binary-distribution dependency.
+The optional WebRTC Audio Processing Module (APM) backend provides AGC1,
+AGC2, and AEC3 using a **single** Freedesktop-distributed WebRTC
+implementation (the `pulseaudio/webrtc-audio-processing` repository),
+pinned to upstream commit `bc838790`. The pinned implementation is
+built with Meson or resolved from a compatible system
+`webrtc-audio-processing-2` package. The retained upstream `COPYING`
+text is `LICENSES/WebRTC-APM.txt` (BSD-3-Clause-style terms).
+Independent `Enaium/webrtc-agc2` and `Enaium/webrtc-aec3`
+extractions are no longer used. APM 2.x requires Abseil; binary
+distribution and cross-compilation must account for its linked runtime
+dependencies. Verify third-party notices and any upstream patent
+documentation before redistribution.
 
 The optional speech backend uses `k2-fsa/sherpa-onnx` under Apache-2.0,
 pinned to commit `99ddefaa92129858b80a71a426903dd4215c83fa`. The Apache-2.0

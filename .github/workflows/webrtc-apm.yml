@@ -1,0 +1,100 @@
+name: WebRTC APM
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unified-webrtc-apm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Meson, Abseil, Qt and build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build pkg-config curl \
+            libabsl-dev qtbase5-dev
+      - name: Build patched Freedesktop WebRTC APM 2.x upstream commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing.git \
+            "${RUNNER_TEMP}/apm-source"
+          git -C "${RUNNER_TEMP}/apm-source" checkout bc838790
+          # This post-2.1 upstream commit contains the 2025 Abseil nullability
+          # and GCC 15 compatibility fixes; the v2.1 release tarball does not.
+          meson setup "${RUNNER_TEMP}/apm-build" "${RUNNER_TEMP}/apm-source" \
+            --prefix="${GITHUB_WORKSPACE}/apm-prefix" --libdir=lib
+          meson compile -C "${RUNNER_TEMP}/apm-build" -j 3
+          meson install -C "${RUNNER_TEMP}/apm-build"
+          test -f "$PWD/apm-prefix/lib/pkgconfig/webrtc-audio-processing-2.pc"
+      - name: Configure APM-based source gain and Qt demo
+        run: |
+          export PKG_CONFIG_PATH="$PWD/apm-prefix/lib/pkgconfig"
+          cmake -S . -B build-apm -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/apm-prefix" \
+            -DLIBAUDITION_WITH_WEBRTC_APM=ON \
+            -DLIBAUDITION_WITH_WEBRTC_AEC3=ON \
+            -DLIBAUDITION_BUILD_TESTS=ON \
+            -DLIBAUDITION_BUILD_QT_DEMO=ON \
+            -DLIBAUDITION_WITH_SPDLOG=OFF \
+            -DLIBAUDITION_DEMO_FETCH_SPEECH_MODELS=OFF \
+            -DLIBAUDITION_DEMO_FETCH_YAMNET_MODEL=OFF \
+            -DLIBAUDITION_DEMO_FETCH_EXTRA_SPEECH_MODELS=OFF \
+            -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+      - name: Build APM test and demo targets
+        run: cmake --build build-apm --target libaudition_tests libaudition_qt_demo --parallel 3
+      - name: Run APM AGC streaming tests
+        env:
+          LD_LIBRARY_PATH: ./apm-prefix/lib
+        run: ctest --no-tests=error --test-dir build-apm -R 'SourceGain.UnifiedApm|WebRtcAec3Backend|SourceNoiseSuppression|WebRtcApmNoiseSuppressor|SourceSpeechChain' --output-on-failure
+      - name: Install APM-backed SDK
+        run: cmake --install build-apm --prefix "$PWD/install-apm"
+      - name: Verify installed APM NS backend from C++20 consumer
+        shell: bash
+        run: |
+          export PKG_CONFIG_PATH="$PWD/apm-prefix/lib/pkgconfig"
+          mkdir -p /tmp/libaudition-apm-ns-consumer
+          cat > /tmp/libaudition-apm-ns-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.20)
+          project(libaudition_apm_ns_consumer LANGUAGES CXX)
+          find_package(libaudition CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE audition::backend_webrtc_apm)
+          target_compile_features(consumer PRIVATE cxx_std_20)
+          CMAKE
+          cat > /tmp/libaudition-apm-ns-consumer/main.cpp <<'CPP'
+          #include <audition/backends/webrtc_apm_noise_suppressor.hpp>
+          #include <cmath>
+          #include <vector>
+          int main() {
+              auto ns = audition::dsp::makeWebRtcApmSourceNoiseSuppressor(
+                  audition::dsp::NoiseSuppressionLevel::high);
+              const std::vector<float> pcm(160U, 0.004F);
+              for (int i = 0; i < 20; ++i) {
+                  auto out = ns->process(pcm.data(), pcm.size(), 16000U);
+                  if (out.size() != pcm.size()) return 1;
+                  for (float s : out)
+                      if (!std::isfinite(s) || std::abs(s) > 1.0F) return 2;
+              }
+              return 0;
+          }
+          CPP
+          cmake -S /tmp/libaudition-apm-ns-consumer \
+            -B /tmp/libaudition-apm-ns-consumer/build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-apm;$PWD/apm-prefix"
+          cmake --build /tmp/libaudition-apm-ns-consumer/build --parallel
+          LD_LIBRARY_PATH="$PWD/install-apm/lib:$PWD/apm-prefix/lib" \
+            /tmp/libaudition-apm-ns-consumer/build/consumer
+      - name: Run APM Qt integration smoke test
+        env:
+          LD_LIBRARY_PATH: ./apm-prefix/lib
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-apm -R '^qt_self_test$' --output-on-failure
+      - name: Run APM echo cancellation Qt functional smoke test
+        env:
+          LD_LIBRARY_PATH: ./apm-prefix/lib
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --no-tests=error --test-dir build-apm -R '^qt_aec3$' --output-on-failure

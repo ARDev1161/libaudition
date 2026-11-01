@@ -18,6 +18,9 @@ public:
     virtual ~IVadSession() = default;
     virtual void reset() = 0;
     [[nodiscard]] virtual VadResult process(AudioView audio) = 0;
+    // A native VAD can flush its final unfinished utterance when a source
+    // retires. Activity-only backends remain source-compatible.
+    [[nodiscard]] virtual VadResult flush() { return {}; }
 };
 
 class IVoiceActivityDetector {

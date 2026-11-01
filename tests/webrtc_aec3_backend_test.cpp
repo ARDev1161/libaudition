@@ -23,6 +23,11 @@ audition::AudioBuffer frame(float value, std::uint64_t sequence = 0U) {
 
 }  // namespace
 
+TEST(WebRtcAec3Backend, PublicIdentifierRemainsStableAcrossApmMigration) {
+    const audition::WebRtcAec3EchoCanceller engine{};
+    EXPECT_EQ(engine.backendInfo().name, "webrtc-aec3");
+}
+
 TEST(WebRtcAec3Backend, EnforcesTenMillisecondFrames) {
     audition::WebRtcAec3EchoCanceller engine{};
     auto session = engine.createSession(

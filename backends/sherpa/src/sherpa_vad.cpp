@@ -48,14 +48,31 @@ public:
         VadResult result{};
         result.speech_active = detector_.IsDetected();
         result.speech_probability.reset();
-
-        // libaudition has a separate segmentation abstraction. Drain completed
-        // native VAD segments here so a pure IVadSession does not accumulate
-        // an unbounded queue that the generic interface cannot consume.
-        while (!detector_.IsEmpty()) {
-            detector_.Pop();
-        }
+        result.completed_segments.emplace();
+        drainSegments(*result.completed_segments);
         return result;
+    }
+
+    VadResult flush() override {
+        detector_.Flush();
+        VadResult result{};
+        result.completed_segments.emplace();
+        drainSegments(*result.completed_segments);
+        return result;
+    }
+
+private:
+    void drainSegments(std::vector<VadSpeechSegment>& out) {
+        while (!detector_.IsEmpty()) {
+            auto native = detector_.Front();
+            detector_.Pop();
+            if (native.start < 0) {
+                throw Error{ErrorCode::ProcessingError,
+                            "Sherpa VAD emitted a negative segment start"};
+            }
+            out.push_back({static_cast<std::uint64_t>(native.start),
+                           std::move(native.samples)});
+        }
     }
 
 private:

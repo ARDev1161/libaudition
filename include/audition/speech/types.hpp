@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -43,9 +44,21 @@ struct Transcript {
     std::vector<WordTimestamp> words{};
 };
 
+// Optional sample-indexed, backend-produced VAD speech. Offsets are
+// absolute mono PCM indices since IVadSession was last reset; samples
+// include any native lookback/context already supplied by the VAD.
+struct VadSpeechSegment {
+    std::uint64_t start_sample{0U};
+    std::vector<float> samples{};
+};
+
 struct VadResult {
     std::optional<Probability> speech_probability{};
     bool speech_active{false};
+    // nullopt: activity-only VAD, use generic pre/post-roll.
+    // Engaged, even when empty: native completed segments are authoritative.
+    // Never segment the same audio again using speech_active.
+    std::optional<std::vector<VadSpeechSegment>> completed_segments{};
 };
 
 struct KeywordHit {

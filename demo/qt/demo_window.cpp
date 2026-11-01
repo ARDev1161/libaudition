@@ -1,5 +1,6 @@
 #include "demo_window.hpp"
 #include <QCheckBox>
+#include <QComboBox>
 
 #include "acoustic_scene_page.hpp"
 #include "backend_workbench.hpp"
@@ -169,12 +170,11 @@ QWidget* requireTab(QTabWidget* tabs, const char* name) {
 
 void verifyWorkbench(QWidget* root) {
     auto* appTabs = qobject_cast<QTabWidget*>(root);
-    if (appTabs == nullptr || appTabs->count() != 12) {
+    if (appTabs == nullptr || appTabs->count() != 11) {
         throw std::runtime_error{"Qt self-test: unexpected application tab count"};
     }
     for (const char* name : {
              "Acoustic scene",
-             "Overview",
              "Audio / DSP",
              "SPL / Range",
              "Smoothing",
@@ -182,11 +182,21 @@ void verifyWorkbench(QWidget* root) {
              "AcousticEvent",
              "Pipeline",
              "Backend workbench",
-             "Backends",
              "Temporal patterns",
-             "Feature catalog"}) {
+             "Settings",
+             "Help"}) {
         static_cast<void>(requireTab(appTabs, name));
     }
+    auto* settingsTabs = qobject_cast<QTabWidget*>(requireTab(appTabs, "Settings"));
+    if (!settingsTabs || settingsTabs->count() != 1) {
+        throw std::runtime_error{"Qt self-test: unexpected settings tabs"};
+    }
+    static_cast<void>(requireTab(settingsTabs, "Backends"));
+    auto* helpTabs = qobject_cast<QTabWidget*>(requireTab(appTabs, "Help"));
+    if (!helpTabs || helpTabs->count() != 2) {
+        throw std::runtime_error{"Qt self-test: unexpected help tabs"};
+    }
+    static_cast<void>(requireTab(helpTabs, "Overview"));
 
     auto* temporalPage = requireTab(appTabs, "Temporal patterns");
     auto* runTemporal = temporalPage->findChild<QPushButton*>("temporalRun");
@@ -262,7 +272,7 @@ void verifyWorkbench(QWidget* root) {
     eventScalars->setPlainText(QStringLiteral("0 0 3 3 3"));
     eventRun->click();
 
-    auto* catalogPage = requireTab(appTabs, "Feature catalog");
+    auto* catalogPage = requireTab(helpTabs, "Feature catalog");
     auto* catalog = catalogPage->findChild<QTableWidget*>("capabilityTable");
     auto* catalogSearch = catalogPage->findChild<QLineEdit*>("capabilitySearch");
     if (!catalog || catalog->rowCount()<35 || !catalogSearch)
@@ -274,6 +284,25 @@ void verifyWorkbench(QWidget* root) {
     if(visible!=1)
         throw std::runtime_error{"Qt self-test: catalog search not functional"};
     catalogSearch->clear();
+    // Catalog links must continue to work for destinations nested under
+    // Settings rather than present in the application tab bar.
+    bool selectedBackend = false;
+    for (int row = 0; row < catalog->rowCount(); ++row) {
+        if (catalog->item(row, 2)->text() == "Backends") {
+            catalog->selectRow(row);
+            selectedBackend = true;
+            break;
+        }
+    }
+    auto* openCatalogTab = catalogPage->findChild<QPushButton*>("capabilityOpenTab");
+    if (!selectedBackend || !openCatalogTab) {
+        throw std::runtime_error{"Qt self-test: backend catalog link missing"};
+    }
+    openCatalogTab->click();
+    if (appTabs->tabText(appTabs->currentIndex()) != "Settings" ||
+        settingsTabs->tabText(settingsTabs->currentIndex()) != "Backends") {
+        throw std::runtime_error{"Qt self-test: nested catalog navigation failed"};
+    }
 
     auto* backendPage = requireTab(appTabs, "Backend workbench");
     auto* backends = backendPage->findChild<QTabWidget*>();
@@ -305,6 +334,30 @@ void verifyWorkbench(QWidget* root) {
         }
     }
     auto* sceneTable = scene->findChild<QTableWidget*>("acousticSceneTracks");
+    auto* speechLanguage = scene->findChild<QComboBox*>("acousticSceneSpeechLanguage");
+    auto* vadKind = scene->findChild<QComboBox*>("acousticSceneVadKind");
+    auto* asrKind = scene->findChild<QComboBox*>("acousticSceneAsrKind");
+    if (!speechLanguage || !asrKind) {
+        throw std::runtime_error{"Qt self-test: missing speech selector"};
+    }
+    const auto defaultAsr = asrKind->currentData().toString();
+    const auto defaultLanguage = speechLanguage->currentData().toString();
+    if (!((defaultAsr == "whisper" && defaultLanguage == "ru") ||
+          (defaultAsr == "sensevoice" && defaultLanguage == "auto"))) {
+        throw std::runtime_error{"Qt self-test: unexpected ASR/language default"};
+    }
+    if (!vadKind || !asrKind || vadKind->count() != 2 ||
+        asrKind->count() != (LIBAUDITION_DEMO_HAS_WHISPERCPP ? 8 : 7)) {
+        throw std::runtime_error{"Qt self-test: VAD/ASR selector options missing"};
+    }
+    asrKind->setCurrentIndex(1);
+    if (speechLanguage->findData(QStringLiteral("ru")) < 0) {
+        throw std::runtime_error{"Qt self-test: Whisper Russian language missing"};
+    }
+    asrKind->setCurrentIndex(0);
+    if (speechLanguage->findData(QStringLiteral("ru")) >= 0) {
+        throw std::runtime_error{"Qt self-test: unsupported SenseVoice Russian language"};
+    }
     if (scene->findChild<QCheckBox*>("acousticSceneEnableTagging") == nullptr ||
         scene->findChild<QLineEdit*>("acousticSceneTaggingModel") == nullptr ||
         scene->findChild<QLineEdit*>("acousticSceneTaggingLabels") == nullptr) {
@@ -445,7 +498,6 @@ DemoWindow::DemoWindow(QWidget* parent)
         return scroll;
     };
     tabs->addTab(scrollPage(createAcousticScenePage(tabs)), "Acoustic scene");
-    tabs->addTab(scrollPage(createOverviewTab()), "Overview");
     tabs->addTab(scrollPage(createAudioDspTab()), "Audio / DSP");
     tabs->addTab(scrollPage(createSpatialTab()), "SPL / Range");
     tabs->addTab(scrollPage(createSmoothingTab()), "Smoothing");
@@ -454,8 +506,16 @@ DemoWindow::DemoWindow(QWidget* parent)
     tabs->addTab(scrollPage(createPipelineTab()), "Pipeline");
     tabs->addTab(scrollPage(createTemporalPatternsPage()), "Temporal patterns");
     tabs->addTab(scrollPage(createBackendWorkbench(tabs)), "Backend workbench");
-    tabs->addTab(scrollPage(createCapabilitiesTab()), "Backends");
-    tabs->addTab(scrollPage(createFeatureCatalogPage(tabs)), "Feature catalog");
+
+    auto* settings = new QTabWidget;
+    settings->addTab(scrollPage(createCapabilitiesTab()), "Backends");
+    tabs->addTab(settings, "Settings");
+
+    auto* help = new QTabWidget;
+    help->addTab(scrollPage(createOverviewTab()), "Overview");
+    help->addTab(scrollPage(createFeatureCatalogPage(tabs)), "Feature catalog");
+    tabs->addTab(help, "Help");
+
     setCentralWidget(tabs);
 }
 

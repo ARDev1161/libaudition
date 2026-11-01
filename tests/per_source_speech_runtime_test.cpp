@@ -1,4 +1,6 @@
 #include <audition/speech/per_source_speech_runtime.hpp>
+#include <audition/dsp/source_speech_chain.hpp>
+#include <audition/dsp/asr_segment_normalizer.hpp>
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <chrono>
@@ -47,6 +49,43 @@ AudioView chunk(const std::vector<float>& values) {
         {16000U,1U,AudioLayout::Interleaved},Timestamp{}};
 }
 }
+TEST(AsrSegmentNormalizer, RaisesQuietSpeechButPreservesSampleCount) {
+    std::vector<float> speech(3200U,0.005F); // -46 dBFS
+    const auto stats = audition::dsp::normalizeAsrSegment(
+        audition::Span<float>{speech.data(),speech.size()});
+    EXPECT_NEAR(stats.input_rms_dbfs,-46.0206,0.05);
+    EXPECT_NEAR(stats.applied_gain_db,18.0,0.01); // explicit boost cap
+    EXPECT_NEAR(stats.output_rms_dbfs,-28.0206,0.05);
+    ASSERT_EQ(speech.size(),3200U);
+    EXPECT_NEAR(speech.front(),0.005*std::pow(10.0,18.0/20.0),1e-5);
+}
+
+TEST(AsrSegmentNormalizer, DoesNotBoostSilenceOrBelowGate) {
+    for (float value : {0.0F,0.00001F}) {
+        std::vector<float> original(1600U,value);
+        const auto copy=original;
+        const auto stats=audition::dsp::normalizeAsrSegment(
+            audition::Span<float>{original.data(),original.size()});
+        EXPECT_DOUBLE_EQ(stats.applied_gain_db,0.0);
+        EXPECT_EQ(original,copy);
+    }
+}
+
+TEST(AsrSegmentNormalizer, PeakCeilingLimitsBoostAndRejectsBadPCM) {
+    std::vector<float> pcm(1600U,0.005F);
+    pcm[10U]=0.5F;
+    const auto stats=audition::dsp::normalizeAsrSegment(
+        audition::Span<float>{pcm.data(),pcm.size()});
+    EXPECT_GT(stats.applied_gain_db,0.0);
+    EXPECT_LT(stats.applied_gain_db,4.0); // ceiling at 0.7079
+    EXPECT_LE(pcm[10U],0.7080F);
+    const auto bad=std::vector<float>{0.001F,std::numeric_limits<float>::quiet_NaN()};
+    std::vector<float> invalid=bad;
+    EXPECT_THROW((void)audition::dsp::normalizeAsrSegment(
+        audition::Span<float>{invalid.data(),invalid.size()}),std::invalid_argument);
+    EXPECT_EQ(invalid.front(),bad.front()); // reject before mutation
+}
+
 TEST(PerSourceSpeechRuntime, CountersAreSourceLocalAndResetOnReuse) {
     ThresholdVad vad;
     PerSourceSpeechOptions options{};
@@ -61,6 +100,8 @@ TEST(PerSourceSpeechRuntime, CountersAreSourceLocalAndResetOnReuse) {
     EXPECT_EQ(runtime.trackStatus(42U).received_samples,4U);
     runtime.push(41U,chunk(quiet));
     EXPECT_EQ(runtime.trackStatus(41U).received_samples,8U);
+    EXPECT_EQ(runtime.trackStatus(41U).vad_starts,1U);
+    EXPECT_EQ(runtime.trackStatus(41U).vad_ends,1U);
     EXPECT_EQ(runtime.trackStatus(41U).queued_segments,1U);
     EXPECT_EQ(runtime.trackStatus(41U).dropped_segments,0U);
     EXPECT_EQ(runtime.trackStatus(42U).queued_segments,0U);
@@ -97,10 +138,94 @@ TEST(PerSourceSpeechRuntime, IndependentlySegmentsTwoTracksAndRunsAsyncAsr) {
     ASSERT_EQ(found.size(),2U);
     EXPECT_EQ(found[0].track_id,17U);
     EXPECT_EQ(found[0].transcript.text,"17:4");
+    EXPECT_EQ(found[0].segment_end_reason,"vad_silence");
+    EXPECT_FALSE(found[0].repetition_detected);
     EXPECT_EQ(found[1].track_id,19U);
     EXPECT_EQ(found[1].transcript.text,"19:4");
     EXPECT_EQ(runtime.statistics().completed_segments,2U);
 }
+TEST(PerSourceSpeechRuntime, MutedDspFailurePreservesLaterSpeechOffsetsAndPeer) {
+    // An NS/AGC failure must not drop a chunk before VAD: doing so shifts the
+    // source's audio sample clock and every subsequent ASR sidecar annotation.
+    class IntermittentGain final : public audition::dsp::ISourceGain {
+    public:
+        std::vector<float> process(const float* pcm, std::size_t count,
+                                   std::uint32_t) override {
+            ++calls_;
+            std::vector<float> result(count);
+            for (std::size_t i = 0; i < count; ++i)
+                result[i] = calls_ == 2U ? 1.25F : pcm[i];
+            return result;
+        }
+        double gainDb() const noexcept override { return 0.0; }
+        void reset() noexcept override { calls_ = 0U; }
+    private:
+        std::size_t calls_{0U};
+    };
+
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),options};
+    IntermittentGain gain;
+    const std::vector<float> voice(4U,0.5F), silence(4U,0.0F);
+    auto first = audition::dsp::processSourceSpeechHopOrMute(
+        voice.data(), voice.size(), 16000U, nullptr, &gain);
+    ASSERT_FALSE(first.failed);
+    runtime.push(17U,chunk(first.samples));
+    runtime.push(19U,chunk(voice));
+
+    auto failed = audition::dsp::processSourceSpeechHopOrMute(
+        voice.data(), voice.size(), 16000U, nullptr, &gain);
+    ASSERT_TRUE(failed.failed);
+    EXPECT_EQ(failed.samples,silence);
+    runtime.push(17U,chunk(failed.samples));
+    runtime.push(19U,chunk(silence));
+
+    auto recovered = audition::dsp::processSourceSpeechHopOrMute(
+        voice.data(), voice.size(), 16000U, nullptr, &gain);
+    ASSERT_FALSE(recovered.failed);
+    runtime.push(17U,chunk(recovered.samples));
+    runtime.push(17U,chunk(silence));
+
+    EXPECT_EQ(runtime.trackStatus(17U).received_samples,16U);
+    EXPECT_EQ(runtime.trackStatus(19U).received_samples,8U);
+    EXPECT_EQ(runtime.trackStatus(17U).vad_starts,2U);
+    EXPECT_EQ(runtime.trackStatus(17U).vad_ends,2U);
+
+    std::vector<SourceSpeechResult> results;
+    for (int i = 0; i < 1000 && results.size() < 3U; ++i) {
+        auto ready = runtime.takeResults();
+        results.insert(results.end(),
+            std::make_move_iterator(ready.begin()),
+            std::make_move_iterator(ready.end()));
+        if (results.size() < 3U)
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    ASSERT_EQ(results.size(),3U);
+    const auto match = [&](std::uint64_t id, std::uint64_t start,
+                           std::uint64_t end) {
+        const auto found = std::find_if(results.begin(),results.end(),
+            [&](const SourceSpeechResult& item) {
+                return item.track_id == id &&
+                    item.audio_start_sample == start &&
+                    item.audio_end_sample == end;
+            });
+        ASSERT_NE(found,results.end());
+        if (found != results.end()) {
+            EXPECT_EQ(found->segment_end_reason,"vad_silence");
+            EXPECT_EQ(found->transcript.text,
+                      std::to_string(id) + ":4");
+        }
+    };
+    match(17U,0U,4U);
+    match(17U,8U,12U); // the muted hop [4,8) occupied the audio clock
+    match(19U,0U,4U);  // the second source remained independent
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+}
+
 TEST(PerSourceSpeechRuntime, ForgetAndResetDiscardUnfinishedAudio) {
     ThresholdVad vad;
     PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>()};
@@ -225,6 +350,348 @@ TEST(PerSourceSpeechRuntime, ContinuousSpeechCrossesSegmentCapWithoutDroppingSam
     EXPECT_EQ(received[1].transcript.text, "5:5");
     EXPECT_EQ(received[2].transcript.text, "5:2");
     EXPECT_EQ(runtime.statistics().dropped_segments, 0U);
+}
+
+namespace {
+class DelayedOnsetVadSession final : public IVadSession {
+public:
+    void reset() override { voiced_samples_ = 0U; }
+    VadResult process(AudioView audio) override {
+        if (audio.data()[0] < 0.2F) return {std::nullopt, false};
+        voiced_samples_ += audio.sampleCount();
+        // Model-based onset may lag the beginning of audible speech.
+        // Simulate a 625-ms delay with 1,000-sample / 16-kHz chunks.
+        return {std::nullopt, voiced_samples_ >= 10000U};
+    }
+private:
+    std::size_t voiced_samples_{0U};
+};
+class DelayedOnsetVad final : public IVoiceActivityDetector {
+public:
+    BackendInfo backendInfo() const override {return {"late-onset-vad","1"};}
+    AudioRequirements audioRequirements() const override {return {};}
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<DelayedOnsetVadSession>();
+    }
+};
+}
+
+TEST(PerSourceSpeechRuntime, OneSecondPreRollPreservesBeginningAfterDelayedVadOnset) {
+    DelayedOnsetVad vad;
+    PerSourceSpeechOptions options{};
+    options.sample_rate_hz = 16000U;
+    options.min_speech_samples = 4000U;
+    // The Qt live Sherpa path opts into a full second of pre-roll. The
+    // generic 200-ms default would drop 5,800 leading samples here.
+    options.pre_roll_samples = options.sample_rate_hz;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),options};
+    const std::vector<float> first_syllable(1000U,0.45F);
+    const std::vector<float> continued_speech(1000U,0.5F);
+    const std::vector<float> silence(1000U,0.0F);
+    const AudioFormat format{16000U,1U,AudioLayout::Interleaved};
+    const auto send = [&](const std::vector<float>& pcm, std::size_t index) {
+        const auto timestamp = Timestamp{
+            1000000000LL + static_cast<std::int64_t>(index) * 62500000LL,
+            {ClockDomain::Monotonic,1U}};
+        runtime.push(55U,AudioView{
+            pcm.data(),pcm.size(),format,timestamp});
+    };
+    for (std::size_t i=0U; i<16U; ++i)
+        send(i==0U ? first_syllable : continued_speech,i);
+    send(silence,16U);
+
+    const auto result = awaitSpeech(runtime,1U);
+    ASSERT_EQ(result.size(),1U);
+    EXPECT_EQ(result[0].audio_start_sample,0U);
+    EXPECT_EQ(result[0].audio_end_sample,16000U);
+    EXPECT_EQ(result[0].start_time.nanoseconds(),1000000000LL);
+    EXPECT_EQ(result[0].transcript.text,"55:16000");
+    EXPECT_EQ(result[0].segment_end_reason,"vad_silence");
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+    EXPECT_EQ(runtime.trackStatus(55U).vad_starts,1U);
+    EXPECT_EQ(runtime.trackStatus(55U).vad_ends,1U);
+}
+
+namespace {
+// Simulate a model whose speech_active signal lags the first syllable
+// by 625 ms, but whose native completed PCM retains the true beginning.
+// This is independent of any downloaded ONNX weights.
+class NativeBoundarySession final : public IVadSession {
+public:
+    void reset() override {
+        received_ = 0U;
+        onset_samples_ = 0U;
+        pending_.clear();
+        start_ = 0U;
+    }
+    VadResult process(AudioView audio) override {
+        VadResult result{};
+        result.completed_segments.emplace();
+        const bool voice = audio.sampleCount() != 0U && audio.data()[0] > 0.2F;
+        if (voice) {
+            if (pending_.empty()) start_ = received_;
+            pending_.insert(pending_.end(),audio.data(),
+                            audio.data()+audio.sampleCount());
+            onset_samples_ += audio.sampleCount();
+        } else if (!pending_.empty()) {
+            result.completed_segments->push_back({start_,std::move(pending_)});
+            pending_.clear();
+            onset_samples_ = 0U;
+        }
+        received_ += audio.sampleCount();
+        result.speech_active = voice && onset_samples_ >= 10000U;
+        return result;
+    }
+    VadResult flush() override {
+        VadResult result{};
+        result.completed_segments.emplace();
+        if (!pending_.empty()) {
+            result.completed_segments->push_back({start_,std::move(pending_)});
+            pending_.clear();
+        }
+        return result;
+    }
+private:
+    std::uint64_t received_{0U};
+    std::uint64_t start_{0U};
+    std::size_t onset_samples_{0U};
+    std::vector<float> pending_{};
+};
+class NativeBoundaryVad final : public IVoiceActivityDetector {
+public:
+    BackendInfo backendInfo() const override {return {"native-boundaries","1"};}
+    AudioRequirements audioRequirements() const override {return {};}
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<NativeBoundarySession>();
+    }
+};
+class FirstSampleAsr final : public IAsrEngine {
+public:
+    BackendInfo backendInfo() const override {return {"onset-check","1"};}
+    AsrCapabilities capabilities() const override {return {};}
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        Transcript text{};
+        text.segment_id = segment.segment_id;
+        text.text = segment.audio.samples().front() == 0.45F
+            ? "first-syllable-preserved" : "first-syllable-lost";
+        return text;
+    }
+};
+}
+
+TEST(PerSourceSpeechRuntime, NativeBoundariesPreserveFirstSyllableWithoutPreRoll) {
+    NativeBoundaryVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.pre_roll_samples = 0U;  // native time offsets, NOT a guessed lookback
+    opts.min_speech_samples = 4000U;
+    opts.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<FirstSampleAsr>(),opts};
+    const std::vector<float> onset(1000U,0.45F);
+    const std::vector<float> continued(1000U,0.5F), quiet(1000U,0.0F);
+    const AudioFormat format{16000U,1U,AudioLayout::Interleaved};
+    for (std::size_t i=0U; i<16U; ++i) {
+        const auto& pcm = i==0U ? onset : continued;
+        runtime.push(55U,AudioView{
+            pcm.data(),pcm.size(),format,
+            Timestamp{1000000000LL + static_cast<std::int64_t>(i)*62500000LL,
+                      {ClockDomain::Monotonic,1U}}});
+    }
+    runtime.push(55U,AudioView{quiet.data(),quiet.size(),format,
+        Timestamp{2000000000LL,{ClockDomain::Monotonic,1U}}});
+    const auto results = awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].transcript.text,"first-syllable-preserved");
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,16000U);
+    EXPECT_EQ(results[0].start_time.nanoseconds(),1000000000LL);
+    EXPECT_EQ(results[0].segment_end_reason,"vad_native");
+    EXPECT_EQ(runtime.trackStatus(55U).vad_starts,1U);
+    EXPECT_EQ(runtime.trackStatus(55U).vad_ends,1U);
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+}
+
+namespace {
+// A native VAD reports an onset 4,192 samples into an already recorded
+// source. The PCM before it contains the first syllable, and must reach
+// ASR even if VAD ends the utterance much later.
+class LateNativeFirstOnsetSession final : public IVadSession {
+public:
+    void reset() override { voiced_.clear(); }
+    VadResult process(AudioView audio) override {
+        VadResult result{};
+        result.completed_segments.emplace();
+        if (!audio.sampleCount()) return result;
+        if (audio.data()[0] > 0.2F) {
+            voiced_.insert(voiced_.end(),audio.data(),
+                            audio.data()+audio.sampleCount());
+            result.speech_active = true;
+        } else if (!voiced_.empty()) {
+            constexpr std::size_t kDelayedOnset = 4192U;
+            if (voiced_.size() > kDelayedOnset)
+                result.completed_segments->push_back({
+                    kDelayedOnset,
+                    std::vector<float>{
+                        voiced_.begin()+static_cast<std::ptrdiff_t>(kDelayedOnset),
+                        voiced_.end()}});
+            voiced_.clear();
+        }
+        return result;
+    }
+private:
+    std::vector<float> voiced_{};
+};
+class LateNativeFirstOnsetVad final : public IVoiceActivityDetector {
+public:
+    BackendInfo backendInfo() const override {return {"late-native-onset","1"};}
+    AudioRequirements audioRequirements() const override {return {};}
+    std::unique_ptr<IVadSession> createSession() const override {
+        return std::make_unique<LateNativeFirstOnsetSession>();
+    }
+};
+}
+
+TEST(PerSourceSpeechRuntime, NativeFirstUtteranceRecoversRecordedInitialPCM) {
+    LateNativeFirstOnsetVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4000U;
+    options.native_initial_context_ms = 1000U;
+    PerSourceSpeechRuntime runtime{
+        vad,std::make_shared<FirstSampleAsr>(),options};
+    std::vector<float> phrase(16000U,0.5F);
+    std::fill(phrase.begin(),phrase.begin()+4192U,0.45F);
+    const std::vector<float> quiet(8000U,0.0F);
+    const AudioFormat format{16000U,1U,AudioLayout::Interleaved};
+    runtime.push(31U,AudioView{phrase.data(),phrase.size(),format,
+        Timestamp{1000000000LL,{ClockDomain::Monotonic,1U}}});
+    runtime.push(31U,AudioView{quiet.data(),quiet.size(),format,
+        Timestamp{2000000000LL,{ClockDomain::Monotonic,1U}}});
+    const auto results = awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].transcript.text,"first-syllable-preserved");
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,16000U);
+    EXPECT_EQ(results[0].start_time.nanoseconds(),1000000000LL);
+    EXPECT_EQ(results[0].segment_end_reason,"vad_native");
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+}
+
+TEST(PerSourceSpeechRuntime, NativeInitialContextCanBeDisabled) {
+    LateNativeFirstOnsetVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4000U;
+    options.native_initial_context_ms = 0U;
+    PerSourceSpeechRuntime runtime{
+        vad,std::make_shared<FirstSampleAsr>(),options};
+    std::vector<float> phrase(16000U,0.5F);
+    std::fill(phrase.begin(),phrase.begin()+4192U,0.45F);
+    const std::vector<float> quiet(1000U,0.0F);
+    runtime.push(31U,chunk(phrase));
+    runtime.push(31U,chunk(quiet));
+    const auto results = awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].audio_start_sample,4192U);
+    EXPECT_EQ(results[0].audio_end_sample,16000U);
+    EXPECT_EQ(results[0].transcript.text,"first-syllable-lost");
+}
+
+TEST(PerSourceSpeechRuntime, NativeInitialContextDurationScalesWithSampleRate) {
+    LateNativeFirstOnsetVad vad;
+    const AudioFormat format{8000U,1U,AudioLayout::Interleaved};
+    std::vector<float> phrase(8000U,0.5F);
+    std::fill(phrase.begin(),phrase.begin()+4192U,0.45F);
+    const std::vector<float> quiet(1000U,0.0F);
+    const Timestamp origin{1000000000LL,{ClockDomain::Monotonic,1U}};
+    for (const auto& [context_ms, expected_start] :
+         {std::pair<std::uint32_t,std::uint64_t>{1000U,0U},
+          std::pair<std::uint32_t,std::uint64_t>{500U,4192U}}) {
+        PerSourceSpeechOptions options{};
+        options.sample_rate_hz = 8000U;
+        options.native_initial_context_ms = context_ms;
+        options.min_speech_samples = 1U;
+        PerSourceSpeechRuntime runtime{
+            vad,std::make_shared<FirstSampleAsr>(),options};
+        runtime.push(31U,AudioView{
+            phrase.data(),phrase.size(),format,origin});
+        runtime.push(31U,AudioView{
+            quiet.data(),quiet.size(),format,
+            Timestamp{2000000000LL,{ClockDomain::Monotonic,1U}}});
+        const auto results = awaitSpeech(runtime,1U);
+        ASSERT_EQ(results.size(),1U);
+        EXPECT_EQ(results[0].audio_start_sample,expected_start);
+        EXPECT_EQ(results[0].audio_end_sample,8000U);
+        EXPECT_EQ(results[0].transcript.text,
+            expected_start==0U ? "first-syllable-preserved" : "first-syllable-lost");
+    }
+    PerSourceSpeechOptions invalid{};
+    invalid.native_initial_context_ms = 1001U;
+    EXPECT_THROW((PerSourceSpeechRuntime{
+        vad,std::make_shared<MockAsr>(),invalid}),std::invalid_argument);
+}
+
+TEST(PerSourceSpeechRuntime, NativeAcceptedShortCommandBypassesGenericMinimum) {
+    NativeBoundaryVad vad;
+    PerSourceSpeechOptions options{};
+    options.sample_rate_hz = 16000U;
+    // Higher generic minimum deliberately excludes this native segment.
+    // The backend already admitted it: do not throw its PCM away.
+    options.min_speech_samples = 4000U;
+    options.pre_roll_samples = 0U;
+    options.post_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),options};
+    const std::vector<float> short_command(1600U,0.5F);
+    const std::vector<float> silence(1600U,0.0F);
+    runtime.push(22U,chunk(short_command));
+    runtime.push(22U,chunk(silence));
+    const auto results = awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].transcript.text,"22:1600");
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,1600U);
+    EXPECT_EQ(results[0].segment_end_reason,"vad_native");
+    EXPECT_EQ(runtime.trackStatus(22U).queued_segments,1U);
+    EXPECT_EQ(runtime.trackStatus(22U).dropped_segments,0U);
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
+}
+
+TEST(PerSourceSpeechRuntime, NativeBoundaryFlushesLastPhraseAtRetirement) {
+    NativeBoundaryVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples = 1U;
+    opts.pre_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    const std::vector<float> speech(400U,0.5F);
+    runtime.push(10U,chunk(speech));
+    const auto generation = runtime.retire(10U);
+    ASSERT_TRUE(generation.has_value());
+    const auto results = awaitSpeech(runtime,1U);
+    ASSERT_EQ(results.size(),1U);
+    EXPECT_EQ(results[0].generation,*generation);
+    EXPECT_EQ(results[0].transcript.text,"10:400");
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,400U);
+    EXPECT_EQ(results[0].segment_end_reason,"retired");
+    EXPECT_FALSE(runtime.trackStatus(10U).exists);
+}
+
+TEST(PerSourceSpeechRuntime, NativeSegmentsKeepIndependentUtteranceOffsets) {
+    NativeBoundaryVad vad;
+    PerSourceSpeechOptions opts{};
+    opts.min_speech_samples = 1U;
+    opts.pre_roll_samples = 0U;
+    PerSourceSpeechRuntime runtime{vad,std::make_shared<MockAsr>(),opts};
+    const std::vector<float> speech(400U,0.5F), quiet(400U,0.0F);
+    runtime.push(11U,chunk(speech));
+    runtime.push(11U,chunk(quiet));
+    runtime.push(11U,chunk(speech));
+    runtime.push(11U,chunk(quiet));
+    const auto results = awaitSpeech(runtime,2U);
+    ASSERT_EQ(results.size(),2U);
+    EXPECT_EQ(results[0].audio_start_sample,0U);
+    EXPECT_EQ(results[0].audio_end_sample,400U);
+    EXPECT_EQ(results[1].audio_start_sample,800U);
+    EXPECT_EQ(results[1].audio_end_sample,1200U);
+    EXPECT_EQ(runtime.statistics().dropped_segments,0U);
 }
 
 TEST(PerSourceSpeechRuntime, PostRollUsesExactRequestedSampleCount) {
@@ -1420,4 +1887,39 @@ TEST(PerSourceSpeechRuntime, SourceLocalOffsetsSurviveSegmentCap) {
     EXPECT_EQ(results[1].audio_end_sample,10U);
     EXPECT_EQ(results[2].audio_start_sample,10U);
     EXPECT_EQ(results[2].audio_end_sample,12U);
+}
+
+namespace {
+class RepeatAsr final : public IAsrEngine {
+public:
+    BackendInfo backendInfo() const override { return {"repeat-asr", "1"}; }
+    AsrCapabilities capabilities() const override { return {}; }
+    Transcript transcribe(const SpeechSegment& segment) const override {
+        Transcript transcript{};
+        transcript.segment_id = segment.segment_id;
+        transcript.text = "в этом случае, в этом случае, в этом случае, в этом случае";
+        return transcript;
+    }
+};
+}
+TEST(PerSourceSpeechRuntime, FlagsRepeatedDecoderTextWithoutMutatingIt) {
+    ThresholdVad vad;
+    PerSourceSpeechOptions options{};
+    options.min_speech_samples = 4;
+    options.max_segment_samples = 8;
+    options.pre_roll_samples = 0;
+    options.post_roll_samples = 0;
+    PerSourceSpeechRuntime runtime{vad, std::make_shared<RepeatAsr>(), options};
+    const std::vector<float> voice(8U, 0.5F);
+    runtime.push(8U, chunk(voice));
+    std::vector<SourceSpeechResult> found;
+    for (int attempt = 0; attempt < 1000 && found.empty(); ++attempt) {
+        found = runtime.takeResults();
+        if (found.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(found.size(), 1U);
+    EXPECT_EQ(found.front().segment_end_reason, "max_duration");
+    EXPECT_TRUE(found.front().repetition_detected);
+    EXPECT_EQ(found.front().transcript.text,
+              "в этом случае, в этом случае, в этом случае, в этом случае");
 }

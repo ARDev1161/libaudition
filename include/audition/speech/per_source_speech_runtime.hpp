@@ -29,7 +29,15 @@ struct PerSourceSpeechOptions {
     // Caps retired generations awaiting client-side sidecar/result release.
     std::size_t max_retired_generations{64};
     std::size_t min_speech_samples{1600};
-    std::size_t pre_roll_samples{3200}; // 200ms @ 16kHz
+    std::size_t pre_roll_samples{3200}; // 200ms @ 16kHz; activity-only VAD
+    // Preserve at most the first second of a source's post-AGC PCM.
+    // Duration is independent of 8/16/48-kHz input. The prefix is
+    // prepended to the first native segment when its start is in range.
+    // 0 disables first-utterance recovery.
+    std::uint32_t native_initial_context_ms{1000U};
+    // Opt-in ASR-worker-only segment gain. The VAD and persisted WAV
+    // continue receiving the original (possibly AGC-processed) PCM.
+    bool normalize_asr_segments{false};
     std::size_t post_roll_samples{4800}; // 300ms @ 16kHz
     std::size_t max_segment_samples{160000};
     // Bounds retained ASR result text (including token and word strings).
@@ -42,11 +50,15 @@ struct SourceSpeechResult {
     std::uint64_t track_id{0};
     std::uint64_t generation{0};
     Transcript transcript{};
+    std::string segment_end_reason{}; // vad_silence, max_duration, retired
+    bool repetition_detected{false};
     Timestamp start_time{};
     Timestamp end_time{};
     // Half-open offsets in samples since this source generation began.
     std::uint64_t audio_start_sample{0};
     std::uint64_t audio_end_sample{0};
+    // Extra ASR-only gain, independent of streaming AGC and WAV playback.
+    double asr_input_gain_db{0.0};
 };
 
 // Atomic consumer snapshot: results and completed retired generations
@@ -59,6 +71,8 @@ struct SourceSpeechDrain {
 struct SourceSpeechTrackStatus {
     bool exists{false};
     bool speech_active{false};
+    std::uint64_t vad_starts{0};
+    std::uint64_t vad_ends{0};
     std::size_t buffered_samples{0};
     std::size_t voiced_samples{0};
     std::optional<std::string> error{};
@@ -123,9 +137,17 @@ private:
         std::unique_ptr<IVadSession> vad{};
         std::vector<float> speech{};
         std::deque<float> pre_roll{};
+        bool native_segments{false};
+        // Held until the first complete native utterance, then released.
+        // Unlike a rolling ring, the beginning survives VAD endpoint delay.
+        std::vector<float> native_initial_pcm{};
+        Timestamp source_start_time{};
+        std::uint64_t native_emitted_until{0U};
         std::size_t trailing_silence_samples{0U};
         std::size_t voiced_samples{0U};
         bool speech_active{false};
+        std::uint64_t vad_starts{0};
+        std::uint64_t vad_ends{0};
         std::optional<std::string> error{};
         Timestamp start_time{};
         std::uint64_t start_sample{0};
@@ -139,13 +161,18 @@ private:
         std::uint64_t generation{0};
         SpeechSegment segment{};
         std::uint64_t start_sample{0};
+        std::string end_reason{};
     };
-    void queueSegment(std::uint64_t track_id, Track& track);
+    void queueSegment(std::uint64_t track_id, Track& track, const char* reason);
+    void queueNativeSegments(std::uint64_t track_id, Track& track,
+                             std::vector<VadSpeechSegment> segments, const char* reason);
     void workerLoop();
     void completeJobLocked(std::uint64_t generation);
     const IVoiceActivityDetector& vad_;
     std::shared_ptr<const IAsrEngine> asr_;
     PerSourceSpeechOptions options_{};
+    // Resolved once from the requested duration and runtime sample rate.
+    std::size_t native_initial_context_samples_{0U};
     std::map<std::uint64_t, Track> tracks_{};
     // Globally unique generation; avoids retaining unbounded historical IDs.
     std::uint64_t next_generation_{1};

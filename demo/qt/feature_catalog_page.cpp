@@ -48,6 +48,7 @@ constexpr Feature kFeatures[] = {
     {"Classification", "EfficientAT and audio embeddings", "Backend workbench", "Optional backend + model"},
     {"Classification", "Open-vocabulary text/audio CLAP", "Backend workbench", "Optional backend + model"},
     {"Speech", "Per-source VAD, pre/post-roll and ASR", "Acoustic scene", "Optional backend + model"},
+    {"Speech", "WebRTC APM NS on post-SSS speech PCM", "Acoustic scene", "Optional backend + live capture"},
     {"Speech", "Bounded PCM ingress, epochs and cancellation", "Acoustic scene", "API + CTest; integrated capture"},
     {"Speech", "Offline/online ASR and keyword spotting", "Backend workbench", "Optional backend + model"},
     {"Speech", "Language identification and denoising", "Backend workbench", "Optional backend + model"},
@@ -118,10 +119,21 @@ QWidget* createFeatureCatalogPage(QTabWidget* applicationTabs) {
         const int row=table->currentRow();
         if (row<0 || table->isRowHidden(row) || !applicationTabs) return;
         const auto title=table->item(row,2)->text();
-        for(int index=0;index<applicationTabs->count();++index) {
-            if(applicationTabs->tabText(index)==title) {
+        for (int index = 0; index < applicationTabs->count(); ++index) {
+            if (applicationTabs->tabText(index) == title) {
                 applicationTabs->setCurrentIndex(index);
                 return;
+            }
+            // Some destinations live under Settings or Help instead of
+            // occupying a top-level application tab.
+            auto* nested = qobject_cast<QTabWidget*>(applicationTabs->widget(index));
+            if (!nested) continue;
+            for (int child = 0; child < nested->count(); ++child) {
+                if (nested->tabText(child) == title) {
+                    nested->setCurrentIndex(child);
+                    applicationTabs->setCurrentIndex(index);
+                    return;
+                }
             }
         }
     };

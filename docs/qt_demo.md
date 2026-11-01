@@ -198,6 +198,69 @@ When Sherpa is absent, the checkbox is disabled and the column says
 Classification in this release applies to **live ALSA** tracks, not
 offline WAV replay. The click-to-ASR feature remains separate future work.
 
+#### Final ASR and WAV history at capture stop
+
+Speech log and full-transcript display entries are now keyed by **WAV
+recording ID** rather than recyclable ODAS numeric track IDs.
+A late ASR completion from a retired source generation therefore cannot
+be shown as the new generation's transcript. Their memory lifetime
+follows the recorder's bounded completed-recording history.
+
+When a user stops capture, the worker drains outstanding source retirement
+and ASR results, closes WAV writers and publishes a final recording snapshot
+before the Qt UI marks tracks inactive. This retains the last completed
+utterance, final sample counts and final raw ASR lines in the history
+panel even if they arrived after the previous periodic UI refresh. ASR
+completions are subject to the existing bounded shutdown deadline (10 s);
+jobs exceeding that deadline cannot be promised in the final snapshot.
+Real-device behavior still needs verification.
+
+#### Live capture liveness
+
+Recoverable ALSA overrun/suspend responses (`-EPIPE` /
+`-ESTRPIPE`) are handled consistently whether they arrive from
+`snd_pcm_readi()` or from `snd_pcm_wait()` (including a zero-frame
+read). Recovery discards the incomplete hop, prepares the PCM stream,
+resets ODAS and its source generations, then continues accepting audio.
+This is a discontinuity, not an ordinary acoustic pause. Other ALSA
+errors still terminate capture and are reported; recurring XRUNs should
+be investigated as device or scheduling issues rather than hidden by
+adjusting VAD/ODAS sensitivity.
+
+
+The Qt status line independently monitors the capture hop counter.
+After 15 seconds without an initial completed ALSA/ODAS hop it shows a
+**slow initialization** warning. After the first completed hop, a
+3-second period with no new completed hops shows **ALSA → ODAS stalled**.
+This only diagnoses lack of pipeline progress: it cannot distinguish
+a blocked ALSA read from an ODAS processing stall. The live session is
+not stopped or automatically restarted by this warning. A quiet room
+with continuously arriving audio hops remains **LIVE**, even with zero
+tracked sources and no ASR results. Recording/classification and VAD
+settings do not influence this liveness decision. A hardware-free test
+exercises startup, stall, recovery and restart states.
+
+#### ODAS SSL → SST → SSS acquisition diagnostics
+
+The **Acoustic scene** diagnostics panel counts every processed ODAS hop
+(not only UI refreshes) since capture start or the latest ALSA XRUN.
+`SSL-positive` counts hops with any finite positive raw SSL proposal,
+`SST-tracked` counts hops with one or more tracked sources, and
+`SSS-audio` counts hops containing at least one separated PCM frame.
+It also shows the total/current/maximum **SSL-positive without SST**
+duration, **SST without SSS** duration, and first-observed stage times.
+
+These are **frame counts**, not unique source counts or proof that an
+SSL proposal and a later SST track describe the same physical sound.
+If ALSA levels are present and SSL candidates persist without SST tracks,
+investigate microphone geometry and the native SST onset/release settings,
+not post-SSS VAD/AGC. If SST is present but SSS absent, inspect ODAS source
+separation. If SSS is present but no VAD/ASR occurs, inspect speech gain,
+VAD minimum durations, ingress drop counters and ASR status. Avoid setting
+thresholds from a single noisy-room trace; record reference speech and
+silence first. A headless lifecycle test covers stage-counter semantics
+but does not measure real-room detection sensitivity.
+
 #### If the 3D sphere initially remains empty
 
 An empty sphere does **not** imply ALSA has failed: the GUI used to display
@@ -658,6 +721,67 @@ The pinned-model headless Qt tests additionally verify that a timer callback
 runs while each backend executes and that actions are disabled until
 completion. AASIST exercises the discard path and recovery. Qt's Concurrent
 module is required only for the optional demo, not for libaudition itself.
+
+### Live speech VAD tuning
+
+**Native VAD-aware segmentation (Silero/TEN):** The pinned Sherpa-ONNX
+VAD exposes completed segments with an absolute start-sample offset and
+its buffered PCM. The Sherpa adapter now forwards both to the generic
+speech runtime, instead of discarding native segments and inferring
+onset from a delayed `IsDetected()` flag. The runtime submits this PCM
+and the exact backend offsets to ASR, splits long segments to the
+configured cap, and flushes unfinished speech on source retirement.
+Generic activity-only VADs keep the bounded pre/post-roll segmenter
+and its minimum voiced-duration filter. Completed native segments are
+treated as already admitted by their VAD, so the generic minimum does
+not silently discard a short accepted command a second time.
+The backend's onset is a model estimate, not a ground-truth phoneme
+boundary; it cannot recover audio before ODAS source acquisition.
+
+**Live speech onset retention (ReSpeaker):** Sherpa Silero/TEN
+provides native completed-segment PCM and start offsets. However,
+a real 60-cm ReSpeaker recording of "Привет, робот" included speech
+at source sample zero while the native VAD segment began at sample
+4192 (262 ms). The generic runtime therefore also retains the
+**first second of actual source PCM** (after speech AGC) until its first
+native VAD completion. If that first native onset falls within the
+retained prefix, ASR is fed the contiguous recording from sample zero,
+then the original native segment, with no synthesized silence.
+The buffer is released on the first completion. Subsequent native
+utterances use their own onset offsets, and a track that stays idle
+for over one second is not fed distant, unrelated audio from its start.
+`native_initial_context_ms = 0` disables this first-utterance
+recovery for API consumers. The default duration is 1000 ms and is
+converted to samples at the configured speech input rate (8/16/48 kHz),
+rather than assuming 16 kHz. Activity-only VADs still use their
+generic 200-ms rolling pre-roll. Inspect `samples=[start,end)`
+in **Source log…** to verify ASR onset relative to the WAV.
+
+This only recovers audio received **after SST/SSS has acquired the
+source**; speech before ODAS creates a track remains unavailable to the
+source-specific recorder and VAD. A simulated delayed-onset regression
+verifies that the first syllable and segment timestamp survive a
+625-ms VAD detection delay, but does not establish real-world WER.
+
+In the **Acoustic scene** tab, enable **Transcribe separated sources** and
+adjust **VAD threshold**, **Min. speech (s)** and **Min. silence (s)**.
+The default values are the Sherpa Silero/TEN defaults (0.50, 0.25 s,
+0.50 s). Lowering the VAD threshold can help when *an ODAS source
+already exists* but speech is not marked active; shorter minimum speech
+can admit brief utterances. These controls take effect at the next
+**Start live capture**, not halfway through an active VAD session.
+They do **not** change ODAS SSL proposals or SST acquisition: for a
+silent **Tracked sources** table, inspect ALSA/SSL levels and use the
+separate native ODAS SST tuning controls. Lower thresholds may increase
+false positives, and their effects must be measured using recorded speech.
+The same **Min. speech** setting is also applied to the
+`PerSourceSpeechRuntime` voiced-sample minimum, so the generic ASR
+segmenter does not reject utterances already admitted by a more permissive
+Sherpa VAD. A configured zero-second minimum maps to one voiced sample,
+the smallest value supported by the runtime. This is an admission
+threshold, not a guarantee of correct transcription.
+The hardware-free `qt_vad_tuning_controls` test validates UI control
+defaults and edits only; it does not establish real-speech accuracy.
 
 ### Sherpa VAD
 

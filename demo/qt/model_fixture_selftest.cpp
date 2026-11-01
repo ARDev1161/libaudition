@@ -2,6 +2,9 @@
 #include "acoustic_scene_page.hpp"
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
+#include "speech_recording_log_router.hpp"
+#include "odas_stage_monitor.hpp"
+#include "live_capture_progress_monitor.hpp"
 #include "wav_io.hpp"
 
 #include <audition/audio/audio_buffer.hpp>
@@ -10,6 +13,7 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QDialog>
+#include <QDoubleSpinBox>
 #include <QPointer>
 #include <QSlider>
 #include <QCoreApplication>
@@ -460,6 +464,66 @@ QString testWorld(QMainWindow& window, const QTemporaryDir& dir) {
 #endif
 }
 
+QString testVadTuningControls(QMainWindow& window) {
+    auto* root = qobject_cast<QTabWidget*>(window.centralWidget());
+    auto* panel = requireTab(root, "Acoustic scene");
+    auto* kind = panel->findChild<QComboBox*>("acousticSceneVadKind");
+    auto* threshold =
+        panel->findChild<QDoubleSpinBox*>("acousticSceneSpeechVadThreshold");
+    auto* minSpeech =
+        panel->findChild<QDoubleSpinBox*>("acousticSceneSpeechVadMinSpeech");
+    auto* minSilence =
+        panel->findChild<QDoubleSpinBox*>("acousticSceneSpeechVadMinSilence");
+    if (!kind || !threshold || !minSpeech || !minSilence)
+        throw std::runtime_error{"Speech VAD tuning controls missing"};
+    if (std::abs(threshold->value() - 0.5) > 0.001 ||
+        std::abs(minSpeech->value() - 0.25) > 0.001 ||
+        std::abs(minSilence->value() - 0.5) > 0.001)
+        throw std::runtime_error{"Speech VAD defaults diverged from Sherpa"};
+    threshold->setValue(0.3);
+    minSpeech->setValue(0.1);
+    minSilence->setValue(0.25);
+    if (std::abs(threshold->value() - 0.3) > 0.001 ||
+        std::abs(minSpeech->value() - 0.1) > 0.001 ||
+        std::abs(minSilence->value() - 0.25) > 0.001)
+        throw std::runtime_error{"Speech VAD controls did not retain settings"};
+    // Both supported Sherpa VAD variants share these validated options.
+    kind->setCurrentIndex(1);
+    if (std::abs(threshold->value() - 0.3) > 0.001 ||
+        std::abs(minSpeech->value() - 0.1) > 0.001 ||
+        std::abs(minSilence->value() - 0.25) > 0.001)
+        throw std::runtime_error{"VAD kind switch lost tuning options"};
+    return "qt-model-self-test=ok backend=speech-vad-tuning";
+}
+
+QString testNsControls(QMainWindow& window) {
+    auto* root = qobject_cast<QTabWidget*>(window.centralWidget());
+    auto* panel = requireTab(root, "Acoustic scene");
+    auto* enabled = panel->findChild<QCheckBox*>("acousticSceneSpeechNs");
+    auto* level = panel->findChild<QComboBox*>("acousticSceneSpeechNsLevel");
+    if (!enabled || !level || level->count() != 4 || enabled->isChecked())
+        throw std::runtime_error{"Speech NS controls missing or enabled by default"};
+#if defined(LIBAUDITION_WITH_WEBRTC_APM) && LIBAUDITION_WITH_WEBRTC_APM
+    if (!enabled->isEnabled() || level->isEnabled())
+        throw std::runtime_error{"Speech NS initial state invalid"};
+    enabled->setChecked(true);
+    if (!level->isEnabled())
+        throw std::runtime_error{"NS level selector did not enable"};
+    for (int index = 0; index < level->count(); ++index) {
+        level->setCurrentIndex(index);
+        if (level->currentData().toString().isEmpty())
+            throw std::runtime_error{"NS selector missing backend value"};
+    }
+    enabled->setChecked(false);
+    if (level->isEnabled())
+        throw std::runtime_error{"NS level selector did not disable"};
+#else
+    if (enabled->isEnabled())
+        throw std::runtime_error{"NS enabled without APM"};
+#endif
+    return "qt-model-self-test=ok backend=speech-ns-controls";
+}
+
 QString testAlsaCaptureErrors(QMainWindow& window) {
 #if LIBAUDITION_DEMO_HAS_ALSA
     auto* root = qobject_cast<QTabWidget*>(window.centralWidget());
@@ -819,6 +883,75 @@ QString testPlaybackLifecycle(const QTemporaryDir& dir) {
 }
 
 QString testSourceTrackLifecycle() {
+    // A recycled ODAS track ID must not mix late old-generation ASR with
+    // a new recording. Cancellation and recorder-history pruning are scoped.
+    demo::SpeechRecordingLogRouter logs;
+    logs.bind(31U, 101U);
+    logs.bind(32U, 102U);
+    if (!logs.append(31U, "old frame\n", "first") ||
+        !logs.append(32U, "new frame\n", "second") ||
+        !logs.append(31U, "late old frame\n", "late") ||
+        logs.logs().at(101U) != "old frame\nlate old frame\n" ||
+        logs.logs().at(102U) != "new frame\n" ||
+        logs.transcripts().at(101U) != "first late" ||
+        logs.transcripts().at(102U) != "second")
+        throw std::runtime_error{"Late ASR was routed to a reused recording"};
+    logs.unbind(31U);
+    if (logs.append(31U, "stale\n", "stale"))
+        throw std::runtime_error{"Cancelled generation still accepted ASR"};
+    logs.retain({102U});
+    if (logs.logs().size() != 1U || logs.transcripts().size() != 1U ||
+        logs.logs().count(101U) != 0U)
+        throw std::runtime_error{"Completed recording log was not bounded"};
+
+    // GUI heartbeat must distinguish a quiet room (hops keep arriving)
+    // from blocked ALSA/ODAS processing (hops stop advancing).
+    demo::LiveCaptureProgressMonitor progress;
+    using Progress = demo::LiveCaptureProgressMonitor;
+    const auto start = Progress::Clock::now();
+    if (progress.observe(0U, start).state != Progress::State::Starting ||
+        progress.observe(0U, start + std::chrono::seconds{16}).state !=
+            Progress::State::SlowStartup ||
+        progress.observe(16U, start + std::chrono::seconds{16}).state !=
+            Progress::State::Flowing ||
+        progress.observe(16U, start + std::chrono::seconds{20}).state !=
+            Progress::State::Stalled ||
+        progress.observe(17U, start + std::chrono::seconds{21}).state !=
+            Progress::State::Flowing)
+        throw std::runtime_error{"ALSA/ODAS heartbeat watchdog state incorrect"};
+    progress.reset(start + std::chrono::seconds{30});
+    if (progress.observe(0U, start + std::chrono::seconds{31}).state !=
+        Progress::State::Starting)
+        throw std::runtime_error{"Capture restart preserved previous stalled state"};
+
+    // Stage monitor must sample every hop rather than only rendered frames,
+    // and reset cleanly after an ALSA XRUN without persisting stale streaks.
+    demo::OdasStageMonitor stages;
+    stages.observe(false, false, false); // no candidate and no track
+    stages.observe(true, false, false);
+    stages.observe(true, false, false);
+    stages.observe(true, true, false);
+    stages.observe(false, true, true);
+    auto stage = stages.snapshot();
+    if (stage.processed_hops != 5U || stage.positive_ssl_hops != 3U ||
+        stage.sst_track_hops != 2U || stage.sss_audio_hops != 1U ||
+        stage.ssl_without_sst_hops != 2U ||
+        stage.consecutive_ssl_without_sst_hops != 0U ||
+        stage.longest_ssl_without_sst_hops != 2U ||
+        stage.sst_without_sss_hops != 1U ||
+        stage.first_positive_ssl_hop != 1U ||
+        stage.first_sst_track_hop != 3U ||
+        stage.first_sss_audio_hop != 4U)
+        throw std::runtime_error{"ODAS acquisition stage accounting failed"};
+    stages.reset();
+    stages.observe(true, false, false);
+    stage = stages.snapshot();
+    if (stage.processed_hops != 1U ||
+        stage.consecutive_ssl_without_sst_hops != 1U ||
+        stage.first_sst_track_hop.has_value() ||
+        stage.first_sss_audio_hop.has_value())
+        throw std::runtime_error{"ODAS stage reset retained stale state"};
+
     demo::SourceTrackLifecycle lifecycle;
     std::vector<std::uint64_t> retired;
     const auto forget = [&](std::uint64_t id) { retired.push_back(id); };
@@ -897,6 +1030,10 @@ bool runQtModelFixtureSelfTest(
             result = testOdasErrors(window);
         } else if (which == "alsa-errors") {
             result = testAlsaCaptureErrors(window);
+        } else if (which == "ns-controls") {
+            result = testNsControls(window);
+        } else if (which == "vad-tuning") {
+            result = testVadTuningControls(window);
         } else if (which == "playback-lifecycle") {
             result = testPlaybackLifecycle(dir);
         } else if (which == "source-track-lifecycle") {

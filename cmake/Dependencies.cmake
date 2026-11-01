@@ -113,6 +113,7 @@ function(libaudition_find_or_fetch_samplerate)
         INSTALL_DIR "${_samplerate_install_dir}"
         CMAKE_ARGS
             -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON
             -DBUILD_SHARED_LIBS=OFF
             -DBUILD_TESTING=OFF
@@ -136,49 +137,75 @@ function(libaudition_find_or_fetch_samplerate)
         DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endfunction()
 
-function(libaudition_find_or_fetch_webrtc_aec3)
-    if(TARGET webrtc_aec3)
+# Unified WebRTC Audio Processing Module (AGC1/AGC2, AEC3, noise
+# suppression). Use one library with one WebRTC ABI rather than linking
+# independently extracted AEC3/AGC2 implementations into the same process.
+function(libaudition_find_or_fetch_webrtc_apm)
+    find_package(WebRTCAPM QUIET)
+    if(TARGET WebRTCAPM::APM)
         return()
     endif()
     if(NOT LIBAUDITION_FETCH_DEPENDENCIES)
-        message(FATAL_ERROR "WebRTC AEC3 backend requires the pinned standalone AEC3 source; set LIBAUDITION_FETCH_DEPENDENCIES=ON")
+        message(FATAL_ERROR
+            "WebRTC APM 2.x was not found; install webrtc-audio-processing-2 "
+            "or enable LIBAUDITION_FETCH_DEPENDENCIES")
     endif()
 
-    set(_webrtc_aec3_source_dir "${CMAKE_BINARY_DIR}/_deps/webrtc-aec3-src")
-    set(_webrtc_aec3_binary_dir "${CMAKE_BINARY_DIR}/_deps/webrtc-aec3-build")
-    set(_webrtc_aec3_library
-        "${_webrtc_aec3_binary_dir}/${CMAKE_SHARED_LIBRARY_PREFIX}webrtc_aec3${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    find_program(_apm_meson meson REQUIRED)
+    find_program(_apm_ninja ninja REQUIRED)
+    set(_apm_source_dir "${CMAKE_BINARY_DIR}/_deps/webrtc-apm-src")
+    set(_apm_build_dir "${CMAKE_BINARY_DIR}/_deps/webrtc-apm-build")
+    set(_apm_prefix "${CMAKE_BINARY_DIR}/_deps/webrtc-apm-install")
+    set(_apm_library
+        "${_apm_prefix}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}webrtc-audio-processing-2${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    file(MAKE_DIRECTORY
+        "${_apm_prefix}/include/webrtc-audio-processing-2"
+        "${_apm_prefix}/lib")
 
-    ExternalProject_Add(libaudition_webrtc_aec3_external
-        GIT_REPOSITORY https://github.com/Enaium/webrtc-aec3.git
-        GIT_TAG 2cec2f52e26646f93bd2d5498bbabf59cba18da9
+    ExternalProject_Add(libaudition_webrtc_apm_external
+        GIT_REPOSITORY https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing.git
+        GIT_TAG bc838790
         GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
-        SOURCE_DIR "${_webrtc_aec3_source_dir}"
-        BINARY_DIR "${_webrtc_aec3_binary_dir}"
-        PATCH_COMMAND
-            "${CMAKE_COMMAND}"
-            -DSOURCE_DIR=<SOURCE_DIR>
-            -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PatchWebrtcAec3.cmake"
-        CMAKE_ARGS
-            -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-            -DBUILD_TESTS=OFF
-        INSTALL_COMMAND ""
-        BUILD_BYPRODUCTS "${_webrtc_aec3_library}")
+        SOURCE_DIR "${_apm_source_dir}"
+        BINARY_DIR "${_apm_build_dir}"
+        INSTALL_DIR "${_apm_prefix}"
+        CONFIGURE_COMMAND "${_apm_meson}" setup <BINARY_DIR> <SOURCE_DIR>
+            --prefix=<INSTALL_DIR> --libdir=lib
+        BUILD_COMMAND "${_apm_meson}" compile -C <BINARY_DIR> -j 3
+        INSTALL_COMMAND "${_apm_meson}" install -C <BINARY_DIR>
+        BUILD_BYPRODUCTS "${_apm_library}")
 
-    add_library(webrtc_aec3 SHARED IMPORTED GLOBAL)
-    set_target_properties(webrtc_aec3 PROPERTIES
-        IMPORTED_LOCATION "${_webrtc_aec3_library}")
-    add_dependencies(webrtc_aec3 libaudition_webrtc_aec3_external)
+    add_library(WebRTCAPM::APM SHARED IMPORTED GLOBAL)
+    set_target_properties(WebRTCAPM::APM PROPERTIES
+        IMPORTED_LOCATION "${_apm_library}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_apm_prefix}/include/webrtc-audio-processing-2"
+        INTERFACE_COMPILE_DEFINITIONS "WEBRTC_LIBRARY_IMPL")
+    if(UNIX)
+        set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+            INTERFACE_COMPILE_DEFINITIONS WEBRTC_POSIX)
+        if(APPLE)
+            set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+                INTERFACE_COMPILE_DEFINITIONS WEBRTC_MAC)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            set_property(TARGET WebRTCAPM::APM APPEND PROPERTY
+                INTERFACE_COMPILE_DEFINITIONS WEBRTC_LINUX)
+        endif()
+    endif()
+    add_dependencies(WebRTCAPM::APM libaudition_webrtc_apm_external)
 
-    set(LIBAUDITION_WEBRTC_AEC3_SOURCE_DIR
-        "${_webrtc_aec3_source_dir}" PARENT_SCOPE)
-
-    install(FILES "${_webrtc_aec3_library}"
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+    # Ship the dependency only if built from the pinned sources. System
+    # packages remain system dependencies and must not be copied.
+    install(DIRECTORY "${_apm_prefix}/lib/"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        FILES_MATCHING PATTERN "libwebrtc-audio-processing-2.so*"
+            PATTERN "libwebrtc-audio-processing-2.dylib*")
+    # The header-only AGC adapter is part of libaudition's public API;
+    # consumers must receive matching headers when we bundle fetched APM.
+    install(DIRECTORY
+        "${_apm_prefix}/include/webrtc-audio-processing-2"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 endfunction()
-
 
 function(libaudition_find_or_fetch_sherpa)
     find_package(SherpaOnnx QUIET)
