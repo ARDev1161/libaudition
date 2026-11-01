@@ -19,6 +19,8 @@ real-time policy, threading, recording policy, robot behavior, and middleware.
 - Backend implementations are replaceable through narrow interfaces.
 - Public API is C++17.
 
+Documentation website: [libaudition GitHub Pages](https://ardev1161.github.io/libaudition/) (published from main once GitHub Pages is configured). See [local site build instructions](docs/site_build.md).
+
 Start with the [functional architecture and algorithm map](docs/functional_architecture.md)
 for two rendered diagrams of signal flow and available mechanisms. See also
 [`docs/specification.md`](docs/specification.md) and
