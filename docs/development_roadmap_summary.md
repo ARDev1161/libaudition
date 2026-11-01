@@ -4,6 +4,10 @@ This is a condensed companion to the [full technical roadmap](development_roadma
 
 Status: proposed; not a release commitment. This roadmap is scoped to the reusable acoustic-processing library. ROS 2 integration, navigation, visual/radar fusion and application policy remain outside the library.
 
+## Long-term vision
+
+**DSP toolkit → acoustic perception → cognitive audition.** Keep the audio-only C++17 core, explicit clocks and evidence, lightweight default, optional backends, application-owned scheduling and robot behavior. Advanced M7–M11 are proposed post-v1.0 milestones, not current features or release blockers.
+
 ## Current baseline
 
 The repository already includes backend adapters for ODAS, sherpa-onnx, WebRTC AEC3, YAMNet, EfficientAT, CLAP, WORLD, AASIST and GTSAM, together with source identity, recording and temporal-event components. Presence of an adapter or passing synthetic tests does not establish real-world accuracy.
@@ -16,8 +20,15 @@ The repository already includes backend adapters for ODAS, sherpa-onnx, WebRTC A
 4. **P1: Spatial alternatives.** Add independent DOA and beamforming implementations, with comparisons against ODAS.
 5. **P1: Event-level analysis.** Extend source-bound classification, recurring-pattern recognition, open-set detection and anomaly evaluation.
 6. **P1/P2: Packaging and performance.** Benchmark x86/ARM64, improve documentation and packaging, and add optional hardware acceleration or language bindings based on measured demand.
+7. **P1: M7 advanced spatial.** Transfer-function calibration, noise-aware MUSIC, beamforming, separation and source-specific leakage/WER evidence.
+8. **P1: M8 scene model.** Timed acoustic source/event/speaker relations, ambiguity and provenance.
+9. **P1–P2: M9–M10 attention and memory.** Salience, resource-aware processing suggestions, episodes, novelty and opt-in semantic search.
+10. **P2: M11 SDK.** Validated typed DAG, explicit backend capabilities, deterministic replay, telemetry and optional editor.
 
 ## Phase acceptance
+
+**New QA Q07–Q13:** require matched-input spatial/semantic metrics, uncertainty evaluation, scene identity evidence, overload stress, attention resource-vs-recall studies and licensing/retention checks. The added stages must pass their own recorded-data acceptance gates without retroactively blocking v1.0.
+
 
 Each implementation must include a documented API, bounded-state behavior where streaming is supported, deterministic numerical tests, independently annotated real-audio evaluation when quality is claimed, and resource measurements on relevant targets. A CI pass is not equivalent to a quality benchmark. Missing corpora must be reported as not evaluated, not passed.
 
@@ -80,6 +91,31 @@ flowchart TB
   P4 --> M2
   M4 --> E1
   V4 --> E3
+  subgraph M7["M7 — Advanced spatial perception / P1 (proposed)"]
+    M7A["Introduce separately pluggable acoustic localizer, tracker, separator and spatial-mask contr"]
+    M7B["Measure array impulse/transfer functions and version direct-path versus room-dependent calib"]
+    M7A --> M7B
+  end
+  subgraph M8["M8 — Acoustic scene model / P1 (proposed)"]
+    M8A["Define bounded, versioned AcousticSceneSnapshot plus timestamped source/event deltas and epo"]
+    M8B["Represent Source–Event–Speaker–Observation relationships without conflating distinct identit"]
+    M8A --> M8B
+  end
+  subgraph M9["M9 — Auditory attention and adaptive processing / P1–P2 (proposed)"]
+    M9A["Estimate acoustic salience from onset, novelty, persistence, urgency cues and evidence relia"]
+    M9B["Keep measured salience separate from external task relevance supplied by the application"]
+    M9A --> M9B
+  end
+  subgraph M10["M10 — Acoustic memory and semantic intelligence / P1–P2 (proposed)"]
+    M10A["Provide bounded optional short-term acoustic context and pre-roll without requiring stored P"]
+    M10B["Define versioned episodic source/event indexes with application-owned persistence and retent"]
+    M10A --> M10B
+  end
+  subgraph M11["M11 — Pipeline SDK and observability / P2 (proposed)"]
+    M11A["Design typed processing DAG nodes and port compatibility, lifecycle and memory-budget contra"]
+    M11B["Serialize validated YAML/JSON configurations as adapters over authoritative typed C++ config"]
+    M11A --> M11B
+  end
   subgraph G["Acceptance criteria (apply to each phase)"]
     G1["Public API and usage example"]
     G2["Deterministic tests and independent reference"]
@@ -87,4 +123,13 @@ flowchart TB
     G4["Performance and failure-mode report"]
   end
   E4 --> G1 --> G2 --> G3 --> G4
+  P4 --> M7A
+  M4 --> M8A
+  M7B --> M8B
+  M8B --> M9A
+  M8B --> M10A
+  E4 --> M11A
+  M9B --> M11B
+  M10B --> M11B
+  M11B -. evidence .-> G4
 ```
