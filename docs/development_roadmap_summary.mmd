@@ -52,6 +52,31 @@ flowchart TB
   P4 --> M2
   M4 --> E1
   V4 --> E3
+  subgraph M7["M7 — Advanced spatial perception / P1 (proposed)"]
+    M7A["Introduce separately pluggable acoustic localizer, tracker, separator and spatial-mask contr"]
+    M7B["Measure array impulse/transfer functions and version direct-path versus room-dependent calib"]
+    M7A --> M7B
+  end
+  subgraph M8["M8 — Acoustic scene model / P1 (proposed)"]
+    M8A["Define bounded, versioned AcousticSceneSnapshot plus timestamped source/event deltas and epo"]
+    M8B["Represent Source–Event–Speaker–Observation relationships without conflating distinct identit"]
+    M8A --> M8B
+  end
+  subgraph M9["M9 — Auditory attention and adaptive processing / P1–P2 (proposed)"]
+    M9A["Estimate acoustic salience from onset, novelty, persistence, urgency cues and evidence relia"]
+    M9B["Keep measured salience separate from external task relevance supplied by the application"]
+    M9A --> M9B
+  end
+  subgraph M10["M10 — Acoustic memory and semantic intelligence / P1–P2 (proposed)"]
+    M10A["Provide bounded optional short-term acoustic context and pre-roll without requiring stored P"]
+    M10B["Define versioned episodic source/event indexes with application-owned persistence and retent"]
+    M10A --> M10B
+  end
+  subgraph M11["M11 — Pipeline SDK and observability / P2 (proposed)"]
+    M11A["Design typed processing DAG nodes and port compatibility, lifecycle and memory-budget contra"]
+    M11B["Serialize validated YAML/JSON configurations as adapters over authoritative typed C++ config"]
+    M11A --> M11B
+  end
   subgraph G["Acceptance criteria (apply to each phase)"]
     G1["Public API and usage example"]
     G2["Deterministic tests and independent reference"]
@@ -59,3 +84,12 @@ flowchart TB
     G4["Performance and failure-mode report"]
   end
   E4 --> G1 --> G2 --> G3 --> G4
+  P4 --> M7A
+  M4 --> M8A
+  M7B --> M8B
+  M8B --> M9A
+  M8B --> M10A
+  E4 --> M11A
+  M9B --> M11B
+  M10B --> M11B
+  M11B -. evidence .-> G4
