@@ -564,7 +564,7 @@ TEST(PerSourceSpeechRuntime, NativeInitialContextDurationScalesWithSampleRate) {
     std::fill(phrase.begin(),phrase.begin()+4192U,0.45F);
     const std::vector<float> quiet(1000U,0.0F);
     const Timestamp origin{1000000000LL,{ClockDomain::Monotonic,1U}};
-    for (const auto [context_ms, expected_start] :
+    for (const auto& [context_ms, expected_start] :
          {std::pair<std::uint32_t,std::uint64_t>{1000U,0U},
           std::pair<std::uint32_t,std::uint64_t>{500U,4192U}}) {
         PerSourceSpeechOptions options{};
