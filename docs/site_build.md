@@ -18,6 +18,18 @@ Open docs/_build/html/index.html in a browser. The docs build does **not** enabl
 
 Doxygen outputs XML into docs/_build/xml. Sphinx reads that directory through Breathe. Both build outputs belong in docs/_build, which must remain ignored by git.
 
+## Interactive Mermaid diagrams
+
+On any documentation page containing Mermaid, use the **⛶** button in the corner of the diagram to open the zoomable SVG viewer. In that viewer:
+
+- **Mouse wheel:** zoom in or out around the cursor (no Ctrl key required).
+- **Left-button drag:** pan around a zoomed diagram.
+- **+ / − buttons or keys:** zoom in or out.
+- **Fit button, 0, or double-click:** reset the diagram to fit the window.
+- **Escape or ×:** close the viewer and return to the original page.
+
+The viewer is implemented in `docs/_static/diagram-viewer.js` and `diagram-viewer.css`, enabled site-wide through `docs/conf.py`. It moves the original rendered SVG into the overlay and restores it on close, avoiding rasterization or duplicated SVG IDs. The GitHub Pages workflow checks JS syntax and verifies that Sphinx includes these assets.
+
 ## Publishing to GitHub Pages
 
 The [docs-pages workflow](https://github.com/ARDev1161/libaudition/blob/documentation/.github/workflows/docs-pages.yml) builds documentation and deploys on every push to the independent `documentation` branch. The entire website configuration and its workflow are maintained on that branch; no merge into `main` is required. It publishes through the official GitHub Pages Actions deployment, not a separate `gh-pages` source branch.
