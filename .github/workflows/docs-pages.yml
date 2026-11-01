@@ -33,7 +33,9 @@ jobs:
           python -m pip install -r docs/requirements.txt
       - name: Check Mermaid viewer JavaScript syntax
         run: node --check docs/_static/diagram-viewer.js
-      - name: Extract C++ API from public headers
+      - name: Extract public-header XML for Sphinx
+        run: doxygen docs/Doxyfile.public
+      - name: Build full Doxygen HTML, XML and Graphviz graphs
         run: doxygen docs/Doxyfile.pages
       - name: Validate architecture links and Graphviz output
         run: |
