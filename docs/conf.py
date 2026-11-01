@@ -35,7 +35,7 @@ mermaid_config = {"securityLevel": "loose"}
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 breathe_projects = {
-    "libaudition": str(ROOT / "docs" / "_build" / "xml")
+    "libaudition": str(ROOT / "docs" / "_build" / "public_xml")
 }
 breathe_default_project = "libaudition"
 
