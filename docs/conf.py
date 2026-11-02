@@ -6,8 +6,15 @@ Then run: sphinx-build -b html docs docs/_build/html
 
 from pathlib import Path
 import re
+import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+# Sphinx executes conf.py without guaranteeing docs/ on sys.path.
+# The source-read hook imports the adjacent doxygen_links.py module.
+DOCS_DIR = Path(__file__).resolve().parent
+if str(DOCS_DIR) not in sys.path:
+    sys.path.insert(0, str(DOCS_DIR))
+
+ROOT = DOCS_DIR.parent
 project = "libaudition"
 author = "libaudition contributors"
 
