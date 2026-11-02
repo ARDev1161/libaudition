@@ -77,7 +77,14 @@ jobs:
           # Guard source-linked nodes and the trusted Mermaid link setting.
           grep -q 'click ODAS' docs/_build/html/index.html
           grep -Eq 'click ODAS.*doxygen/.*\.html' docs/_build/html/index.html
-          grep -q '"securityLevel": "loose"' docs/_build/html/_static/sphinxcontrib-mermaid/config.json
+          # Older sphinxcontrib-mermaid releases inject the config into HTML/JS
+          # instead of generating _static/sphinxcontrib-mermaid/config.json.
+          # Verify the authoritative Sphinx config without assuming asset layout.
+          python3 - <<'PY'
+          import runpy
+          settings = runpy.run_path("docs/conf.py")
+          assert settings["mermaid_config"]["securityLevel"] == "loose"
+          PY
       - name: Upload GitHub Pages artifact
         if: github.ref == 'refs/heads/documentation'
         uses: actions/upload-pages-artifact@v3
