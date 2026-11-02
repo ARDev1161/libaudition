@@ -60,7 +60,7 @@ jobs:
           # title span and our version span; verify content and ordering
           # inside the same sidebar brand instead of matching adjacent tags.
           brands = re.findall(
-              r'<a\\b[^>]*class="[^"]*\\bsidebar-brand\\b[^"]*"[^>]*>.*?</a>',
+              r'<a\b[^>]*class="[^"]*\bsidebar-brand\b[^"]*"[^>]*>.*?</a>',
               html,
               flags=re.S,
           )
@@ -68,12 +68,12 @@ jobs:
           assert brands, "Furo sidebar brand is missing"
           for brand in brands:
               title_match = re.search(
-                  r'<span\\b[^>]*class="[^"]*\\bsidebar-brand-text\\b[^"]*"[^>]*>(.*?)</span>',
+                  r'<span\b[^>]*class="[^"]*\bsidebar-brand-text\b[^"]*"[^>]*>(.*?)</span>',
                   brand,
                   flags=re.S,
               )
               version_match = re.search(
-                  r'<span\\b[^>]*class="[^"]*\\bsidebar-brand-version\\b[^"]*"[^>]*>(.*?)</span>',
+                  r'<span\b[^>]*class="[^"]*\bsidebar-brand-version\b[^"]*"[^>]*>(.*?)</span>',
                   brand,
                   flags=re.S,
               )
