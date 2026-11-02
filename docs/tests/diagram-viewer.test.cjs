@@ -33,7 +33,7 @@ function makeViewer() {
     dispatch(name, details = {}) {
       let prevented = false;
       const event = {
-        target: this, button: 0, pointerType: 'touch',
+        type: name, target: this, button: 0, pointerType: 'touch',
         preventDefault() { prevented = true; },
         ...details,
       };
