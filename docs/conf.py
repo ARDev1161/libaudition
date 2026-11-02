@@ -66,6 +66,20 @@ html_js_files = ["diagram-viewer.js"]
 html_css_files = ["layout.css", "diagram-viewer.css"]
 
 html_theme = "furo"
+# Use a uniquely named template in html_sidebars: Furo's inherited
+# sidebar/brand.html otherwise takes precedence over template overrides.
+# Preserve Furo's normal search, navigation, and theme controls.
+html_sidebars = {
+    "**": [
+        "sidebar/libaudition-brand.html",
+        "sidebar/search.html",
+        "sidebar/scroll-start.html",
+        "sidebar/navigation.html",
+        "sidebar/ethical-ads.html",
+        "sidebar/scroll-end.html",
+        "sidebar/variant-selector.html",
+    ]
+}
 html_title = "libaudition documentation"
 # Render the public release as its own smaller line beneath the Furo brand.
 html_context = {"libaudition_sidebar_version": f"v{release}"}
