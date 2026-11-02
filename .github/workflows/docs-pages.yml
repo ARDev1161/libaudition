@@ -54,12 +54,35 @@ jobs:
           release = runpy.run_path("docs/conf.py")["release"]
           html = Path("docs/_build/html/index.html").read_text(encoding="utf-8")
           import re
-          expected = re.escape(f"v{release}")
-          assert re.search(
-              rf'<span class="sidebar-brand-text">\s*libaudition documentation\s*</span>\s*'
-              rf'<span class="sidebar-brand-version">\s*{expected}\s*</span>',
+          from html import unescape
+
+          # Furo is free to insert whitespace or other markup between its
+          # title span and our version span; verify content and ordering
+          # inside the same sidebar brand instead of matching adjacent tags.
+          brands = re.findall(
+              r'<a\\b[^>]*class="[^"]*\\bsidebar-brand\\b[^"]*"[^>]*>.*?</a>',
               html,
-          ), "Furo sidebar must show the title followed by the separate public release"
+              flags=re.S,
+          )
+          expected = f"v{release}"
+          assert brands, "Furo sidebar brand is missing"
+          for brand in brands:
+              title_match = re.search(
+                  r'<span\\b[^>]*class="[^"]*\\bsidebar-brand-text\\b[^"]*"[^>]*>(.*?)</span>',
+                  brand,
+                  flags=re.S,
+              )
+              version_match = re.search(
+                  r'<span\\b[^>]*class="[^"]*\\bsidebar-brand-version\\b[^"]*"[^>]*>(.*?)</span>',
+                  brand,
+                  flags=re.S,
+              )
+              if not title_match or not version_match:
+                  print("Unexpected Furo sidebar markup:", brand[:1500])
+              assert title_match and version_match, "Sidebar title or version missing"
+              assert unescape(title_match.group(1)).strip() == "libaudition documentation"
+              assert unescape(version_match.group(1)).strip() == expected
+              assert title_match.end() < version_match.start(), "Version must follow title"
           assert 'layout.css' in html, "Sidebar version styling must be loaded"
           print(f"Verified documentation version: v{release}")
           PY
