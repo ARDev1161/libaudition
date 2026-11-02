@@ -31,8 +31,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y doxygen graphviz
           python -m pip install -r docs/requirements.txt
-      - name: Check Mermaid viewer JavaScript syntax
-        run: node --check docs/_static/diagram-viewer.js
+      - name: Check Mermaid viewer JavaScript syntax and gestures
+        run: |
+          node --check docs/_static/diagram-viewer.js
+          node --test docs/tests/diagram-viewer.test.cjs
       - name: Extract public-header XML for Sphinx
         run: doxygen docs/Doxyfile.public
       - name: Build full Doxygen HTML, XML and Graphviz graphs

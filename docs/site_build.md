@@ -33,15 +33,17 @@ On wide desktop screens, `docs/_static/layout.css` removes Furo's narrow fixed a
 
 On any documentation page containing Mermaid, **click directly on a diagram** to open its zoomable SVG viewer (no floating button). Keyboard users can focus the diagram with Tab and press **Enter** or **Space**. In the viewer:
 
-- **Mouse wheel:** zoom in or out around the cursor (no Ctrl key required).
-- **Left-button drag:** pan around a zoomed diagram.
+- **Desktop mouse wheel:** zoom in or out around the cursor (no Ctrl key required).
+- **Desktop left-button drag:** pan around a zoomed diagram.
+- **Mobile two-finger pinch/spread:** zoom in or out around the midpoint between fingers; moving both fingers also pans the diagram.
+- **Mobile one-finger drag:** pan the diagram; adding or removing a second finger does not reset the view.
 - **+ / − buttons or keys:** zoom in or out.
 - **Fit button, 0, or double-click:** reset the diagram to fit the window.
 - **Escape or ×:** close the viewer and return to the original page.
 
 Architecture diagrams also contain **repository-source links on individual nodes**: activate a linked node to open its GitHub source file in a new tab, or click the diagram background to expand it. Mermaid's default security mode disables node links; `docs/conf.py` explicitly uses `mermaid_config = {"securityLevel": "loose"}` for these reviewed, repository-maintained diagrams. Do not embed untrusted or dynamically supplied Mermaid input.
 
-The viewer is implemented in `docs/_static/diagram-viewer.js` and `diagram-viewer.css`, enabled site-wide through `docs/conf.py`. It moves the original rendered SVG into the overlay and restores it on close, avoiding rasterization or duplicated SVG IDs. The GitHub Pages workflow checks JS syntax and verifies that Sphinx includes these assets.
+The viewer is implemented in `docs/_static/diagram-viewer.js` and `diagram-viewer.css`, enabled site-wide through `docs/conf.py`. Pointer gesture regression tests live in `docs/tests/diagram-viewer.test.cjs`. It moves the original rendered SVG into the overlay and restores it on close, avoiding rasterization or duplicated SVG IDs. The GitHub Pages workflow checks JS syntax and verifies that Sphinx includes these assets.
 
 ## Doxygen graphs and architecture links
 

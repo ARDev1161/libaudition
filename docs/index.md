@@ -154,17 +154,17 @@ For the detailed algorithm inventory and alternate compositions, see the [functi
 
 ### Main modules
 
-These are the actual CMake-exported building blocks. Their targets have the form `audition::<module>`.
+These are the actual CMake-exported building blocks. Their targets have the form `audition::<module>`. Each link opens the **corresponding module section**, with dependencies, public header entry points and deeper references. See the [module reference](modules.md) for the full overview.
 
-- **[core](specification.md)** — common C++ types, PCM buffers and views, timestamps, clock identities and error handling; the foundation of the SDK.
-- **[interfaces](backend_contracts.md)** — abstract contracts for spatial analysis, VAD/ASR, sound classification, speaker analysis and other interchangeable engines.
-- **[io](cli_examples.md)** — reusable WAV file I/O and recording-timeline serialization, independent of Qt or audio-device capture.
-- **[dsp](audio_frontend.md)** — basic signal processing, channel routing/calibration, level and quality measurements, and audio-front-end utilities.
-- **[spatial](functional_architecture.md)** — acoustic geometry, calibrated SPL/range priors and temporal smoothing; separation/localization engines are provided by optional adapters.
-- **[pipeline](per_source_speech.md)** — bounded composition/runtime helpers: source-aware classification, per-source speech, temporal events, source tracking/identity handoff and event assembly.
-- **[memory](spatial_identity_integration.md)** — registries for acoustic sources, speakers and sound prototypes, with matching and persistent source-identity resolution.
-- **[model](models.md)** — a backend-neutral in-memory registry for model metadata; model weights and runtime engines remain separate.
-- **[logging](api.rst)** — logging abstractions and integration points without committing applications to a particular logging implementation.
+- **[core](modules.md#core)** — common C++ types, PCM buffers and views, timestamps, clock identities and error handling; the foundation of the SDK.
+- **[interfaces](modules.md#interfaces)** — abstract contracts for spatial analysis, VAD/ASR, sound classification, speaker analysis and other interchangeable engines.
+- **[io](modules.md#io)** — reusable WAV file I/O and recording-timeline serialization, independent of Qt or audio-device capture.
+- **[dsp](modules.md#dsp)** — basic signal processing, channel routing/calibration, level and quality measurements, and audio-front-end utilities.
+- **[spatial](modules.md#spatial)** — acoustic geometry, calibrated SPL/range priors and temporal smoothing; separation/localization engines are provided by optional adapters.
+- **[pipeline](modules.md#pipeline)** — bounded composition/runtime helpers: source-aware classification, per-source speech, temporal events, source tracking/identity handoff and event assembly.
+- **[memory](modules.md#memory)** — registries for acoustic sources, speakers and sound prototypes, with matching and persistent source-identity resolution.
+- **[model](modules.md#model)** — a backend-neutral in-memory registry for model metadata; model weights and runtime engines remain separate.
+- **[logging](modules.md#logging)** — logging abstractions and integration points without committing applications to a particular logging implementation.
 
 ### Optional backends
 
@@ -201,6 +201,7 @@ qt_demo
 
 functional_architecture
 architecture
+modules
 specification
 backend_contracts
 audio_frontend
