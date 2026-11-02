@@ -60,29 +60,12 @@ breathe_default_project = "libaudition"
 # It applies to all Mermaid diagrams, including functional_architecture.md.
 mermaid_fullscreen = False
 
-html_templates_path = ["_templates"]
 html_static_path = ["_static"]
 html_js_files = ["diagram-viewer.js"]
 html_css_files = ["layout.css", "diagram-viewer.css"]
 
 html_theme = "furo"
-# Use a uniquely named template in html_sidebars: Furo's inherited
-# sidebar/brand.html otherwise takes precedence over template overrides.
-# Preserve Furo's normal search, navigation, and theme controls.
-html_sidebars = {
-    "**": [
-        "sidebar/libaudition-brand.html",
-        "sidebar/search.html",
-        "sidebar/scroll-start.html",
-        "sidebar/navigation.html",
-        "sidebar/ethical-ads.html",
-        "sidebar/scroll-end.html",
-        "sidebar/variant-selector.html",
-    ]
-}
 html_title = "libaudition documentation"
-# Render the public release as its own smaller line beneath the Furo brand.
-html_context = {"libaudition_sidebar_version": f"v{release}"}
 html_baseurl = "https://ardev1161.github.io/libaudition/"
 html_theme_options = {
     "source_repository": "https://github.com/ARDev1161/libaudition/",
@@ -102,5 +85,41 @@ def _resolve_diagram_links(app, docname, source):
     source[0] = rewrite_architecture_links(source[0], ROOT / "docs" / "_build")
 
 
+def _render_sidebar_release(app, exception):
+    """Add a real HTML release line to Furo's rendered sidebar brand.
+
+    Furo renders sidebar includes from its theme-only loader, which does not
+    resolve repository-local sidebar templates. Modify only generated Sphinx
+    HTML after rendering; leave the source pages and Doxygen output alone.
+    """
+    if exception is not None or app.builder.format != "html":
+        return
+
+    from html import escape
+
+    version_tag = (
+        f'<span class="sidebar-brand-version">v{escape(release)}</span>'
+    )
+    pattern = re.compile(r'(<span class="sidebar-brand-text">[^<]*</span>)')
+    changed = 0
+    for page in Path(app.outdir).rglob("*.html"):
+        source = page.read_text(encoding="utf-8")
+        if "sidebar-brand-text" not in source:
+            continue
+        rendered, count = pattern.subn(
+            lambda match: match.group(1) + "\n  " + version_tag,
+            source,
+            count=1,
+        )
+        if count != 1:
+            raise RuntimeError(f"Furo sidebar title not found in {page}")
+        page.write_text(rendered, encoding="utf-8")
+        changed += 1
+
+    if changed == 0:
+        raise RuntimeError("No Sphinx HTML pages had a Furo sidebar title")
+
+
 def setup(app):
     app.connect("source-read", _resolve_diagram_links)
+    app.connect("build-finished", _render_sidebar_release)
