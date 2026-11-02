@@ -53,7 +53,14 @@ jobs:
           import runpy
           release = runpy.run_path("docs/conf.py")["release"]
           html = Path("docs/_build/html/index.html").read_text(encoding="utf-8")
-          assert f"v{release}" in html, "Furo sidebar must display public API release"
+          import re
+          expected = re.escape(f"v{release}")
+          assert re.search(
+              rf'<span class="sidebar-brand-text">\s*libaudition documentation\s*</span>\s*'
+              rf'<span class="sidebar-brand-version">\s*{expected}\s*</span>',
+              html,
+          ), "Furo sidebar must show the title followed by the separate public release"
+          assert 'layout.css' in html, "Sidebar version styling must be loaded"
           print(f"Verified documentation version: v{release}")
           PY
       - name: Verify Doxygen HTML reference is published

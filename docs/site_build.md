@@ -23,7 +23,7 @@ Doxygen runs in two modes: **public-header XML** in `docs/_build/public_xml` for
 
 ## Displayed release version
 
-The Furo sidebar title displays the library's **public API release** (for example `v1.0.0-rc.1`) automatically. `docs/conf.py` reads `project(libaudition VERSION ...)` and `LIBAUDITION_PUBLIC_VERSION` from the repository's `CMakeLists.txt`, so prerelease suffixes are not lost. No separate website version should be maintained. The Pages workflows verify that the rendered homepage includes this release.
+The Furo sidebar shows **libaudition documentation** as its title and the library's **public API release** (for example `v1.0.0-rc.1`) on a separate, smaller line directly beneath it. `docs/conf.py` reads `project(libaudition VERSION ...)` and `LIBAUDITION_PUBLIC_VERSION` from the repository's `CMakeLists.txt`, so prerelease suffixes are not lost. No separate website version should be maintained. The Pages workflow verifies that the rendered sidebar includes the title and separately formatted release.
 
 ## Responsive page layout
 

@@ -60,12 +60,15 @@ breathe_default_project = "libaudition"
 # It applies to all Mermaid diagrams, including functional_architecture.md.
 mermaid_fullscreen = False
 
+html_templates_path = ["_templates"]
 html_static_path = ["_static"]
 html_js_files = ["diagram-viewer.js"]
 html_css_files = ["layout.css", "diagram-viewer.css"]
 
 html_theme = "furo"
-html_title = f"libaudition v{release} documentation"
+html_title = "libaudition documentation"
+# Render the public release as its own smaller line beneath the Furo brand.
+html_context = {"libaudition_sidebar_version": f"v{release}"}
 html_baseurl = "https://ardev1161.github.io/libaudition/"
 html_theme_options = {
     "source_repository": "https://github.com/ARDev1161/libaudition/",
