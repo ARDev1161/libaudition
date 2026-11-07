@@ -228,6 +228,20 @@ def write_pcm16(path: Path, samples, fs: int):
 def render(scene: dict, args) -> None:
     import numpy as np
     from scipy.signal import fftconvolve
+    from acoustix_reverb import calibrate_scene_rt60
+
+    # Calibrate once per room, not per RIR snapshot or audio block.
+    if args.uncalibrated_rt60:
+        acoustic_scene = scene
+        rt60_calibration = {
+            "enabled": False,
+            "requested_rt60_s": scene["room"]["rt60_s"],
+            "effective_backend_rt60_s": scene["room"]["rt60_s"],
+            "warning": "Sabine input was not measured/calibrated",
+        }
+    else:
+        acoustic_scene, rt60_calibration = calibrate_scene_rt60(scene)
+        rt60_calibration["enabled"] = True
     fs = scene["sample_rate_hz"]
     frames = round(min(scene["duration_s"], args.max_seconds or scene["duration_s"]) * fs)
     hop = round(fs * args.hop_ms / 1000)
@@ -253,7 +267,7 @@ def render(scene: dict, args) -> None:
         stop = min(frames, center + hop)
         indices = np.arange(start, stop)
         weights = (1 - np.abs(indices - center) / hop).astype(np.float32)
-        rirs = rir_snapshot(scene, center / fs)
+        rirs = rir_snapshot(acoustic_scene, center / fs)
         snapshots += 1
         for si in range(count):
             chunk = dry[si][start:stop] * weights
@@ -280,6 +294,8 @@ def render(scene: dict, args) -> None:
     # Channel 5 remains silent playback reference, following ReSpeaker fixture.
     out = args.output
     out.mkdir(parents=True, exist_ok=True)
+    (out / "rt60_calibration.json").write_text(
+        json.dumps(rt60_calibration, indent=2) + "\n")
     write_pcm16(out / "input.wav", raw, fs)
     if args.stems:
         from acoustix_signal_contract import audit_audio
@@ -313,6 +329,7 @@ def render(scene: dict, args) -> None:
                 "wav_frames": output_frames, "sample_rate_hz": fs,
                 "rir_snapshots": snapshots, "max_rir_samples": max_rir_samples,
                 "normalization": scale,
+                "rt60_calibration": rt60_calibration,
                 "physical_limitations": [
                     "Rectangular room, image-source RIR approximation",
                     "Car projected into room through a virtual window emitter",
@@ -496,6 +513,8 @@ def main():
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--max-seconds", type=float, help="Render only the first N seconds")
     parser.add_argument("--hop-ms", type=int, default=250)
+    parser.add_argument("--uncalibrated-rt60", action="store_true",
+                        help="Render with the historical uncalibrated Sabine value")
     parser.add_argument("--seed", type=int, default=1161)
     parser.add_argument("--speech-dir", type=Path, help="speaker_1.wav .. speaker_7.wav, mono PCM16/16k")
     parser.add_argument("--stems", action="store_true", help="Export per-source 4-channel WAVs")
