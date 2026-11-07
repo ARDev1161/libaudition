@@ -373,6 +373,14 @@ if(TARGET audition::backend_odas)
         set_tests_properties(audio_acoustix_replay_physics PROPERTIES
             LABELS "audio-integration;acoustix;replay;physics;optional"
             TIMEOUT 480)
+        # S2 real CPU RIR consumes sample-aligned corpus PCM; fixture WAVs are
+        # synthetic TEST TONES, so this is only a placement/data-flow gate.
+        add_test(NAME audio_acoustix_s2_speech_render_cpu COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_speech_render_cpu.py")
+        set_tests_properties(audio_acoustix_s2_speech_render_cpu PROPERTIES
+            LABELS "audio-integration;acoustix;speech;sample-clock;physics;optional"
+            TIMEOUT 600)
         # Actual pinned CPU reverberant SNR control and PCM16 stem audit.
         add_test(NAME audio_acoustix_snr_cpu COMMAND
             ${Python3_EXECUTABLE}
