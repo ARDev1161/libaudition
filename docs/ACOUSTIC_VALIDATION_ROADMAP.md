@@ -559,6 +559,44 @@ Full held-out completion requires one unmodified, fully successful
 If any case fails, retain the original frozen input and diagnose it rather
 than quietly removing it or loosening the acoustic gates.
 
+### S1 held-out CPU evidence — run #37 (20/20 PASS)
+
+The exact frozen 20-case CPU evaluation has now PASSED on the pinned
+Acoustix environment: GitHub Actions
+`https://github.com/ARDev1161/libaudition/actions/runs/42362165385`
+commit `b3f1d4fa24b9b03f27935412e07f52fee0352f72`.
+All 20 individual `s1_eval_01` … `s1_eval_20` cases reported PASS with
+two actual CPU RIR renders and matching emitted WAV/stem/oracle/calibration
+SHA-256 each. All 16 opt-in Acoustix CTests passed and GitHub artifacts were
+uploaded. Common CI and WebRTC APM passed on the same commit.
+
+These checks demonstrate repeatability and basic physics contracts, not
+intelligible speech accuracy, multi-talker interference suppression, or
+physical room calibration. Never conflate the held-out CPU PASS with S2.
+
+### S1 background SNR — post-RIR environmental-noise control
+
+An optional `--background-snr-db` setting calibrates **all environmental
+source stems together** after the CPU RIR renderer to attain voice-sum /
+background-sum power ratio on microphone 0 during the declared voice-active
+windows. Acoustix microphone transfer functions, relative environmental
+source levels and dry speech signals remain unchanged. Whole-scene PCM
+normalization still applies uniformly, preserving that ratio.
+
+The standard-library `audio_acoustix_snr_selftest` verifies 0, 6, 12 dB,
+negative inputs, finite values, activity gating and deterministic target
+precision. The opt-in `audio_acoustix_snr_cpu` renders genuine Acoustix
+RIRs at 0/6/12 dB and checks actual quantized mic-0 PCM stems to ±0.2 dB.
+
+**Crucial definition:** This is voice versus *background* (fridge/AC/car),
+NOT speech-to-speech signal-to-interference ratio (SIR), SI-SDR, or ASR WER.
+It is an opt-in S1 augmentation, and existing 20-case fixtures remain
+byte-compatible when disabled. S2 needs real clean speech references and
+separate interfering speakers; it must not borrow this SNR as a separation
+quality result.
+
+**Status: NEW STACKED PR, CPU SNR GATE/CI NOT YET VERIFIED.**
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
