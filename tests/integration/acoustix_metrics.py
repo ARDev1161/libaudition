@@ -74,6 +74,7 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
     adjacent_comparisons = 0
     last_match = {}
     errors = []
+    azimuth_errors = []
     simultaneous = []
     all_counts = []
     max_active_voices = 0
@@ -102,6 +103,14 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
             sid = str(source["id"])
             track_id = str(track["id"])
             errors.append(error)
+            # A flat robot-mounted array has weak elevation observability.
+            # Report horizontal bearing error separately for navigation;
+            # do not count a nearly vertical, undefined-azimuth direction.
+            tx, ty = float(track["x"]), float(track["y"])
+            if math.hypot(tx, ty) > 1e-6:
+                track_az = math.degrees(math.atan2(ty, tx))
+                azimuth_errors.append(abs(
+                    (track_az - float(source["bearing_deg"]) + 180) % 360 - 180))
             old = last_match.get(sid)
             if old is not None and old[0] == hop - 1:
                 adjacent_comparisons += 1
@@ -109,6 +118,7 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
             last_match[sid] = (hop, track_id)
 
     errors.sort()
+    azimuth_errors.sort()
     report = {
         "scope": "diagnostic-only; synthetic image-source room; no calibration",
         "association_threshold_deg": max_error_deg,
@@ -130,6 +140,12 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
         "matched_p90_3d_angular_error_deg": round(
             errors[min(len(errors) - 1, math.ceil(.9 * len(errors)) - 1)], 4)
             if errors else None,
+        "matched_median_azimuth_error_deg":
+            round(statistics.median(azimuth_errors), 4) if azimuth_errors else None,
+        "matched_p90_azimuth_error_deg": round(
+            azimuth_errors[min(len(azimuth_errors) - 1,
+                               math.ceil(.9 * len(azimuth_errors)) - 1)], 4)
+            if azimuth_errors else None,
         "adjacent_matched_id_switches": adjacent_id_switches,
         "adjacent_matched_id_comparisons": adjacent_comparisons,
         "per_voice": dict(sorted(per_voice.items())),
