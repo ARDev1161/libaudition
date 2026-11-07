@@ -98,25 +98,6 @@ jobs:
           github-token: ${{ github.token }}
           path: build-s2-before-slot-fix
 
-      - name: Compare identical Acoustix WAV SST decisions before and after slot fix
-        run: |
-          python3 tests/integration/acoustix_s2_sst_trace_compare.py \
-            build-s2-before-slot-fix build-s2 \
-            build-s2/paired_sst_slot_fix_comparison.json
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          report = json.loads(Path(
-              "build-s2/paired_sst_slot_fix_comparison.json").read_text())
-          evidence = report["cases"]["t03_eval_two"]["hop699"]
-          assert evidence["before_eligible_candidates"] >= 3, evidence
-          assert len(evidence["before_birth_ids"]) == 1, evidence
-          assert len(evidence["after_birth_ids"]) >= 2, (
-              "pending-slot regression persists on identical real T03 PCM",
-              evidence)
-          print("Real-waveform same-hop pending-slot collision fixed:", evidence)
-          PY
-
       - name: Score ODAS source-track diagnostics vs human-voice DOA oracle
         run: |
           python3 - <<'PY'
@@ -196,6 +177,25 @@ jobs:
               json.dumps(report, indent=2)+"\n")
           if errors:
               raise SystemExit("Real speech ODAS integrity failed: " + "; ".join(errors))
+          PY
+
+      - name: Compare identical Acoustix WAV SST decisions before and after slot fix
+        run: |
+          python3 tests/integration/acoustix_s2_sst_trace_compare.py \
+            build-s2-before-slot-fix build-s2 \
+            build-s2/paired_sst_slot_fix_comparison.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path(
+              "build-s2/paired_sst_slot_fix_comparison.json").read_text())
+          evidence = report["cases"]["t03_eval_two"]["hop699"]
+          assert evidence["before_eligible_candidates"] >= 3, evidence
+          assert len(evidence["before_birth_ids"]) == 1, evidence
+          assert len(evidence["after_birth_ids"]) >= 2, (
+              "pending-slot regression persists on identical real T03 PCM",
+              evidence)
+          print("Real-waveform same-hop pending-slot collision fixed:", evidence)
           PY
 
       - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
