@@ -271,6 +271,8 @@ if(TARGET audition::backend_odas)
         "Optional directory of seven genuine mono 16kHz PCM16 WAV files")
     option(LIBAUDITION_ACOUSTIX_EXPORT_STEMS
         "Export each source contribution to each microphone for analysis" OFF)
+    option(LIBAUDITION_ACOUSTIX_COMPARE_CAPACITY
+        "Replay same simulated room through baseline 4/4 and expanded 8/8 ODAS" OFF)
     if(LIBAUDITION_ENABLE_ACOUSTIX_SCENE_TESTS)
         set(_acoustix_arguments
             --scene "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/acoustix/table_conversation_7x7.json"
@@ -284,6 +286,9 @@ if(TARGET audition::backend_odas)
         endif()
         if(LIBAUDITION_ACOUSTIX_EXPORT_STEMS)
             list(APPEND _acoustix_arguments --stems)
+        endif()
+        if(LIBAUDITION_ACOUSTIX_COMPARE_CAPACITY)
+            list(APPEND _acoustix_arguments --compare-capacity)
         endif()
         add_test(NAME audio_acoustix_dynamic_room COMMAND
             ${Python3_EXECUTABLE}
