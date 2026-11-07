@@ -688,6 +688,30 @@ not actual S2 audio quality.
 builder alone does not cover T03 angular sweeps, T04 playback contamination,
 quiet real speech, actual corpus procurement, SI-SDR/SIR or pinned-ASR WER.
 
+### S2 task #4 — real human voices through pinned CPU room RIR
+
+The isolated opt-in workflow `acoustix-s2-real-speech.yml` downloads
+the official **LibriSpeech SLR12 dev-clean**, CC BY 4.0, 337 MB archive
+after checking OpenSLR MD5 `42e2234ba48799c1f50f24a7926300a1`.
+It creates seven distinct real-speaker 16kHz mono PCM16 records with
+three complete utterances each, SHA-pins the corpus and calls the
+deterministic S2 scene generator for single/two/seven-human-voice
+configurations. The first is stationary/no background, the second
+moving/no background, the third moving with household/road noise at
++6 dB voice/background SNR. The real Acoustix CPU RIR backend
+produces individual wet microphone stems and source-exact dry references.
+The workflow then independently checks sample-time oracles, clean
+reference SHA-256, audio stem summation, and speaker/split identity.
+The resulting licensed subset with attribution and complete results
+is retained as an ephemeral 14-day GitHub Actions artifact.
+
+**Status: HEAVY REAL-SPEECH CPU WORKFLOW IMPLEMENTED IN SEPARATE S2 PR,
+RUN AND RESULT PENDING.** Even if the data-flow check passes, no
+claims of SI-SDRi, SIRi, separated-track identity, VAD first-word
+retention, WER, or physical robot fidelity are justified. Those require
+actual ODAS output and a pinned ASR/evaluation backend plus independent
+reference metric tests.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
