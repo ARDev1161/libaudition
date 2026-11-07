@@ -386,6 +386,10 @@ def render(scene: dict, args) -> None:
                 "wav_frames": output_frames, "sample_rate_hz": fs,
                 "rir_snapshots": snapshots, "max_rir_samples": max_rir_samples,
                 "normalization": scale,
+                # Record the seed and update interval alongside scene content:
+                # seed-dependent noise MUST never be compared as the same WAV.
+                "render_seed": args.seed,
+                "rir_hop_ms": args.hop_ms,
                 "acoustic_latency_model": {
                     "speed_of_sound_m_s": sound_speed,
                     "rir_fractional_delay_group_samples": rir_group_delay,
