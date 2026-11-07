@@ -62,7 +62,7 @@ function(libaudition_find_or_fetch_odas)
         # This SHA belongs to the ARDev1161/odas dev integration history.
         # Pin a commit, not GIT_TAG dev: every libaudition build must be reproducible.
         GIT_REPOSITORY https://github.com/ARDev1161/odas.git
-        GIT_TAG 28c41da02bc87b1582264eba6809b66f79546377
+        GIT_TAG c4fb33b75c28e2246d6f87741861ab0325fc74a3
         GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         INSTALL_DIR "${_odas_install_dir}"
