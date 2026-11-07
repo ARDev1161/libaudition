@@ -213,7 +213,9 @@ def render(scene: dict, args) -> None:
     snapshots = 0
     # Partition-of-unity triangular emission windows. Input energy belongs
     # to adjacent snapshots; old reflection tails remain in the output.
-    for center in range(0, frames, hop):
+    # Include a final beyond-end snapshot: otherwise the last emission
+    # interval is attenuated because the triangular windows do not sum to 1.
+    for center in range(0, frames + hop, hop):
         start = max(0, center - hop + 1)
         stop = min(frames, center + hop)
         indices = np.arange(start, stop)
