@@ -73,6 +73,25 @@ class BaselineTests(unittest.TestCase):
         self.assertFalse(result["regression_passed"])
         self.assertIn("t02_dev_single:pipeline_integrity", result["regressions"])
 
+    def test_track_capacity_collapse_is_reported(self):
+        report = copy.deepcopy(self.report)
+        candidate = next(case for case in report["cases"]
+                         if case["max_simultaneous_tracks"] > 0)
+        candidate["max_simultaneous_tracks"] = 0
+        result = compare(self.baseline, report)
+        self.assertFalse(result["regression_passed"])
+        self.assertIn(candidate["case"] + ":track_capacity_not_regressed",
+                      result["regressions"])
+
+    def test_corrupted_baseline_is_rejected(self):
+        for field, value in (("matched_voice_source_hops", -1),
+                             ("max_simultaneous_tracks", True),
+                             ("oracle_voice_source_hops", True)):
+            baseline = copy.deepcopy(self.baseline)
+            baseline["cases"][0][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                compare(baseline, self.report)
+
     def test_recorder_drop_fails_even_with_good_tracking(self):
         self.report["cases"][0]["recorder_drops"] = 1
         self.assertIn("t02_dev_single:no_recorder_drops",
