@@ -262,6 +262,8 @@ if(TARGET audition::backend_odas)
         "Time-varying RIR update interval in milliseconds")
     set(LIBAUDITION_ACOUSTIX_SPEECH_DIR "" CACHE PATH
         "Optional directory of seven genuine mono 16kHz PCM16 WAV files")
+    option(LIBAUDITION_ACOUSTIX_EXPORT_STEMS
+        "Export each source contribution to each microphone for analysis" OFF)
     if(LIBAUDITION_ENABLE_ACOUSTIX_SCENE_TESTS)
         set(_acoustix_arguments
             --scene "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/acoustix/table_conversation_7x7.json"
@@ -272,6 +274,9 @@ if(TARGET audition::backend_odas)
         if(NOT "${LIBAUDITION_ACOUSTIX_SPEECH_DIR}" STREQUAL "")
             list(APPEND _acoustix_arguments
                 --speech-dir "${LIBAUDITION_ACOUSTIX_SPEECH_DIR}")
+        endif()
+        if(LIBAUDITION_ACOUSTIX_EXPORT_STEMS)
+            list(APPEND _acoustix_arguments --stems)
         endif()
         add_test(NAME audio_acoustix_dynamic_room COMMAND
             ${Python3_EXECUTABLE}
