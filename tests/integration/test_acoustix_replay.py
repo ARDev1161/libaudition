@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from acoustix_scene import check_scene
+from acoustix_scene import check_scene\nfrom acoustix_timing_contract import verify_timing
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_SCENE = ROOT / "fixtures" / "acoustix" / "table_conversation_7x7.json"
@@ -161,7 +161,7 @@ class CpuReplayTests(unittest.TestCase):
                     observed.append(hashes)
                     gt = json.loads((folder / "ground_truth.json").read_text())
                     audit = json.loads((folder / "signal_audit.json").read_text())
-                    self.assertEqual(gt["render_seed"], seed)
+                    time_evidence = verify_timing(case, gt, folder / "input.wav")\n                    self.assertGreater(time_evidence["oracle_hops"], 0)\n                    self.assertEqual(gt["render_seed"], seed)
                     self.assertEqual(gt["rir_hop_ms"], 250)
                     self.assertEqual(gt["scene_sha256"], case_hash)
                     self.assertEqual(gt["source_count"], len(source_ids))
