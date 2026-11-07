@@ -129,6 +129,46 @@ files to verify the audio path only. Real human-voice fidelity, word
 boundaries, source separation and WER remain unvalidated until actual
 corpus acquisition and independent scoring.
 
+## Build complete T02/T03/T07 scene/plan pairs automatically
+
+After the real corpus has been imported and verified, build an immutable
+S2 scenario **without hand-editing time boundaries**. This utility retains
+the base 7×7 m positions and source identities but creates a **new** S2
+scene: the chosen original human utterances are complete and each gets
+one activity interval sized to its exact length plus 100 ms of
+post-utterance silence. S1's original scene is never mutated.
+
+```bash
+python3 tests/integration/prepare_acoustix_s2_scene.py \
+  --corpus-manifest /tmp/libaudition-s2/speech_corpus.json \
+  --corpus-root /tmp/libaudition-s2/selected-pcm \
+  --speakers 2 --split evaluation \
+  --robot-motion moving --rt60-s 0.36 \
+  --output /tmp/libaudition-s2/cases/t03_eval_moving
+
+python3 tests/integration/acoustix_scene.py \
+  --scene /tmp/libaudition-s2/cases/t03_eval_moving/scene.json \
+  --speech-plan /tmp/libaudition-s2/cases/t03_eval_moving/speech_plan.json \
+  --speech-corpus-manifest /tmp/libaudition-s2/speech_corpus.json \
+  --speech-corpus-root /tmp/libaudition-s2/selected-pcm \
+  --output /tmp/libaudition-s2/cases/t03_eval_moving/render \
+  --seed 5161 --hop-ms 250 --stems
+```
+
+Choose `--speakers 1` (T02), `2` (initial T03) or `7` (T07
+stress case), `--split development|evaluation`, and
+`--robot-motion stationary|moving`. Use `--no-background` to
+isolate voices, or keep fridge/AC/car to exercise competing background.
+Targets `--rt60-s 0.2|0.36|0.7` are supported; use S1 calibrated
+acoustic methods. The CLI rejects overwriting frozen output files.
+
+This initial builder chooses one complete utterance per speaker and a
+fixed first occurrence start; it does **not** yet explore T03 angle
+separations 30°/60°/120°, T04 speaker+playback, quiet-gain variants,
+multiple turns per speaker or true ASR. Those require dedicated reviewed
+S2 scenarios. Test WAVs in the builder's CTest are **not human voices**;
+passing these tests does not claim real S2 benchmark readiness.
+
 ## Remaining S2 acceptance work
 
 The corpus manifest alone is not a benchmark. Still required:
