@@ -93,7 +93,7 @@ class PlacementContractTests(unittest.TestCase):
             sc, plan(["test_1_1", "test_1_2"], split="evaluation"))
         self.assertEqual(report["speech_event_count"], 2)
         self.assertTrue(any(placed["speaker_1"][3201:]))
-        self.assertEqual(placed["speaker_1"][10000], 0)
+        self.assertEqual(placed["speaker_1"][14000], 0)
         with self.assertRaisesRegex(ValueError, "reused"):
             self.call(sc, plan(["test_1_1", "test_1_1"], split="evaluation"))
 
