@@ -60,6 +60,7 @@ Acoustic simulation is not a replacement for measured ReSpeaker recordings.
 | --- | --- | --- | --- |
 | `audio_acoustix_scene_contract` | No | Yes, via normal CTest/CI | Validate scenario schema, timing, geometry |
 | `audio_acoustix_metrics_selftest` | No | Yes, via normal CTest/CI | Test one-to-one 3D track/source matching and adjacent ID switches |
+| `audio_acoustix_signal_selftest` | No | Yes, via normal CTest/CI | Validate PCM16 stem summation, microphone diversity, and corrupt audio rejection |
 | `audio_acoustix_dynamic_room` | Yes | No, optional CMake/CTest | Render moving RIR + replay genuine ODAS, fail on processing errors |
 | `Acoustix acoustic room (headless)` Actions | Yes | Ready-for-review: full 12s; manual: 1.5/3/12s | Render, replay ODAS, export oracle, stems and tracking metrics |
 | Full local scenario | Yes | No | All 12 seconds, optionally seven natural voices and per-source stems |
@@ -119,7 +120,7 @@ cmake -S . -B build-acoustix -G Ninja \
   -DPython3_EXECUTABLE=/path/to/acoustix-venv/bin/python
 cmake --build build-acoustix --target audition_offline_integration --parallel
 ctest --no-tests=error --test-dir build-acoustix \
-  -R '^audio_acoustix_(scene_contract|metrics_selftest|dynamic_room)$' --output-on-failure
+  -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|dynamic_room)$' --output-on-failure
 ```
 
 To use natural speech, place `speaker_1.wav` through `speaker_7.wav`
@@ -181,6 +182,15 @@ seven-way speaker tracking; the system acquires only a few of the concurrent
 sources in the first place. Current source signals are voiced-like and not
 natural speech. Seven real voice recordings are required to evaluate
 speech separation/leakage, VAD, diarization or ASR accuracy.
+
+When source stems are enabled, `signal_audit.json` checks that all ten
+four-channel stems reconstruct the ODAS microphone mixture within
+PCM16 roundoff (12 LSB maximum for ten stems). The audit checks that
+microphone channels are distinct, reports source and microphone RMS,
+and finds the last nonzero microphone PCM sample. ODAS tracks observed
+after **actual digital silence** are counted separately: a tracker may
+intentionally hold the previous track through a short silent interval,
+so this diagnostic is not a fixed quality gate.
 
 The baseline should guide investigation, not hard-coded pass thresholds.
 A green room test proves the offline pipeline completes without structural
