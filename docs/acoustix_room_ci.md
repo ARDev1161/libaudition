@@ -117,6 +117,8 @@ cmake -S . -B build-acoustix -G Ninja \
   -DLIBAUDITION_ENABLE_ACOUSTIX_SCENE_TESTS=ON \
   -DLIBAUDITION_ACOUSTIX_RENDER_SECONDS=12 \
   -DLIBAUDITION_ACOUSTIX_HOP_MS=250 \
+  -DLIBAUDITION_ACOUSTIX_EXPORT_STEMS=ON \
+  -DLIBAUDITION_ACOUSTIX_COMPARE_CAPACITY=ON \
   -DPython3_EXECUTABLE=/path/to/acoustix-venv/bin/python
 cmake --build build-acoustix --target audition_offline_integration --parallel
 ctest --no-tests=error --test-dir build-acoustix \
@@ -191,6 +193,19 @@ and finds the last nonzero microphone PCM sample. ODAS tracks observed
 after **actual digital silence** are counted separately: a tracker may
 intentionally hold the previous track through a short silent interval,
 so this diagnostic is not a fixed quality gate.
+
+**Important capacity caveat:** the original offline ODAS runner uses the
+library's default `ssl.potential_source_count = 4` and `sst.max_tracks = 4`.
+Therefore a four-slot result cannot establish the maximum number of
+independently recoverable voices in a seven-speaker scene. The optional
+`LIBAUDITION_ACOUSTIX_COMPARE_CAPACITY=ON` setting replays **the exact
+same rendered microphone WAV** with both default **4/4** and expanded **8/8**
+SSL candidate / SST track capacities. Reports are saved to
+`metrics.json`, `metrics_8x8.json`, and `capacity_comparison.json`,
+and shown in the GitHub Actions summary. The comparison changes *capacity*,
+not geometry, beamforming, signal generation, or track tuning. It may
+improve hypothesis coverage but cannot add physical information absent
+from the four microphones; interpret performance diagnostically.
 
 The baseline should guide investigation, not hard-coded pass thresholds.
 A green room test proves the offline pipeline completes without structural
