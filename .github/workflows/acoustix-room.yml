@@ -19,6 +19,14 @@ on:
           - "1.5"
           - "3"
           - "12"
+      heldout_case_count:
+        description: "Real held-out CPU scenes to rerender twice (1 smoke or all 20)"
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "20"
       rir_hop_ms:
         description: "RIR snapshot spacing; smaller is more expensive"
         required: true
@@ -68,6 +76,7 @@ jobs:
         env:
           DURATION: ${{ inputs.duration_seconds || '12' }}
           HOP_MS: ${{ inputs.rir_hop_ms || '250' }}
+          HELDOUT_COUNT: ${{ inputs.heldout_case_count || '1' }}
         run: |
           cmake -S . -B build-acoustix -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -82,6 +91,7 @@ jobs:
             -DLIBAUDITION_ACOUSTIX_COMPARE_CAPACITY=ON \
             "-DLIBAUDITION_ACOUSTIX_RENDER_SECONDS=$DURATION" \
             "-DLIBAUDITION_ACOUSTIX_HOP_MS=$HOP_MS" \
+            "-DLIBAUDITION_ACOUSTIX_HELDOUT_COUNT=$HELDOUT_COUNT" \
             "-DPython3_EXECUTABLE=$RUNNER_TEMP/acoustix/bin/python"
       - name: Build offline ODAS integration runner
         run: cmake --build build-acoustix --target audition_offline_integration --parallel 2
@@ -92,7 +102,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|timing_selftest|scene_boundaries_selftest|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|replay_recipe_selftest|rir_physics|rt60_physics|spatial_rt60_physics|motion_physics|replay_physics|dynamic_room)$' \
+            -R '^audio_acoustix_(scene_contract|timing_selftest|heldout_manifest_selftest|heldout_cpu|scene_boundaries_selftest|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|replay_recipe_selftest|rir_physics|rt60_physics|spatial_rt60_physics|motion_physics|replay_physics|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Summarize acoustic tracking diagnostics
         if: always()
@@ -292,6 +302,24 @@ jobs:
               ])
           else:
               rows.extend(["", "### S1 spatial RT60", "", "No report; inspect CTest failures."])
+          heldout_path = Path("build-acoustix/tests/acoustix_heldout_cpu.json")
+          if heldout_path.is_file():
+              heldout = json.loads(heldout_path.read_text())
+              rows.extend([
+                  "",
+                  "### S1 held-out genuine CPU RIR/WAV rerender",
+                  "",
+                  f"| Selected cases executed | {heldout.get('executed_case_count', 0)}/{heldout.get('selected_case_count', 0)} |",
+                  f"| Selected slice passed | {heldout.get('passed', False)} |",
+                  f"| All 20 cases qualified | {heldout.get('full_twenty_case_qualification', False)} |",
+                  "",
+                  "> Two actual pinned Acoustix CPU renders per selected case, with WAV/stem/oracle byte-hash equality. Not S2 human speech."
+              ])
+              for item in heldout.get("cases", []):
+                  rows.append(f"- {item['case_id']}: {'PASS' if item.get('passed') else 'FAIL'}"
+                              + (f" — {item.get('error')}" if not item.get('passed') else ""))
+          else:
+              rows.extend(["", "### S1 held-out CPU replay", "", "No held-out render report; inspect CTest logs."])
           replay_path = Path("build-acoustix/tests/acoustix_replay.json")
           if replay_path.is_file():
               replay = json.loads(replay_path.read_text())
@@ -347,6 +375,8 @@ jobs:
             build-acoustix/tests/acoustix_motion.json
             build-acoustix/tests/acoustix_replay.json
             build-acoustix/tests/acoustix_spatial_rt60.json
+            build-acoustix/tests/acoustix_heldout_cpu.json
+            build-acoustix/tests/acoustix_heldout_cpu/
             build-acoustix/Testing/Temporary/LastTest.log
           retention-days: 10
           if-no-files-found: warn
