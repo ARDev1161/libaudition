@@ -1,4 +1,5 @@
 #include <audition/backends/odas/odas_spatial_engine.hpp>
+#include <audition/core/error.hpp>
 #include <audition/backends/odas/source_elevation_prior.hpp>
 #include <audition/backends/odas/respeaker_usb4_profile.hpp>
 
@@ -62,7 +63,7 @@ TEST(OdasOptions, IndependentSstInputLimitIsExplicitAndBounded) {
     EXPECT_NO_THROW(engine.reset());
 
     options.sst.max_input_potentials = 9U;
-    EXPECT_THROW(audition::validateOdasOptions(options), std::invalid_argument);
+    EXPECT_THROW(audition::validateOdasOptions(options), audition::Error);
     options.sst.max_input_potentials = 8U;
     EXPECT_NO_THROW(audition::validateOdasOptions(options));
 }
