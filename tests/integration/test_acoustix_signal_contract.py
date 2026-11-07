@@ -75,6 +75,40 @@ class SignalContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "stem geometry or length"):
             self.run_audit()
 
+    def test_empty_input_is_rejected_before_rms_division(self):
+        self.write([], [])
+        with self.assertRaisesRegex(ValueError, "at least one frame"):
+            self.run_audit()
+
+    def test_source_ids_cannot_escape_stem_directory(self):
+        for unsafe in ("../one", "one/../two", "/tmp/one", "one\\\\two",
+                       "one.wav", "UPPER", "", "."):
+            with self.subTest(source_id=unsafe):
+                with self.assertRaisesRegex(ValueError, "safe filename stem"):
+                    audit_audio(self.root / "input.wav", self.root / "stems",
+                                [unsafe, "two"])
+
+    def test_rejects_wrong_master_channel_geometry(self):
+        write_wav(self.root / "input.wav", 2, [(1, 2)] * 3)
+        with self.assertRaisesRegex(ValueError, "six-channel PCM16"):
+            self.run_audit()
+
+    def test_rejects_wrong_stem_sample_rate(self):
+        with wave.open(str(self.root / "stems" / "one.wav"), "wb") as w:
+            w.setnchannels(4)
+            w.setsampwidth(2)
+            w.setframerate(8000)
+            w.writeframes(array("h", (1, 2, 3, 4) * 3).tobytes())
+        with self.assertRaisesRegex(ValueError, "stem geometry or length"):
+            self.run_audit()
+
+    def test_rejects_clipped_mix_even_when_stems_reconstruct(self):
+        a = [(32767, 10, 20, 30)] * 3
+        b = [(0, 2, 3, 4)] * 3
+        self.write(a, b)
+        with self.assertRaisesRegex(ValueError, "clipped"):
+            self.run_audit()
+
     def test_duplicate_source_identity_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "unique"):
             audit_audio(self.root / "input.wav", self.root / "stems",
