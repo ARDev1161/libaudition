@@ -92,7 +92,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|scene_boundaries_selftest|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|replay_recipe_selftest|rir_physics|rt60_physics|spatial_rt60_physics|motion_physics|replay_physics|dynamic_room)$' \
+            -R '^audio_acoustix_(scene_contract|timing_selftest|scene_boundaries_selftest|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|replay_recipe_selftest|rir_physics|rt60_physics|spatial_rt60_physics|motion_physics|replay_physics|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Summarize acoustic tracking diagnostics
         if: always()
