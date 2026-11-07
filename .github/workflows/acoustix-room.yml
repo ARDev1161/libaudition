@@ -92,7 +92,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|rir_physics|rt60_physics|dynamic_room)$' \
+            -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|rir_physics|rt60_physics|motion_physics|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Summarize acoustic tracking diagnostics
         if: always()
@@ -256,6 +256,22 @@ jobs:
                   "",
                   "> Calibration measured once at a reference microphone/source, not separately for each moving geometry."
               ])
+          motion_path = Path("build-acoustix/tests/acoustix_motion.json")
+          if motion_path.is_file():
+              motion = json.loads(motion_path.read_text())["evidence"]
+              rows.extend([
+                  "",
+                  "### S1: moving microphone continuity",
+                  "",
+                  f"| Static overlap-add vs one convolution max sample difference | {motion['stationary_partition']['max_sample_error']:.2g} |",
+                  f"| Max derivative at RIR boundaries / global P99 | {motion['moving_cpu_rir']['max_boundary_diff_over_global_p99']:.3f} |",
+                  f"| Minimum boundary RMS / local RMS | {motion['moving_cpu_rir']['min_boundary_rms_over_surrounding_rms']:.3f} |",
+                  f"| 100ms vs 50ms RIR hop relative RMS difference | {motion['moving_cpu_rir']['relative_hop_100ms_vs_50ms_rms_error']:.3f} |",
+                  "",
+                  "> This is a numerical click/dropout check for slow motion, not validation of continuous Doppler."
+              ])
+          else:
+              rows.extend(["", "### S1 motion continuity", "", "No motion report; inspect CTest failures."])
           signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
           if signal_path.is_file():
               audit = json.loads(signal_path.read_text())
@@ -284,6 +300,7 @@ jobs:
             build-acoustix/tests/acoustix_7x7/
             build-acoustix/tests/acoustix_physics.json
             build-acoustix/tests/acoustix_rt60.json
+            build-acoustix/tests/acoustix_motion.json
             build-acoustix/Testing/Temporary/LastTest.log
           retention-days: 10
           if-no-files-found: warn
