@@ -355,8 +355,27 @@ def render(scene: dict, args) -> None:
     count = len(scene["sources"])
     mics = len(scene["robot"]["microphones_m"])
     rng = np.random.default_rng(args.seed)
-    dry = [make_source_signal(s, fs, frames, i, rng, args.speech_dir)
-           for i, s in enumerate(scene["sources"])]
+    speech_plan_path = getattr(args, "speech_plan", None)
+    speech_manifest_path = getattr(args, "speech_corpus_manifest", None)
+    speech_root_path = getattr(args, "speech_corpus_root", None)
+    speech_assets = (speech_plan_path, speech_manifest_path, speech_root_path)
+    if any(x is not None for x in speech_assets) and not all(
+            x is not None for x in speech_assets):
+        raise ValueError("S2 requires --speech-plan, --speech-corpus-manifest and --speech-corpus-root together")
+    if speech_plan_path is not None and args.speech_dir is not None:
+        raise ValueError("S2 speech plan cannot be mixed with legacy --speech-dir")
+    speech_pcm = {}
+    speech_evidence = None
+    if speech_plan_path is not None:
+        from acoustix_speech_placement import load_scene_speech
+        speech_pcm, speech_evidence = load_scene_speech(
+            scene, speech_manifest_path, speech_root_path, speech_plan_path)
+    dry = [
+        np.asarray(speech_pcm[s["id"]], dtype=np.float32) / 32768.0
+        if s["kind"] == "voice" and speech_evidence is not None
+        else make_source_signal(s, fs, frames, i, rng, args.speech_dir)
+        for i, s in enumerate(scene["sources"])
+    ]
     # The existing ODAS offline runner consumes only complete 128-frame
     # hops. Pad the post-reverberation silence, not the generated content.
     output_frames = math.ceil((frames + 3 * fs) / 128) * 128
@@ -381,6 +400,12 @@ def render(scene: dict, args) -> None:
     # Channel 5 remains silent playback reference, following ReSpeaker fixture.
     out = args.output
     out.mkdir(parents=True, exist_ok=True)
+    if speech_evidence is not None:
+        from acoustix_speech_placement import write_clean_references
+        speech_evidence["clean_reference_wav_sha256"] = write_clean_references(
+            out / "clean_refs", speech_pcm, sample_rate=fs)
+        (out / "speech_schedule.json").write_text(
+            json.dumps(speech_evidence, indent=2) + "\n")
     if snr_evidence is not None:
         (out / "background_snr.json").write_text(
             json.dumps(snr_evidence, indent=2) + "\n")
@@ -456,6 +481,8 @@ def render(scene: dict, args) -> None:
                 "ground_truth": gt}
     if snr_evidence is not None:
         manifest["background_snr"] = snr_evidence
+    if speech_evidence is not None:
+        manifest["speech_schedule"] = speech_evidence
     (out / "ground_truth.json").write_text(json.dumps(manifest, indent=2) + "\n")
     if args.runner:
         folder = out / "odas"
@@ -639,6 +666,12 @@ def main():
                         help="Target post-RIR voice-to-environment SNR on mic 0; "
                              "not voice-interference SIR or speech separation")
     parser.add_argument("--speech-dir", type=Path, help="speaker_1.wav .. speaker_7.wav, mono PCM16/16k")
+    parser.add_argument("--speech-corpus-manifest", type=Path,
+                        help="Frozen S2 licensed utterance/corpus SHA-256 manifest")
+    parser.add_argument("--speech-corpus-root", type=Path,
+                        help="Root directory of 16 kHz mono PCM16 source files")
+    parser.add_argument("--speech-plan", type=Path,
+                        help="Explicit interval-to-utterance plan, pinned to corpus SHA-256")
     parser.add_argument("--stems", action="store_true", help="Export per-source 4-channel WAVs")
     parser.add_argument("--runner", type=Path, help="Built audition_offline_integration executable")
     parser.add_argument("--compare-capacity", action="store_true",

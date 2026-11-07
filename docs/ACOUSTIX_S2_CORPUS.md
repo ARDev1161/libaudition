@@ -70,14 +70,73 @@ splits. Its plain-stdlib unit test generates **non-speech synthetic WAVs**
 solely to validate rejection paths; it cannot assert real human voice,
 speaker identity, transcript accuracy or model performance.
 
+## Interval-aligned S2 renderer
+
+Use the explicit `--speech-plan` mode, **not** legacy `--speech-dir`,
+for evidence based on real speech. Its JSON schema is
+`libaudition.acoustix-speech-plan.v1`:
+
+```json
+{
+  "schema": "libaudition.acoustix-speech-plan.v1",
+  "corpus_manifest_sha256": "<64-character actual SHA-256 of speech_corpus.json>",
+  "split": "development",
+  "segments": [
+    {
+      "source_id": "speaker_1",
+      "interval_index": 0,
+      "utterance_id": "<actual ID in that speaker's corpus manifest>"
+    }
+  ]
+}
+```
+
+The example is **structural documentation only**; replace placeholder IDs
+and hashes with verified real files and add exactly one entry for every
+voice interval in the actual scene. All clips must belong to the one
+selected split; clips cannot be silently reused within a scene. A
+complete utterance must fit inside its assigned activity window. If
+not, rendering **fails** rather than truncating speech. Do not loosen
+the utterance/interval contract to mask lost first words.
+
+The renderer command is:
+
+```bash
+python3 tests/integration/acoustix_scene.py \
+  --scene /path/to/s2_scene.json \
+  --output /tmp/libaudition-s2/render_01 \
+  --seed 1161 --hop-ms 250 --stems \
+  --speech-corpus-manifest /tmp/libaudition-s2/speech_corpus.json \
+  --speech-corpus-root /tmp/libaudition-s2/selected-pcm \
+  --speech-plan /path/to/s2_speech_plan.json
+```
+
+The result contains `input.wav` (dry summed reference + four wet mics
++ silent playback reference), `stems/*.wav` (per-source four-channel
+reverberant signals), **`clean_refs/speaker_N.wav`** (sample-exact
+single-speaker emission-aligned, unnormalized PCM16), plus
+`speech_schedule.json` (source speaker IDs, original complete clip
+lengths, exact sample offsets, supplied transcripts, hashes and split).
+`ground_truth.json` references this speech schedule. The wet
+microphone mix uses one shared global normalization gain; clean
+references are unnormalized and must be adjusted consistently by any
+future separation metric.
+
+Regular CTest verifies exact first-sample placement and refusal to
+truncate using fabricated **non-speech** PCM. An optional Acoustix CPU
+test executes the genuine RIR renderer with those synthetic reference
+files to verify the audio path only. Real human-voice fidelity, word
+boundaries, source separation and WER remain unvalidated until actual
+corpus acquisition and independent scoring.
+
 ## Remaining S2 acceptance work
 
 The corpus manifest alone is not a benchmark. Still required:
-1. Map each complete utterance to the **start of its declared speaking
-   interval**, never truncate the first word by placing speech at t=0
-   then applying an activity mask that begins later.
-2. Archive original clean dry target PCM and independently derived
-   convolved per-source reference alongside six-channel mixtures.
+1. **Implemented, CI pending:** sample-aligned, non-truncating input
+   placement, explicit per-interval utterance ownership and clean dry
+   target PCM export. Genuine licensed corpus evaluation is still required.
+2. Archive a frozen S2 scene/corpus/plan and validate separated output
+   against independent convolved per-source references.
 3. Implement source-to-output association, real target/interferer
    alignment, SI-SDRi/SIRi leakage metrics (including silence safeguards),
    and ASR transcripts/WER with pinned model and control runs.
@@ -86,6 +145,7 @@ The corpus manifest alone is not a benchmark. Still required:
 5. Distinguish `voice / background SNR` (already in S1) from
    `target voice / other speakers SIR` (to be measured in S2).
 
-The `--speech-dir` legacy Acoustix renderer option must **not** be used
-as proof of correctly aligned real speech: its one-WAV-per-source path
-does not yet implement multiple interval-specific utterances.
+The `--speech-dir` legacy option remains supported for older experiments
+but is **not** acceptable evidence for S2 because it can clip speech
+starts. Use only the new `--speech-plan` mode for interval-accurate
+S2 results.
