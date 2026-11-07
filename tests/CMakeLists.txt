@@ -129,6 +129,14 @@ add_test(NAME audio_acoustix_s2_speech_placement_selftest COMMAND
 set_tests_properties(audio_acoustix_s2_speech_placement_selftest PROPERTIES
     LABELS "audio-integration;acoustix;speech;sample-clock;python" TIMEOUT 60)
 
+# S2 deterministic scene/plan builder contracts for one/two/seven talkers.
+# Corpus WAV fixtures are synthesized exclusively to test metadata plumbing.
+add_test(NAME audio_acoustix_s2_scene_plan_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_prepare_acoustix_s2_scene.py")
+set_tests_properties(audio_acoustix_s2_scene_plan_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;speech;scene-contract;python" TIMEOUT 60)
+
 # S1 held-out acoustic configuration freeze: 20 distinct seeds and
 # low/mid/high RT60 across 1/2/3 sources, without expensive RIR rendering.
 add_test(NAME audio_acoustix_heldout_manifest_selftest COMMAND
