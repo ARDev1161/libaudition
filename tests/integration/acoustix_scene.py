@@ -362,6 +362,12 @@ def render(scene: dict, args) -> None:
     output_frames = math.ceil((frames + 3 * fs) / 128) * 128
     separated, max_rir_samples, snapshots = render_windowed_rirs(
         acoustic_scene, dry, frames, hop, output_frames)
+    snr_evidence = None
+    requested_background_snr_db = getattr(args, "background_snr_db", None)
+    if requested_background_snr_db is not None:
+        from acoustix_snr import apply_background_snr
+        snr_evidence = apply_background_snr(
+            separated, scene["sources"], fs, frames, requested_background_snr_db)
     wet = np.sum(separated, axis=0).T
     reference = np.zeros(output_frames, dtype=np.float32)
     reference[:frames] = sum(dry)
@@ -375,6 +381,9 @@ def render(scene: dict, args) -> None:
     # Channel 5 remains silent playback reference, following ReSpeaker fixture.
     out = args.output
     out.mkdir(parents=True, exist_ok=True)
+    if snr_evidence is not None:
+        (out / "background_snr.json").write_text(
+            json.dumps(snr_evidence, indent=2) + "\n")
     (out / "rt60_calibration.json").write_text(
         json.dumps(rt60_calibration, indent=2) + "\n")
     write_pcm16(out / "input.wav", raw, fs)
@@ -443,6 +452,7 @@ def render(scene: dict, args) -> None:
                     "Car projected into room through a virtual window emitter",
                     "No validated Doppler or moving-microphone phase-continuity model",
                     "Synthetic voices are not intelligible speech unless --speech-dir is set"],
+                "background_snr": snr_evidence,
                 "speech_recordings_supplied": args.speech_dir is not None,
                 "ground_truth": gt}
     (out / "ground_truth.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -624,6 +634,9 @@ def main():
     parser.add_argument("--uncalibrated-rt60", action="store_true",
                         help="Render with the historical uncalibrated Sabine value")
     parser.add_argument("--seed", type=int, default=1161)
+    parser.add_argument("--background-snr-db", type=float,
+                        help="Target post-RIR voice-to-environment SNR on mic 0; "
+                             "not voice-interference SIR or speech separation")
     parser.add_argument("--speech-dir", type=Path, help="speaker_1.wav .. speaker_7.wav, mono PCM16/16k")
     parser.add_argument("--stems", action="store_true", help="Export per-source 4-channel WAVs")
     parser.add_argument("--runner", type=Path, help="Built audition_offline_integration executable")
