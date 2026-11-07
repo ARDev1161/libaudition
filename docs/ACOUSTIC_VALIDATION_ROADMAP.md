@@ -663,6 +663,31 @@ SIR, ASR WER, or calibrated hardware audio.
 licensed real utterances, freeze complete placement scenes, measure
 source-to-output leakage and run real ASR with controlled references.
 
+### S2 task #3 — deterministic 1/2/7-speaker scene/plan generator
+
+`prepare_acoustix_s2_scene.py` now creates reproducible **separate S2**
+scenes from the original 7×7m template and an already validated,
+licensed corpus. It chooses exactly one whole utterance per speaker from
+the declared development/evaluation split and changes the new scene's
+activity interval to include that utterance uncut, with 100 ms of
+trailing quiet. It preserves speaker geometry and robot microphone
+offsets; robots can be stationary or move along the original path.
+The configurations cover 1, 2 or 7 voices, optional refrigerator/AC/car
+and RT60 0.2, 0.36 or 0.7 s. The speaker/clip schedule stays explicit,
+and both new scene and plan are SHA-pinned; existing files are not
+overwritten. No original S1 held-out scene is changed.
+
+The pure-stdlib `audio_acoustix_s2_scene_plan_selftest` checks
+single/two/seven-speaker identities, untruncated clip placement, correct
+development/evaluation selection, motion and geometry. Its generated
+WAV inputs are **synthetic non-speech test signals**, not a substitute
+for licensed speech. A passing test is scene-construction correctness,
+not actual S2 audio quality.
+
+**Status: SEPARATE STACKED PR, CI PENDING.** The T02/T03/T07 scenario
+builder alone does not cover T03 angular sweeps, T04 playback contamination,
+quiet real speech, actual corpus procurement, SI-SDR/SIR or pinned-ASR WER.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
