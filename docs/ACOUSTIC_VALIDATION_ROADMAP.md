@@ -1,6 +1,6 @@
 # Acoustic validation roadmap — Acoustix → ODAS → libaudition
 
-**Status:** approved working plan, 2026-11-07. **Authority:** this is the
+**Status:** proposed quantitative gates (to freeze before optimization), 2026-11-07. **Authority:** this is the
 canonical cross-project acoustic test-and-fix roadmap. Keep `docs/acoustix_room_ci.md`
 as the *how to run the existing fixture*, not the definition of product readiness.
 
