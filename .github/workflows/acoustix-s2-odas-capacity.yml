@@ -1,0 +1,91 @@
+name: Acoustix S2 real-speech ODAS capacity (opt-in)
+
+# Separate scientific check: keep the exact same already-rendered real-speech
+# input WAV when sweeping ODAS candidate and track capacity.
+on:
+  pull_request:
+    types: [ready_for_review]
+  workflow_dispatch:
+    inputs:
+      baseline_run_id:
+        description: "Successful pinned human-voice ODAS baseline artifact run"
+        required: true
+        default: "42368354767"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  real-speech-capacity:
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-real-odas-capacity') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reuse original real-speech WAV, oracle and ODAS baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: acoustix-s2-real-odas-diagnostics
+          run-id: ${{ inputs.baseline_run_id || '42368354767' }}
+          github-token: ${{ github.token }}
+          path: build-s2
+
+      - name: Assert exact original WAV and integrity-clean baseline
+        run: |
+          python3 - <<'PY'
+          import json, hashlib
+          from pathlib import Path
+          root = Path("build-s2")
+          baseline = json.loads((root/"real_speech_odas_diagnostics.json").read_text())
+          assert baseline["pipeline_integrity_passed"]
+          assert len(baseline["cases"]) == 3
+          for case in ("t03_eval_two", "t07_eval_seven"):
+              inp = root/case/"render"/"input.wav"
+              expected = (root/case/"input_sha256.txt").read_text().strip()
+              assert inp.stat().st_size > 0
+              assert hashlib.sha256(inp.read_bytes()).hexdigest() == expected
+          PY
+
+      - name: Install ODAS native dependencies and pinned CMake
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libfftw3-dev libasound2-dev libconfig-dev libpulse-dev libopenblas-dev
+          python3 -m pip install "cmake==4.1.2"
+          cmake --version
+
+      - name: Compile real native libaudition ODAS SSL/SST/SSS runner
+        run: |
+          cmake -S . -B build-s2-capacity -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBAUDITION_WITH_ODAS=ON             -DLIBAUDITION_WITH_SPDLOG=OFF             -DLIBAUDITION_BUILD_TESTS=ON             -DLIBAUDITION_BUILD_EXAMPLES=OFF             -DLIBAUDITION_BUILD_QT_DEMO=OFF             -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+          cmake --build build-s2-capacity --target audition_offline_integration --parallel 2
+
+      - name: Run real voice SSL/SST capacities without altering any input WAV
+        run: |
+          python3 tests/integration/acoustix_real_odas_capacity.py             --runner build-s2-capacity/tests/audition_offline_integration             --source-root build-s2             --output build-s2/capacity_real
+
+      - name: Publish real-voice capacity and source association diagnostics
+        if: always()
+        run: |
+          {
+            echo "## Real LibriSpeech SSL/SST capacity factorial (same WAV SHA-256)"
+            echo ""
+            echo "4/4, 4/8, 8/4, 8/8 and 8/8 with SST input limited to four."
+            echo ""
+            echo "DOA/source-hop diagnostics only; NOT confirmed source separation or ASR."
+            echo ""
+            if test -f build-s2/capacity_real/capacity_comparison.json; then
+              cat build-s2/capacity_real/capacity_comparison.json
+            else
+              echo "No complete capacity report; inspect failures and runner stderr."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload full real-voice SSL/SST observations and WAV integrity reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acoustix-s2-real-odas-capacity
+          path: build-s2/
+          retention-days: 14
+          if-no-files-found: warn
