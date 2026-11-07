@@ -40,6 +40,31 @@ default**. It can also hide a legitimate source when the array cannot
 resolve enough peaks; a four-candidate limit is **not** a universal
 solution for seven simultaneous speakers.
 
+## First reproducible full-room result (2026-11-07)
+
+The first genuine RIR→ODAS full run with the new projection **passed**:
+[GitHub Actions #42335968377](https://github.com/ARDev1161/libaudition/actions/runs/42335968377).
+
+| Same 12-second input | SSL proposals | Track observations | Max tracks | Oracle-matched voice source-hops |
+| --- | ---: | ---: | ---: | ---: |
+| Original SSL4 → SST4 | 5,953 | 2,448 | 3 | 1,462 |
+| SSL8 → SST8 (all candidates) | 9,192 | **0** | **0** | **0** |
+| SSL8 → SST8 (top 4 candidates) | **9,192** | **2,448** | **3** | **1,462** |
+
+The two SSL8 variants generated **exactly identical raw SSL proposal
+observations, including direction vectors and score strings** on all
+hops. Therefore the recovered tracking comes entirely from reducing
+the number of hypotheses presented to SST, not discarding possible
+source directions from SSL. This supports the hypothesis of dilution
+in the SST joint-assignment posterior. It is not yet proof of an
+optimal threshold/policy for real speech.
+
+The Acoustix test now checks this raw-SSL identity contract and, for
+the deterministic 12-second synthetic fixture, requires that the
+bounded 8→4 configuration create at least one tracked observation.
+This gate comes from a measured reproducible baseline, rather than
+a desired seven-speaker performance target.
+
 ## Independent comparison and CI
 
 `audition_offline_integration` accepts
