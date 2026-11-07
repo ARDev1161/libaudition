@@ -79,6 +79,7 @@ jobs:
             -DLIBAUDITION_WARNINGS_AS_ERRORS=ON \
             -DLIBAUDITION_ENABLE_ACOUSTIX_SCENE_TESTS=ON \
             -DLIBAUDITION_ACOUSTIX_EXPORT_STEMS=ON \
+            -DLIBAUDITION_ACOUSTIX_COMPARE_CAPACITY=ON \
             "-DLIBAUDITION_ACOUSTIX_RENDER_SECONDS=$DURATION" \
             "-DLIBAUDITION_ACOUSTIX_HOP_MS=$HOP_MS" \
             "-DPython3_EXECUTABLE=$RUNNER_TEMP/acoustix/bin/python"
@@ -128,6 +129,29 @@ jobs:
                   rows.append(f"| {name} | {values['matched_hops']} | {values['active_hops']} |")
           else:
               rows = ["### Acoustix room diagnostics", "", "No metrics.json was generated; see failed CTest and job logs."]
+          compare_path = Path("build-acoustix/tests/acoustix_7x7/capacity_comparison.json")
+          if compare_path.is_file():
+              c = json.loads(compare_path.read_text())
+              rows.extend([
+                  "",
+                  "### ODAS 4/4 versus 8/8 source capacity",
+                  "",
+                  "The same WAV is replayed twice; only ODAS capacity differs.",
+                  "",
+                  "| Result | Default 4 SSL / 4 SST | Expanded 8 SSL / 8 SST |",
+                  "| --- | ---: | ---: |",
+              ])
+              a, b = c["baseline"], c["expanded"]
+              for title, key in [
+                  ("Maximum simultaneous tracks", "max_simultaneous_tracks"),
+                  ("Matched voice-source hops (45°)", "matched_voice_source_hops"),
+                  ("Matched voice fraction", "matched_voice_source_fraction"),
+                  ("Median 3D angular error, matched only", "matched_median_3d_angular_error_deg"),
+                  ("Track observations", "track_observations"),
+                  ("Saved recordings", "recordings"),
+              ]:
+                  rows.append(f"| {title} | {a[key]} | {b[key]} |")
+              rows.extend(["", "> This is not a calibrated seven-speaker quality acceptance gate."])
           signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
           if signal_path.is_file():
               audit = json.loads(signal_path.read_text())
