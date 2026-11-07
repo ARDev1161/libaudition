@@ -173,10 +173,16 @@ body-frame source oracle, and tracked-source diagnostics:
 | Maximum simultaneous ODAS tracks | 3 |
 | Mean ODAS tracks during multi-voice activity | 1.4702 |
 | Matched active voice source-hops (unique tracks, ≤45°) | 1,462 / 7,814 (18.71%) |
-| Median / P90 angular error of *matched* observations | 29.22° / 35.85° |
+| Median / P90 3D angular error of *matched* observations | 29.22° / 35.85° |
+| Median / P90 horizontal azimuth error of *matched* observations | 11.77° / 24.38° |
 | Adjacent matched-hop track ID switches | 2 / 1,442 comparisons |
 | ODAS SSL proposals / track observations | 5,953 / 2,448 |
 | Saved source recordings / recorder drops | 3 / 0 |
+
+The separate **azimuth error** is a navigation-relevant comparison of the
+robot-local horizontal bearing, not a 3D position estimate. A planar array
+has intrinsically ambiguous elevation; reporting a 3D angle alone can hide
+useful horizontal information. Both figures still omit all missed sources.
 
 The median/P90 are **conditional on matches** and therefore do not include
 missed sources. The small number of ID switches is **not** evidence of stable
