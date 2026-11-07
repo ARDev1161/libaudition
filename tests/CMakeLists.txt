@@ -349,6 +349,19 @@ if(TARGET audition::backend_odas)
         set_tests_properties(audio_acoustix_replay_physics PROPERTIES
             LABELS "audio-integration;acoustix;replay;physics;optional"
             TIMEOUT 480)
+        # Frozen 20-seed S1 independent CPU evaluation. Default CI runs one
+        # genuine two-render smoke; opt-in Acoustix workflow can request 20.
+        set(LIBAUDITION_ACOUSTIX_HELDOUT_COUNT "1" CACHE STRING
+            "Number of frozen held-out CPU acoustics scenes to rerender (1-20)")
+        add_test(NAME audio_acoustix_heldout_cpu COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_heldout_cpu.py"
+            --count "${LIBAUDITION_ACOUSTIX_HELDOUT_COUNT}"
+            --output "${CMAKE_CURRENT_BINARY_DIR}/acoustix_heldout_cpu"
+            --report "${CMAKE_CURRENT_BINARY_DIR}/acoustix_heldout_cpu.json")
+        set_tests_properties(audio_acoustix_heldout_cpu PROPERTIES
+            LABELS "audio-integration;acoustix;replay;heldout;physics;optional"
+            TIMEOUT 3600)
         # Spatial RT60 check: one fixed calibration, 3 distinct robot poses,
         # 3 sources and 4 microphones (36 independently measured CPU RIRs).
         add_test(NAME audio_acoustix_spatial_rt60_physics COMMAND
