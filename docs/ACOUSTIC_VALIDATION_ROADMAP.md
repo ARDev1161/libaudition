@@ -468,6 +468,33 @@ This one scenario is *not* a measurement-correlated physical-room
 benchmark, does not model frequency-dependent absorption, and does
 not establish accuracy of Doppler or exact RIR phase.
 
+### S1 task #8 — independent PCM clock, activity boundaries and partial hops
+
+The normal Acoustix renderer produces complete 128-frame ODAS input hops
+but the dry source interval may end in a partial final hop. Its geometric
+oracle is recorded at nominal hop midpoints, independently of propagated
+microphone arrival latency. A midpoint beyond the dry emission interval
+must not claim a currently emitted source.
+
+`acoustix_timing_contract.py` now checks the written PCM16 WAV header,
+six-channel frame length, exact 3-second padded RIR tail reservation,
+128-frame hop indices, time stamps and active source IDs against the
+original scene's explicit activity intervals. The fast
+`audio_acoustix_timing_selftest` uses synthetic WAV headers/oracles to
+exercise correct partial hops plus negative cases (missing or duplicate
+hops, shifted clocks, incorrect source onset/stop, wrong sample rate and
+tail length). The pinned real CPU multi-scene replay calls the same
+independent verifier on generated WAV/oracle outputs.
+
+A last-hop edge where its nominal midpoint was outside simulated dry
+frames is now excluded from active source hypotheses. This does not
+change RIR convolution, ODAS DSP or actual PCM audio samples.
+
+**Current status: IMPLEMENTED IN STACKED PR #86, CI VERIFICATION PENDING.**
+Do not call S1 complete until the full Acoustix and general CTest workflows
+pass on this exact commit. A PCM timestamp check cannot establish true
+physical continuous-motion/Doppler fidelity or human speech accuracy.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
@@ -500,7 +527,7 @@ not establish accuracy of Doppler or exact RIR phase.
 | --- | --- | --- |
 | S0 signal + headless structural contract | **PASS** | Maintain existing artifact and regression coverage |
 | ODAS global-epsilon / 7–8 SSL suppression | **FIXED in fork dev**; libaudition stable pin in PR #74 | Keep exact SHA pin and verify 4/5/6/7/8 capacities |
-| S1 physics, timing and repeatability | **PARTIAL PASS**: relative/absolute path delay, fixed RT60, **36-path RT60 spatial audit**, moving RIR continuity, three-room deterministic replay, negative-scene checks | Finish broad held-out 20-seed manifest, independent timestamp/PCM failure cases, and document fast-motion/Doppler model limits before S1 DONE |
+| S1 physics, timing and repeatability | **PARTIAL PASS**: relative/absolute path delay, fixed RT60, **36-path RT60 spatial audit**, moving RIR continuity, three-room deterministic replay, negative-scene checks | Verify stacked PCM failure/clock PRs (#85/#86), finish broad held-out 20-seed manifest, and document fast-motion/Doppler model limits before S1 DONE |
 | S2 real speech benchmark | **OPEN** | Licensed 7-speaker reference set and leakage/ASR metric contracts |
 | L1 recorder integrity — near-plane moving | **BLOCKED / failing on fork pin** | Reproduce exact fixture, inspect drop counters and writer queue ownership, fix without relaxing no-drop test |
 | L1/L2 first word and quiet speech | **OPEN** | VAD pre-roll with onset ground truth; same-model WER |
