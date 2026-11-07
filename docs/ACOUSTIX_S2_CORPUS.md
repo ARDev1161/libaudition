@@ -209,6 +209,36 @@ must remain RED with evidence, not be papered over by synthetic audio.
 For limited CI/network use the local corpus acquisition command
 above and run the three scenarios directly on the developer PC.
 
+## Fixed-input real-speech ODAS offline replay
+
+The separate opt-in workflow
+`.github/workflows/acoustix-s2-odas-replay.yml` reuses the **exact WAVs**
+and oracle produced by the successful real human-voice CPU RIR run
+[Acoustix S2 #42367742782](https://github.com/ARDev1161/libaudition/actions/runs/42367742782).
+It downloads the `acoustix-s2-real-librispeech-evidence` artifact,
+verifies the prior licensed corpus/CPU physics report and SHA-256 of each
+six-channel WAV, builds the real libaudition ODAS SSL/SST/SSS offline
+runner, and replays those **unchanged** inputs. The initial artifact
+is short-retention (14 days); rerun the real-speech producer once expired.
+
+For T02 (one speaker), T03 (two) and T07 (seven), compare the resulting
+ODAS `observations.csv` against geometric per-hop source bearings with
+the existing one-to-one 45° diagnostic matching. Archive source-hop
+recall, matched azimuth median/P90, SST tracker counts, ID switching,
+recording outputs, late-source persistence and frame/recorder drops in
+`real_speech_odas_diagnostics.json`. Require no dropped/duplicated
+input frames, but **do not pretend** a low or zero source-hop recall
+passes L3, or that an SSL/SST track is a separated voice recording.
+
+The input WAV hash is checked again **after** the runner to prevent
+unintended input mutation. This is the first direct comparison of
+ODAS on true human speech in the Acoustix room, but it is still
+**not** measured SSS leakage, SIRi, SI-SDRi, WER, ASR first-word
+preservation, or physical ReSpeaker fidelity. Those metrics require
+explicit track recordings aligned to clean/convolved targets and a
+pinned ASR model; failing or ambiguous association cannot silently
+be dropped from denominators.
+
 ## Remaining S2 acceptance work
 
 The corpus manifest alone is not a benchmark. Still required:
@@ -229,3 +259,40 @@ The `--speech-dir` legacy option remains supported for older experiments
 but is **not** acceptable evidence for S2 because it can clip speech
 starts. Use only the new `--speech-plan` mode for interval-accurate
 S2 results.
+
+## Frozen human-speech ODAS diagnostic baseline (2026-11-07)
+
+The real-speech replay [Actions run 42368354767](https://github.com/ARDev1161/libaudition/actions/runs/42368354767)
+successfully processed the same 240,000-frame, 16-kHz six-channel
+LibriSpeech-derived microphone WAV in each case, with **zero recorder drops**.
+This is an **SST/DOA diagnostic**, not S2 separation acceptance:
+
+| Case | True voices | Max simultaneous SST tracks | Matched source-hops / oracle | Median matched azimuth | ID switches |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| T02 single | 1 | 1 | 607 / 614 (98.86%) | 0.9677° | 0 |
+| T03 two | 2 | **1** | 637 / 886 (71.90%) | 8.3355° | 0 |
+| T07 seven | 7 | **4** | 669 / 3052 (21.92%) | 4.8975° | 0 |
+
+**Defect evidence:** T03 never exceeds one simultaneous track for two
+speakers; T07 never exceeds four for seven, and only 21.92% of the
+active voice-source hops receive a 45° one-to-one association.
+Low matched-angle error is conditioned on *successful* matches, and
+zero adjacent ID switches does not mean untracked voices are stable.
+
+The frozen input SHA-256, oracle denominator, source-hop counts, and
+ID-switch baseline are recorded in
+`tests/fixtures/acoustix/s2_real_odas_baseline.json`.
+`acoustix_s2_baseline.py` compares replay diagnostics against the
+unchanged input baseline and rejects oracle drift, missing cases,
+increased ID switches and source-hop recall regression greater than
+5% relative to this observed baseline. That 5% is a **regression
+tolerance**, not an acceptance threshold or a claim of statistical
+confidence. A fast PR test covers deliberately malformed and
+regressing comparisons; actual WAV replay remains opt-in.
+
+**Next:** use the archived real-speech ODAS outputs to inspect SSL
+candidate concentration, SST birth/retirement and source-to-track
+association at the T03 two-speaker overlap; freeze the failing
+source-hop/track trace before modifying SST in an ODAS feature branch.
+Then measure SSS audio leakage against aligned convolved source
+references. Do not label S2 or L3 PASS until this evidence exists.

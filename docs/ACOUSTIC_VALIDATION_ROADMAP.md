@@ -712,6 +712,33 @@ retention, WER, or physical robot fidelity are justified. Those require
 actual ODAS output and a pinned ASR/evaluation backend plus independent
 reference metric tests.
 
+### S2 task #5 — ODAS replay of immutable real human-voice WAVs
+
+The first real speech CPU Acoustix run #42367742782 is **PASS**:
+7 actual LibriSpeech speakers, 21 verified utterances and three rendered
+cases (T02 1 voice, T03 2 voices, T07 7 voices plus noise). The 16 kHz
+six-channel WAVs, 4-channel source stems, clean source references and
+geometric oracle were archived under a 14-day GitHub Actions artifact.
+Source-stem reconstruction errors were 0/1/7 LSB respectively.
+
+The new opt-in `acoustix-s2-odas-replay.yml` downloads that exact
+artifactual WAV and checks SHA-256 before and after ODAS processing.
+It builds libaudition's real offline ODAS runner with native ODAS
+SSL/SST/SSS and uses it to produce `observations.csv`, mono track
+recordings and summary data. Geometric association is evaluated one-to-one
+per 128-frame hop with the same frozen 45° diagnostic threshold used in S1.
+The report archives matched/active source hops, azimuth error,
+adjacent ID switches, activity, recorder drops and input integrity.
+
+**Status: STACKED PR, REAL ODAS REPLAY CI AND METRICS PENDING.**
+The initial baseline can be marked pipeline-integrity PASS only if input
+frame count matches and no recorder frames are dropped. Low tracked
+source-hop recall or source ID switches are reported, not hidden or
+silently called PASS; they are input to later ODAS algorithm fixes in
+the separate ODAS `dev` branch. This task measures tracking/DOA,
+**not** actual SSS separated-track leakage, SI-SDRi/SIRi, ASR WER or
+physical room generalization.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
