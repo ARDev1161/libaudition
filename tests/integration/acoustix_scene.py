@@ -332,35 +332,22 @@ def render(scene: dict, args) -> None:
         if not metrics["potential_observations"]:
             raise RuntimeError("No ODAS SSL potential source observations")
         if args.compare_capacity:
-            # Replay exactly the same simulated microphone WAV with expanded
-            # ODAS SSL/SST capacities. This isolates the hard 4-slot limit
-            # from source-acquisition quality; it does NOT change the
-            # underlying four-microphone physics or tune tracking thresholds.
-            expanded = out / "odas_8x8"
-            expanded.mkdir(exist_ok=True)
-            extra = subprocess.run(
-                [str(args.runner.resolve()), str(out / "input.wav"),
-                 str(expanded), "--max-tracks", "8", "--potential-sources", "8"],
-                capture_output=True, text=True, timeout=240)
-            (out / "runner_8x8.stdout.txt").write_text(extra.stdout)
-            (out / "runner_8x8.stderr.txt").write_text(extra.stderr)
-            if extra.returncode:
-                raise RuntimeError("Expanded 8x8 ODAS runner failed: " + extra.stderr[-1200:])
-            extra_summary = json.loads((expanded / "summary.json").read_text())
-            if (extra_summary["input_frames"] != output_frames
-                    or extra_summary["recorder_drops"]):
-                raise RuntimeError("Expanded 8x8 ODAS lost frames or recording data")
-            extra_observations = list(csv.DictReader(
-                (expanded / "observations.csv").open(newline="")))
-            expanded_metrics = compute_metrics(
-                gt, extra_observations, extra_summary,
-                silence_start_frame=silence_start)
-            (out / "metrics_8x8.json").write_text(
-                json.dumps(expanded_metrics, indent=2) + "\n")
-            if not expanded_metrics["potential_observations"]:
-                raise RuntimeError("Expanded 8x8 ODAS produced no SSL proposals")
-
-            def capacity_summary(result_metrics, result_summary):
+            # The exact same WAV is replayed with a 2x2 independent sweep
+            # of the candidate and tracker capacity limits. No re-render
+            # of source signals or RIRs: differences come from ODAS alone.
+            def capacity_summary(result_metrics, result_summary, rows):
+                by_hop_peak = {}
+                for row in rows:
+                    if row["kind"] != "proposal":
+                        continue
+                    hop_id = int(row["hop"])
+                    by_hop_peak[hop_id] = max(
+                        by_hop_peak.get(hop_id, 0.0), float(row["activity"]))
+                peaks = sorted(by_hop_peak.values())
+                midpoint = len(peaks) // 2
+                peak_median = ((peaks[midpoint - 1] + peaks[midpoint]) / 2
+                               if len(peaks) % 2 == 0 and peaks
+                               else peaks[midpoint] if peaks else None)
                 return {
                     "configured_max_tracks": result_summary["sst_max_tracks"],
                     "configured_ssl_potential_sources":
@@ -383,25 +370,71 @@ def render(scene: dict, args) -> None:
                         result_metrics["adjacent_matched_id_switches"],
                     "microphone_digital_silence_track_observations":
                         result_metrics["microphone_digital_silence_track_observations"],
+                    "potential_observations": result_metrics["potential_observations"],
+                    "median_peak_ssl_activity": peak_median,
                     "track_observations": result_metrics["track_observations"],
                     "recordings": result_metrics["recordings"]
                 }
 
+            configs = {"4x4": capacity_summary(metrics, summary, observations)}
+            raw_results = {"4x4": metrics}
+            for potential_count, track_count in ((4, 8), (8, 4), (8, 8)):
+                name = str(potential_count) + "x" + str(track_count)
+                extra_dir = out / ("odas_" + name)
+                extra_dir.mkdir(exist_ok=True)
+                result = subprocess.run(
+                    [str(args.runner.resolve()), str(out / "input.wav"),
+                     str(extra_dir), "--max-tracks", str(track_count),
+                     "--potential-sources", str(potential_count)],
+                    capture_output=True, text=True, timeout=240)
+                (out / ("runner_" + name + ".stdout.txt")).write_text(result.stdout)
+                (out / ("runner_" + name + ".stderr.txt")).write_text(result.stderr)
+                if result.returncode:
+                    raise RuntimeError("ODAS " + name + " failed: " + result.stderr[-1200:])
+                extra_summary = json.loads((extra_dir / "summary.json").read_text())
+                if (extra_summary["input_frames"] != output_frames
+                        or extra_summary["recorder_drops"]):
+                    raise RuntimeError("ODAS " + name + " lost frames or recording data")
+                extra_rows = list(csv.DictReader(
+                    (extra_dir / "observations.csv").open(newline="")))
+                extra_metrics = compute_metrics(
+                    gt, extra_rows, extra_summary,
+                    silence_start_frame=silence_start)
+                (out / ("metrics_" + name + ".json")).write_text(
+                    json.dumps(extra_metrics, indent=2) + "\n")
+                if not extra_metrics["potential_observations"]:
+                    raise RuntimeError("ODAS " + name + " returned no SSL proposals")
+                raw_results[name] = extra_metrics
+                configs[name] = capacity_summary(
+                    extra_metrics, extra_summary, extra_rows)
+
             comparison = {
-                "schema": "libaudition.acoustix-capacity-comparison.v1",
-                "method": "same six-channel simulated WAV, 4/4 vs 8/8",
-                "baseline": capacity_summary(metrics, summary),
-                "expanded": capacity_summary(expanded_metrics, extra_summary),
-                "delta_matched_voice_source_hops":
-                    expanded_metrics["matched_voice_source_hops"] -
-                    metrics["matched_voice_source_hops"],
-                "delta_max_simultaneous_tracks":
-                    expanded_metrics["max_simultaneous_tracks"] -
-                    metrics["max_simultaneous_tracks"],
+                "schema": "libaudition.acoustix-capacity-comparison.v2",
+                "method": "one identical moving 4-microphone WAV; 2x2 SSL/SST capacity",
+                "capacity_axes": {
+                    "first": "SSL potential source count",
+                    "second": "SST maximum track count"
+                },
+                "configurations": configs,
+                "baseline": configs["4x4"],
+                "expanded": configs["8x8"],
+                "deltas_vs_4x4": {
+                    name: {
+                        "matched_voice_source_hops":
+                            values["matched_voice_source_hops"] -
+                            metrics["matched_voice_source_hops"],
+                        "max_simultaneous_tracks":
+                            values["max_simultaneous_tracks"] -
+                            metrics["max_simultaneous_tracks"]
+                    }
+                    for name, values in raw_results.items()
+                    if name != "4x4"
+                },
                 "interpretation_limitations": [
-                    "Different limits may change ODAS source hypotheses and tracking",
-                    "Four microphones may be insufficient for seven simultaneous voices",
-                    "Synthetic voiced-like signals do not validate real-speech ASR or leakage"
+                    "Capacity changes may change internal ODAS hypothesis distribution",
+                    "Tracking threshold tuning is unchanged in all runs",
+                    "Four microphones may not resolve seven simultaneous sources",
+                    "Synthetic voiced-like signals cannot validate real-speech ASR or leakage"
                 ]
             }
             (out / "capacity_comparison.json").write_text(
