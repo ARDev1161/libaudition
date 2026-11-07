@@ -1,0 +1,98 @@
+name: Acoustix acoustic room (manual)
+
+# The regular PR CI validates scene geometry through CTest. This opt-in job
+# installs a research-only GPL-3.0 Python simulator and exercises actual
+# room reflections + moving microphones + the libaudition ODAS runner.
+on:
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: "Simulated seconds (1.5 smoke, 12 complete scenario)"
+        required: true
+        default: "1.5"
+        type: choice
+        options:
+          - "1.5"
+          - "3"
+          - "12"
+      rir_hop_ms:
+        description: "RIR snapshot spacing; smaller is more expensive"
+        required: true
+        default: "250"
+        type: choice
+        options:
+          - "100"
+          - "250"
+          - "500"
+
+permissions:
+  contents: read
+
+jobs:
+  headless-acoustix-room:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ODAS and acoustic build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libfftw3-dev libasound2-dev libconfig-dev libpulse-dev libopenblas-dev
+      - name: Install pinned CMake for ODAS
+        run: |
+          python -m pip install "cmake==4.1.2"
+          cmake --version
+      - name: Install isolated Acoustix CPU dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/acoustix"
+          "$RUNNER_TEMP/acoustix/bin/pip" install --upgrade pip
+          "$RUNNER_TEMP/acoustix/bin/pip" install --index-url https://download.pytorch.org/whl/cpu \
+            "torch==2.9.1+cpu" "torchaudio==2.9.1+cpu"
+          "$RUNNER_TEMP/acoustix/bin/pip" install \
+            "numpy==2.3.5" "scipy==1.16.3" "pyroomacoustics==0.8.6" \
+            "matplotlib>=3.10.7" "soundcard>=0.4.5" \
+            "experiment-utilities>=0.3.9" "tqdm>=4.67.1" "pyzmq>=27.0"
+          "$RUNNER_TEMP/acoustix/bin/pip" install --no-deps \
+            "git+https://github.com/GaetanLepage/acoustix.git@32143bfd38c6f2196244e42e2385df48a71df7a4"
+          "$RUNNER_TEMP/acoustix/bin/python" -c "import acoustix, pyroomacoustics; print('Acoustix CPU backend available')"
+      - name: Configure ODAS and opt-in Acoustix CTest
+        env:
+          DURATION: ${{ inputs.duration_seconds }}
+          HOP_MS: ${{ inputs.rir_hop_ms }}
+        run: |
+          cmake -S . -B build-acoustix -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLIBAUDITION_WITH_ODAS=ON \
+            -DLIBAUDITION_WITH_SPDLOG=OFF \
+            -DLIBAUDITION_BUILD_TESTS=ON \
+            -DLIBAUDITION_BUILD_EXAMPLES=OFF \
+            -DLIBAUDITION_BUILD_QT_DEMO=OFF \
+            -DLIBAUDITION_WARNINGS_AS_ERRORS=ON \
+            -DLIBAUDITION_ENABLE_ACOUSTIX_SCENE_TESTS=ON \
+            "-DLIBAUDITION_ACOUSTIX_RENDER_SECONDS=$DURATION" \
+            "-DLIBAUDITION_ACOUSTIX_HOP_MS=$HOP_MS" \
+            "-DPython3_EXECUTABLE=$RUNNER_TEMP/acoustix/bin/python"
+      - name: Build offline ODAS integration runner
+        run: cmake --build build-acoustix --target audition_offline_integration --parallel 2
+      - name: Validate room and run the genuine RIR-to-ODAS CTest
+        env:
+          MPLBACKEND: Agg
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+        run: |
+          ctest --no-tests=error --test-dir build-acoustix \
+            -R '^audio_acoustix_(scene_contract|dynamic_room)$' \
+            --output-on-failure --verbose
+      - name: Upload WAV, ground truth, per-source tracking report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acoustix-room-7x7-${{ inputs.duration_seconds }}s
+          path: |
+            build-acoustix/tests/acoustix_7x7/
+            build-acoustix/Testing/Temporary/LastTest.log
+          retention-days: 10
+          if-no-files-found: warn
