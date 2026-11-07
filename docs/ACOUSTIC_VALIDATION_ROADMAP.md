@@ -514,7 +514,33 @@ explicit target/interferer SNR control, this manifest intentionally does
 **not** claim 0/+6/+12 dB SNR coverage. It also cannot replace the
 human-voice S2 evaluation with true speech identity/transcripts.
 
-**Current status: CONFIGURATION ONLY, STACKED PR; CI AND RENDER PENDING.**
+**Manifest configuration frozen in PR #87. CPU runner in stacked PR, full 20-case execution not yet verified.**
+
+### S1 task #10 — actual held-out CPU RIR/WAV/stem replay (opt-in)
+
+The separate, frozen 20-seed S1 manifest is now consumable by
+`test_acoustix_heldout_cpu.py`, which reconstructs each scene and checks its
+SHA-256 against the frozen manifest **before** rendering. For every selected
+seed, the script invokes the same pinned Acoustix CPU `render()` backend
+**twice** and compares all generated input WAV, per-source microphone stem,
+ground-truth oracle, source-accounting audit and RT60-calibration file hashes.
+The independent timing checker verifies the actual written WAV header,
+frame count, 128-frame oracle and active-source schedule. The stem PCM auditor
+checks quantization-bound reconstruction, clipping and nonempty channels.
+
+The optional CTest `audio_acoustix_heldout_cpu` and headless Acoustix Actions
+workflow support selecting **one case (default smoke)** or **all 20 cases
+(manual `heldout_case_count=20`)**. Both save the per-case report
+`acoustix_heldout_cpu.json` and source input/output artifacts, including
+failures. A one-case smoke **never** claims 20/20 qualification. Reported
+results are only synthetic reference-runner CPU reproducibility, not
+hardware-calibrated acoustics, SNR slices, speech separation or ASR.
+
+**Status: IMPLEMENTED IN STACKED PR; CI / CPU RENDER EVIDENCE PENDING.**
+Full held-out completion requires one unmodified, fully successful
+20-case CPU run, attached artifact with hashes, and review before merging.
+If any case fails, retain the original frozen input and diagnose it rather
+than quietly removing it or loosening the acoustic gates.
 
 ## 7. CI policy, artifacts and anti-overfitting
 
