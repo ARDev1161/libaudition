@@ -90,7 +90,14 @@ add_test(NAME audio_acoustix_metrics_selftest COMMAND
 set_tests_properties(audio_acoustix_metrics_selftest PROPERTIES
     LABELS "audio-integration;acoustix;scene-contract;python" TIMEOUT 30)
 
-# Independent S1 PCM clock/ground-truth contract, including partial final hops.\nadd_test(NAME audio_acoustix_timing_selftest COMMAND\n    ${Python3_EXECUTABLE}\n    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_timing_contract.py")\nset_tests_properties(audio_acoustix_timing_selftest PROPERTIES\n    LABELS "audio-integration;acoustix;scene-contract;timing;negative;python" TIMEOUT 30)\n\n# S1 malformed-input contracts: microphone positions, timestamps, IDs
+# Independent S1 PCM clock/ground-truth contract, including partial final hops.
+add_test(NAME audio_acoustix_timing_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_timing_contract.py")
+set_tests_properties(audio_acoustix_timing_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;scene-contract;timing;negative;python" TIMEOUT 30)
+
+# S1 malformed-input contracts: microphone positions, timestamps, IDs
 # and invalid activity, run on every minimal/default CTest build.
 add_test(NAME audio_acoustix_scene_boundaries_selftest COMMAND
     ${Python3_EXECUTABLE}
