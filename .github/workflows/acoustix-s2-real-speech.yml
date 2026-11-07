@@ -1,0 +1,155 @@
+name: Acoustix S2 genuine LibriSpeech (opt-in)
+
+# Heavy external dataset: never download 337 MB in general PR CI.
+# Explicit ready-for-review transition on this S2 task branch, or manual run.
+on:
+  pull_request:
+    types: [ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-librispeech-acoustix:
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-real-librispeech-ci') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      MPLBACKEND: Agg
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install research-only CPU acoustic dependencies and ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libpulse-dev libopenblas-dev
+          python -m venv "$RUNNER_TEMP/acoustix"
+          "$RUNNER_TEMP/acoustix/bin/pip" install --upgrade pip
+          "$RUNNER_TEMP/acoustix/bin/pip" install --index-url https://download.pytorch.org/whl/cpu             "torch==2.9.1+cpu" "torchaudio==2.9.1+cpu"
+          "$RUNNER_TEMP/acoustix/bin/pip" install             "numpy==2.3.5" "scipy==1.16.3" "pyroomacoustics==0.8.6"             "matplotlib>=3.10.7" "soundcard>=0.4.5"             "experiment-utilities>=0.3.9" "tqdm>=4.67.1" "pyzmq>=27.0"
+          "$RUNNER_TEMP/acoustix/bin/pip" install --no-deps             "git+https://github.com/GaetanLepage/acoustix.git@32143bfd38c6f2196244e42e2385df48a71df7a4"
+
+      - name: Download original licensed human-voice LibriSpeech dev-clean
+        run: |
+          mkdir -p "$RUNNER_TEMP/librispeech"
+          curl -fL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 1200             https://openslr.trmal.net/resources/12/dev-clean.tar.gz             -o "$RUNNER_TEMP/librispeech/dev-clean.tar.gz"
+          echo "42e2234ba48799c1f50f24a7926300a1  $RUNNER_TEMP/librispeech/dev-clean.tar.gz" | md5sum -c -
+          tar -xzf "$RUNNER_TEMP/librispeech/dev-clean.tar.gz" -C "$RUNNER_TEMP/librispeech"
+          test -d "$RUNNER_TEMP/librispeech/LibriSpeech/dev-clean"
+          mkdir -p build-s2
+          cat > build-s2/ATTRIBUTION.txt <<'TXT'
+          Human speech derived from LibriSpeech ASR corpus, OpenSLR SLR12.
+          V. Panayotov, G. Chen, D. Povey, S. Khudanpur, ICASSP 2015.
+          Source: https://www.openslr.org/12/
+          License: Creative Commons Attribution 4.0 (CC BY 4.0)
+          https://creativecommons.org/licenses/by/4.0/
+          Internal evaluation split means different utterances from dev-clean,
+          not official test-clean and not held-out speakers.
+          TXT
+
+      - name: Prepare seven real speakers and audit licensed PCM/tracks
+        run: |
+          "$RUNNER_TEMP/acoustix/bin/python" tests/integration/prepare_librispeech_s2.py             --librispeech-dir "$RUNNER_TEMP/librispeech/LibriSpeech/dev-clean"             --output build-s2/selected-pcm             --manifest build-s2/speech_corpus.json
+          "$RUNNER_TEMP/acoustix/bin/python" tests/integration/acoustix_speech_corpus.py             --manifest build-s2/speech_corpus.json             --root build-s2/selected-pcm             --report build-s2/corpus_audit.json
+
+      - name: Create frozen real-voice T02/T03/T07 acoustic scene/plan pairs
+        run: |
+          "$RUNNER_TEMP/acoustix/bin/python" tests/integration/prepare_acoustix_s2_scene.py             --corpus-manifest build-s2/speech_corpus.json             --corpus-root build-s2/selected-pcm             --speakers 1 --split development --robot-motion stationary             --no-background --output build-s2/t02_dev_single
+          "$RUNNER_TEMP/acoustix/bin/python" tests/integration/prepare_acoustix_s2_scene.py             --corpus-manifest build-s2/speech_corpus.json             --corpus-root build-s2/selected-pcm             --speakers 2 --split evaluation --robot-motion moving             --no-background --output build-s2/t03_eval_two
+          "$RUNNER_TEMP/acoustix/bin/python" tests/integration/prepare_acoustix_s2_scene.py             --corpus-manifest build-s2/speech_corpus.json             --corpus-root build-s2/selected-pcm             --speakers 7 --split evaluation --robot-motion moving             --rt60-s 0.36 --output build-s2/t07_eval_seven
+
+      - name: Render actual licensed voices through pinned Acoustix CPU RIR
+        run: |
+          for case in t02_dev_single t03_eval_two t07_eval_seven; do
+            extra=()
+            if [[ "$case" == "t07_eval_seven" ]]; then
+              extra=(--background-snr-db 6)
+            fi
+            "$RUNNER_TEMP/acoustix/bin/python" tests/integration/acoustix_scene.py               --scene "build-s2/$case/scene.json"               --speech-plan "build-s2/$case/speech_plan.json"               --speech-corpus-manifest build-s2/speech_corpus.json               --speech-corpus-root build-s2/selected-pcm               --output "build-s2/$case/render"               --seed 5161 --hop-ms 250 --stems "${extra[@]}"
+          done
+
+      - name: Independently verify actual speech render and immutable references
+        run: |
+          "$RUNNER_TEMP/acoustix/bin/python" - <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "tests/integration")
+          from acoustix_timing_contract import verify_timing
+          from acoustix_signal_contract import audit_audio
+          root = Path("build-s2")
+          corpus = json.loads((root / "corpus_audit.json").read_text())
+          assert corpus["passed"] and corpus["evidence"]["distinct_speaker_count"] == 7
+          assert corpus["evidence"]["distinct_utterance_count"] >= 21
+          results = []
+          for name, expected_voices in (
+                  ("t02_dev_single", 1), ("t03_eval_two", 2), ("t07_eval_seven", 7)):
+              base = root / name
+              scene = json.loads((base / "scene.json").read_text())
+              folder = base / "render"
+              oracle = json.loads((folder / "ground_truth.json").read_text())
+              schedule = json.loads((folder / "speech_schedule.json").read_text())
+              assert oracle["speech_schedule"] == schedule
+              assert schedule["voice_source_count"] == expected_voices
+              assert schedule["speech_event_count"] == expected_voices
+              time = verify_timing(scene, oracle, folder / "input.wav")
+              audit = audit_audio(
+                  folder / "input.wav", folder / "stems",
+                  [src["id"] for src in scene["sources"]])
+              assert audit["reconstruction_max_residual_lsb"] <= audit["quantization_allowance_lsb"]
+              for source_id, sha in schedule["clean_reference_wav_sha256"].items():
+                  reference = folder / "clean_refs" / (source_id + ".wav")
+                  assert hashlib.sha256(reference.read_bytes()).hexdigest() == sha
+              results.append({
+                  "case": name, "voices": expected_voices,
+                  "clean_reference_count": len(schedule["clean_reference_wav_sha256"]),
+                  "output_frames": time["wav_frames"],
+                  "source_stem_audit_lsb": audit["reconstruction_max_residual_lsb"],
+                  "passed": True
+              })
+              print(json.dumps(results[-1]), flush=True)
+          (root / "real_speech_cpu_audit.json").write_text(json.dumps({
+              "schema": "libaudition.acoustix-s2-real-speech-cpu.v1",
+              "passed": True,
+              "real_human_voices_from": "LibriSpeech SLR12 dev-clean, CC BY 4.0",
+              "real_cpu_rir": True,
+              "cases": results,
+              "not_validated": [
+                  "ODAS separated-track signal leakage",
+                  "speech-to-speech SIRi, SI-SDRi",
+                  "ASR WER and first-word transcription",
+                  "true phoneme onset within source recordings",
+                  "physical microphone correlation"
+              ],
+          }, indent=2) + "\n")
+          PY
+
+      - name: Publish real speech fixture/CPU fidelity report
+        if: always()
+        run: |
+          echo "## Acoustix S2 real human speech (LibriSpeech dev-clean, CC BY 4.0)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Sample-aligned RIR/WAV/stem contracts only, NOT actual separation or ASR quality." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if test -f build-s2/real_speech_cpu_audit.json; then
+            cat build-s2/real_speech_cpu_audit.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No completed real-speech CPU result. Review the failed job and artifacts." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload real corpus subset and generated acoustic evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acoustix-s2-real-librispeech-evidence
+          path: build-s2/
+          retention-days: 14
+          if-no-files-found: warn

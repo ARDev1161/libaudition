@@ -169,6 +169,46 @@ multiple turns per speaker or true ASR. Those require dedicated reviewed
 S2 scenarios. Test WAVs in the builder's CTest are **not human voices**;
 passing these tests does not claim real S2 benchmark readiness.
 
+## Isolated GitHub Actions run with genuine licensed human voices
+
+The separate opt-in workflow
+`.github/workflows/acoustix-s2-real-speech.yml` executes genuine
+**LibriSpeech human speech** under the pinned Acoustix CPU RIR backend.
+It is triggered by an explicit `Ready for review` transition on the
+dedicated real-speech branch, or manually via GitHub Actions. Ordinary
+PR CI never downloads the large corpus.
+
+This workflow downloads OpenSLR SLR12 `dev-clean.tar.gz` (~337 MB)
+via the official HTTPS EU mirror, checks the archive's **official MD5
+42e2234ba48799c1f50f24a7926300a1** (from OpenSLR `md5sum.txt`),
+then converts seven distinct real speakers/21 full utterances with
+`ffmpeg`. It validates transcripts, WAV SHA-256 and license
+provenance and generates fresh, SHA-pinned:
+- T02: one real voice, stationary four-mic robot, no environmental noise
+- T03 initial: two different real voices, moving robot, no background
+- T07 stress: seven different real voices, moving robot and
+  refrigerator/AC/car noise at **+6 dB voice-to-background SNR**
+  (this is not speaker-to-speaker SIR)
+
+For each fixture it runs the actual pinned CPU Acoustix RIR
+(`pyroomacoustics==0.8.6`, Acoustix pinned SHA), exports four-mic
+wet stems and original clean dry per-speaker PCM, and independently
+audits six-channel mixture reconstruction, timing, SHA-256 of clean
+references, source identities and exact word-preserving clip placement.
+The step summary and 14-day artifact include a selected
+CC BY 4.0 WAV subset with attribution, generated scenes,
+plans, transcripts, WAV/stems and report
+`real_speech_cpu_audit.json`.
+
+**Do not call S2 passed based on this workflow.** It checks that
+genuine human utterances can flow through the realistic room renderer,
+but it does not yet compare ODAS SSS output against clean targets,
+measure per-voice SIRi/SI-SDRi, or run a pinned ASR model for WER.
+Any failed corpus download or transcription-manifest validation
+must remain RED with evidence, not be papered over by synthetic audio.
+For limited CI/network use the local corpus acquisition command
+above and run the three scenarios directly on the developer PC.
+
 ## Remaining S2 acceptance work
 
 The corpus manifest alone is not a benchmark. Still required:
