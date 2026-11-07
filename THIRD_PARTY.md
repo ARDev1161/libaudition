@@ -13,10 +13,15 @@ Rules:
 4. Research-only integrations must be opt-in and clearly separated from the
    default distribution.
 
-The optional direct ODAS backend uses `introlab/odas` under the MIT license.
-The ExternalProject source is pinned to commit
-`bcb845434495e293df3d48f1203b7a86e1852449`; the upstream license text is
-retained in `LICENSES/ODAS.txt`. `odas_ros` is not a dependency.
+The optional direct ODAS backend uses the `ARDev1161/odas` fork of
+`introlab/odas` under the upstream MIT license. The ExternalProject source
+is pinned to `28c41da02bc87b1582264eba6809b66f79546377` from the fork's
+`dev` integration history, not to the moving branch name. The upstream
+compatibility baseline is `bcb845434495e293df3d48f1203b7a86e1852449`.
+The fork factors SST posterior marginals to avoid allocating exponential
+assignment tables; this is not a claim of improved speaker separation.
+The upstream license text is retained in `LICENSES/ODAS.txt`. `odas_ros`
+is not a dependency.
 
 The optional resampling backend uses `libsndfile/libsamplerate` 0.2.2 under
 the BSD-2-Clause license, pinned to commit
