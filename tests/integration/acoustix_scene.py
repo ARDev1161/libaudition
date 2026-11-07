@@ -149,6 +149,15 @@ def make_source_signal(src: dict, fs: int, frames: int, index: int,
 
 def rir_snapshot(scene: dict, t: float):
     import numpy as np
+    import sys
+    from types import ModuleType
+
+    # Acoustix imports soundcard unconditionally in acoustix.utils even when
+    # only calculating CPU RIRs. On headless CI soundcard attempts to connect
+    # to PulseAudio *at import time* and fails without an audio server.
+    # No playback/capture API is used by this fixture: isolate that optional
+    # hardware dependency in this dedicated simulation process.
+    sys.modules.setdefault("soundcard", ModuleType("soundcard"))
     from acoustix.room import Microphone, Source, PyRoomAcousticsRoom, Room
 
     # Acoustix 1.0.0 currently reads mic.sampling_frequency, which its own
