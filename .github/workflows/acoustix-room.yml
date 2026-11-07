@@ -61,7 +61,7 @@ jobs:
             "experiment-utilities>=0.3.9" "tqdm>=4.67.1" "pyzmq>=27.0"
           "$RUNNER_TEMP/acoustix/bin/pip" install --no-deps \
             "git+https://github.com/GaetanLepage/acoustix.git@32143bfd38c6f2196244e42e2385df48a71df7a4"
-          "$RUNNER_TEMP/acoustix/bin/python" -c "import acoustix, pyroomacoustics; print('Acoustix CPU backend available')"
+          # soundcard (transitively imported by Acoustix) incorrectly assumes sys.argv[1] exists.\n          # Supply an innocuous positional argument to the inline Python probe.\n          "$RUNNER_TEMP/acoustix/bin/python" -c "import acoustix, pyroomacoustics; print('Acoustix CPU backend available')" acoustix-probe
       - name: Configure ODAS and opt-in Acoustix CTest
         env:
           DURATION: ${{ inputs.duration_seconds || '1.5' }}
