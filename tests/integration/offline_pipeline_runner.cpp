@@ -274,29 +274,29 @@ int main(int argc, char** argv) {
     std::uint32_t maxTracks = 4U;
     std::uint32_t potentialSources = 4U;
     try {
-    for (int i = 3; i < argc; ++i) {
-        const std::string flag{argv[i]};
-        if (flag == "--horizontal-sources") {
-            horizontal = true;
-        } else if (flag == "--mic" && i + 1 < argc) {
-            microphones.emplace_back(argv[++i]);
-        } else if ((flag == "--max-tracks" || flag == "--potential-sources")
-                   && i + 1 < argc) {
-            const std::string token{argv[++i]};
-            std::size_t end = 0;
-            const auto number = std::stoul(token, &end);
-            if (end != token.size() || number < 1UL || number > 32UL)
-                throw std::invalid_argument("ODAS source capacity must be 1..32");
-            if (flag == "--max-tracks")
-                maxTracks = static_cast<std::uint32_t>(number);
-            else
-                potentialSources = static_cast<std::uint32_t>(number);
-        } else {
-            std::cerr << "Unknown or incomplete offline ODAS option: "
-                      << flag << '\n';
-            return 2;
+        for (int i = 3; i < argc; ++i) {
+            const std::string flag{argv[i]};
+            if (flag == "--horizontal-sources") {
+                horizontal = true;
+            } else if (flag == "--mic" && i + 1 < argc) {
+                microphones.emplace_back(argv[++i]);
+            } else if ((flag == "--max-tracks" || flag == "--potential-sources")
+                       && i + 1 < argc) {
+                const std::string token{argv[++i]};
+                std::size_t end = 0;
+                const auto number = std::stoul(token, &end);
+                if (end != token.size() || number < 1UL || number > 32UL)
+                    throw std::invalid_argument("ODAS source capacity must be 1..32");
+                if (flag == "--max-tracks")
+                    maxTracks = static_cast<std::uint32_t>(number);
+                else
+                    potentialSources = static_cast<std::uint32_t>(number);
+            } else {
+                std::cerr << "Unknown or incomplete offline ODAS option: "
+                          << flag << '\n';
+                return 2;
+            }
         }
-    }
         return run(argv[1], argv[2], horizontal, microphones,
                    maxTracks, potentialSources);
     } catch (const std::exception& ex) {
