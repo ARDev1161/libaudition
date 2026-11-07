@@ -160,6 +160,23 @@ jobs:
                   rows.append(f"| {title} | {cells} |")
               rows.extend([
                   "",
+                  "### SSL capacity sensitivity with eight SST tracking slots",
+                  "",
+                  "| Metric | 4 SSL | 5 SSL | 6 SSL | 7 SSL | 8 SSL |",
+                  "| --- | ---: | ---: | ---: | ---: | ---: |",
+              ])
+              ssl_names = ["4x8", "5x8", "6x8", "7x8", "8x8"]
+              for title, key in [
+                  ("Maximum simultaneous tracks", "max_simultaneous_tracks"),
+                  ("SSL proposals", "potential_observations"),
+                  ("Median peak SSL activity", "median_peak_ssl_activity"),
+                  ("Matched voice-source hops", "matched_voice_source_hops"),
+                  ("Track observations", "track_observations"),
+              ]:
+                  cells = " | ".join(str(configs[name][key]) for name in ssl_names)
+                  rows.append(f"| {title} | {cells} |")
+              rows.extend([
+                  "",
                   "> Diagnostics only; this sweep does not tune ODAS thresholds or prove seven-way speech separation."
               ])
           signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
