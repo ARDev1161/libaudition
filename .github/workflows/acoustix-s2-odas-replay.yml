@@ -156,6 +156,14 @@ jobs:
               raise SystemExit("Real speech ODAS integrity failed: " + "; ".join(errors))
           PY
 
+      - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
+        run: |
+          PYTHONPATH=tests/integration python3 -m unittest tests/integration/test_acoustix_s2_baseline.py -v
+          python3 tests/integration/acoustix_s2_baseline.py \
+            tests/fixtures/acoustix/s2_real_odas_baseline.json \
+            build-s2/real_speech_odas_diagnostics.json \
+            build-s2/real_speech_odas_baseline_comparison.json
+
       - name: Report real human speech SST tracking (diagnostic only)
         if: always()
         run: |
