@@ -184,9 +184,12 @@ def rir_snapshot(scene: dict, t: float):
         room.add_source(Source(name=s["id"], position=np.asarray(source_position(s, t),
                                                               dtype=float)))
     room.pre_compute_rir()
-    rirs = [[np.asarray(room.get_rir(source_name=s["id"], mic_name="mic_" + str(i)),
-                        dtype=np.float32) for s in scene["sources"]]
-            for i in range(len(scene["robot"]["microphones_m"]))]
+    # Acoustix Room.get_rir() assumes NumPy tuple indexing, but its CPU
+    # PyRoomAcousticsRoom backend exposes nested Python lists [mic][source].
+    # Access the *actual* backend layout rather than altering upstream.
+    rirs = [[np.asarray(room.rir[mi][si], dtype=np.float32)
+             for si in range(len(scene["sources"]))]
+            for mi in range(len(scene["robot"]["microphones_m"]))]
     if any(len(h) == 0 or not np.all(np.isfinite(h)) for mic in rirs for h in mic):
         raise ValueError("Acoustix returned empty or non-finite RIR")
     return rirs
