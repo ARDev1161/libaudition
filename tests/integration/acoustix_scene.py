@@ -375,6 +375,10 @@ def render(scene: dict, args) -> None:
                         result_metrics["matched_median_3d_angular_error_deg"],
                     "matched_p90_3d_angular_error_deg":
                         result_metrics["matched_p90_3d_angular_error_deg"],
+                    "matched_median_azimuth_error_deg":
+                        result_metrics["matched_median_azimuth_error_deg"],
+                    "matched_p90_azimuth_error_deg":
+                        result_metrics["matched_p90_azimuth_error_deg"],
                     "adjacent_matched_id_switches":
                         result_metrics["adjacent_matched_id_switches"],
                     "microphone_digital_silence_track_observations":
