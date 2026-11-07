@@ -628,6 +628,41 @@ t=0; a later S2 task must introduce correct interval-aligned multi-
 utterance placement and independent clean references. Until that fix and
 real corpus acquisition, no speech-separation/ASR metric may claim PASS.
 
+### S2 task #2 — deterministic, sample-aligned real utterance placement
+
+Legacy `--speech-dir` injects one speech WAV starting at digital t=0,
+then applies a later active-window mask; this can throw away the beginning
+of a first word. It must not be accepted for S2.
+
+A separate `--speech-plan` input is now supported with three explicit
+files: the original verified S2 corpus manifest, the PCM source root and a
+speech plan SHA-pinned to that corpus. A plan maps **each speaker's each
+declared activity interval** to a distinct, full WAV utterance in a
+single frozen development or evaluation split. The code converts the
+interval start to the exact 16-kHz PCM sample, inserts the *whole*
+utterance at that sample and preserves its original samples. The code
+fails if audio would exceed the interval rather than truncating words,
+if a speaker ID is wrong, or if an utterance is duplicated or from the
+wrong split.
+
+The S2 renderer writes sample-exact source-mono `clean_refs/` WAVs,
+`speech_schedule.json` with source/transcript/utterance/sample offsets,
+and the identical schedule inside `ground_truth.json`. Existing
+per-source wet microphone stems remain available for later leakage
+metric validation. The clean references precede the simulator's
+single global PCM normalizer, and metrics must account for that gain.
+
+`audio_acoustix_s2_speech_placement_selftest` checks sample-accurate
+placement and anti-truncation using synthetic **non-human-speech**
+reference data; `audio_acoustix_s2_speech_render_cpu` also executes the
+pinned *real CPU RIR engine* for the same data. This exercises signal
+plumbing but is NOT real-voice S2 acceptance, speaker diarization, SI-SDR,
+SIR, ASR WER, or calibrated hardware audio.
+
+**Status: STACKED PR; TEST/CI VERIFICATION PENDING.** Next: acquire
+licensed real utterances, freeze complete placement scenes, measure
+source-to-output leakage and run real ASR with controlled references.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
