@@ -77,7 +77,8 @@ class ScenePlanBuilderTests(unittest.TestCase):
     def test_seven_speakers_and_original_fixture_unchanged(self):
         original = copy.deepcopy(self.template)
         scene, plan, report = self.build(
-            speakers=7, robot_motion="moving", split="evaluation")
+            speakers=7, robot_motion="moving", split="evaluation",
+            include_background=True)
         check_scene(scene)
         self.assertEqual(len(plan["segments"]), 7)
         self.assertEqual(check_scene(scene)["voice_sources"], 7)
@@ -89,7 +90,8 @@ class ScenePlanBuilderTests(unittest.TestCase):
         self.assertEqual(
             json.dumps(scene, sort_keys=True),
             json.dumps(self.build(
-                speakers=7, robot_motion="moving", split="evaluation")[0],
+                speakers=7, robot_motion="moving", split="evaluation",
+            include_background=True)[0],
                        sort_keys=True))
 
     def test_invalid_split_source_count_and_target_rt60_rejected(self):
