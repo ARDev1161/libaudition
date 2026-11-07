@@ -76,6 +76,13 @@ add_test(NAME ci_gtsam_install_retry COMMAND
 set_tests_properties(ci_gtsam_install_retry PROPERTIES
     LABELS "ci-contract;dependency;python" TIMEOUT 30)
 
+# Test one-to-one 3D oracle association independent of Acoustix/ODAS.
+add_test(NAME audio_acoustix_metrics_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_metrics.py")
+set_tests_properties(audio_acoustix_metrics_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;scene-contract;python" TIMEOUT 30)
+
 # Pure-standard-library acoustics scene contract: CI can validate the same
 # robot/source/microphone geometry without importing heavyweight Acoustix.
 # CPU/GPU RIR rendering and ODAS replay are opt-in headless integration runs.
