@@ -309,7 +309,15 @@ reference channel zero remains emission-aligned.
 This establishes a diagnostic **absolute time-of-flight model** for the
 static test scene, NOT a promise that reverberant VAD speech-onset
 latency equals this physical delay, and not a phase-accurate
-continuous-motion model. See separate T05 motion tests before
+continuous-motion model.
+
+**Measured evidence:** [full Acoustix #42346718298](https://github.com/ARDev1161/libaudition/actions/runs/42346718298)
+PASS. Predicted peak arrivals at 1m/2m **86.647/133.294**
+samples; measured actual RIR peaks **87/133**. A pulse emitted
+at sample 137 appeared at samples **224/270** after convolution.
+The pinned 81-tap fractional-delay kernel contributes 40 samples.
+The full 12s scene kept 2,499 tracked observations and zero recorder
+drops. See separate T05 motion tests before
 marking S1 complete.
 
 ### S1 task #4 — moving-RIR waveform continuity
@@ -340,6 +348,15 @@ Doppler frequency shift, source-microphone phase during rapid motion,
 or arrival times for moving echoes. The S1 milestone stays partial
 until these independent physics/model limitations are documented,
 measured or explicitly scoped out.
+
+**Measured evidence:** [full Acoustix #42346993929](https://github.com/ARDev1161/libaudition/actions/runs/42346993929)
+PASS. Static windowed-convolution error **7.45e-9**; motion
+RIR-boundary maximum derivative ratio **1.122** against its global
+P99, minimum boundary RMS ratio **0.914**, and 100ms versus 50ms
+RIR update waveform relative RMS difference **0.000930** (0.093%).
+The slow 8cm/12° motion causes a measurable waveform change, but
+no tested numerical discontinuity. Test reports are captured in
+`acoustix_motion.json`; no physical Doppler correctness claim.
 
 ## 7. CI policy, artifacts and anti-overfitting
 
