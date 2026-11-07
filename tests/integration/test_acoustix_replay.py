@@ -17,7 +17,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from acoustix_scene import check_scene\nfrom acoustix_timing_contract import verify_timing
+from acoustix_scene import check_scene
+from acoustix_timing_contract import verify_timing
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_SCENE = ROOT / "fixtures" / "acoustix" / "table_conversation_7x7.json"
