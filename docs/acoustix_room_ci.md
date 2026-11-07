@@ -25,8 +25,9 @@ Status: **experimental offline integration**, not calibrated real-room accuracy.
   offline ReSpeaker ODAS input mapping, **not** physical six-microphone
   geometry. `ground_truth.json` contains robot trajectory and source
   bearings in robot-local coordinates, sampled at 128-sample hops.
-  With `--stems`, each source is also exported as an individual 4-channel
-  microphone contribution.
+  With `--stems` (enabled in the dedicated CI workflow, or via
+  `LIBAUDITION_ACOUSTIX_EXPORT_STEMS=ON` in CMake), each source is exported
+  as an individual 4-channel microphone contribution.
 - The existing `audition_offline_integration` executable processes the
   resulting PCM through real ODAS SSL/SST/SSS, emits recordings and
   observations, and produces a structural `metrics.json` report.
@@ -58,36 +59,32 @@ Acoustic simulation is not a replacement for measured ReSpeaker recordings.
 | Run | Requires Acoustix | Runs automatically | Purpose |
 | --- | --- | --- | --- |
 | `audio_acoustix_scene_contract` | No | Yes, via normal CTest/CI | Validate scenario schema, timing, geometry |
-| `audio_acoustix_metrics_selftest` | No | Yes, via normal CTest/CI | Validate distinct 3D source-to-track association and adjacent ID switches |
+| `audio_acoustix_metrics_selftest` | No | Yes, via normal CTest/CI | Test one-to-one 3D track/source matching and adjacent ID switches |
 | `audio_acoustix_dynamic_room` | Yes | No, optional CMake/CTest | Render moving RIR + replay genuine ODAS, fail on processing errors |
-| `Acoustix acoustic room (headless)` GitHub Actions | Yes | PR ready-for-review: full 12s; manual dispatch: 1.5/3/12s | Install pinned dependencies, render moving room, archive WAV/ground truth/report |
+| `Acoustix acoustic room (headless)` Actions | Yes | Ready-for-review: full 12s; manual: 1.5/3/12s | Render, replay ODAS, export oracle, stems and tracking metrics |
 | Full local scenario | Yes | No | All 12 seconds, optionally seven natural voices and per-source stems |
 
 The optional ODAS replay currently gates **successful pipeline execution,
 matching input frames, no recorder drops, and presence of SSL proposals**.
-It reports track count/separation activity **and diagnostic-only 3D angular
-errors**, after a **one-to-one** match to the moving robot's body-frame
-source ground truth within 45°. A single ODAS track cannot be credited
-to seven speakers; each speaker can receive at most one track per hop.
-The report includes:
-- the per-voice fraction of active source-hops that are distinctly matched;
-- maximum and mean simultaneous tracked sources;
-- matched 3D angular error median/P90;
-- adjacent matched-hop source ID switches (not reacquisitions after gaps);
-- number of generated recordings and source hypotheses.
-These are *not calibrated acceptance thresholds*: the test does not
-pretend ODAS can reliably separate all seven simultaneous voices. Quantitative quality gates
+It reports track count/separation activity and diagnostic-only 3D angular
+errors using **one-to-one** track/source association in the robot's body frame
+within 45 degrees. A single track cannot count as seven simultaneously
+tracked speakers. The report includes each speaker's matched source-hop
+fraction, total matched voice-source coverage, the median/P90 angular error,
+adjacent matched ID switches, and maximum simultaneous tracks. These figures
+are **not calibrated real-world accuracy gates**: a synthetic voice is not
+intelligible speech, and the algorithm may not resolve seven overlapping voices. Quantitative quality gates
 must be calibrated after examining a real baseline; do not set arbitrary
 large tolerance values merely to obtain green CI.
 
 ## GitHub Actions
 
 Go to **Actions → Acoustix acoustic room (headless) → Run workflow** and
-select the feature branch, 1.5 s / 250 ms for a smoke. When a PR with
-this workflow is explicitly marked **Ready for review**, its acoustic
-job runs the full 12-second scene. Ordinary pushes/PR updates do **not**
-run the heavyweight RIR path; each robot pose requires a fresh multi-source
-3D impulse-response calculation. Download the uploaded acoustic
+select the feature branch, 1.5 s / 250 ms for a smoke. Marking this PR
+**Ready for review** triggers a full 12-second headless job. Ordinary pushes
+only run the inexpensive scene/metric self-tests in main CI. The full room
+simulation is expensive because each robot pose requires a fresh multi-source
+3D RIR calculation. Download the uploaded acoustic
 fixture artifacts even on failure to inspect logs.
 
 The ordinary PR workflow stays lightweight: it runs
@@ -122,54 +119,7 @@ cmake -S . -B build-acoustix -G Ninja \
   -DPython3_EXECUTABLE=/path/to/acoustix-venv/bin/python
 cmake --build build-acoustix --target audition_offline_integration --parallel
 ctest --no-tests=error --test-dir build-acoustix \
-  -R '^audio_acoustix_(scene_contract|metrics_selftest|dynamic_room) --output-on-failure
-```
-
-To use natural speech, place `speaker_1.wav` through `speaker_7.wav`
-in a directory, each mono 16 kHz PCM16, and add
-`-DLIBAUDITION_ACOUSTIX_SPEECH_DIR=/absolute/path/to/voice-wavs`
-to the CMake configuration. The source activity schedule in the JSON
-determines which parts of those waveforms are audible.
-
-For manually generating **individual reference stems** and reports:
-
-```sh
-/path/to/acoustix-venv/bin/python tests/integration/acoustix_scene.py \
-  --scene tests/fixtures/acoustix/table_conversation_7x7.json \
-  --output build-acoustix/acoustix-full \
-  --hop-ms 250 --stems \
-  --speech-dir /path/to/voice-wavs \
-  --runner build-acoustix/tests/audition_offline_integration
-```
-
-To validate the scene without Python dependencies:
-
-```sh
-python3 tests/integration/acoustix_scene.py \
-  --scene tests/fixtures/acoustix/table_conversation_7x7.json --validate-only
-```
-
-## Third-party licensing
-
-Upstream Acoustix README advertises MIT, but its checked-in `LICENSE`
-at the pinned revision is **GPL-3.0**. Treat it as GPL-3.0 until upstream
-resolves the contradiction. It is **not** vendored, linked, bundled,
-or installed with libaudition. The optional development environment
-clones/installs Acoustix separately. Do not distribute combined code
-or claim MIT licensing for Acoustix without a separate license review.
-
-## Future acceptance gates
-
-1. Measure dynamic DOA median/P90 angular error in robot frame with
-   reflection settings and angular reference uncertainty stated.
-2. Record ID switch rate and tracking continuity while circling the table.
-3. With genuine speech, evaluate cross-source leakage/SI-SDR, VAD
-   onset/offset, ASR WER and duplicated transcripts.
-4. Calibrate simulation against measured ReSpeaker corpus
-   (microphone responses, noise floor, directivity and room RT60).
-5. Add configurable window transmission/occlusion and frequency-dependent
-   materials via an engine supporting genuine multi-room or 3D geometry.
- --output-on-failure
+  -R '^audio_acoustix_(scene_contract|metrics_selftest|dynamic_room)$' --output-on-failure
 ```
 
 To use natural speech, place `speaker_1.wav` through `speaker_7.wav`
