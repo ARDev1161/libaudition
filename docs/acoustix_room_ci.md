@@ -205,13 +205,20 @@ library's default `ssl.potential_source_count = 4` and `sst.max_tracks = 4`.
 Therefore a four-slot result cannot establish the maximum number of
 independently recoverable voices in a seven-speaker scene. The optional
 `LIBAUDITION_ACOUSTIX_COMPARE_CAPACITY=ON` setting replays **the exact
-same rendered microphone WAV** with both default **4/4** and expanded **8/8**
-SSL candidate / SST track capacities. Reports are saved to
-`metrics.json`, `metrics_8x8.json`, and `capacity_comparison.json`,
-and shown in the GitHub Actions summary. The comparison changes *capacity*,
-not geometry, beamforming, signal generation, or track tuning. It may
-improve hypothesis coverage but cannot add physical information absent
-from the four microphones; interpret performance diagnostically.
+same rendered microphone WAV** across a 2×2 factorial sweep:
+**4/4**, **4/8**, **8/4**, **8/8** (SSL candidate count / SST max tracks).
+Reports are saved as `metrics.json`, `metrics_4x8.json`,
+`metrics_8x4.json`, `metrics_8x8.json`,
+`capacity_comparison.json`, and shown in the GitHub Actions summary.
+
+The initial 4/4→8/8 experiment produced **5,953→9,192 SSL candidate
+observations but 2,448→0 track observations** on the identical 12-second
+WAV (workflow #42333482067). Thus increasing both limits alone is not
+a valid fix; the separate 4/8 and 8/4 runs isolate which capacity
+changes tracking behavior. The experiment does not change geometry,
+beamforming, signals or the ODAS probability thresholds, and cannot
+create spatial information that four microphones do not observe.
+No specific number of tracked speakers is a pass/fail requirement.
 
 The baseline should guide investigation, not hard-coded pass thresholds.
 A green room test proves the offline pipeline completes without structural
