@@ -196,6 +196,26 @@ merge tested fix to ODAS `dev`, then update a libaudition dependency
 pin by separate PR. Never pin a floating `dev` branch and never change
 ODAS `master` or libaudition `main` without an explicit merge decision.
 
+### S1 task #1 — geometry and genuine stationary RIR (implementation PR)
+
+The first isolated S1 task adds two CTest gates:
+
+- `audio_acoustix_physics_selftest` (stdlib, every CI): mic rigid
+  transform, oracle azimuth/elevation, yaw wrap, trajectory interpolation
+  and render-window partition of unity.
+- `audio_acoustix_rir_physics` (optional Acoustix CPU CI): one
+  stationary impulse observed at **1 m and 2 m**, compare *relative*
+  arrival time against distance / 343 m/s (within 3 samples), direct
+  amplitude ratio against inverse distance (6.02 ±2.5 dB), nonzero
+  reverberant tail and bit-identical repeat impulse responses.
+
+The backend may add a fixed fractional-delay FIR group delay.
+This task tests **relative** propagation time; absolute delay
+calibration and direct-path reflection-free RT60 tests remain open.
+The test publishes `acoustix_physics.json` for falsifiable results.
+The gate does not validate moving-phase physics, acoustic materials,
+ASR quality or the whole S1 milestone.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
@@ -228,7 +248,7 @@ ODAS `master` or libaudition `main` without an explicit merge decision.
 | --- | --- | --- |
 | S0 signal + headless structural contract | **PASS** | Maintain existing artifact and regression coverage |
 | ODAS global-epsilon / 7–8 SSL suppression | **FIXED in fork dev**; libaudition stable pin in PR #74 | Keep exact SHA pin and verify 4/5/6/7/8 capacities |
-| S1 physics and timestamps | **OPEN** | Impulse/no-reverb tests, RT60, rotation and moving-RIR oracle |
+| S1 physics and timestamps | **IN PROGRESS (S1.4/S1.6 subset under CI)** | CPU direct-path 1m/2m delay/attenuation, known yaw/mic body-frame oracle and repeat RIR; still need RT60 decay, continuous motion limits and timing boundaries |
 | S2 real speech benchmark | **OPEN** | Licensed 7-speaker reference set and leakage/ASR metric contracts |
 | L1 recorder integrity — near-plane moving | **BLOCKED / failing on fork pin** | Reproduce exact fixture, inspect drop counters and writer queue ownership, fix without relaxing no-drop test |
 | L1/L2 first word and quiet speech | **OPEN** | VAD pre-roll with onset ground truth; same-model WER |
