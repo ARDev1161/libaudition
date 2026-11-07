@@ -334,6 +334,15 @@ if(TARGET audition::backend_odas)
         set_tests_properties(audio_acoustix_replay_physics PROPERTIES
             LABELS "audio-integration;acoustix;replay;physics;optional"
             TIMEOUT 480)
+        # Spatial RT60 check: one fixed calibration, 3 distinct robot poses,
+        # 3 sources and 4 microphones (36 independently measured CPU RIRs).
+        add_test(NAME audio_acoustix_spatial_rt60_physics COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_spatial_rt60.py"
+            --report "${CMAKE_CURRENT_BINARY_DIR}/acoustix_spatial_rt60.json")
+        set_tests_properties(audio_acoustix_spatial_rt60_physics PROPERTIES
+            LABELS "audio-integration;acoustix;physics;reverberation;optional"
+            TIMEOUT 240)
         # Moving microphone sound-wave integrity: static convolution oracle,
         # emission-time RIR overlap-add, slow rotation/translation and
         # refinement of snapshot spacing (100ms vs 50ms).
