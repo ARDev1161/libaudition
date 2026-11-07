@@ -90,6 +90,13 @@ add_test(NAME audio_acoustix_metrics_selftest COMMAND
 set_tests_properties(audio_acoustix_metrics_selftest PROPERTIES
     LABELS "audio-integration;acoustix;scene-contract;python" TIMEOUT 30)
 
+# S1 pure-stdlib physics/oracle checks (no Acoustix, no SciPy or ODAS).
+add_test(NAME audio_acoustix_physics_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_physics.py")
+set_tests_properties(audio_acoustix_physics_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;scene-contract;physics;python" TIMEOUT 30)
+
 # Pure-standard-library acoustics scene contract: CI can validate the same
 # robot/source/microphone geometry without importing heavyweight Acoustix.
 # CPU/GPU RIR rendering and ODAS replay are opt-in headless integration runs.
@@ -274,6 +281,16 @@ if(TARGET audition::backend_odas)
     option(LIBAUDITION_ACOUSTIX_COMPARE_CAPACITY
         "Run ODAS SSL/SST factorial plus SSL 4-8 capacity sweep on same WAV" OFF)
     if(LIBAUDITION_ENABLE_ACOUSTIX_SCENE_TESTS)
+        # Genuine pinned Acoustix CPU RIR; checks path delay, inverse
+        # distance, tail, and two-run deterministic output. No ODAS needed.
+        add_test(NAME audio_acoustix_rir_physics COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_physics.py"
+            --cpu-rir
+            --report "${CMAKE_CURRENT_BINARY_DIR}/acoustix_physics.json")
+        set_tests_properties(audio_acoustix_rir_physics PROPERTIES
+            LABELS "audio-integration;acoustix;physics;reverberation;optional"
+            TIMEOUT 180)
         set(_acoustix_arguments
             --scene "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/acoustix/table_conversation_7x7.json"
             --output "${CMAKE_CURRENT_BINARY_DIR}/acoustix_7x7"

@@ -98,6 +98,25 @@ def source_position(src: dict, t: float) -> list[float]:
     return pose_at(src["trajectory"], t)[0] if src.get("trajectory") else src["position_m"]
 
 
+def microphone_world_position(robot: list[float], yaw_deg: float,
+                              offset: list[float]) -> list[float]:
+    """Rigid robot-frame -> world-frame transform, with +yaw CCW about Z."""
+    a = math.radians(yaw_deg)
+    cs, sn = math.cos(a), math.sin(a)
+    return [robot[0] + cs * offset[0] - sn * offset[1],
+            robot[1] + sn * offset[0] + cs * offset[1],
+            robot[2] + offset[2]]
+
+
+def source_body_angles(robot: list[float], yaw_deg: float,
+                       source: list[float]) -> tuple[float, float]:
+    """Body-frame azimuth and elevation in degrees (robot moves, source fixed)."""
+    dx, dy, dz = (source[i] - robot[i] for i in range(3))
+    bearing = (math.degrees(math.atan2(dy, dx)) - yaw_deg + 180) % 360 - 180
+    elevation = math.degrees(math.atan2(dz, math.hypot(dx, dy)))
+    return bearing, elevation
+
+
 def make_source_signal(src: dict, fs: int, frames: int, index: int,
                        rng, speech_dir: Path | None):
     import numpy as np
@@ -175,13 +194,11 @@ def rir_snapshot(scene: dict, t: float):
     room = CpuRoom(size_x=dx, size_y=dy, height=dz,
                    rt_60=scene["room"]["rt60_s"], sampling_frequency=fs)
     rpos, yaw = pose_at(scene["robot"]["trajectory"], t)
-    a = math.radians(yaw)
-    cs, sn = math.cos(a), math.sin(a)
     for i, offset in enumerate(scene["robot"]["microphones_m"]):
-        x = rpos[0] + cs * offset[0] - sn * offset[1]
-        y = rpos[1] + sn * offset[0] + cs * offset[1]
-        room.add_microphone(Microphone(name="mic_" + str(i),
-                                      position=np.array([x, y, rpos[2] + offset[2]])))
+        room.add_microphone(Microphone(
+            name="mic_" + str(i),
+            position=np.asarray(microphone_world_position(rpos, yaw, offset),
+                                dtype=float)))
     for s in scene["sources"]:
         room.add_source(Source(name=s["id"], position=np.asarray(source_position(s, t),
                                                               dtype=float)))
@@ -283,11 +300,7 @@ def render(scene: dict, args) -> None:
         for s in scene["sources"]:
             if any(start <= t < stop for start, stop in s["active_s"]):
                 pos = source_position(s, t)
-                bearing = (math.degrees(math.atan2(pos[1] - robot[1],
-                                                  pos[0] - robot[0]))
-                           - yaw + 180) % 360 - 180
-                horizontal = math.hypot(pos[0] - robot[0], pos[1] - robot[1])
-                elevation = math.degrees(math.atan2(pos[2] - robot[2], horizontal))
+                bearing, elevation = source_body_angles(robot, yaw, pos)
                 active.append({"id": s["id"], "kind": s["kind"],
                                "bearing_deg": round(bearing, 4),
                                "elevation_deg": round(elevation, 4)})

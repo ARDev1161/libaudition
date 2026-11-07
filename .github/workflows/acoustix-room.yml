@@ -92,7 +92,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|dynamic_room)$' \
+            -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|physics_selftest|rir_physics|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Summarize acoustic tracking diagnostics
         if: always()
@@ -196,6 +196,26 @@ jobs:
                   "> The downstream SST input cap is experimental and disabled by default.",
                   "> Diagnostics only; this does not prove seven-way speech separation."
               ])
+          physics_path = Path("build-acoustix/tests/acoustix_physics.json")
+          if physics_path.is_file():
+              physical = json.loads(physics_path.read_text())
+              impulse = physical["evidence"]["cpu_rir"]
+              rows.extend([
+                  "",
+                  "### S1: real Acoustix CPU RIR physics check",
+                  "",
+                  "| Check | Measured |",
+                  "| --- | ---: |",
+                  f"| 1m → 2m relative propagation delay | {impulse['measured_delta_samples']} samples |",
+                  f"| Expected relative delay | {impulse['expected_delta_samples']:.2f} samples |",
+                  f"| Direct peak attenuation on doubling distance | {impulse['near_over_far_peak_db']:.2f} dB |",
+                  f"| Expected direct peak attenuation | {impulse['expected_near_over_far_peak_db']:.2f} dB |",
+                  f"| Bit-identical repeat RIR | {impulse['bit_exact_rir_repeatability']} |",
+                  "",
+                  "> Only a stationary direct-path test; frequency-dependent RT60 and Doppler are not validated."
+              ])
+          else:
+              rows.extend(["", "### S1 physics", "", "No CPU RIR physics report (see test logs)."])
           signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
           if signal_path.is_file():
               audit = json.loads(signal_path.read_text())
@@ -222,6 +242,7 @@ jobs:
           name: acoustix-room-7x7-${{ inputs.duration_seconds || '12' }}s
           path: |
             build-acoustix/tests/acoustix_7x7/
+            build-acoustix/tests/acoustix_physics.json
             build-acoustix/Testing/Temporary/LastTest.log
           retention-days: 10
           if-no-files-found: warn
