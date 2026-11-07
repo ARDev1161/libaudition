@@ -15,9 +15,10 @@ and ASR in libaudition without hiding errors or tuning to one scene.
 | Simulated 7 × 7 × 2.8 m room, 0.36 s RT60, 4 planar mics moving around seven synthetic voices + fridge/AC/car | Implemented; full 12 s render with RIR tails; **not calibrated to a measured room** |
 | 16 kHz ODAS input, source stems and geometry oracle | Implemented; six input channels = dry ref, four microphone channels, silent ref |
 | PCM16 source-stem reconstruction | Verified: maximum 7 LSB reconstruction residual, ≤12 LSB permitted from quantization |
-| Structural ODAS offline execution | PASS: no recorder drops, SSL proposals, complete audio, reproducible artifacts |
+| Full 12-second Acoustix ODAS replay | PASS: no recorder drops, SSL proposals, complete audio, reproducible artifacts |
 | Upstream SST with SSL=7/8 | Failed: zero confirmed tracks |
 | Fork `ARDev1161/odas dev` with factorized assignment + local epsilon | Full Acoustix experiment PASS: SSL counts 4..8 all produce 2,448 track observations; 1,462 one-to-one oracle source-hop matches out of 7,814 (18.71%); ≤3 simultaneous tracks; matched azimuth median ≈11.8°, P90 ≈24.4° |
+| Separate CTest `audio_integration_near_plane_moving` on the fork-dev pin | **OPEN / failing**: `Unexpected WAV recorder drops under offline replay` in [libaudition CI #42340254801](https://github.com/ARDev1161/libaudition/actions/runs/42340254801); distinguish this from the successful Acoustix test. Investigate recorder scheduling/capacity and source lifecycle before L1 passes. |
 | Actual speech, separation, ASR WER, physical microphone calibration | **Not validated by synthetic voiced-like signal** |
 
 The ODAS numbers are **diagnostic counts**, not a demonstration that
@@ -229,6 +230,7 @@ ODAS `master` or libaudition `main` without an explicit merge decision.
 | ODAS global-epsilon / 7–8 SSL suppression | **FIXED in fork dev**; libaudition stable pin in PR #74 | Keep exact SHA pin and verify 4/5/6/7/8 capacities |
 | S1 physics and timestamps | **OPEN** | Impulse/no-reverb tests, RT60, rotation and moving-RIR oracle |
 | S2 real speech benchmark | **OPEN** | Licensed 7-speaker reference set and leakage/ASR metric contracts |
+| L1 recorder integrity — near-plane moving | **BLOCKED / failing on fork pin** | Reproduce exact fixture, inspect drop counters and writer queue ownership, fix without relaxing no-drop test |
 | L1/L2 first word and quiet speech | **OPEN** | VAD pre-roll with onset ground truth; same-model WER |
 | L3/L4 source quality and playback mixing | **OPEN** | Two-voice overlap first, then T04 loudspeaker+user, then 3/7 stress |
 | L5 3-second silence and lifecycle | **OPEN** | Track retirement and ID/recording/ASR isolation tests |
