@@ -380,6 +380,14 @@ def render(scene: dict, args) -> None:
 
             configs = {"4x4": capacity_summary(metrics, summary, observations)}
             raw_results = {"4x4": metrics}
+            # Retain the original SSL observations for the isolation contract:
+            # changing *only* the SST input message must never change raw SSL.
+            all_eight_ssl = None
+            capped_eight_ssl = None
+
+            def ssl_observation_signature(rows):
+                return [(r["hop"], r["id"], r["x"], r["y"], r["z"], r["activity"])
+                        for r in rows if r["kind"] == "proposal"]
             for potential_count, track_count, sst_limit in (
                     (4, 8, 0), (5, 8, 0), (6, 8, 0), (7, 8, 0),
                     (8, 4, 0), (8, 8, 0), (8, 8, 4)):
@@ -414,7 +422,22 @@ def render(scene: dict, args) -> None:
                 raw_results[name] = extra_metrics
                 configs[name] = capacity_summary(
                     extra_metrics, extra_summary, extra_rows)
+                if name == "8x8":
+                    all_eight_ssl = ssl_observation_signature(extra_rows)
+                elif name == "8x8_sst4":
+                    capped_eight_ssl = ssl_observation_signature(extra_rows)
 
+            if not all_eight_ssl or all_eight_ssl != capped_eight_ssl:
+                raise RuntimeError(
+                    "Independent SST input projection modified raw SSL observations")
+            # This fixture established a reproducible regression: full
+            # synthetic 12 s with SSL=8 had zero tracks. The opt-in bounded
+            # input must preserve nonzero tracking, not just report PASS
+            # because a Python/C++ process exited successfully.
+            if (frames == 12 * fs and args.speech_dir is None
+                    and configs["8x8_sst4"]["track_observations"] == 0):
+                raise RuntimeError(
+                    "Bounded SST input failed to restore any source tracks")
             comparison = {
                 "schema": "libaudition.acoustix-capacity-comparison.v4",
                 "method": "identical 4-mic WAV; SSL 4-8 sweep and independent 8->4 SST candidate projection",
@@ -426,6 +449,7 @@ def render(scene: dict, args) -> None:
                 "baseline": configs["4x4"],
                 "expanded": configs["8x8"],
                 "expanded_sst_input_bounded": configs["8x8_sst4"],
+                "raw_ssl_eight_candidate_output_identical_with_and_without_sst_cap": True,
                 "deltas_vs_4x4": {
                     name: {
                         "matched_voice_source_hops":
