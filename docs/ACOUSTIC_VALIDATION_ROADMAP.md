@@ -495,6 +495,27 @@ Do not call S1 complete until the full Acoustix and general CTest workflows
 pass on this exact commit. A PCM timestamp check cannot establish true
 physical continuous-motion/Doppler fidelity or human speech accuracy.
 
+### S1 task #9 — freeze a separate 20-seed acoustic evaluation manifest
+
+The S1 development fixtures already test three room recipes with seeds
+1161/2161/3161. A **different** 20-case manifest is now defined in
+`acoustix_heldout_manifest.py` with seeds 5161–5180, the three
+single/two/three-source recipes, stationary and moving microphone arrays,
+and target RT60 values 0.20/0.36/0.70 s. Each case carries its exact
+serialized scene SHA-256, seed, 16 kHz PCM clock and source count.
+
+`audio_acoustix_heldout_manifest_selftest` runs in normal CTest without
+Acoustix and rejects duplicate seeds/identities, modified split coverage,
+wrong timing and unacknowledged scenario drift. It only verifies the
+**configuration contract**, not 20 completed CPU simulations. Actual CPU
+RIR/WAV rerender, per-case physics gates, immutable artifact hashes and
+all-case PASS evidence remain pending. Because the current renderer lacks
+explicit target/interferer SNR control, this manifest intentionally does
+**not** claim 0/+6/+12 dB SNR coverage. It also cannot replace the
+human-voice S2 evaluation with true speech identity/transcripts.
+
+**Current status: CONFIGURATION ONLY, STACKED PR; CI AND RENDER PENDING.**
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
@@ -527,7 +548,7 @@ physical continuous-motion/Doppler fidelity or human speech accuracy.
 | --- | --- | --- |
 | S0 signal + headless structural contract | **PASS** | Maintain existing artifact and regression coverage |
 | ODAS global-epsilon / 7–8 SSL suppression | **FIXED in fork dev**; libaudition stable pin in PR #74 | Keep exact SHA pin and verify 4/5/6/7/8 capacities |
-| S1 physics, timing and repeatability | **PARTIAL PASS**: relative/absolute path delay, fixed RT60, **36-path RT60 spatial audit**, moving RIR continuity, three-room deterministic replay, negative-scene checks | Verify stacked PCM failure/clock PRs (#85/#86), finish broad held-out 20-seed manifest, and document fast-motion/Doppler model limits before S1 DONE |
+| S1 physics, timing and repeatability | **PARTIAL PASS**: relative/absolute path delay, fixed RT60, **36-path RT60 spatial audit**, moving RIR continuity, three-room deterministic replay, negative-scene checks | Verify stacked PCM failure/clock PRs (#85/#86), run and archive all 20 held-out CPU scenes, add SNR fixture controls, and document fast-motion/Doppler model limits before S1 DONE |
 | S2 real speech benchmark | **OPEN** | Licensed 7-speaker reference set and leakage/ASR metric contracts |
 | L1 recorder integrity — near-plane moving | **BLOCKED / failing on fork pin** | Reproduce exact fixture, inspect drop counters and writer queue ownership, fix without relaxing no-drop test |
 | L1/L2 first word and quiet speech | **OPEN** | VAD pre-roll with onset ground truth; same-model WER |
