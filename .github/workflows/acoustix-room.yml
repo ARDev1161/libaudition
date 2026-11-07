@@ -91,7 +91,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|metrics_selftest|dynamic_room)$' \
+            -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Summarize acoustic tracking diagnostics
         if: always()
@@ -117,6 +117,9 @@ jobs:
                   f"| Adjacent matched ID switches | {m['adjacent_matched_id_switches']} / {m['adjacent_matched_id_comparisons']} |",
                   f"| SSL proposals / track observations | {m['potential_observations']} / {m['track_observations']} |",
                   f"| Saved recordings / dropped frames | {m['recordings']} / {m['recorder_drops']} |",
+                  f"| Mic silence start | {m.get('microphone_digital_silence_start_s', 'n/a')} s |",
+                  f"| ODAS track observations during exact mic silence | {m.get('microphone_digital_silence_track_observations', 'n/a')} |",
+                  f"| Last ODAS observation during mic silence | {m.get('microphone_digital_silence_track_last_seen_s', 'n/a')} s |",
                   "",
                   "| Speaker | Matched source-hops | Active source-hops |",
                   "| --- | ---: | ---: |",
@@ -125,6 +128,22 @@ jobs:
                   rows.append(f"| {name} | {values['matched_hops']} | {values['active_hops']} |")
           else:
               rows = ["### Acoustix room diagnostics", "", "No metrics.json was generated; see failed CTest and job logs."]
+          signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
+          if signal_path.is_file():
+              audit = json.loads(signal_path.read_text())
+              rows.extend([
+                  "",
+                  "### PCM16 source-stem reconstruction",
+                  "",
+                  f"Maximum microphone reconstruction residual: **{audit['reconstruction_max_residual_lsb']} LSB** "
+                  f"(quantization allowance {audit['quantization_allowance_lsb']} LSB).",
+                  "",
+                  f"Spatially distinct adjacent microphone pairs: **"
+                  f"{sum(x > 0 for x in audit['adjacent_microphone_difference_rms_pcm16'])}/3**.",
+                  "",
+                  f"Trailing digital microphone silence: **"
+                  f"{audit['post_acoustic_signal_silence_frames']/audit['sample_rate_hz']:.3f} s**."
+              ])
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
               stream.write("\n".join(rows) + "\n")
           PY
