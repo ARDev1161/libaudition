@@ -394,6 +394,27 @@ S1 suite: it does not replace the separate **≥20 held-out seeds**
 and real-speech S2 benchmark, nor does it establish cross-platform
 bit-identical PyRoomAcoustics rendering.
 
+### S1 task #6 — hostile and malformed scene rejection
+
+The S1.8 failure-path gate is implemented in
+`audio_acoustix_scene_boundaries_selftest` (pure stdlib and run
+under every CTest configuration). This asserts that the Acoustix
+scene validator **rejects before rendering**:
+
+- duplicate or non-finite microphone offsets, microphone positions
+  outside the physical room even if the robot origin is inside,
+  and invalid robot yaw, with sampled poses during rotation;
+- malformed/negative/out-of-bounds source keyframe timestamps;
+- duplicate, path-traversal or slash-containing source IDs which
+  otherwise become output WAV/stem filenames;
+- unsorted, overlapping, zero-length or out-of-scene activity intervals.
+
+The positive 12-second room and all three new S1 replay recipes must
+continue to validate. This is a **negative validation suite**, not a
+measurement that makes unsupported acoustic effects physically accurate.
+Recorded speaker WAV support, T00 silence and corrupted PCM input need
+separate negative fixtures before a complete S1 pass.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
