@@ -358,6 +358,42 @@ The slow 8cm/12° motion causes a measurable waveform change, but
 no tested numerical discontinuity. Test reports are captured in
 `acoustix_motion.json`; no physical Doppler correctness claim.
 
+### S1 task #5 — independent rooms, seeds and byte-exact replay
+
+The initial moving-room test was a **single** 7×7 m, 12 s synthetic
+seven-voice fixture. Green ODAS/Acoustix CI on that one fixture cannot
+establish that the simulator generalizes to other geometry, number of
+sources or source-noise randomizations.
+
+`audio_acoustix_replay_recipe_selftest` (all CTest variants,
+stdlib-only) validates three frozen, self-contained scenario recipes
+derived without using SST or ASR results:
+
+| S1 scenario | Voices + ambient sources | Geometry | Requested RT60 |
+| --- | --- | --- | --- |
+| `static_one_voice` | 1 voice + fridge | stationary 4-mic robot, 7×7×2.8 m | 0.20 s |
+| `moving_two_voices` | 2 voices + fridge + AC | 4-mic robot translating and rotating, 7×7×2.8 m | 0.36 s |
+| `larger_room_three_voices` | 3 voices + fridge | 4-mic robot with rotated array offsets, 8×7×3 m | 0.20 s |
+
+`audio_acoustix_replay_physics` uses the **actual pinned Acoustix CPU
+backend**, three fixed random seeds (1161/2161/3161) and the same
+RT60 calibration as the full scene. For each recipe it renders twice
+on the same reference runner and requires **identical SHA-256** for
+the microphone input WAV, every source stem, signal audit, calibrated
+RT60 evidence and complete geometric oracle. It checks scene hash,
+render seed, RIR update interval, channel count, clock and source
+accounting. The 2-voice case also renders with a **different seed**
+and must change the ambient-noise WAV/stem while preserving
+deterministic speech stem and geometry.
+
+The audit is published as `acoustix_replay.json`, including source
+IDs, seed, scene hash and every checked artifact hash. A matching
+hash on the same Linux runner establishes **reproducibility, not
+physical acoustic accuracy**. This is a small, actively developed
+S1 suite: it does not replace the separate **≥20 held-out seeds**
+and real-speech S2 benchmark, nor does it establish cross-platform
+bit-identical PyRoomAcoustics rendering.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
@@ -390,7 +426,7 @@ no tested numerical discontinuity. Test reports are captured in
 | --- | --- | --- |
 | S0 signal + headless structural contract | **PASS** | Maintain existing artifact and regression coverage |
 | ODAS global-epsilon / 7–8 SSL suppression | **FIXED in fork dev**; libaudition stable pin in PR #74 | Keep exact SHA pin and verify 4/5/6/7/8 capacities |
-| S1 physics and timestamps | **PARTIAL PASS** (relative propagation, static RT60 calibration, mic/body geometry) | Verify absolute group delay, moving-phase continuity, spatial variation of RT60, timing and 20+ independent seeds before S1 DONE |
+| S1 physics, timing and repeatability | **PARTIAL PASS** (relative/absolute propagation, static RT60 calibration, slow moving-RIR numerical continuity); multi-room replay newly under test | Validate ≥20 held-out seeds, RT60 spatial variation, fixture-negative cases and scope of Doppler/phase limits before S1 DONE |
 | S2 real speech benchmark | **OPEN** | Licensed 7-speaker reference set and leakage/ASR metric contracts |
 | L1 recorder integrity — near-plane moving | **BLOCKED / failing on fork pin** | Reproduce exact fixture, inspect drop counters and writer queue ownership, fix without relaxing no-drop test |
 | L1/L2 first word and quiet speech | **OPEN** | VAD pre-roll with onset ground truth; same-model WER |
