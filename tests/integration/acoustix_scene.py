@@ -376,7 +376,8 @@ def render(scene: dict, args) -> None:
     out = args.output
     out.mkdir(parents=True, exist_ok=True)
     (out / "rt60_calibration.json").write_text(
-        json.dumps(rt60_calibration, indent=2) + "\n")
+        json.dumps(rt60_calibration, indent=2) + "
+")
     write_pcm16(out / "input.wav", raw, fs)
     if args.stems:
         from acoustix_signal_contract import audit_audio
@@ -387,7 +388,8 @@ def render(scene: dict, args) -> None:
                                    [s["id"] for s in scene["sources"]],
                                    sample_rate=fs)
         (out / "signal_audit.json").write_text(
-            json.dumps(signal_audit, indent=2) + "\n")
+            json.dumps(signal_audit, indent=2) + "
+")
     # RIR delay = geometric time-of-flight + the causal fractional-delay
     # filter's fixed group delay. The simulator carries this in the
     # microphone channels; dry reference channel 0 stays emission-aligned.
@@ -403,7 +405,8 @@ def render(scene: dict, args) -> None:
         robot, yaw = pose_at(scene["robot"]["trajectory"], t)
         active = []
         for s in scene["sources"]:
-            if (sample + 64 < frames and any(\n                    start <= t < stop for start, stop in s["active_s"])):
+            if (sample + 64 < frames and any(
+                    start <= t < stop for start, stop in s["active_s"])):
                 pos = source_position(s, t)
                 bearing, elevation = source_body_angles(robot, yaw, pos)
                 arrivals = direct_path_delay_samples(
@@ -444,7 +447,8 @@ def render(scene: dict, args) -> None:
                     "Synthetic voices are not intelligible speech unless --speech-dir is set"],
                 "speech_recordings_supplied": args.speech_dir is not None,
                 "ground_truth": gt}
-    (out / "ground_truth.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    (out / "ground_truth.json").write_text(json.dumps(manifest, indent=2) + "
+")
     if args.runner:
         folder = out / "odas"
         folder.mkdir(exist_ok=True)
@@ -465,7 +469,8 @@ def render(scene: dict, args) -> None:
         silence_start = int(audible_samples[-1]) + 1 if len(audible_samples) else 0
         metrics = compute_metrics(gt, observations, summary,
                                   silence_start_frame=silence_start)
-        (out / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
+        (out / "metrics.json").write_text(json.dumps(metrics, indent=2) + "
+")
         if not metrics["potential_observations"]:
             raise RuntimeError("No ODAS SSL potential source observations")
         if args.compare_capacity:
@@ -553,7 +558,8 @@ def render(scene: dict, args) -> None:
                     gt, extra_rows, extra_summary,
                     silence_start_frame=silence_start)
                 (out / ("metrics_" + name + ".json")).write_text(
-                    json.dumps(extra_metrics, indent=2) + "\n")
+                    json.dumps(extra_metrics, indent=2) + "
+")
                 if not extra_metrics["potential_observations"]:
                     raise RuntimeError("ODAS " + name + " returned no SSL proposals")
                 raw_results[name] = extra_metrics
@@ -608,7 +614,8 @@ def render(scene: dict, args) -> None:
                 ]
             }
             (out / "capacity_comparison.json").write_text(
-                json.dumps(comparison, indent=2) + "\n")
+                json.dumps(comparison, indent=2) + "
+")
     print(json.dumps({"output": str(out), "rir_snapshots": snapshots,
                       "pcm_channels": 6, "frames": output_frames}))
 
