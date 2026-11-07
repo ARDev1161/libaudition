@@ -155,7 +155,7 @@ private:
         const float* input = pots_->pots->array;
         std::partial_sort(
             candidate_indices_.begin(),
-            candidate_indices_.begin() + selected_count,
+            candidate_indices_.begin() + static_cast<std::ptrdiff_t>(selected_count),
             candidate_indices_.end(),
             [input](std::size_t a, std::size_t b) {
                 const float left = input[a * 4U + 3U];
