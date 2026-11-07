@@ -76,6 +76,17 @@ add_test(NAME ci_gtsam_install_retry COMMAND
 set_tests_properties(ci_gtsam_install_retry PROPERTIES
     LABELS "ci-contract;dependency;python" TIMEOUT 30)
 
+# Pure-standard-library acoustics scene contract: CI can validate the same
+# robot/source/microphone geometry without importing heavyweight Acoustix.
+# CPU/GPU RIR rendering and ODAS replay are opt-in headless integration runs.
+add_test(NAME audio_acoustix_scene_contract COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/acoustix_scene.py"
+    --scene "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/acoustix/table_conversation_7x7.json"
+    --validate-only)
+set_tests_properties(audio_acoustix_scene_contract PROPERTIES
+    LABELS "audio-integration;acoustix;scene-contract;python" TIMEOUT 30)
+
 # The corpus format, reference association and lossless WAV importer are
 # independent of ODAS and physical microphone geometry. Validate these
 # contracts in every CTest-enabled build, including the minimal core.
