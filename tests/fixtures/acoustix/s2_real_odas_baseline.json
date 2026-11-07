@@ -1,0 +1,35 @@
+{
+  "schema": "libaudition.acoustix-s2-odas-baseline.v1",
+  "source_run_id": 42368354767,
+  "source_sha": "732aa2afe72d4644161fb6ba0f114c40e63588ee",
+  "evaluation": "diagnostic regression only; not a separation or ASR acceptance gate",
+  "cases": [
+    {
+      "case": "t02_dev_single",
+      "input_sha256": "f80608cc54c652bf62e8a8c4ae090ba69f5b56ca66913356be8ce52f4a6af1a2",
+      "oracle_voice_source_hops": 614,
+      "matched_voice_source_hops": 607,
+      "max_simultaneous_tracks": 1,
+      "adjacent_id_switches": 0,
+      "recorder_drops": 0
+    },
+    {
+      "case": "t03_eval_two",
+      "input_sha256": "c14fe750e47064de1b105c5fceab1ffe8e5330157b7519818a5c175d6c54f0ee",
+      "oracle_voice_source_hops": 886,
+      "matched_voice_source_hops": 637,
+      "max_simultaneous_tracks": 1,
+      "adjacent_id_switches": 0,
+      "recorder_drops": 0
+    },
+    {
+      "case": "t07_eval_seven",
+      "input_sha256": "cacbd743623a7b63204c0affff24b9e922b507ac1981f6cad884488fd7fa7048",
+      "oracle_voice_source_hops": 3052,
+      "matched_voice_source_hops": 669,
+      "max_simultaneous_tracks": 4,
+      "adjacent_id_switches": 0,
+      "recorder_drops": 0
+    }
+  ]
+}
