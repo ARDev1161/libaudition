@@ -272,7 +272,7 @@ if(TARGET audition::backend_odas)
     option(LIBAUDITION_ACOUSTIX_EXPORT_STEMS
         "Export each source contribution to each microphone for analysis" OFF)
     option(LIBAUDITION_ACOUSTIX_COMPARE_CAPACITY
-        "Replay same simulated room through baseline 4/4 and expanded 8/8 ODAS" OFF)
+        "Run ODAS SSL/SST factorial plus SSL 4-8 capacity sweep on same WAV" OFF)
     if(LIBAUDITION_ENABLE_ACOUSTIX_SCENE_TESTS)
         set(_acoustix_arguments
             --scene "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/acoustix/table_conversation_7x7.json"
