@@ -52,6 +52,27 @@ class BaselineTests(unittest.TestCase):
         self.assertIn("t07_eval_seven:id_switches_not_increased",
                       result["regressions"])
 
+    def test_impossible_or_malformed_observations_rejected(self):
+        for field, value in (
+            ("matched_voice_source_hops", -1),
+            ("matched_voice_source_hops", 100000),
+            ("matched_voice_source_hops", True),
+            ("adjacent_id_switches", -1),
+            ("recorder_drops", -1),
+            ("max_simultaneous_tracks", -1),
+            ("max_simultaneous_tracks", 1.5),
+        ):
+            report = copy.deepcopy(self.report)
+            report["cases"][0][field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                compare(self.baseline, report)
+
+    def test_pipeline_integrity_failure_is_regression(self):
+        self.report["cases"][0]["passed_pipeline_integrity"] = False
+        result = compare(self.baseline, self.report)
+        self.assertFalse(result["regression_passed"])
+        self.assertIn("t02_dev_single:pipeline_integrity", result["regressions"])
+
     def test_recorder_drop_fails_even_with_good_tracking(self):
         self.report["cases"][0]["recorder_drops"] = 1
         self.assertIn("t02_dev_single:no_recorder_drops",

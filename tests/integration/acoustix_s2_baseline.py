@@ -15,6 +15,8 @@ def compare(baseline, report):
         raise ValueError("unsupported frozen baseline schema")
     if report.get("schema") != "libaudition.acoustix-s2-real-odas-diagnostics.v1":
         raise ValueError("unsupported replay diagnostics schema")
+    if not isinstance(baseline.get("cases"), list) or not isinstance(report.get("cases"), list):
+        raise ValueError("cases must be arrays")
     expected = {case["case"]: case for case in baseline["cases"]}
     observed = {case["case"]: case for case in report["cases"]}
     if len(expected) != len(baseline["cases"]) or len(observed) != len(report["cases"]):
@@ -32,12 +34,25 @@ def compare(baseline, report):
         denominator = old["oracle_voice_source_hops"]
         if not isinstance(denominator, int) or denominator <= 0:
             raise ValueError("invalid oracle denominator: " + name)
+        # Reject malformed observations before applying one-sided regression gates.
+        # Otherwise negative drops/switches, negative matches or impossible
+        # matches > oracle could silently pass as improvements.
+        for key in ("matched_voice_source_hops", "max_simultaneous_tracks",
+                    "adjacent_id_switches", "recorder_drops"):
+            value = now.get(key)
+            if type(value) is not int or value < 0:
+                raise ValueError("invalid nonnegative integer " + key + ": " + name)
+        if now["matched_voice_source_hops"] > denominator:
+            raise ValueError("matched source hops exceed oracle: " + name)
+        if not isinstance(now.get("passed_pipeline_integrity"), bool):
+            raise ValueError("missing pipeline integrity result: " + name)
         # Fixed-input comparison: 5% relative tolerance on matched source-hop
         # count avoids failing on small scheduling variation; do not use as a
         # threshold to claim the algorithm is accurate.
         min_matches = (old["matched_voice_source_hops"] * 95 + 99) // 100
         checks = {
             "no_recorder_drops": now["recorder_drops"] == 0,
+            "pipeline_integrity": now["passed_pipeline_integrity"],
             "source_hop_recall_not_regressed": now["matched_voice_source_hops"] >= min_matches,
             "id_switches_not_increased":
                 now["adjacent_id_switches"] <= old["adjacent_id_switches"],
