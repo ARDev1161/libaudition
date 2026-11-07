@@ -12,7 +12,6 @@ import argparse
 import copy
 import hashlib
 import json
-import math
 from pathlib import Path
 
 from acoustix_scene import check_scene
@@ -107,7 +106,7 @@ def build_scene_and_plan(base_scene: dict, corpus: dict, corpus_root: Path,
         scene, corpus, corpus_root, plan, corpus_sha256=corpus_sha)
     return scene, plan, {
         "schema": "libaudition.acoustix-s2-plan-build.v1",
-        "status": "REAL_CORPUS_INGRESS_VALIDATED_NOT_RENDERED",
+        "status": "CORPUS_PCM_VALIDATED_NOT_RENDERED",
         "speaker_count": speakers,
         "split": split,
         "robot_motion": robot_motion,
@@ -157,6 +156,9 @@ def main():
     report["speech_plan_sha256"] = hashlib.sha256(
         files["speech_plan.json"].encode()).hexdigest()
     files["scene_plan_audit.json"] = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    for name in files:
+        if (args.output / name).exists():
+            raise FileExistsError("Frozen S2 scenario already exists: " + name)
     for name in files:
         (args.output / name).write_text(files[name], encoding="utf-8")
     print(json.dumps({"output": str(args.output), "speakers": args.speakers,
