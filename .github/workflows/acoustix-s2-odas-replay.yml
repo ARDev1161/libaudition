@@ -72,7 +72,22 @@ jobs:
         run: |
           for case in t02_dev_single t03_eval_two t07_eval_seven; do
             mkdir -p "build-s2/$case/odas"
+            # Fresh trace per exact SHA-pinned WAV; no stale concatenated hops.
+            export ODAS_SST_TRACE_JSONL="$PWD/build-s2/$case/odas/sst_raw_trace.jsonl"
+            export ODAS_SST_TRACE_HOP_FRAMES=128
+            rm -f "$ODAS_SST_TRACE_JSONL"
             build-s2-odas/tests/audition_offline_integration               "build-s2/$case/render/input.wav"               "build-s2/$case/odas"               > "build-s2/$case/odas/runner.stdout.txt"               2> "build-s2/$case/odas/runner.stderr.txt"
+            test -s "$ODAS_SST_TRACE_JSONL"
+          done
+
+      - name: Validate REAL offline ODAS SSL/SST JSONL (no synthetic oracle)
+        run: |
+          # The validator comes from the exact pinned external ODAS checkout.
+          validator="$(find build-s2-odas -type f -path '*/tools/validate_sst_raw_trace.py' -print -quit)"
+          test -n "$validator" && test -f "$validator"
+          for case in t02_dev_single t03_eval_two t07_eval_seven; do
+            python3 "$validator" "build-s2/$case/odas/sst_raw_trace.jsonl" \
+              > "build-s2/$case/odas/sst_trace_integrity.json"
           done
 
       - name: Score ODAS source-track diagnostics vs human-voice DOA oracle
