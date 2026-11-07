@@ -331,6 +331,77 @@ def render(scene: dict, args) -> None:
         (out / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
         if not metrics["potential_observations"]:
             raise RuntimeError("No ODAS SSL potential source observations")
+        if args.compare_capacity:
+            # Replay exactly the same simulated microphone WAV with expanded
+            # ODAS SSL/SST capacities. This isolates the hard 4-slot limit
+            # from source-acquisition quality; it does NOT change the
+            # underlying four-microphone physics or tune tracking thresholds.
+            expanded = out / "odas_8x8"
+            expanded.mkdir(exist_ok=True)
+            extra = subprocess.run(
+                [str(args.runner.resolve()), str(out / "input.wav"),
+                 str(expanded), "--max-tracks", "8", "--potential-sources", "8"],
+                capture_output=True, text=True, timeout=240)
+            (out / "runner_8x8.stdout.txt").write_text(extra.stdout)
+            (out / "runner_8x8.stderr.txt").write_text(extra.stderr)
+            if extra.returncode:
+                raise RuntimeError("Expanded 8x8 ODAS runner failed: " + extra.stderr[-1200:])
+            extra_summary = json.loads((expanded / "summary.json").read_text())
+            if (extra_summary["input_frames"] != output_frames
+                    or extra_summary["recorder_drops"]):
+                raise RuntimeError("Expanded 8x8 ODAS lost frames or recording data")
+            extra_observations = list(csv.DictReader(
+                (expanded / "observations.csv").open(newline="")))
+            expanded_metrics = compute_metrics(
+                gt, extra_observations, extra_summary,
+                silence_start_frame=silence_start)
+            (out / "metrics_8x8.json").write_text(
+                json.dumps(expanded_metrics, indent=2) + "\n")
+            if not expanded_metrics["potential_observations"]:
+                raise RuntimeError("Expanded 8x8 ODAS produced no SSL proposals")
+
+            def capacity_summary(result_metrics, result_summary):
+                return {
+                    "configured_max_tracks": result_summary["sst_max_tracks"],
+                    "configured_ssl_potential_sources":
+                        result_summary["ssl_potential_source_count"],
+                    "max_simultaneous_tracks":
+                        result_metrics["max_simultaneous_tracks"],
+                    "matched_voice_source_fraction":
+                        result_metrics["matched_voice_source_fraction"],
+                    "matched_voice_source_hops":
+                        result_metrics["matched_voice_source_hops"],
+                    "matched_median_3d_angular_error_deg":
+                        result_metrics["matched_median_3d_angular_error_deg"],
+                    "matched_p90_3d_angular_error_deg":
+                        result_metrics["matched_p90_3d_angular_error_deg"],
+                    "adjacent_matched_id_switches":
+                        result_metrics["adjacent_matched_id_switches"],
+                    "microphone_digital_silence_track_observations":
+                        result_metrics["microphone_digital_silence_track_observations"],
+                    "track_observations": result_metrics["track_observations"],
+                    "recordings": result_metrics["recordings"]
+                }
+
+            comparison = {
+                "schema": "libaudition.acoustix-capacity-comparison.v1",
+                "method": "same six-channel simulated WAV, 4/4 vs 8/8",
+                "baseline": capacity_summary(metrics, summary),
+                "expanded": capacity_summary(expanded_metrics, extra_summary),
+                "delta_matched_voice_source_hops":
+                    expanded_metrics["matched_voice_source_hops"] -
+                    metrics["matched_voice_source_hops"],
+                "delta_max_simultaneous_tracks":
+                    expanded_metrics["max_simultaneous_tracks"] -
+                    metrics["max_simultaneous_tracks"],
+                "interpretation_limitations": [
+                    "Different limits may change ODAS source hypotheses and tracking",
+                    "Four microphones may be insufficient for seven simultaneous voices",
+                    "Synthetic voiced-like signals do not validate real-speech ASR or leakage"
+                ]
+            }
+            (out / "capacity_comparison.json").write_text(
+                json.dumps(comparison, indent=2) + "\n")
     print(json.dumps({"output": str(out), "rir_snapshots": snapshots,
                       "pcm_channels": 6, "frames": output_frames}))
 
@@ -346,6 +417,8 @@ def main():
     parser.add_argument("--speech-dir", type=Path, help="speaker_1.wav .. speaker_7.wav, mono PCM16/16k")
     parser.add_argument("--stems", action="store_true", help="Export per-source 4-channel WAVs")
     parser.add_argument("--runner", type=Path, help="Built audition_offline_integration executable")
+    parser.add_argument("--compare-capacity", action="store_true",
+                        help="Replay identical WAV through both default 4x4 and expanded 8x8 ODAS")
     args = parser.parse_args()
     scene = json.loads(args.scene.read_text(encoding="utf-8"))
     stats = check_scene(scene)
@@ -356,6 +429,8 @@ def main():
         parser.error("--output is required when rendering")
     if args.max_seconds is not None and not 0 < args.max_seconds <= scene["duration_s"]:
         parser.error("--max-seconds must be within scene duration")
+    if args.compare_capacity and not args.runner:
+        parser.error("--compare-capacity requires --runner")
     render(scene, args)
 
 
