@@ -105,6 +105,14 @@ add_test(NAME audio_acoustix_scene_boundaries_selftest COMMAND
 set_tests_properties(audio_acoustix_scene_boundaries_selftest PROPERTIES
     LABELS "audio-integration;acoustix;scene-contract;negative;python" TIMEOUT 30)
 
+# S1 held-out acoustic configuration freeze: 20 distinct seeds and
+# low/mid/high RT60 across 1/2/3 sources, without expensive RIR rendering.
+add_test(NAME audio_acoustix_heldout_manifest_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_heldout_manifest.py")
+set_tests_properties(audio_acoustix_heldout_manifest_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;scene-contract;replay;heldout;python" TIMEOUT 30)
+
 # S1 frozen multi-room/seed recipe selftest (stdlib, all CTest configurations).
 add_test(NAME audio_acoustix_replay_recipe_selftest COMMAND
     ${Python3_EXECUTABLE}
