@@ -430,6 +430,33 @@ measurement that makes unsupported acoustic effects physically accurate.
 Recorded speaker WAV support, T00 silence and corrupted PCM input need
 separate negative fixtures before a complete S1 pass.
 
+### S1 task #7 — room-wide RT60 spatial variation (not one lucky probe)
+
+The moving-room RT60 correction uses **one** source/microphone
+reference at t=0 to select a single effective backend parameter.
+That calibrates a *representative* impulse response, not necessarily
+every reflected propagation path. To make this limitation measurable:
+
+`audio_acoustix_spatial_rt60_physics` performs a frozen 7×7×2.8m,
+requested RT60=0.36 s check using the same one-time calibration.
+It independently measures **36 real CPU RIRs** at three robot poses
+(t=0/4.5/9 s) × four array microphones × three speaker locations.
+Each room impulse is analyzed using the separately tested Schroeder
+T20 reference (-5..-25 dB). It records **every** fit and R²,
+including invalid/noisy decay estimates, not just successful matches.
+
+The **predeclared acceptance criteria** are: at least 80% of these
+36 RIRs have R²≥0.85; on those valid RIRs the **median absolute
+RT60 error ≤25%** and P90 absolute error ≤50%. These distribution
+criteria represent spatial consistency and are **not** a replacement
+for the existing strict ±25% calibrated reference-probe check.
+Artifacts `acoustix_spatial_rt60.json` include min/max RT60 and
+all per-position measurements, even when tests fail.
+
+This one scenario is *not* a measurement-correlated physical-room
+benchmark, does not model frequency-dependent absorption, and does
+not establish accuracy of Doppler or exact RIR phase.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
