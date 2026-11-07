@@ -142,6 +142,9 @@ void validateOdasOptions(const OdasOptions& options) {
             "ODAS SSL refined-level count must not exceed scan-level count");
 
     require(options.sst.max_tracks > 0U, "ODAS SST maximum track count must be non-zero");
+    require(options.sst.max_input_potentials == 0U ||
+                options.sst.max_input_potentials <= options.ssl.potential_source_count,
+            "ODAS SST input potential count must not exceed SSL output count");
     requirePositive(options.sst.kalman_sigma_q, "ODAS SST Kalman sigma Q must be positive");
     require(options.sst.particle_count > 0U, "ODAS SST particle count must be non-zero");
     requirePositive(options.sst.sigma_r2_probability,
