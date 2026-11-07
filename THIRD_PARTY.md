@@ -15,8 +15,11 @@ Rules:
 
 The optional direct ODAS backend uses the `ARDev1161/odas` fork of
 `introlab/odas` under the upstream MIT license. The ExternalProject source
-is pinned to `28c41da02bc87b1582264eba6809b66f79546377` from the fork's
-`dev` integration history, not to the moving branch name. The upstream
+is temporarily pinned to experimental fork PR #3 commit
+`f65c283749c26e6efb91bc5046c3588ed04e4daf` for Acoustix validation
+in this stacked test branch. Before merging this into production, replace
+it with a verified commit on fork `dev` (normally the stable pin is
+`28c41da02bc87b1582264eba6809b66f79546377`). The upstream
 compatibility baseline is `bcb845434495e293df3d48f1203b7a86e1852449`.
 The fork factors SST posterior marginals to avoid allocating exponential
 assignment tables; this is not a claim of improved speaker separation.
