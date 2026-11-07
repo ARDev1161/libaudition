@@ -78,6 +78,22 @@ class AcoustixMetricsTests(unittest.TestCase):
         self.assertEqual(metrics["adjacent_matched_id_switches"], 0)
         self.assertEqual(metrics["adjacent_matched_id_comparisons"], 0)
 
+    def test_tracking_after_last_nonzero_mic_sample(self):
+        truth = [{"hop": 0, "sources": [voice("A", 0)]}]
+        summary = dict(SUMMARY, sample_rate_hz=16000, input_frames=1280)
+        observed = [dict(track("active", 0), hop="0"),
+                    dict(track("linger", 0), hop="4"),
+                    dict(track("linger", 0), hop="5"),
+                    dict(track("linger", 0), hop="7")]
+        report = compute_metrics(truth, observed, summary,
+                                 silence_start_frame=384)
+        self.assertEqual(report["microphone_digital_silence_start_s"], .024)
+        self.assertEqual(report["microphone_digital_silence_track_observations"], 3)
+        self.assertEqual(report["microphone_digital_silence_tracked_hops"], 3)
+        self.assertEqual(report["microphone_digital_silence_distinct_track_ids"], 1)
+        self.assertEqual(report["microphone_digital_silence_available_hops"], 7)
+        self.assertEqual(report["microphone_digital_silence_track_last_seen_s"], .056)
+
     def test_no_active_speech_is_reported_not_faked(self):
         truth = [{"hop": 0, "sources": []}]
         metrics = compute_metrics(truth, [], SUMMARY)
