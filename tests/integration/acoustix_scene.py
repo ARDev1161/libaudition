@@ -19,6 +19,8 @@ import subprocess
 import wave
 from pathlib import Path
 
+from acoustix_metrics import compute_metrics
+
 
 def check_scene(scene: dict) -> dict:
     if scene.get("schema") != "libaudition.acoustix-scene.v1":
@@ -278,8 +280,11 @@ def render(scene: dict, args) -> None:
                 bearing = (math.degrees(math.atan2(pos[1] - robot[1],
                                                   pos[0] - robot[0]))
                            - yaw + 180) % 360 - 180
+                horizontal = math.hypot(pos[0] - robot[0], pos[1] - robot[1])
+                elevation = math.degrees(math.atan2(pos[2] - robot[2], horizontal))
                 active.append({"id": s["id"], "kind": s["kind"],
-                               "bearing_deg": round(bearing, 4)})
+                               "bearing_deg": round(bearing, 4),
+                               "elevation_deg": round(elevation, 4)})
         gt.append({"hop": sample // 128, "t_s": round(t, 4),
                    "robot_position_m": [round(v, 4) for v in robot],
                    "robot_yaw_deg": round(yaw, 4), "sources": active})
@@ -310,14 +315,7 @@ def render(scene: dict, args) -> None:
         if summary["input_frames"] != output_frames or summary["recorder_drops"]:
             raise RuntimeError("Audio frame mismatch or offline recorder drop")
         observations = list(csv.DictReader((folder / "observations.csv").open(newline="")))
-        tracks = [r for r in observations if r["kind"] == "track"]
-        metrics = {"track_observations": len(tracks),
-                   "potential_observations": summary["potential_observations"],
-                   "separated_frames": summary["separated_frames"],
-                   "recordings": summary["recordings"],
-                   "max_simultaneous_tracks": max(
-                       (len({r["id"] for r in tracks if int(r["hop"]) == hop["hop"]})
-                        for hop in gt), default=0)}
+        metrics = compute_metrics(gt, observations, summary)
         (out / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
         if not metrics["potential_observations"]:
             raise RuntimeError("No ODAS SSL potential source observations")
