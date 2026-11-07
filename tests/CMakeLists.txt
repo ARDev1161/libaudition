@@ -97,6 +97,15 @@ add_test(NAME audio_acoustix_physics_selftest COMMAND
 set_tests_properties(audio_acoustix_physics_selftest PROPERTIES
     LABELS "audio-integration;acoustix;scene-contract;physics;python" TIMEOUT 30)
 
+# Unit-test Schroeder T20 estimator on analytical exponential impulses, without
+# installing Acoustix, SciPy, or numpy in minimal CI.
+add_test(NAME audio_acoustix_rt60_metric_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_rt60.py")
+set_tests_properties(audio_acoustix_rt60_metric_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;scene-contract;reverberation;python"
+    TIMEOUT 30)
+
 # Pure-standard-library acoustics scene contract: CI can validate the same
 # robot/source/microphone geometry without importing heavyweight Acoustix.
 # CPU/GPU RIR rendering and ODAS replay are opt-in headless integration runs.
@@ -289,6 +298,14 @@ if(TARGET audition::backend_odas)
             --cpu-rir
             --report "${CMAKE_CURRENT_BINARY_DIR}/acoustix_physics.json")
         set_tests_properties(audio_acoustix_rir_physics PROPERTIES
+            LABELS "audio-integration;acoustix;physics;reverberation;optional"
+            TIMEOUT 180)
+        add_test(NAME audio_acoustix_rt60_physics COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_rt60.py"
+            --cpu-rir
+            --report "${CMAKE_CURRENT_BINARY_DIR}/acoustix_rt60.json")
+        set_tests_properties(audio_acoustix_rt60_physics PROPERTIES
             LABELS "audio-integration;acoustix;physics;reverberation;optional"
             TIMEOUT 180)
         set(_acoustix_arguments

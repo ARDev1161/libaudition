@@ -226,6 +226,28 @@ The old 12-second Acoustix metrics remain 2,448 tracked observations,
 The gate does not validate moving-phase physics, acoustic materials,
 ASR quality or the whole S1 milestone.
 
+### S1 task #2 — objective RIR decay-time verification
+
+This isolated task adds a **Schroeder backward-integrated T20 estimator**:
+fit the impulse-response energy decay from -5 to -25 dB and
+extrapolate the slope to 60 dB. The reference estimator is verified
+against analytical exponential impulse envelopes at RT60
+0.20 / 0.36 / 0.70 s and checked for amplitude-scale invariance,
+nonfinite inputs and silent responses (normal lightweight CI).
+
+An optional CPU test then requests RT60=**0.20** and **0.36 s** from
+the *actual pinned Acoustix CPU image-source room backend* and
+requires estimated T60 within **±25%**, regression fit R²>0.85 and
+monotonically greater decay for the higher request. This checks
+stationary frequency-independent simulated reverberation, not
+frequency-dependent materials or measured physical rooms.
+The result `acoustix_rt60.json` is archived and shown in Actions.
+
+**S1 stays IN PROGRESS** after this test: motion-phase continuity,
+absolute delay/group-delay calibration, independent render
+repeatability across all sources and hardware acoustic correlation
+remain unverified.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,

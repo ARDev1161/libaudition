@@ -92,7 +92,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|physics_selftest|rir_physics|dynamic_room)$' \
+            -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|rir_physics|rt60_physics|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Summarize acoustic tracking diagnostics
         if: always()
@@ -216,6 +216,29 @@ jobs:
               ])
           else:
               rows.extend(["", "### S1 physics", "", "No CPU RIR physics report (see test logs)."])
+          rt60_path = Path("build-acoustix/tests/acoustix_rt60.json")
+          if rt60_path.is_file():
+              rt60 = json.loads(rt60_path.read_text())
+              rows.extend([
+                  "",
+                  "### S1: RT60/T20 measured on pinned Acoustix CPU",
+                  "",
+                  "| Requested RT60 | Estimated from Schroeder T20 | Error | R² |",
+                  "| ---: | ---: | ---: | ---: |",
+              ])
+              for sample in rt60["evidence"]["rt60"]:
+                  rows.append(
+                      f"| {sample['requested_rt60_s']:.3f}s "
+                      f"| {sample['t60_s']:.3f}s "
+                      f"| {100*sample['relative_error']:+.1f}% "
+                      f"| {sample['r_squared']:.3f} |"
+                  )
+              rows.extend([
+                  "",
+                  "> Finite-order rectangular-room RIR only. RT60 is not calibrated against measured microphone/room audio."
+              ])
+          else:
+              rows.extend(["", "### S1 RT60", "", "No CPU RT60 report; check CTest logs."])
           signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
           if signal_path.is_file():
               audit = json.loads(signal_path.read_text())
@@ -243,6 +266,7 @@ jobs:
           path: |
             build-acoustix/tests/acoustix_7x7/
             build-acoustix/tests/acoustix_physics.json
+            build-acoustix/tests/acoustix_rt60.json
             build-acoustix/Testing/Temporary/LastTest.log
           retention-days: 10
           if-no-files-found: warn
