@@ -265,9 +265,15 @@ def render(scene: dict, args) -> None:
     out.mkdir(parents=True, exist_ok=True)
     write_pcm16(out / "input.wav", raw, fs)
     if args.stems:
+        from acoustix_signal_contract import audit_audio
         for si, s in enumerate(scene["sources"]):
             write_pcm16(out / "stems" / (s["id"] + ".wav"),
                         separated[si].T * scale, fs)
+        signal_audit = audit_audio(out / "input.wav", out / "stems",
+                                   [s["id"] for s in scene["sources"]],
+                                   sample_rate=fs)
+        (out / "signal_audit.json").write_text(
+            json.dumps(signal_audit, indent=2) + "\n")
     # Oracle bearings are in the robot BODY frame, not world coordinates.
     gt = []
     for sample in range(0, frames, 128):
