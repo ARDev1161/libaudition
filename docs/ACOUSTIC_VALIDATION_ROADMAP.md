@@ -312,6 +312,35 @@ latency equals this physical delay, and not a phase-accurate
 continuous-motion model. See separate T05 motion tests before
 marking S1 complete.
 
+### S1 task #4 — moving-RIR waveform continuity
+
+The production renderer's emission-time, triangular partition-of-unity
+RIR overlap-add is exposed as a shared helper used in the full scene
+and the S1 tests, to avoid verifying a separate test-only implementation.
+
+`audio_acoustix_motion_physics` exercises two independent controls:
+
+1. A **stationary known FIR** convolved via multiple weighted RIR
+   snapshots must reproduce a single unwindowed `fftconvolve` to
+   within 3e-6 absolute PCM float amplitude; no missing frames,
+   double application or accidental extra reflection tail.
+2. The **actual pinned Acoustix CPU** backend renders a continuous
+   500 Hz tone with 8 cm linear translation and 12° yaw over 1 s
+   from a stationary source into a two-microphone array. Detect
+   silent gaps at RIR boundaries (boundary RMS ≥30% local RMS)
+   and abrupt clicks (maximum first-difference within an RIR
+   update window ≤2× the global P99 first difference). With the
+   same source/scene, output at 100ms vs 50ms RIR update spacing
+   must differ by no more than 35% RMS relative to the finer run.
+   Log the measured ratios to `acoustix_motion.json`.
+
+These are **bounded numerical continuity** claims only. They do not
+verify physical propagation with continuously moving microphones,
+Doppler frequency shift, source-microphone phase during rapid motion,
+or arrival times for moving echoes. The S1 milestone stays partial
+until these independent physics/model limitations are documented,
+measured or explicitly scoped out.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
