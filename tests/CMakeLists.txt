@@ -90,6 +90,14 @@ add_test(NAME audio_acoustix_metrics_selftest COMMAND
 set_tests_properties(audio_acoustix_metrics_selftest PROPERTIES
     LABELS "audio-integration;acoustix;scene-contract;python" TIMEOUT 30)
 
+# S1 malformed-input contracts: microphone positions, timestamps, IDs
+# and invalid activity, run on every minimal/default CTest build.
+add_test(NAME audio_acoustix_scene_boundaries_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_scene_boundaries.py")
+set_tests_properties(audio_acoustix_scene_boundaries_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;scene-contract;negative;python" TIMEOUT 30)
+
 # S1 frozen multi-room/seed recipe selftest (stdlib, all CTest configurations).
 add_test(NAME audio_acoustix_replay_recipe_selftest COMMAND
     ${Python3_EXECUTABLE}

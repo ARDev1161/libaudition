@@ -389,10 +389,46 @@ deterministic speech stem and geometry.
 The audit is published as `acoustix_replay.json`, including source
 IDs, seed, scene hash and every checked artifact hash. A matching
 hash on the same Linux runner establishes **reproducibility, not
-physical acoustic accuracy**. This is a small, actively developed
+physical acoustic accuracy**.
+
+**Verified:** [full Acoustix #42349349707](https://github.com/ARDev1161/libaudition/actions/runs/42349349707)
+PASS. Artifact #13565077593 records 6 exact-matching hashes
+for `static_one_voice` (seed 1161), eight for
+`moving_two_voices` (seed 2161), eight for
+`larger_room_three_voices` (seed 3161), with two identical
+runs each. The different seed changed the two-voice mixed WAV
+and refrigerator stem while leaving the deterministic voice
+and geometric oracle unchanged. The full 12s Acoustix
+baseline stayed at 2,499 SST observations and 19.4139%
+geometric source-hop coverage; **not** an evaluation of ASR. This is a small, actively developed
 S1 suite: it does not replace the separate **≥20 held-out seeds**
 and real-speech S2 benchmark, nor does it establish cross-platform
 bit-identical PyRoomAcoustics rendering.
+
+### S1 task #6 — hostile and malformed scene rejection
+
+The S1.8 failure-path gate is implemented in
+`audio_acoustix_scene_boundaries_selftest` (pure stdlib and run
+under every CTest configuration). This asserts that the Acoustix
+scene validator **rejects before rendering**:
+
+- duplicate or non-finite microphone offsets, microphone positions
+  outside the physical room even if the robot origin is inside,
+  and invalid robot yaw, with sampled poses during rotation;
+- malformed/negative/out-of-bounds source keyframe timestamps;
+- duplicate, path-traversal or slash-containing source IDs which
+  otherwise become output WAV/stem filenames;
+- unsorted, overlapping, zero-length or out-of-scene activity intervals.
+
+The positive 12-second room and all three new S1 replay recipes must
+continue to validate. **Verified:** the full [Acoustix
+#42349719540](https://github.com/ARDev1161/libaudition/actions/runs/42349719540)
+passed, including `audio_acoustix_scene_boundaries_selftest`,
+`audio_acoustix_replay_physics` and the full 12-second
+ODAS integration test. This is a **negative validation suite**, not a
+measurement that makes unsupported acoustic effects physically accurate.
+Recorded speaker WAV support, T00 silence and corrupted PCM input need
+separate negative fixtures before a complete S1 pass.
 
 ## 7. CI policy, artifacts and anti-overfitting
 

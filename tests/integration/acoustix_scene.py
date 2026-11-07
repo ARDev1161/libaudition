@@ -15,6 +15,7 @@ import csv
 import hashlib
 import json
 import math
+import re
 import subprocess
 import wave
 from pathlib import Path
@@ -37,17 +38,35 @@ def check_scene(scene: dict) -> dict:
     mics = scene["robot"]["microphones_m"]
     if not 2 <= len(mics) <= 32 or any(len(v) != 3 for v in mics):
         raise ValueError("Invalid microphone geometry")
+    if any(any(not isinstance(v, (int, float)) or isinstance(v, bool)
+                   or not math.isfinite(v) for v in offset)
+           for offset in mics):
+        raise ValueError("Non-finite or nonnumeric microphone offset")
+    if any(math.dist(a, b) < 1e-6
+           for index, a in enumerate(mics)
+           for b in mics[index + 1:]):
+        raise ValueError("Duplicate or nearly coincident microphones")
     traj = scene["robot"]["trajectory"]
     if not traj or traj[0]["t_s"] != 0 or traj[-1]["t_s"] < duration:
         raise ValueError("Robot trajectory must cover entire duration")
     names = set()
     for item in scene["sources"]:
+        if (not isinstance(item["id"], str)
+                or re.fullmatch(r"[a-z][a-z0-9_]*", item["id"]) is None):
+            # Source IDs become output filenames. Never interpret user
+            # supplied relative path components while generating stems.
+            raise ValueError("Source ID must be a safe filename stem")
         if item["id"] in names or item["kind"] not in {"voice", "fridge", "ac", "car"}:
             raise ValueError("Duplicate source ID or unknown kind")
         names.add(item["id"])
+        previous_stop = 0.0
         for start, stop in item["active_s"]:
-            if not 0 <= start < stop <= duration:
-                raise ValueError("Invalid activity interval for " + item["id"])
+            if (not math.isfinite(float(start))
+                    or not math.isfinite(float(stop))
+                    or not 0 <= start < stop <= duration
+                    or start < previous_stop):
+                raise ValueError("Invalid, unsorted or overlapping activity interval for " + item["id"])
+            previous_stop = stop
         for point in [item["position_m"]] + [p["position_m"] for p in item.get("trajectory", [])]:
             if len(point) != 3 or any(not 0 < v < limit for v, limit in zip(point, dims)):
                 raise ValueError("Source outside room: " + item["id"])
@@ -56,9 +75,26 @@ def check_scene(scene: dict) -> dict:
     validate_trajectory(traj, duration)
     for pose in traj:
         x, y, z = pose["position_m"]
+        yaw = float(pose.get("yaw_deg", 0))
+        if not math.isfinite(yaw):
+            raise ValueError("Non-finite robot yaw")
         if not (0.15 < x < dims[0] - 0.15 and 0.15 < y < dims[1] - 0.15
                 and 0.15 < z < dims[2] - 0.15):
             raise ValueError("Robot outside room or too close to wall")
+
+    # The robot origin may be safely inside the room while a rotated
+    # microphone lies outside it. Validate actual microphone positions
+    # at movement endpoints and intermediate yaw/translation samples.
+    for first, last in zip(traj, traj[1:]):
+        for step in range(9):
+            t = (float(first["t_s"]) * (1 - step / 8)
+                 + float(last["t_s"]) * (step / 8))
+            robot, yaw = pose_at(traj, t)
+            for offset in mics:
+                point = microphone_world_position(robot, yaw, offset)
+                if any(not 0.01 < x < limit - 0.01
+                       for x, limit in zip(point, dims)):
+                    raise ValueError("Moving microphone leaves physical room")
     return {"sources": len(names), "voice_sources": sum(s["kind"] == "voice" for s in scene["sources"]),
             "microphones": len(mics), "duration_s": duration, "sample_rate_hz": fs}
 
@@ -69,11 +105,12 @@ def validate_trajectory(points: list, duration: float) -> None:
         raise ValueError("Single pose must start at t=0")
     if any(not math.isfinite(t) for t in times) or any(a >= b for a, b in zip(times, times[1:])):
         raise ValueError("Trajectory times must strictly increase")
-    if times[0] > 0 or times[-1] < duration:
-        # A moving source may deliberately only move during a subinterval.
-        # Its endpoint positions are held before/after the keyframes.
-        if len(points) == 1 or times[0] < 0 or times[-1] > duration:
-            raise ValueError("Trajectory outside scenario")
+    if times[0] < 0 or times[-1] > duration:
+        raise ValueError("Trajectory outside scenario")
+    # A moving source may deliberately move only during a subinterval:
+    # its endpoint pose is held before/after those keyframes.
+    if len(points) == 1 and times[0] != 0:
+        raise ValueError("Single-position trajectory must start at zero")
     if any(len(p["position_m"]) != 3 for p in points):
         raise ValueError("Expected 3D poses")
 
