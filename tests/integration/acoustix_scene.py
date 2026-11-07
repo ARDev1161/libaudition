@@ -219,7 +219,9 @@ def render(scene: dict, args) -> None:
     rng = np.random.default_rng(args.seed)
     dry = [make_source_signal(s, fs, frames, i, rng, args.speech_dir)
            for i, s in enumerate(scene["sources"])]
-    output_frames = frames + 3 * fs  # preserve the reverberation tail
+    # The existing ODAS offline runner consumes only complete 128-frame
+    # hops. Pad the post-reverberation silence, not the generated content.
+    output_frames = math.ceil((frames + 3 * fs) / 128) * 128
     separated = np.zeros((count, mics, output_frames), dtype=np.float32)
     max_rir_samples = 0
     snapshots = 0
