@@ -92,7 +92,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|physics_selftest|rir_physics|dynamic_room) \
+            -R '^audio_acoustix_(scene_contract|metrics_selftest|signal_selftest|physics_selftest|rir_physics|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Summarize acoustic tracking diagnostics
         if: always()
@@ -212,7 +212,7 @@ jobs:
                   f"| Expected direct peak attenuation | {impulse['expected_near_over_far_peak_db']:.2f} dB |",
                   f"| Bit-identical repeat RIR | {impulse['bit_exact_rir_repeatability']} |",
                   "",
-                  "> Only a stationary first-order impulse physics test; frequency-dependent RT60 and Doppler are not validated."
+                  "> Only a stationary direct-path test; frequency-dependent RT60 and Doppler are not validated."
               ])
           else:
               rows.extend(["", "### S1 physics", "", "No CPU RIR physics report (see test logs)."])
@@ -243,139 +243,6 @@ jobs:
           path: |
             build-acoustix/tests/acoustix_7x7/
             build-acoustix/tests/acoustix_physics.json
-            build-acoustix/Testing/Temporary/LastTest.log
-          retention-days: 10
-          if-no-files-found: warn
- \
-            --output-on-failure --verbose
-      - name: Summarize acoustic tracking diagnostics
-        if: always()
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          path = Path("build-acoustix/tests/acoustix_7x7/metrics.json")
-          if path.is_file():
-              m = json.loads(path.read_text())
-              rows = [
-                  "### Acoustix moving-room spatial diagnostics",
-                  "",
-                  "> Synthetic reverberant scene; diagnostics are not calibrated real-room accuracy gates.",
-                  "",
-                  "| Metric | Result |",
-                  "| --- | ---: |",
-                  f"| Active voices (maximum) | {m['max_active_voices']} |",
-                  f"| Simultaneous ODAS tracks (maximum) | {m['max_simultaneous_tracks']} |",
-                  f"| Matched voice-source hop fraction (45°) | {100*m['matched_voice_source_fraction']:.2f}% |",
-                  f"| 3D DOA median / P90 | {m['matched_median_3d_angular_error_deg']}° / {m['matched_p90_3d_angular_error_deg']}° |",
-                  f"| Azimuth median / P90 (matched) | {m['matched_median_azimuth_error_deg']}° / {m['matched_p90_azimuth_error_deg']}° |",
-                  f"| Adjacent matched ID switches | {m['adjacent_matched_id_switches']} / {m['adjacent_matched_id_comparisons']} |",
-                  f"| SSL proposals / track observations | {m['potential_observations']} / {m['track_observations']} |",
-                  f"| Saved recordings / dropped frames | {m['recordings']} / {m['recorder_drops']} |",
-                  f"| Mic silence start | {m.get('microphone_digital_silence_start_s', 'n/a')} s |",
-                  f"| ODAS track observations during exact mic silence | {m.get('microphone_digital_silence_track_observations', 'n/a')} |",
-                  f"| Last ODAS observation during mic silence | {m.get('microphone_digital_silence_track_last_seen_s', 'n/a')} s |",
-                  "",
-                  "| Speaker | Matched source-hops | Active source-hops |",
-                  "| --- | ---: | ---: |",
-              ]
-              for name, values in m["per_voice"].items():
-                  rows.append(f"| {name} | {values['matched_hops']} | {values['active_hops']} |")
-          else:
-              rows = ["### Acoustix room diagnostics", "", "No metrics.json was generated; see failed CTest and job logs."]
-          compare_path = Path("build-acoustix/tests/acoustix_7x7/capacity_comparison.json")
-          if compare_path.is_file():
-              c = json.loads(compare_path.read_text())
-              names = ["4x4", "4x8", "8x4", "8x8"]
-              configs = c["configurations"]
-              rows.extend([
-                  "",
-                  "### ODAS factorial capacity sweep (same microphone WAV)",
-                  "",
-                  "First number = SSL proposals, second = SST tracker slots. Only capacity changes.",
-                  "",
-                  "| Metric | 4/4 | 4/8 | 8/4 | 8/8 |",
-                  "| --- | ---: | ---: | ---: | ---: |",
-              ])
-              for title, key in [
-                  ("Maximum simultaneous tracks", "max_simultaneous_tracks"),
-                  ("Median peak SSL activity", "median_peak_ssl_activity"),
-                  ("SSL proposals", "potential_observations"),
-                  ("Matched voice-source hops (45°)", "matched_voice_source_hops"),
-                  ("Matched voice fraction", "matched_voice_source_fraction"),
-                  ("Median 3D angular error, matched only", "matched_median_3d_angular_error_deg"),
-                  ("Median azimuth error, matched only", "matched_median_azimuth_error_deg"),
-                  ("P90 azimuth error, matched only", "matched_p90_azimuth_error_deg"),
-                  ("Track observations", "track_observations"),
-                  ("Saved recordings", "recordings"),
-              ]:
-                  cells = " | ".join(str(configs[name][key]) for name in names)
-                  rows.append(f"| {title} | {cells} |")
-              rows.extend([
-                  "",
-                  "### SSL capacity sensitivity with eight SST tracking slots",
-                  "",
-                  "| Metric | 4 SSL | 5 SSL | 6 SSL | 7 SSL | 8 SSL |",
-                  "| --- | ---: | ---: | ---: | ---: | ---: |",
-              ])
-              ssl_names = ["4x8", "5x8", "6x8", "7x8", "8x8"]
-              for title, key in [
-                  ("Maximum simultaneous tracks", "max_simultaneous_tracks"),
-                  ("SSL proposals", "potential_observations"),
-                  ("Median peak SSL activity", "median_peak_ssl_activity"),
-                  ("Matched voice-source hops", "matched_voice_source_hops"),
-                  ("Track observations", "track_observations"),
-              ]:
-                  cells = " | ".join(str(configs[name][key]) for name in ssl_names)
-                  rows.append(f"| {title} | {cells} |")
-              rows.extend([
-                  "",
-                  "### Explicit SST input isolation at eight SSL proposals",
-                  "",
-                  "| Metric | SSL8 → SST8 (all eight) | SSL8 → SST8 (strongest four) |",
-                  "| --- | ---: | ---: |",
-              ])
-              for title, key in [
-                  ("Raw SSL proposals", "potential_observations"),
-                  ("Confirmed track observations", "track_observations"),
-                  ("Maximum simultaneous tracks", "max_simultaneous_tracks"),
-                  ("Matched voice-source hops", "matched_voice_source_hops"),
-                  ("Median azimuth error of matches", "matched_median_azimuth_error_deg"),
-              ]:
-                  a, b = configs["8x8"][key], configs["8x8_sst4"][key]
-                  rows.append(f"| {title} | {a} | {b} |")
-              rows.extend([
-                  "",
-                  "> The downstream SST input cap is experimental and disabled by default.",
-                  "> Diagnostics only; this does not prove seven-way speech separation."
-              ])
-          signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
-          if signal_path.is_file():
-              audit = json.loads(signal_path.read_text())
-              rows.extend([
-                  "",
-                  "### PCM16 source-stem reconstruction",
-                  "",
-                  f"Maximum microphone reconstruction residual: **{audit['reconstruction_max_residual_lsb']} LSB** "
-                  f"(quantization allowance {audit['quantization_allowance_lsb']} LSB).",
-                  "",
-                  f"Spatially distinct adjacent microphone pairs: **"
-                  f"{sum(x > 0 for x in audit['adjacent_microphone_difference_rms_pcm16'])}/3**.",
-                  "",
-                  f"Trailing digital microphone silence: **"
-                  f"{audit['post_acoustic_signal_silence_frames']/audit['sample_rate_hz']:.3f} s**."
-              ])
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
-              stream.write("\n".join(rows) + "\n")
-          PY
-      - name: Upload WAV, ground truth, per-source tracking report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: acoustix-room-7x7-${{ inputs.duration_seconds || '12' }}s
-          path: |
-            build-acoustix/tests/acoustix_7x7/
             build-acoustix/Testing/Temporary/LastTest.log
           retention-days: 10
           if-no-files-found: warn
