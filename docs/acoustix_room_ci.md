@@ -206,10 +206,13 @@ Therefore a four-slot result cannot establish the maximum number of
 independently recoverable voices in a seven-speaker scene. The optional
 `LIBAUDITION_ACOUSTIX_COMPARE_CAPACITY=ON` setting replays **the exact
 same rendered microphone WAV** across a 2×2 factorial sweep:
-**4/4**, **4/8**, **8/4**, **8/8** (SSL candidate count / SST max tracks).
-Reports are saved as `metrics.json`, `metrics_4x8.json`,
-`metrics_8x4.json`, `metrics_8x8.json`,
-`capacity_comparison.json`, and shown in the GitHub Actions summary.
+**4/4**, **4/8**, **8/4**, **8/8** (SSL candidate count / SST max tracks),
+then scans **5/8**, **6/8**, **7/8** to locate the transition as additional
+weak SSL candidates are introduced. Reports are saved as
+`metrics.json`, `metrics_4x8.json`, `metrics_5x8.json`,
+`metrics_6x8.json`, `metrics_7x8.json`, `metrics_8x4.json`,
+`metrics_8x8.json`, `capacity_comparison.json`, and shown in the
+GitHub Actions summary.
 
 The initial 4/4→8/8 experiment produced **5,953→9,192 SSL candidate
 observations but 2,448→0 track observations** on the identical 12-second
