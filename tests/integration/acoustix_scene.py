@@ -321,7 +321,13 @@ def render(scene: dict, args) -> None:
         if summary["input_frames"] != output_frames or summary["recorder_drops"]:
             raise RuntimeError("Audio frame mismatch or offline recorder drop")
         observations = list(csv.DictReader((folder / "observations.csv").open(newline="")))
-        metrics = compute_metrics(gt, observations, summary)
+        # Track persistence is measured from the last nonzero mic PCM sample,
+        # not the scene's nominal duration (RIR tails can extend beyond it).
+        encoded_mics = (raw[:, 1:5] * 32767).astype(np.int16)
+        audible_samples = np.flatnonzero(np.any(encoded_mics != 0, axis=1))
+        silence_start = int(audible_samples[-1]) + 1 if len(audible_samples) else 0
+        metrics = compute_metrics(gt, observations, summary,
+                                  silence_start_frame=silence_start)
         (out / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
         if not metrics["potential_observations"]:
             raise RuntimeError("No ODAS SSL potential source observations")
