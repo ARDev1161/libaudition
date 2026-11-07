@@ -90,14 +90,17 @@ def calibrate_scene_rt60(scene: dict, *, probe_time_s: float = 0.0,
         observations.append({"input_rt60_s": float(effective_s),
                              "measured_t20_rt60_s": observed,
                              "fit_r_squared": metrics["r_squared"]})
-        if metrics["r_squared"] < 0.85:
-            raise ValueError("RT60 probe lacks a credible decay slope")
+        # Extreme preliminary bracketing samples may not have a clean
+        # Schroeder slope; they can guide interval selection but may never
+        # become the accepted final calibrated result.
         return observed
 
     original = measure(target)
+    if observations[-1]["fit_r_squared"] < 0.85:
+        raise ValueError("Requested RT60 lacks a credible raw T20 slope")
     best = (abs(original - target), target, original)
     if best[0] > target * relative_tolerance:
-        low = target * 0.65
+        low = target * 0.75
         high = target * 1.35
         measured_low = measure(low)
         measured_high = measure(high)
@@ -108,7 +111,8 @@ def calibrate_scene_rt60(scene: dict, *, probe_time_s: float = 0.0,
         for _ in range(max_iterations):
             candidate = (low + high) / 2.0
             observed = measure(candidate)
-            if abs(observed - target) < best[0]:
+            if (observations[-1]["fit_r_squared"] >= 0.85 and
+                    abs(observed - target) < best[0]):
                 best = (abs(observed - target), candidate, observed)
             if best[0] <= target * relative_tolerance:
                 break
@@ -118,7 +122,8 @@ def calibrate_scene_rt60(scene: dict, *, probe_time_s: float = 0.0,
                 high = candidate
 
     if best[0] > target * relative_tolerance:
-        raise ValueError("Failed to calibrate RT60 within relative tolerance")
+        raise ValueError("Failed to calibrate RT60 with credible T20 slope: "
+                         + str(observations))
 
     rendered_scene = copy.deepcopy(scene)
     rendered_scene["room"]["rt60_s"] = best[1]
