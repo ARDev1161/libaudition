@@ -6,6 +6,7 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <numeric>
 #include <stdexcept>
 #include <utility>
 
@@ -106,6 +107,8 @@ public:
 
         processOrThrow(mod_stft_process(stft_), "ODAS STFT processing failed");
         processOrThrow(mod_ssl_process(ssl_), "ODAS SSL processing failed");
+        if (sst_pots_ != nullptr)
+            selectSstCandidates();
 
         targets_zero(targets_->targets);
         targets_->timeStamp = odas_timestamp_;
@@ -138,6 +141,39 @@ public:
     }
 
 private:
+    // ODAS' SST mixture enumerates joint assignments over *all* input
+    // hypotheses. This opt-in preallocated projection isolates the tracking
+    // assignment load without suppressing diagnostic SSL proposals.
+    // It preserves the raw SSL buffer and its full candidate count.
+    void selectSstCandidates() {
+        const auto source_count = static_cast<std::size_t>(pots_->pots->nPots);
+        const auto selected_count = static_cast<std::size_t>(sst_pots_->pots->nPots);
+        if (candidate_indices_.size() != source_count ||
+            selected_count >= source_count)
+            throw std::logic_error("Invalid ODAS SST candidate projection state");
+        std::iota(candidate_indices_.begin(), candidate_indices_.end(), 0U);
+        const float* input = pots_->pots->array;
+        std::partial_sort(
+            candidate_indices_.begin(),
+            candidate_indices_.begin() + static_cast<std::ptrdiff_t>(selected_count),
+            candidate_indices_.end(),
+            [input](std::size_t a, std::size_t b) {
+                const float left = input[a * 4U + 3U];
+                const float right = input[b * 4U + 3U];
+                const float a_score = std::isfinite(left)
+                                          ? left : -std::numeric_limits<float>::infinity();
+                const float b_score = std::isfinite(right)
+                                          ? right : -std::numeric_limits<float>::infinity();
+                return a_score > b_score || (a_score == b_score && a < b);
+            });
+        for (std::size_t i = 0; i < selected_count; ++i) {
+            const auto offset = candidate_indices_[i] * 4U;
+            std::copy_n(input + offset, 4U, sst_pots_->pots->array + i * 4U);
+        }
+        sst_pots_->timeStamp = pots_->timeStamp;
+        sst_pots_->fS = pots_->fS;
+    }
+
     void validateInput(AudioView audio) const {
         if (audio.format().sample_rate_hz != options_.sample_rate_hz) {
             throw Error{ErrorCode::UnsupportedFormat,
@@ -219,6 +255,10 @@ private:
         const msg_hops_cfg hops_cfg{options_.hop_size, microphone_count, options_.sample_rate_hz};
         const msg_spectra_cfg spectra_cfg{half_frame_size, microphone_count, options_.sample_rate_hz};
         const msg_pots_cfg pots_cfg{options_.ssl.potential_source_count, options_.sample_rate_hz};
+        const auto sst_count = options_.sst.max_input_potentials != 0U
+                                   ? options_.sst.max_input_potentials
+                                   : options_.ssl.potential_source_count;
+        const msg_pots_cfg sst_pots_cfg{sst_count, options_.sample_rate_hz};
         const msg_targets_cfg targets_cfg{0U, options_.sample_rate_hz};
         const msg_tracks_cfg tracks_cfg{options_.sst.max_tracks, options_.sample_rate_hz};
 
@@ -231,17 +271,22 @@ private:
             hops_in_ = requireAllocated(msg_hops_construct(&hops_cfg));
             spectra_ = requireAllocated(msg_spectra_construct(&spectra_cfg));
             pots_ = requireAllocated(msg_pots_construct(&pots_cfg));
+            if (sst_count < options_.ssl.potential_source_count) {
+                sst_pots_ = requireAllocated(msg_pots_construct(&sst_pots_cfg));
+                candidate_indices_.resize(options_.ssl.potential_source_count);
+            }
             targets_ = requireAllocated(msg_targets_construct(&targets_cfg));
             tracks_ = requireAllocated(msg_tracks_construct(&tracks_cfg));
 
             stft_ = requireAllocated(mod_stft_construct(stft_cfg.get(), &hops_cfg, &spectra_cfg));
             ssl_ = requireAllocated(mod_ssl_construct(ssl_cfg.get(), &spectra_cfg, &pots_cfg));
-            sst_ = requireAllocated(mod_sst_construct(sst_cfg.get(), ssl_cfg.get(), &pots_cfg,
-                                                      &targets_cfg, &tracks_cfg));
+            sst_ = requireAllocated(mod_sst_construct(sst_cfg.get(), ssl_cfg.get(),
+                                                      &sst_pots_cfg, &targets_cfg, &tracks_cfg));
 
             mod_stft_connect(stft_, hops_in_, spectra_);
             mod_ssl_connect(ssl_, spectra_, pots_);
-            mod_sst_connect(sst_, pots_, targets_, tracks_);
+            mod_sst_connect(sst_, sst_pots_ != nullptr ? sst_pots_ : pots_,
+                            targets_, tracks_);
             mod_stft_enable(stft_);
             mod_ssl_enable(ssl_);
             mod_sst_enable(sst_);
@@ -347,6 +392,11 @@ private:
             msg_targets_destroy(targets_);
             targets_ = nullptr;
         }
+        if (sst_pots_ != nullptr) {
+            msg_pots_destroy(sst_pots_);
+            sst_pots_ = nullptr;
+        }
+        candidate_indices_.clear();
         if (pots_ != nullptr) {
             msg_pots_destroy(pots_);
             pots_ = nullptr;
@@ -373,6 +423,8 @@ private:
     msg_spectra_obj* spectra_{nullptr};
     msg_powers_obj* powers_{nullptr};
     msg_pots_obj* pots_{nullptr};
+    msg_pots_obj* sst_pots_{nullptr};
+    std::vector<std::size_t> candidate_indices_{};
     msg_targets_obj* targets_{nullptr};
     msg_tracks_obj* tracks_{nullptr};
     msg_spectra_obj* separated_spectra_{nullptr};

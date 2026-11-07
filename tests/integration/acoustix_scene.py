@@ -352,6 +352,8 @@ def render(scene: dict, args) -> None:
                     "configured_max_tracks": result_summary["sst_max_tracks"],
                     "configured_ssl_potential_sources":
                         result_summary["ssl_potential_source_count"],
+                    "configured_sst_input_potentials":
+                        result_summary["sst_input_potential_limit"],
                     "max_simultaneous_tracks":
                         result_metrics["max_simultaneous_tracks"],
                     "matched_voice_source_fraction":
@@ -378,15 +380,27 @@ def render(scene: dict, args) -> None:
 
             configs = {"4x4": capacity_summary(metrics, summary, observations)}
             raw_results = {"4x4": metrics}
-            for potential_count, track_count in ((4, 8), (5, 8), (6, 8),
-                                                 (7, 8), (8, 4), (8, 8)):
+            # Retain the original SSL observations for the isolation contract:
+            # changing *only* the SST input message must never change raw SSL.
+            all_eight_ssl = None
+            capped_eight_ssl = None
+
+            def ssl_observation_signature(rows):
+                return [(r["hop"], r["id"], r["x"], r["y"], r["z"], r["activity"])
+                        for r in rows if r["kind"] == "proposal"]
+            for potential_count, track_count, sst_limit in (
+                    (4, 8, 0), (5, 8, 0), (6, 8, 0), (7, 8, 0),
+                    (8, 4, 0), (8, 8, 0), (8, 8, 4)):
                 name = str(potential_count) + "x" + str(track_count)
+                if sst_limit:
+                    name += "_sst" + str(sst_limit)
                 extra_dir = out / ("odas_" + name)
                 extra_dir.mkdir(exist_ok=True)
                 result = subprocess.run(
                     [str(args.runner.resolve()), str(out / "input.wav"),
                      str(extra_dir), "--max-tracks", str(track_count),
-                     "--potential-sources", str(potential_count)],
+                     "--potential-sources", str(potential_count),
+                     "--sst-input-potentials", str(sst_limit)],
                     capture_output=True, text=True, timeout=240)
                 (out / ("runner_" + name + ".stdout.txt")).write_text(result.stdout)
                 (out / ("runner_" + name + ".stderr.txt")).write_text(result.stderr)
@@ -408,10 +422,25 @@ def render(scene: dict, args) -> None:
                 raw_results[name] = extra_metrics
                 configs[name] = capacity_summary(
                     extra_metrics, extra_summary, extra_rows)
+                if name == "8x8":
+                    all_eight_ssl = ssl_observation_signature(extra_rows)
+                elif name == "8x8_sst4":
+                    capped_eight_ssl = ssl_observation_signature(extra_rows)
 
+            if not all_eight_ssl or all_eight_ssl != capped_eight_ssl:
+                raise RuntimeError(
+                    "Independent SST input projection modified raw SSL observations")
+            # This fixture established a reproducible regression: full
+            # synthetic 12 s with SSL=8 had zero tracks. The opt-in bounded
+            # input must preserve nonzero tracking, not just report PASS
+            # because a Python/C++ process exited successfully.
+            if (frames == 12 * fs and args.speech_dir is None
+                    and configs["8x8_sst4"]["track_observations"] == 0):
+                raise RuntimeError(
+                    "Bounded SST input failed to restore any source tracks")
             comparison = {
-                "schema": "libaudition.acoustix-capacity-comparison.v3",
-                "method": "identical moving 4-mic WAV; 2x2 capacity plus SSL 4-8 sweep at SST=8",
+                "schema": "libaudition.acoustix-capacity-comparison.v4",
+                "method": "identical 4-mic WAV; SSL 4-8 sweep and independent 8->4 SST candidate projection",
                 "capacity_axes": {
                     "first": "SSL potential source count",
                     "second": "SST maximum track count"
@@ -419,6 +448,8 @@ def render(scene: dict, args) -> None:
                 "configurations": configs,
                 "baseline": configs["4x4"],
                 "expanded": configs["8x8"],
+                "expanded_sst_input_bounded": configs["8x8_sst4"],
+                "raw_ssl_eight_candidate_output_identical_with_and_without_sst_cap": True,
                 "deltas_vs_4x4": {
                     name: {
                         "matched_voice_source_hops":
@@ -433,6 +464,7 @@ def render(scene: dict, args) -> None:
                 },
                 "interpretation_limitations": [
                     "Capacity changes may change internal ODAS hypothesis distribution",
+                    "SST input projection is experimental and preserves raw eight-slot SSL output",
                     "Tracking threshold tuning is unchanged in all runs",
                     "Four microphones may not resolve seven simultaneous sources",
                     "Synthetic voiced-like signals cannot validate real-speech ASR or leakage"

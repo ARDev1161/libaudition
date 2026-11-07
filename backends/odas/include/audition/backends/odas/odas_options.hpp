@@ -47,6 +47,13 @@ struct OdasSstOptions {
     OdasTrackingFilter filter{OdasTrackingFilter::Kalman};
     OdasTrackAddition addition{OdasTrackAddition::Dynamic};
     std::uint32_t max_tracks{4};
+    // 0: forward every SSL hypothesis to SST (legacy/default).
+    // 1..ssl.potential_source_count: rank by SSL score and forward only
+    // this many hypotheses to SST, while still exposing all SSL proposals.
+    // This bounds the exponential SST assignment search independently
+    // of SSL hypothesis generation; explicitly opt in after calibration.
+    std::uint32_t max_input_potentials{0};
+
     double kalman_sigma_q{0.001};
     std::uint32_t particle_count{1000};
     double particle_st_alpha{2.0};
