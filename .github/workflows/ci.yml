@@ -478,9 +478,20 @@ jobs:
     steps:
       - name: Install Arch toolchain, Qt 6 Multimedia and backend prerequisites
         run: |
-          pacman -Syu --noconfirm --needed \
+          # Arch mirrors sometimes serve temporarily missing .sig/package
+          # files during repository synchronization. Retry once using separate
+          # Tier-1 mirrors; never skip package signature verification.
+          if ! pacman -Syu --noconfirm --needed \
             base-devel gcc git cmake ninja pkgconf curl python \
-            qt6-base qt6-multimedia alsa-lib fftw libconfig libpulse
+            qt6-base qt6-multimedia alsa-lib fftw libconfig libpulse; then
+            printf '%s\n' \
+              'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch' \
+              'Server = https://frankfurt.mirror.pkgbuild.com/$repo/os/$arch' \
+              > /etc/pacman.d/mirrorlist
+            pacman -Syyu --noconfirm --needed \
+              base-devel gcc git cmake ninja pkgconf curl python \
+              qt6-base qt6-multimedia alsa-lib fftw libconfig libpulse
+          fi
           g++ --version
           pacman -Q gcc qt6-base qt6-multimedia
           test "$(g++ -dumpfullversion | cut -d. -f1)" -ge 16
