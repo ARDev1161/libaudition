@@ -209,6 +209,36 @@ must remain RED with evidence, not be papered over by synthetic audio.
 For limited CI/network use the local corpus acquisition command
 above and run the three scenarios directly on the developer PC.
 
+## Fixed-input real-speech ODAS offline replay
+
+The separate opt-in workflow
+`.github/workflows/acoustix-s2-odas-replay.yml` reuses the **exact WAVs**
+and oracle produced by the successful real human-voice CPU RIR run
+[Acoustix S2 #42367742782](https://github.com/ARDev1161/libaudition/actions/runs/42367742782).
+It downloads the `acoustix-s2-real-librispeech-evidence` artifact,
+verifies the prior licensed corpus/CPU physics report and SHA-256 of each
+six-channel WAV, builds the real libaudition ODAS SSL/SST/SSS offline
+runner, and replays those **unchanged** inputs. The initial artifact
+is short-retention (14 days); rerun the real-speech producer once expired.
+
+For T02 (one speaker), T03 (two) and T07 (seven), compare the resulting
+ODAS `observations.csv` against geometric per-hop source bearings with
+the existing one-to-one 45° diagnostic matching. Archive source-hop
+recall, matched azimuth median/P90, SST tracker counts, ID switching,
+recording outputs, late-source persistence and frame/recorder drops in
+`real_speech_odas_diagnostics.json`. Require no dropped/duplicated
+input frames, but **do not pretend** a low or zero source-hop recall
+passes L3, or that an SSL/SST track is a separated voice recording.
+
+The input WAV hash is checked again **after** the runner to prevent
+unintended input mutation. This is the first direct comparison of
+ODAS on true human speech in the Acoustix room, but it is still
+**not** measured SSS leakage, SIRi, SI-SDRi, WER, ASR first-word
+preservation, or physical ReSpeaker fidelity. Those metrics require
+explicit track recordings aligned to clean/convolved targets and a
+pinned ASR model; failing or ambiguous association cannot silently
+be dropped from denominators.
+
 ## Remaining S2 acceptance work
 
 The corpus manifest alone is not a benchmark. Still required:
