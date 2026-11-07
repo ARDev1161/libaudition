@@ -110,3 +110,19 @@ backends; their presence in CI must never be read as redistribution
 permission. The original SenseVoiceSmall weight license provenance
 remains unresolved (upstream FunASR model license vs repackaging
 metadata). Keep the weights unbundled pending an independent review.
+
+## Research-only Acoustix acoustic fixture generator
+
+The optional `tests/integration/acoustix_scene.py` is a standalone
+Python **test generator** and is not part of the installed SDK, its
+linked backends, or runtime dependencies. It uses the upstream
+`GaetanLepage/acoustix` project pinned to
+`32143bfd38c6f2196244e42e2385df48a71df7a4` only when an
+Acoustix-specific test run is explicitly requested.
+
+**License warning:** the upstream README displays an MIT badge,
+but the checked-in `LICENSE` at that revision is **GPL-3.0**.
+Until upstream clarifies it, treat the optional development-time
+dependency as GPL-3.0. Do not vendor it into the Apache-2.0 core
+or redistribute it with libaudition. See
+`docs/acoustix_room_ci.md` for test isolation and fidelity limitations.
