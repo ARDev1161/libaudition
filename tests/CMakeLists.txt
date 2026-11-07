@@ -137,6 +137,14 @@ add_test(NAME audio_acoustix_s2_scene_plan_selftest COMMAND
 set_tests_properties(audio_acoustix_s2_scene_plan_selftest PROPERTIES
     LABELS "audio-integration;acoustix;speech;scene-contract;python" TIMEOUT 60)
 
+# S2 real-speech ODAS 4/8 capacity and missed-source metric contracts;
+# no native ODAS backend or human speech required for pure stdlib selftest.
+add_test(NAME audio_acoustix_s2_real_capacity_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_real_odas_capacity.py")
+set_tests_properties(audio_acoustix_s2_real_capacity_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;speech;capacity;python" TIMEOUT 30)
+
 # S1 held-out acoustic configuration freeze: 20 distinct seeds and
 # low/mid/high RT60 across 1/2/3 sources, without expensive RIR rendering.
 add_test(NAME audio_acoustix_heldout_manifest_selftest COMMAND
