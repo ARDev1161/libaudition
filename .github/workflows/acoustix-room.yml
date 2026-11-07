@@ -177,7 +177,24 @@ jobs:
                   rows.append(f"| {title} | {cells} |")
               rows.extend([
                   "",
-                  "> Diagnostics only; this sweep does not tune ODAS thresholds or prove seven-way speech separation."
+                  "### Explicit SST input isolation at eight SSL proposals",
+                  "",
+                  "| Metric | SSL8 → SST8 (all eight) | SSL8 → SST8 (strongest four) |",
+                  "| --- | ---: | ---: |",
+              ])
+              for title, key in [
+                  ("Raw SSL proposals", "potential_observations"),
+                  ("Confirmed track observations", "track_observations"),
+                  ("Maximum simultaneous tracks", "max_simultaneous_tracks"),
+                  ("Matched voice-source hops", "matched_voice_source_hops"),
+                  ("Median azimuth error of matches", "matched_median_azimuth_error_deg"),
+              ]:
+                  a, b = configs["8x8"][key], configs["8x8_sst4"][key]
+                  rows.append(f"| {title} | {a} | {b} |")
+              rows.extend([
+                  "",
+                  "> The downstream SST input cap is experimental and disabled by default.",
+                  "> Diagnostics only; this does not prove seven-way speech separation."
               ])
           signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
           if signal_path.is_file():
