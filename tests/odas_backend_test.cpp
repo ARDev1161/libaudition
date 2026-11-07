@@ -37,6 +37,36 @@ TEST(OdasOptions, AcceptsTypedFourMicrophoneConfiguration) {
     EXPECT_NO_THROW(audition::validateOdasOptions(options));
 }
 
+TEST(OdasOptions, IndependentSstInputLimitIsExplicitAndBounded) {
+    auto options = makeFourMicOptions();
+    options.ssl.potential_source_count = 8U;
+    options.sst.max_tracks = 8U;
+
+    // Legacy behavior: all eight SSL hypotheses enter SST.
+    EXPECT_EQ(options.sst.max_input_potentials, 0U);
+    EXPECT_NO_THROW(audition::validateOdasOptions(options));
+
+    options.sst.max_input_potentials = 4U;
+    EXPECT_NO_THROW(audition::validateOdasOptions(options));
+
+    // A separate four-slot message must feed SST, while SSL still
+    // produces all eight proposals visible to the application.
+    options.sss.enabled = false;
+    audition::OdasSpatialEngine engine{options};
+    const auto silence = makeSilence(options);
+    for (int hop = 0; hop < 12; ++hop) {
+        const auto result = engine.process(silence.view());
+        EXPECT_LE(result.potential_sources.size(), 8U);
+        EXPECT_LE(result.tracks.size(), 8U);
+    }
+    EXPECT_NO_THROW(engine.reset());
+
+    options.sst.max_input_potentials = 9U;
+    EXPECT_THROW(audition::validateOdasOptions(options), std::invalid_argument);
+    options.sst.max_input_potentials = 8U;
+    EXPECT_NO_THROW(audition::validateOdasOptions(options));
+}
+
 TEST(OdasOptions, AcceptsUpstreamReSpeakerAngularMask) {
     auto options = makeFourMicOptions();
     options.microphone_directivity.assign(
