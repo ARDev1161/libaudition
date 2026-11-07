@@ -59,8 +59,9 @@ function(libaudition_find_or_fetch_odas)
         "${_odas_install_dir}/lib")
 
     ExternalProject_Add(libaudition_odas_external
-        GIT_REPOSITORY https://github.com/introlab/odas.git
-        GIT_TAG bcb845434495e293df3d48f1203b7a86e1852449
+        # Fork dev integration SHA: exact immutable commit; never GIT_TAG dev.
+        GIT_REPOSITORY https://github.com/ARDev1161/odas.git
+        GIT_TAG 1d862592fa69c8e789743e71160e9e26ff38ebfc
         GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         INSTALL_DIR "${_odas_install_dir}"
