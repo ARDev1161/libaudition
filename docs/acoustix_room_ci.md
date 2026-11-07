@@ -155,6 +155,37 @@ or installed with libaudition. The optional development environment
 clones/installs Acoustix separately. Do not distribute combined code
 or claim MIT licensing for Acoustix without a separate license review.
 
+## First complete 12-second CI observation (2026-11-07)
+
+The first full CPU run passed the room-scene contract, the 3D-association
+self-tests, and genuine ODAS replay on the entire 12 seconds.
+[Workflow #42330822775](https://github.com/ARDev1161/libaudition/actions/runs/42330822775)
+generated 10 individual source stems, a six-channel input WAV, moving
+body-frame source oracle, and tracked-source diagnostics:
+
+| Metric | Observed (diagnostic only) |
+| --- | ---: |
+| 3D RIR simulation duration | 12 s (plus padded reverberant tail) |
+| Maximum simultaneously active synthetic voices | 7 |
+| Maximum simultaneous ODAS tracks | 3 |
+| Mean ODAS tracks during multi-voice activity | 1.4702 |
+| Matched active voice source-hops (unique tracks, ≤45°) | 1,462 / 7,814 (18.71%) |
+| Median / P90 angular error of *matched* observations | 29.22° / 35.85° |
+| Adjacent matched-hop track ID switches | 2 / 1,442 comparisons |
+| ODAS SSL proposals / track observations | 5,953 / 2,448 |
+| Saved source recordings / recorder drops | 3 / 0 |
+
+The median/P90 are **conditional on matches** and therefore do not include
+missed sources. The small number of ID switches is **not** evidence of stable
+seven-way speaker tracking; the system acquires only a few of the concurrent
+sources in the first place. Current source signals are voiced-like and not
+natural speech. Seven real voice recordings are required to evaluate
+speech separation/leakage, VAD, diarization or ASR accuracy.
+
+The baseline should guide investigation, not hard-coded pass thresholds.
+A green room test proves the offline pipeline completes without structural
+failure, **not** that source separation quality is acceptable.
+
 ## Future acceptance gates
 
 1. Measure dynamic DOA median/P90 angular error in robot frame with
