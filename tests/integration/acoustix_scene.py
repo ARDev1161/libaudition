@@ -246,10 +246,56 @@ def write_pcm16(path: Path, samples, fs: int):
         w.writeframes(pcm.tobytes())
 
 
+def render_windowed_rirs(scene: dict, dry, frames: int, hop: int,
+                        output_frames: int, rir_provider=None):
+    """Shared emission-time RIR overlap-add core for renderer and S1 tests.
+
+    The default RIR provider calls the actual pinned Acoustix CPU backend.
+    Injection is only for an analytical/unit-test convolution oracle.
+    """
+    import numpy as np
+    from scipy.signal import fftconvolve
+    count = len(scene["sources"])
+    mics = len(scene["robot"]["microphones_m"])
+    fs = scene["sample_rate_hz"]
+    if len(dry) != count or any(len(x) != frames for x in dry):
+        raise ValueError("Dry source count/length mismatch")
+    if not 0 < hop <= fs or output_frames < frames:
+        raise ValueError("Invalid RIR window or output length")
+    if rir_provider is None:
+        rir_provider = rir_snapshot
+    separated = np.zeros((count, mics, output_frames), dtype=np.float32)
+    max_rir_samples = 0
+    snapshots = 0
+    # Partition-of-unity triangular emission windows. Input energy belongs
+    # to adjacent snapshots; old reflection tails remain in the output.
+    # Include a final beyond-end snapshot: otherwise the last emission
+    # interval is attenuated because the triangular windows do not sum to 1.
+    for center in range(0, frames + hop, hop):
+        start = max(0, center - hop + 1)
+        stop = min(frames, center + hop)
+        indices = np.arange(start, stop)
+        weights = (1 - np.abs(indices - center) / hop).astype(np.float32)
+        rirs = rir_provider(scene, center / fs)
+        snapshots += 1
+        for si in range(count):
+            chunk = dry[si][start:stop] * weights
+            if not np.any(chunk):
+                continue
+            for mi in range(mics):
+                h = rirs[mi][si]
+                max_rir_samples = max(max_rir_samples, len(h))
+                convolution = fftconvolve(chunk, h, mode="full")
+                end = start + len(convolution)
+                if end > output_frames:
+                    raise ValueError("RIR tail exceeds reserved output duration")
+                separated[si, mi, start:end] += convolution
+    return separated, max_rir_samples, snapshots
+
+
 def render(scene: dict, args) -> None:
     import pyroomacoustics as pra
     import numpy as np
-    from scipy.signal import fftconvolve
     from acoustix_reverb import calibrate_scene_rt60
 
     # Calibrate once per room, not per RIR snapshot or audio block.
@@ -277,32 +323,8 @@ def render(scene: dict, args) -> None:
     # The existing ODAS offline runner consumes only complete 128-frame
     # hops. Pad the post-reverberation silence, not the generated content.
     output_frames = math.ceil((frames + 3 * fs) / 128) * 128
-    separated = np.zeros((count, mics, output_frames), dtype=np.float32)
-    max_rir_samples = 0
-    snapshots = 0
-    # Partition-of-unity triangular emission windows. Input energy belongs
-    # to adjacent snapshots; old reflection tails remain in the output.
-    # Include a final beyond-end snapshot: otherwise the last emission
-    # interval is attenuated because the triangular windows do not sum to 1.
-    for center in range(0, frames + hop, hop):
-        start = max(0, center - hop + 1)
-        stop = min(frames, center + hop)
-        indices = np.arange(start, stop)
-        weights = (1 - np.abs(indices - center) / hop).astype(np.float32)
-        rirs = rir_snapshot(acoustic_scene, center / fs)
-        snapshots += 1
-        for si in range(count):
-            chunk = dry[si][start:stop] * weights
-            if not np.any(chunk):
-                continue
-            for mi in range(mics):
-                h = rirs[mi][si]
-                max_rir_samples = max(max_rir_samples, len(h))
-                convolution = fftconvolve(chunk, h, mode="full")
-                end = start + len(convolution)
-                if end > output_frames:
-                    raise ValueError("RIR tail exceeds reserved output duration")
-                separated[si, mi, start:end] += convolution
+    separated, max_rir_samples, snapshots = render_windowed_rirs(
+        acoustic_scene, dry, frames, hop, output_frames)
     wet = np.sum(separated, axis=0).T
     reference = np.zeros(output_frames, dtype=np.float32)
     reference[:frames] = sum(dry)
