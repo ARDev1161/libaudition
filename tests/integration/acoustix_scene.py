@@ -452,9 +452,10 @@ def render(scene: dict, args) -> None:
                     "Car projected into room through a virtual window emitter",
                     "No validated Doppler or moving-microphone phase-continuity model",
                     "Synthetic voices are not intelligible speech unless --speech-dir is set"],
-                "background_snr": snr_evidence,
                 "speech_recordings_supplied": args.speech_dir is not None,
                 "ground_truth": gt}
+    if snr_evidence is not None:
+        manifest["background_snr"] = snr_evidence
     (out / "ground_truth.json").write_text(json.dumps(manifest, indent=2) + "\n")
     if args.runner:
         folder = out / "odas"
