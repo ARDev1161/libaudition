@@ -453,6 +453,17 @@ for the existing strict ±25% calibrated reference-probe check.
 Artifacts `acoustix_spatial_rt60.json` include min/max RT60 and
 all per-position measurements, even when tests fail.
 
+**Measured result:** [full pinned Acoustix #42350283714](https://github.com/ARDev1161/libaudition/actions/runs/42350283714)
+PASS. The one-shot effective backend parameter was 0.297 s,
+calibrated reference T20 0.35495 s, and **36/36** RIRs had
+credible T20 fits (R²≥0.85). The **median** of the 36 measured
+RT60s was **0.37907 s** against 0.360 s requested; median
+absolute relative error **5.30%**, P90 **7.25%**,
+and observed range **0.35495–0.38963 s**. All three
+predeclared distribution gates passed. This result applies only
+to the modeled 7×7×2.8 m room and selected 3 source positions;
+no physical-array correlation or general-frequency decay claim.
+
 This one scenario is *not* a measurement-correlated physical-room
 benchmark, does not model frequency-dependent absorption, and does
 not establish accuracy of Doppler or exact RIR phase.
@@ -489,7 +500,7 @@ not establish accuracy of Doppler or exact RIR phase.
 | --- | --- | --- |
 | S0 signal + headless structural contract | **PASS** | Maintain existing artifact and regression coverage |
 | ODAS global-epsilon / 7–8 SSL suppression | **FIXED in fork dev**; libaudition stable pin in PR #74 | Keep exact SHA pin and verify 4/5/6/7/8 capacities |
-| S1 physics, timing and repeatability | **PARTIAL PASS** (relative/absolute propagation, static RT60 calibration, slow moving-RIR numerical continuity); multi-room replay newly under test | Validate ≥20 held-out seeds, RT60 spatial variation, fixture-negative cases and scope of Doppler/phase limits before S1 DONE |
+| S1 physics, timing and repeatability | **PARTIAL PASS**: relative/absolute path delay, fixed RT60, **36-path RT60 spatial audit**, moving RIR continuity, three-room deterministic replay, negative-scene checks | Finish broad held-out 20-seed manifest, independent timestamp/PCM failure cases, and document fast-motion/Doppler model limits before S1 DONE |
 | S2 real speech benchmark | **OPEN** | Licensed 7-speaker reference set and leakage/ASR metric contracts |
 | L1 recorder integrity — near-plane moving | **BLOCKED / failing on fork pin** | Reproduce exact fixture, inspect drop counters and writer queue ownership, fix without relaxing no-drop test |
 | L1/L2 first word and quiet speech | **OPEN** | VAD pre-roll with onset ground truth; same-model WER |
