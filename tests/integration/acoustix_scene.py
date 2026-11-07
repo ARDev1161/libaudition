@@ -403,7 +403,7 @@ def render(scene: dict, args) -> None:
         robot, yaw = pose_at(scene["robot"]["trajectory"], t)
         active = []
         for s in scene["sources"]:
-            if any(start <= t < stop for start, stop in s["active_s"]):
+            if (sample + 64 < frames and any(\n                    start <= t < stop for start, stop in s["active_s"])):
                 pos = source_position(s, t)
                 bearing, elevation = source_body_angles(robot, yaw, pos)
                 arrivals = direct_path_delay_samples(
