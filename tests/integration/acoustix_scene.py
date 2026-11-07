@@ -38,9 +38,10 @@ def check_scene(scene: dict) -> dict:
     mics = scene["robot"]["microphones_m"]
     if not 2 <= len(mics) <= 32 or any(len(v) != 3 for v in mics):
         raise ValueError("Invalid microphone geometry")
-    if any(any(not math.isfinite(float(v)) for v in offset)
+    if any(any(not isinstance(v, (int, float)) or isinstance(v, bool)
+                   or not math.isfinite(v) for v in offset)
            for offset in mics):
-        raise ValueError("Non-finite microphone offset")
+        raise ValueError("Non-finite or nonnumeric microphone offset")
     if any(math.dist(a, b) < 1e-6
            for index, a in enumerate(mics)
            for b in mics[index + 1:]):
