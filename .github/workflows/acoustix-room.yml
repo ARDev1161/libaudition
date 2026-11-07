@@ -4,6 +4,10 @@ name: Acoustix acoustic room (manual)
 # installs a research-only GPL-3.0 Python simulator and exercises actual
 # room reflections + moving microphones + the libaudition ODAS runner.
 on:
+  # For a new workflow on an unmerged PR, marking the PR ready for review
+  # explicitly triggers this expensive smoke test without repository write access.
+  pull_request:
+    types: [ready_for_review]
   workflow_dispatch:
     inputs:
       duration_seconds:
@@ -60,8 +64,8 @@ jobs:
           "$RUNNER_TEMP/acoustix/bin/python" -c "import acoustix, pyroomacoustics; print('Acoustix CPU backend available')"
       - name: Configure ODAS and opt-in Acoustix CTest
         env:
-          DURATION: ${{ inputs.duration_seconds }}
-          HOP_MS: ${{ inputs.rir_hop_ms }}
+          DURATION: ${{ inputs.duration_seconds || '1.5' }}
+          HOP_MS: ${{ inputs.rir_hop_ms || '250' }}
         run: |
           cmake -S . -B build-acoustix -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -90,7 +94,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: acoustix-room-7x7-${{ inputs.duration_seconds }}s
+          name: acoustix-room-7x7-${{ inputs.duration_seconds || '1.5' }}s
           path: |
             build-acoustix/tests/acoustix_7x7/
             build-acoustix/Testing/Temporary/LastTest.log
