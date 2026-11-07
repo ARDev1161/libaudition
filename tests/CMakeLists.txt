@@ -90,6 +90,13 @@ add_test(NAME audio_acoustix_metrics_selftest COMMAND
 set_tests_properties(audio_acoustix_metrics_selftest PROPERTIES
     LABELS "audio-integration;acoustix;scene-contract;python" TIMEOUT 30)
 
+# S1 frozen multi-room/seed recipe selftest (stdlib, all CTest configurations).
+add_test(NAME audio_acoustix_replay_recipe_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_replay.py")
+set_tests_properties(audio_acoustix_replay_recipe_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;scene-contract;replay;python" TIMEOUT 30)
+
 # S1 pure-stdlib physics/oracle checks (no Acoustix, no SciPy or ODAS).
 add_test(NAME audio_acoustix_physics_selftest COMMAND
     ${Python3_EXECUTABLE}
@@ -308,6 +315,17 @@ if(TARGET audition::backend_odas)
         set_tests_properties(audio_acoustix_rt60_physics PROPERTIES
             LABELS "audio-integration;acoustix;physics;reverberation;optional"
             TIMEOUT 180)
+        # True pinned CPU RIR reproducibility: three independent room
+        # recipes, three fixed seeds, byte-identical WAV/stems/oracles,
+        # meaningful noise-seed variation and complete frame accounting.
+        add_test(NAME audio_acoustix_replay_physics COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_replay.py"
+            --cpu-rir
+            --report "${CMAKE_CURRENT_BINARY_DIR}/acoustix_replay.json")
+        set_tests_properties(audio_acoustix_replay_physics PROPERTIES
+            LABELS "audio-integration;acoustix;replay;physics;optional"
+            TIMEOUT 480)
         # Moving microphone sound-wave integrity: static convolution oracle,
         # emission-time RIR overlap-add, slow rotation/translation and
         # refinement of snapshot spacing (100ms vs 50ms).
