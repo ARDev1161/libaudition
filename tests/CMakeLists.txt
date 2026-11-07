@@ -105,6 +105,13 @@ add_test(NAME audio_acoustix_scene_boundaries_selftest COMMAND
 set_tests_properties(audio_acoustix_scene_boundaries_selftest PROPERTIES
     LABELS "audio-integration;acoustix;scene-contract;negative;python" TIMEOUT 30)
 
+# Pure-Python microphone-domain SNR target calculations and negative tests.
+add_test(NAME audio_acoustix_snr_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_snr.py")
+set_tests_properties(audio_acoustix_snr_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;scene-contract;snr;python" TIMEOUT 30)
+
 # S1 held-out acoustic configuration freeze: 20 distinct seeds and
 # low/mid/high RT60 across 1/2/3 sources, without expensive RIR rendering.
 add_test(NAME audio_acoustix_heldout_manifest_selftest COMMAND
@@ -349,6 +356,14 @@ if(TARGET audition::backend_odas)
         set_tests_properties(audio_acoustix_replay_physics PROPERTIES
             LABELS "audio-integration;acoustix;replay;physics;optional"
             TIMEOUT 480)
+        # Actual pinned CPU reverberant SNR control and PCM16 stem audit.
+        add_test(NAME audio_acoustix_snr_cpu COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_snr_cpu.py"
+            --report "${CMAKE_CURRENT_BINARY_DIR}/acoustix_snr_cpu.json")
+        set_tests_properties(audio_acoustix_snr_cpu PROPERTIES
+            LABELS "audio-integration;acoustix;snr;physics;optional"
+            TIMEOUT 600)
         # Frozen 20-seed S1 independent CPU evaluation. Default CI runs one
         # genuine two-render smoke; opt-in Acoustix workflow can request 20.
         set(LIBAUDITION_ACOUSTIX_HELDOUT_COUNT "1" CACHE STRING
