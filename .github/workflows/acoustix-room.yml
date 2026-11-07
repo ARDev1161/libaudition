@@ -76,7 +76,8 @@ jobs:
         env:
           DURATION: ${{ inputs.duration_seconds || '12' }}
           HOP_MS: ${{ inputs.rir_hop_ms || '250' }}
-          HELDOUT_COUNT: ${{ inputs.heldout_case_count || '1' }}
+          # Ready-for-review is the explicit full qualification gate. Manual dispatch defaults to a smoke.
+          HELDOUT_COUNT: ${{ github.event_name == 'pull_request' && '20' || inputs.heldout_case_count || '1' }}
         run: |
           cmake -S . -B build-acoustix -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
