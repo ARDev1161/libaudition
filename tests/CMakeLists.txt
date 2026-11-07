@@ -112,6 +112,15 @@ add_test(NAME audio_acoustix_snr_selftest COMMAND
 set_tests_properties(audio_acoustix_snr_selftest PROPERTIES
     LABELS "audio-integration;acoustix;scene-contract;snr;python" TIMEOUT 30)
 
+# S2 corpus entrypoint rejects nonlicensed, missing, corrupted, duplicated,
+# cross-split-reused and non-PCM speech clips. Synthetic WAV selftests validate
+# only the verifier implementation, never real human speech quality.
+add_test(NAME audio_acoustix_s2_corpus_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_speech_corpus.py")
+set_tests_properties(audio_acoustix_s2_corpus_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;speech;corpus-contract;python" TIMEOUT 60)
+
 # S1 held-out acoustic configuration freeze: 20 distinct seeds and
 # low/mid/high RT60 across 1/2/3 sources, without expensive RIR rendering.
 add_test(NAME audio_acoustix_heldout_manifest_selftest COMMAND

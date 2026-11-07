@@ -597,6 +597,37 @@ quality result.
 
 **Status: NEW STACKED PR, CPU SNR GATE/CI NOT YET VERIFIED.**
 
+### S2 task #1 — licensed real-speech acquisition and immutable corpus contract
+
+S1 is evidenced by the full 20/20 CPU run #37 and post-RIR background
+SNR CPU PASS in PR #89. Neither validates human speech.
+
+The first S2 entrypoint is documented in
+`docs/ACOUSTIX_S2_CORPUS.md` and validated with
+`audio_acoustix_s2_corpus_selftest`. The intended **actual** corpus is
+LibriSpeech dev-clean (OpenSLR SLR12, CC BY 4.0). The opt-in local importer
+`prepare_librispeech_s2.py` uses an official, locally extracted FLAC tree
+and `ffmpeg` to produce 16 kHz mono PCM16 *complete utterances* for
+seven distinct speaker IDs, with 1 development + 2 evaluation utterances
+per speaker. The manifest records each converted WAV's SHA-256, corpus
+provenance, stable original speaker ID, exact transcript and independent
+utterance identity. **Do not treat its internal held-out utterances as the
+original LibriSpeech test-clean split or a held-out speaker split.**
+
+`acoustix_speech_corpus.py` fails closed on unsafe paths, missing WAVs,
+duplicate audio/IDs, wrong formats, clipped/silent signals, missing text
+or missing development/held-out balance. Regular CI exercises these
+contracts using short **synthetic non-speech audio only**. Neither
+metadata validation nor a self-test demonstrates authentic human speech
+or correct ASR word alignment.
+
+**Status: CORPUS INGEST IMPLEMENTED IN SEPARATE STACKED S2 PR; ACTUAL
+LICENSED CORPUS AND S2 ACCEPTANCE PENDING.** The existing legacy
+`--speech-dir` renderer clips utterance starts if activity begins after
+t=0; a later S2 task must introduce correct interval-aligned multi-
+utterance placement and independent clean references. Until that fix and
+real corpus acquisition, no speech-separation/ASR metric may claim PASS.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
