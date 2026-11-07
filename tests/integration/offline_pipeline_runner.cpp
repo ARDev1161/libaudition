@@ -245,6 +245,8 @@ int run(const fs::path& path, const fs::path& outputDir,
         << "  \"input_frames\": " << wav.audio.frameCount() << ",\n"
         << "  \"sample_rate_hz\": " << format.sample_rate_hz << ",\n"
         << "  \"hops\": " << hops << ",\n"
+        << "  \"sst_max_tracks\": " << options.sst.max_tracks << ",\n"
+        << "  \"ssl_potential_source_count\": " << options.ssl.potential_source_count << ",\n"
         << "  \"potential_observations\": " << proposalFrames << ",\n"
         << "  \"track_observations\": " << trackFrames << ",\n"
         << "  \"separated_frames\": " << separatedFrames << ",\n"
