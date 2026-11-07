@@ -86,7 +86,7 @@ class PcmClockTests(unittest.TestCase):
             self.verify()
 
     def test_source_onset_or_stop_mismatch_is_rejected(self):
-        self.manifest["ground_truth"][100]["sources"] = [{"id": "a"}, {"id": "b"}]
+        self.manifest["ground_truth"][150]["sources"] = [{"id": "a"}, {"id": "b"}]
         with self.assertRaisesRegex(ValueError, "Active source disagreement"):
             self.verify()
 
