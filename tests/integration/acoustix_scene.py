@@ -378,7 +378,8 @@ def render(scene: dict, args) -> None:
 
             configs = {"4x4": capacity_summary(metrics, summary, observations)}
             raw_results = {"4x4": metrics}
-            for potential_count, track_count in ((4, 8), (8, 4), (8, 8)):
+            for potential_count, track_count in ((4, 8), (5, 8), (6, 8),
+                                                 (7, 8), (8, 4), (8, 8)):
                 name = str(potential_count) + "x" + str(track_count)
                 extra_dir = out / ("odas_" + name)
                 extra_dir.mkdir(exist_ok=True)
@@ -409,8 +410,8 @@ def render(scene: dict, args) -> None:
                     extra_metrics, extra_summary, extra_rows)
 
             comparison = {
-                "schema": "libaudition.acoustix-capacity-comparison.v2",
-                "method": "one identical moving 4-microphone WAV; 2x2 SSL/SST capacity",
+                "schema": "libaudition.acoustix-capacity-comparison.v3",
+                "method": "identical moving 4-mic WAV; 2x2 capacity plus SSL 4-8 sweep at SST=8",
                 "capacity_axes": {
                     "first": "SSL potential source count",
                     "second": "SST maximum track count"
