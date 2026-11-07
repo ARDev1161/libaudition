@@ -516,6 +516,23 @@ human-voice S2 evaluation with true speech identity/transcripts.
 
 **Manifest configuration frozen in PR #87. CPU runner in stacked PR, full 20-case execution not yet verified.**
 
+### S1 full 20-case diagnostic — headless run #36
+
+Full CPU execution on the unmodified frozen 20-case matrix **failed**:
+14/20 verified repeatable renders, six high-reverberation cases
+(07–09 and 16–18, target RT60 0.70 s) failed before WAV generation.
+Their initial fixed calibration interval measured 0.820–1.598 s and did
+not bracket 0.70 s. This is an RT60 calibration-search limitation,
+**not** evidence of a tracking/SSS failure or a reproducibility failure.
+
+The calibration now expands the *effective backend input search bounds*
+geometrically, preserving the frozen target RT60, scene SHA, final credible
+T20 slope R² >= 0.85 and calibrated <=5% relative-error gates. Search
+remains finite and raises for physically unreachable targets. Pure-Python
+regressions cover the observed 0.70-s failure, expansion in either
+direction and impossible/nonfinite measurements. The complete 20-case
+qualification must rerun and all 20 cases must pass before S1 acceptance.
+
 ### S1 task #10 — actual held-out CPU RIR/WAV/stem replay (opt-in)
 
 The separate, frozen 20-seed S1 manifest is now consumable by
