@@ -115,6 +115,7 @@ jobs:
                   f"| Simultaneous ODAS tracks (maximum) | {m['max_simultaneous_tracks']} |",
                   f"| Matched voice-source hop fraction (45°) | {100*m['matched_voice_source_fraction']:.2f}% |",
                   f"| 3D DOA median / P90 | {m['matched_median_3d_angular_error_deg']}° / {m['matched_p90_3d_angular_error_deg']}° |",
+                  f"| Azimuth median / P90 (matched) | {m['matched_median_azimuth_error_deg']}° / {m['matched_p90_azimuth_error_deg']}° |",
                   f"| Adjacent matched ID switches | {m['adjacent_matched_id_switches']} / {m['adjacent_matched_id_comparisons']} |",
                   f"| SSL proposals / track observations | {m['potential_observations']} / {m['track_observations']} |",
                   f"| Saved recordings / dropped frames | {m['recordings']} / {m['recorder_drops']} |",
@@ -147,6 +148,8 @@ jobs:
                   ("Matched voice-source hops (45°)", "matched_voice_source_hops"),
                   ("Matched voice fraction", "matched_voice_source_fraction"),
                   ("Median 3D angular error, matched only", "matched_median_3d_angular_error_deg"),
+                  ("Median azimuth error, matched only", "matched_median_azimuth_error_deg"),
+                  ("P90 azimuth error, matched only", "matched_p90_azimuth_error_deg"),
                   ("Track observations", "track_observations"),
                   ("Saved recordings", "recordings"),
               ]:
