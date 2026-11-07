@@ -198,6 +198,49 @@ jobs:
           print("Real-waveform same-hop pending-slot collision fixed:", evidence)
           PY
 
+      - name: Verify exact offline-runner probation defaults (not inferred from JSONL)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          h = Path("backends/odas/include/audition/backends/odas/odas_options.hpp").read_text()
+          runner = Path("tests/integration/offline_pipeline_runner.cpp").read_text()
+          assert "probability_window{5}" in h, "ODAS default probation window changed"
+          assert "probability_threshold{0.8}" in h, "ODAS default probation threshold changed"
+          assert "options.sst.probability_window" not in runner
+          assert "options.sst.probability_threshold" not in runner
+          print("Verified actual offline runner uses OdasOptions five-hop/0.8 defaults")
+          PY
+
+      - name: Audit actual SST probation and two-SSL candidate oracle coverage
+        run: |
+          python3 -m unittest discover -s tests/integration \
+            -p 'test_acoustix_s2_probation_audit.py' -v
+          python3 tests/integration/acoustix_s2_probation_audit.py \
+            --root build-s2 --output build-s2/real_speech_sst_probation_audit.json \
+            --probation-window 5 --probation-threshold 0.8
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path(
+              "build-s2/real_speech_sst_probation_audit.json").read_text())
+          assert report["schema"] == "libaudition.acoustix-s2-odas-probation-audit.v1"
+          for name in ("t02_dev_single", "t03_eval_two", "t07_eval_seven"):
+              case = report["cases"][name]
+              assert case["real_recorded_hops"] == 1875
+              assert case["incomplete_births"] == 0, (name, case["incomplete_births"])
+              assert case["total_provisional_births"] == (
+                  case["confirmed_births"] + case["rejected_births"])
+          t03 = report["cases"]["t03_eval_two"]
+          assert t03["oracle_two_voice_hops"] > 0
+          print("Measured T03 simultaneous speech diagnostic:",
+                json.dumps({k: t03[k] for k in (
+                    "oracle_two_voice_hops",
+                    "two_distinct_ssl_candidates_within_25_deg_hops",
+                    "two_distinct_ssl_candidates_within_45_deg_hops",
+                    "two_active_sst_tracks_during_two_voice_hops",
+                    "provisional_births_during_oracle_multivoice")}, sort_keys=True))
+          PY
+
       - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
         run: |
           PYTHONPATH=tests/integration python3 -m unittest tests/integration/test_acoustix_s2_baseline.py -v
