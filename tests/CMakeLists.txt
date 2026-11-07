@@ -121,6 +121,14 @@ add_test(NAME audio_acoustix_s2_corpus_selftest COMMAND
 set_tests_properties(audio_acoustix_s2_corpus_selftest PROPERTIES
     LABELS "audio-integration;acoustix;speech;corpus-contract;python" TIMEOUT 60)
 
+# S2 exact source sample placement and immutable dry reference WAV export:
+# pure stdlib fixtures; the test tones are NOT human speech.
+add_test(NAME audio_acoustix_s2_speech_placement_selftest COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_speech_placement.py")
+set_tests_properties(audio_acoustix_s2_speech_placement_selftest PROPERTIES
+    LABELS "audio-integration;acoustix;speech;sample-clock;python" TIMEOUT 60)
+
 # S1 held-out acoustic configuration freeze: 20 distinct seeds and
 # low/mid/high RT60 across 1/2/3 sources, without expensive RIR rendering.
 add_test(NAME audio_acoustix_heldout_manifest_selftest COMMAND
