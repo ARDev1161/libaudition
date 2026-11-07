@@ -13,7 +13,8 @@ import math
 import unittest
 from pathlib import Path
 
-from acoustix_reverb import calibrate_scene_rt60, estimate_rt60_t20
+from acoustix_reverb import (bracket_rt60_target, calibrate_scene_rt60,
+                             estimate_rt60_t20)
 
 REPORT = {}
 
@@ -43,6 +44,38 @@ class T20MetricTests(unittest.TestCase):
             estimate_rt60_t20([1.0] * 10, 8000)
         with self.assertRaises(ValueError):
             estimate_rt60_t20([1.0] * 200, 0)
+
+
+class CalibrationBracketTests(unittest.TestCase):
+    def test_adaptive_bracket_for_070_target(self):
+        # Reproduces the CI #36 failure: the initial low probe for the
+        # 0.70s request reports >0.82s, so the fixed interval cannot work.
+        history = []
+
+        def measure(rt60):
+            result = rt60 + 0.295
+            history.append((rt60, result))
+            return result
+
+        low, high = bracket_rt60_target(0.70, measure)
+        self.assertLess(measure(low), 0.70)
+        self.assertGreater(measure(high), 0.70)
+        self.assertLess(low, 0.70 * 0.75)
+        self.assertGreater(len(history), 3)
+
+    def test_low_and_high_expansion_are_bounded(self):
+        low, high = bracket_rt60_target(0.70, lambda x: x * 0.35)
+        self.assertLess(low * 0.35, 0.70)
+        self.assertGreater(high * 0.35, 0.70)
+        with self.assertRaisesRegex(ValueError, "Cannot bracket"):
+            bracket_rt60_target(0.70, lambda _: 1.25)
+        with self.assertRaisesRegex(ValueError, "Non-finite"):
+            bracket_rt60_target(0.70, lambda _: float("nan"))
+
+    def test_bad_target_is_rejected(self):
+        for invalid in (-1, 0, float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                bracket_rt60_target(invalid, lambda x: x)
 
 
 class ActualCpuRirT60Tests(unittest.TestCase):
@@ -97,6 +130,7 @@ def main():
                         help="Publish measured T20/RT60 evidence JSON")
     args = parser.parse_args()
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(T20MetricTests)
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(CalibrationBracketTests))
     if args.cpu_rir:
         suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(
             ActualCpuRirT60Tests))
