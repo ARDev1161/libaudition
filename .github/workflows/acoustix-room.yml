@@ -92,7 +92,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|scene_boundaries_selftest|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|replay_recipe_selftest|rir_physics|rt60_physics|motion_physics|replay_physics|dynamic_room)$' \
+            -R '^audio_acoustix_(scene_contract|scene_boundaries_selftest|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|replay_recipe_selftest|rir_physics|rt60_physics|spatial_rt60_physics|motion_physics|replay_physics|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Summarize acoustic tracking diagnostics
         if: always()
@@ -272,6 +272,26 @@ jobs:
               ])
           else:
               rows.extend(["", "### S1 motion continuity", "", "No motion report; inspect CTest failures."])
+          spatial_rt60_path = Path("build-acoustix/tests/acoustix_spatial_rt60.json")
+          if spatial_rt60_path.is_file():
+              spatial_doc = json.loads(spatial_rt60_path.read_text())
+              spatial = spatial_doc.get("evidence", {}).get("spatial_rt60", {})
+              rows.extend([
+                  "",
+                  "### S1: RT60 consistency across microphone/source positions",
+                  "",
+                  "| Measure | Result |",
+                  "| --- | ---: |",
+                  f"| Spatial RT60 gate | {'PASS' if spatial_doc.get('passed') else 'FAIL'} |",
+                  f"| Credible RT60 fits | {spatial.get('credible_fit_count', 0)} / {spatial.get('rir_count', 0)} |",
+                  f"| Median absolute relative error | {100*spatial.get('median_absolute_relative_error', 0):.1f}% |",
+                  f"| P90 absolute relative error | {100*spatial.get('p90_absolute_relative_error', 0):.1f}% |",
+                  f"| Measured min/max RT60 | {spatial.get('min_measured_rt60_s', 'n/a')} / {spatial.get('max_measured_rt60_s', 'n/a')} s |",
+                  "",
+                  "> One fixed calibration; 36 RIRs at 3 poses × 4 microphones × 3 sources. This does not validate a physical room."
+              ])
+          else:
+              rows.extend(["", "### S1 spatial RT60", "", "No report; inspect CTest failures."])
           replay_path = Path("build-acoustix/tests/acoustix_replay.json")
           if replay_path.is_file():
               replay = json.loads(replay_path.read_text())
@@ -326,6 +346,7 @@ jobs:
             build-acoustix/tests/acoustix_rt60.json
             build-acoustix/tests/acoustix_motion.json
             build-acoustix/tests/acoustix_replay.json
+            build-acoustix/tests/acoustix_spatial_rt60.json
             build-acoustix/Testing/Temporary/LastTest.log
           retention-days: 10
           if-no-files-found: warn
