@@ -243,6 +243,25 @@ stationary frequency-independent simulated reverberation, not
 frequency-dependent materials or measured physical rooms.
 The result `acoustix_rt60.json` is archived and shown in Actions.
 
+**S1 observed defect and correction:** the raw pinned Acoustix CPU
+backend did **not** satisfy the predeclared ±25% criterion for
+RT60=0.36 s. In [workflow #42343733693](https://github.com/ARDev1161/libaudition/actions/runs/42343733693),
+Schroeder T20 measured **0.4715 s (+30.98%)** despite an excellent
+R²=0.9986 fit. The separate analytical metric tests and full 12-second
+ODAS pipeline passed. Do **not** weaken the threshold or mark the raw
+simulation accurate.
+
+The calibration task adds a one-time **measured inverse** of the pinned
+backend's requested RT60 for each rendered scene. It uses one
+representative microphone/source pair to find an effective backend
+input (bisection), applies the same value to *all* subsequent moving
+RIR snapshots, and archives a probe/iteration log. The original raw
+render remains reproducible with `--uncalibrated-rt60`. The physical
+acceptance test continues using ±25% and separately verifies that
+calibration reduces rather than obscures the error. The correction
+does **not** claim that every position in the room has identical T20
+or that the physical room is calibrated.
+
 **S1 stays IN PROGRESS** after this test: motion-phase continuity,
 absolute delay/group-delay calibration, independent render
 repeatability across all sources and hardware acoustic correlation
