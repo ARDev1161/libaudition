@@ -117,6 +117,27 @@ def source_body_angles(robot: list[float], yaw_deg: float,
     return bearing, elevation
 
 
+def direct_path_delay_samples(robot: list[float], yaw_deg: float,
+                              source: list[float], offsets: list[list[float]],
+                              fs: int, c_m_s: float,
+                              fractional_delay_samples: int) -> list[float]:
+    """Independent geometric direct arrival per microphone, in PCM samples.
+
+    This is an emission-relative *prediction* for diagnostics, not runtime
+    tracking/ASR input. Image-source RIRs include the known pyroomacoustics
+    fractional-delay FIR group delay in addition to acoustic propagation.
+    """
+    if fs <= 0 or not math.isfinite(c_m_s) or c_m_s <= 0:
+        raise ValueError("Invalid acoustic delay timebase")
+    if fractional_delay_samples < 0:
+        raise ValueError("Invalid fractional-delay group samples")
+    return [
+        math.dist(microphone_world_position(robot, yaw_deg, offset),
+                  source) * fs / c_m_s + fractional_delay_samples
+        for offset in offsets
+    ]
+
+
 def make_source_signal(src: dict, fs: int, frames: int, index: int,
                        rng, speech_dir: Path | None):
     import numpy as np
@@ -226,6 +247,7 @@ def write_pcm16(path: Path, samples, fs: int):
 
 
 def render(scene: dict, args) -> None:
+    import pyroomacoustics as pra
     import numpy as np
     from scipy.signal import fftconvolve
     from acoustix_reverb import calibrate_scene_rt60
@@ -307,6 +329,14 @@ def render(scene: dict, args) -> None:
                                    sample_rate=fs)
         (out / "signal_audit.json").write_text(
             json.dumps(signal_audit, indent=2) + "\n")
+    # RIR delay = geometric time-of-flight + the causal fractional-delay
+    # filter's fixed group delay. The simulator carries this in the
+    # microphone channels; dry reference channel 0 stays emission-aligned.
+    # Pinned pyroomacoustics v0.8.6 explicitly documents this FIR delay.
+    rir_group_delay = int(pra.constants.get("frac_delay_length")) // 2
+    sound_speed = float(pra.constants.get("c"))
+    if rir_group_delay <= 0 or not 330.0 <= sound_speed <= 355.0:
+        raise ValueError("Unexpected pinned RIR latency model")
     # Oracle bearings are in the robot BODY frame, not world coordinates.
     gt = []
     for sample in range(0, frames, 128):
@@ -317,9 +347,14 @@ def render(scene: dict, args) -> None:
             if any(start <= t < stop for start, stop in s["active_s"]):
                 pos = source_position(s, t)
                 bearing, elevation = source_body_angles(robot, yaw, pos)
+                arrivals = direct_path_delay_samples(
+                    robot, yaw, pos, scene["robot"]["microphones_m"],
+                    fs, sound_speed, rir_group_delay)
                 active.append({"id": s["id"], "kind": s["kind"],
                                "bearing_deg": round(bearing, 4),
-                               "elevation_deg": round(elevation, 4)})
+                               "elevation_deg": round(elevation, 4),
+                               "direct_arrival_delay_samples_per_mic":
+                                   [round(v, 3) for v in arrivals]})
         gt.append({"hop": sample // 128, "t_s": round(t, 4),
                    "robot_position_m": [round(v, 4) for v in robot],
                    "robot_yaw_deg": round(yaw, 4), "sources": active})
@@ -329,6 +364,15 @@ def render(scene: dict, args) -> None:
                 "wav_frames": output_frames, "sample_rate_hz": fs,
                 "rir_snapshots": snapshots, "max_rir_samples": max_rir_samples,
                 "normalization": scale,
+                "acoustic_latency_model": {
+                    "speed_of_sound_m_s": sound_speed,
+                    "rir_fractional_delay_group_samples": rir_group_delay,
+                    "dry_reference_channel": 0,
+                    "microphone_channels": list(range(1, mics + 1)),
+                    "description":
+                        "Geometric direct arrival + pinned RIR fractional FIR delay; "
+                        "diagnostic emission-relative oracle only"
+                },
                 "rt60_calibration": rt60_calibration,
                 "physical_limitations": [
                     "Rectangular room, image-source RIR approximation",
