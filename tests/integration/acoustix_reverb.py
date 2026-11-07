@@ -57,6 +57,35 @@ def estimate_rt60_t20(samples, sample_rate_hz: int) -> dict:
 
 
 
+def bracket_rt60_target(target: float, measure, *,
+                        max_expansions: int = 8) -> tuple[float, float]:
+    """Find a measurable RT60 interval, expanding beyond the initial guess.
+
+    The backend's Sabine input and measured finite-order T20 are not
+    interchangeable. A fixed +-25% initial interval is not generally
+    sufficient for a target near 0.7 s. Fail closed if the requested decay
+    remains unreachable; do not report a closest-fit as calibrated.
+    """
+    if not math.isfinite(target) or target <= 0:
+        raise ValueError("RT60 target must be positive and finite")
+    low, high = target * 0.75, target * 1.35
+    measured_low, measured_high = measure(low), measure(high)
+    for _ in range(max_expansions + 1):
+        if not (math.isfinite(measured_low) and math.isfinite(measured_high)):
+            raise ValueError("Non-finite RT60 calibration observation")
+        if measured_low < target < measured_high:
+            return low, high
+        if measured_low >= target:
+            low *= 0.70
+            measured_low = measure(low)
+        elif measured_high <= target:
+            high *= 1.35
+            measured_high = measure(high)
+    raise ValueError(
+        "Cannot bracket RT60 calibration after adaptive expansion; "
+        f"observed at endpoints: {(measured_low, measured_high)}")
+
+
 def calibrate_scene_rt60(scene: dict, *, probe_time_s: float = 0.0,
                          max_iterations: int = 8,
                          relative_tolerance: float = 0.05) -> tuple[dict, dict]:
@@ -100,14 +129,7 @@ def calibrate_scene_rt60(scene: dict, *, probe_time_s: float = 0.0,
         raise ValueError("Requested RT60 lacks a credible raw T20 slope")
     best = (abs(original - target), target, original)
     if best[0] > target * relative_tolerance:
-        low = target * 0.75
-        high = target * 1.35
-        measured_low = measure(low)
-        measured_high = measure(high)
-        if not measured_low < target < measured_high:
-            raise ValueError(
-                "Cannot bracket RT60 calibration; observed at endpoints: "
-                + str((measured_low, measured_high)))
+        low, high = bracket_rt60_target(target, measure)
         for _ in range(max_iterations):
             candidate = (low + high) / 2.0
             observed = measure(candidate)
