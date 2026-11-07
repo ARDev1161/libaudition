@@ -65,6 +65,38 @@ bounded 8→4 configuration create at least one tracked observation.
 This gate comes from a measured reproducible baseline, rather than
 a desired seven-speaker performance target.
 
+## ODAS fork dev: candidate-local posterior normalization
+
+The preceding 8→4 result documents the **historical upstream
+`introlab/odas` behavior**. On the SHA-pinned
+[`ARDev1161/odas` dev](https://github.com/ARDev1161/odas/tree/dev)
+commit `c4fb33b75c28e2246d6f87741861ab0325fc74a3`, SST no longer uses one
+absolute epsilon mass added to the product of all candidate likelihoods.
+Instead, every candidate has its own local epsilon "unmodelled" mass,
+so adding extra weak SSL candidates does not suppress track birth.
+
+[Full 12-second Acoustix verification #42339729226](https://github.com/ARDev1161/libaudition/actions/runs/42339729226):
+
+| SSL count / SST count | Fork dev: track observations | Unique oracle-matched source-hops |
+| --- | ---: | ---: |
+| 4/4 | 2,448 | 1,462 |
+| 5/8 | 2,448 | 1,462 |
+| 6/8 | 2,448 | 1,462 |
+| 7/8 | 2,448 | 1,462 |
+| 8/8 (unbounded SST input) | **2,448** | **1,462** |
+| 8/8 (top-4 SST input) | 2,448 | 1,462 |
+
+All tested capacities retain **maximum three simultaneous tracks**,
+about **18.71% geometric voice source-hop coverage**, matched-only
+median azimuth error about **11.8°**, and zero recorder drops. This
+fixes the source-birth collapse but **does not demonstrate seven-way
+speaker separation**.
+
+The separate `max_input_potentials` option is therefore **not needed
+to work around this particular source-birth failure in the fork**.
+It remains opt-in for controlled experiments or bounded tracking cost;
+leave it disabled by default until calibrated on real speech.
+
 ## Independent comparison and CI
 
 `audition_offline_integration` accepts
