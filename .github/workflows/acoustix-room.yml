@@ -90,7 +90,19 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|dynamic_room)$' \
+            -R '^audio_acoustix_(scene_contract|metrics_selftest|dynamic_room) \
+            --output-on-failure --verbose
+      - name: Upload WAV, ground truth, per-source tracking report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acoustix-room-7x7-${{ inputs.duration_seconds || '12' }}s
+          path: |
+            build-acoustix/tests/acoustix_7x7/
+            build-acoustix/Testing/Temporary/LastTest.log
+          retention-days: 10
+          if-no-files-found: warn
+ \
             --output-on-failure --verbose
       - name: Upload WAV, ground truth, per-source tracking report
         if: always()
