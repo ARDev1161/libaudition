@@ -61,7 +61,8 @@ def match_sources_to_tracks(sources: list, tracks: list,
 
 
 def compute_metrics(ground_truth: list, observations: list, summary: dict,
-                    max_error_deg: float = 45.0) -> dict:
+                    max_error_deg: float = 45.0,
+                    silence_start_frame: int | None = None) -> dict:
     by_hop = defaultdict(list)
     for obs in observations:
         if obs.get("kind") == "track":
@@ -138,4 +139,26 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
         "recordings": int(summary["recordings"]),
         "recorder_drops": int(summary["recorder_drops"]),
     }
+    if silence_start_frame is not None:
+        # Only digital silence on the actual four microphone channels counts.
+        # ODAS tracking may legitimately linger after the input disappears;
+        # record the hold time rather than arbitrarily failing the test.
+        if silence_start_frame < 0:
+            raise ValueError("silence_start_frame must be nonnegative")
+        first_silent_hop = math.ceil(silence_start_frame / 128)
+        late = [obs for obs in observations
+                if obs.get("kind") == "track" and int(obs["hop"]) >= first_silent_hop]
+        rate = int(summary["sample_rate_hz"])
+        report["microphone_digital_silence_start_s"] = round(
+            silence_start_frame / rate, 4)
+        report["microphone_digital_silence_track_observations"] = len(late)
+        report["microphone_digital_silence_distinct_track_ids"] = len(
+            {str(obs["id"]) for obs in late})
+        report["microphone_digital_silence_tracked_hops"] = len(
+            {int(obs["hop"]) for obs in late})
+        report["microphone_digital_silence_track_last_seen_s"] = (
+            round(max(int(obs["hop"]) for obs in late) * 128 / rate, 4)
+            if late else None)
+        report["microphone_digital_silence_available_hops"] = max(
+            0, int(summary["input_frames"]) // 128 - first_silent_hop)
     return report
