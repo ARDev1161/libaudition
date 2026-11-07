@@ -287,6 +287,31 @@ absolute delay/group-delay calibration, independent render
 repeatability across all sources and hardware acoustic correlation
 remain unverified.
 
+### S1 task #3 — absolute RIR latency, emission versus reception
+
+The pinned `pyroomacoustics==0.8.6` CPU image-source backend
+documents an **81-tap fractional delay filter**. Its `81 // 2 = 40`
+sample group delay is **in addition to** direct-path acoustic flight
+time (2.5 ms at the 16 kHz fixture rate). This is not an empirically
+fitted correction. The absolute direct-path peak is predicted as
+
+`arrival_sample = emission_sample + distance_m / c_m_s * fs + 40`.
+
+The RIR physics CTest verifies measured peak samples (and a known
+input pulse convolved through the actual RIR) against this independent
+prediction to within **2 samples** for receivers at 1 m and 2 m.
+A change to the backend fractional filter length triggers a test
+failure rather than silently shifting the oracle. The scene
+`ground_truth.json` now explicitly carries `acoustic_latency_model`
+and per-active-source `direct_arrival_delay_samples_per_mic`; dry
+reference channel zero remains emission-aligned.
+
+This establishes a diagnostic **absolute time-of-flight model** for the
+static test scene, NOT a promise that reverberant VAD speech-onset
+latency equals this physical delay, and not a phase-accurate
+continuous-motion model. See separate T05 motion tests before
+marking S1 complete.
+
 ## 7. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
