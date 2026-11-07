@@ -61,8 +61,8 @@ jobs:
             "experiment-utilities>=0.3.9" "tqdm>=4.67.1" "pyzmq>=27.0"
           "$RUNNER_TEMP/acoustix/bin/pip" install --no-deps \
             "git+https://github.com/GaetanLepage/acoustix.git@32143bfd38c6f2196244e42e2385df48a71df7a4"
-          # Acoustix imports optional soundcard at module load. The simulator
-          # never uses hardware; isolate that dependency in this probe too.
+          # soundcard requires sys.argv[1] for its import-time initialization.
+          # The actual headless renderer isolates the unused audio-device import.
           "$RUNNER_TEMP/acoustix/bin/python" -c 'import sys, types; sys.modules["soundcard"] = types.ModuleType("soundcard"); import acoustix, pyroomacoustics; print("Acoustix CPU backend available")' acoustix-probe
       - name: Configure ODAS and opt-in Acoustix CTest
         env:
@@ -91,19 +91,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|metrics_selftest|dynamic_room) \
-            --output-on-failure --verbose
-      - name: Upload WAV, ground truth, per-source tracking report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: acoustix-room-7x7-${{ inputs.duration_seconds || '12' }}s
-          path: |
-            build-acoustix/tests/acoustix_7x7/
-            build-acoustix/Testing/Temporary/LastTest.log
-          retention-days: 10
-          if-no-files-found: warn
- \
+            -R '^audio_acoustix_(scene_contract|metrics_selftest|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Upload WAV, ground truth, per-source tracking report
         if: always()
