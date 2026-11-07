@@ -243,6 +243,45 @@ stationary frequency-independent simulated reverberation, not
 frequency-dependent materials or measured physical rooms.
 The result `acoustix_rt60.json` is archived and shown in Actions.
 
+**S1 observed defect and correction:** the raw pinned Acoustix CPU
+backend did **not** satisfy the predeclared ±25% criterion for
+RT60=0.36 s. In [workflow #42343733693](https://github.com/ARDev1161/libaudition/actions/runs/42343733693),
+Schroeder T20 measured **0.4715 s (+30.98%)** despite an excellent
+R²=0.9986 fit. The separate analytical metric tests and full 12-second
+ODAS pipeline passed. Do **not** weaken the threshold or mark the raw
+simulation accurate.
+
+The calibration task adds a one-time **measured inverse** of the pinned
+backend's requested RT60 for each rendered scene. It uses one
+representative microphone/source pair to find an effective backend
+input (bisection), applies the same value to *all* subsequent moving
+RIR snapshots, and archives a probe/iteration log. The original raw
+render remains reproducible with `--uncalibrated-rt60`. The physical
+acceptance test continues using ±25% and separately verifies that
+calibration reduces rather than obscures the error. The correction
+does **not** claim that every position in the room has identical T20
+or that the physical room is calibrated.
+
+**Verified corrective experiment:** [Acoustix #42344514698](https://github.com/ARDev1161/libaudition/actions/runs/42344514698)
+PASSED the full 12-second CTest, the T20 metric oracle and both
+measured-RT60 acceptance checks without weakening the ±25% gate:
+
+| Requested | Raw T20 | Calibrated T20 | Corrected relative error |
+| --- | --- | --- | --- |
+| 0.20 s | 0.1852 s | **0.1992 s** | −0.39% |
+| 0.36 s | 0.4715 s | **0.3492 s** | −2.99% |
+
+The full scene independently calibrated a 0.36 s request using a
+single reference source/mic at t=0: raw T20 0.4841 s, effective
+backend parameter 0.2970 s, resulting reference-probe T20
+0.3550 s (−1.40%). All later moving RIRs used this one effective
+parameter. Full-room ODAS diagnostic output changed to 2,499 track
+observations and 19.41% unique geometric voice source-hop matches,
+with zero recorder drops. **This is a changed acoustic test input,
+not evidence of an ODAS tracking-algorithm improvement.** Freeze the
+newly calibrated scene WAV as a separate baseline rather than
+comparing tracking counts as if both runs had identical audio.
+
 **S1 stays IN PROGRESS** after this test: motion-phase continuity,
 absolute delay/group-delay calibration, independent render
 repeatability across all sources and hardware acoustic correlation
@@ -280,7 +319,7 @@ remain unverified.
 | --- | --- | --- |
 | S0 signal + headless structural contract | **PASS** | Maintain existing artifact and regression coverage |
 | ODAS global-epsilon / 7–8 SSL suppression | **FIXED in fork dev**; libaudition stable pin in PR #74 | Keep exact SHA pin and verify 4/5/6/7/8 capacities |
-| S1 physics and timestamps | **IN PROGRESS (S1.4/S1.6 subset under CI)** | CPU direct-path 1m/2m delay/attenuation, known yaw/mic body-frame oracle and repeat RIR; still need RT60 decay, continuous motion limits and timing boundaries |
+| S1 physics and timestamps | **PARTIAL PASS** (relative propagation, static RT60 calibration, mic/body geometry) | Verify absolute group delay, moving-phase continuity, spatial variation of RT60, timing and 20+ independent seeds before S1 DONE |
 | S2 real speech benchmark | **OPEN** | Licensed 7-speaker reference set and leakage/ASR metric contracts |
 | L1 recorder integrity — near-plane moving | **BLOCKED / failing on fork pin** | Reproduce exact fixture, inspect drop counters and writer queue ownership, fix without relaxing no-drop test |
 | L1/L2 first word and quiet speech | **OPEN** | VAD pre-roll with onset ground truth; same-model WER |

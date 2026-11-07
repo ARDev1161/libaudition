@@ -239,6 +239,20 @@ jobs:
               ])
           else:
               rows.extend(["", "### S1 RT60", "", "No CPU RT60 report; check CTest logs."])
+          calibration_path = Path("build-acoustix/tests/acoustix_7x7/rt60_calibration.json")
+          if calibration_path.is_file():
+              calibration = json.loads(calibration_path.read_text())
+              rows.extend([
+                  "",
+                  "### S1: one-time moving-room RT60 calibration",
+                  "",
+                  f"Requested: **{calibration['requested_rt60_s']:.3f} s**, "
+                  f"raw measured: **{calibration['raw_measured_rt60_s']:.3f} s**, "
+                  f"effective model input: **{calibration['effective_backend_rt60_s']:.3f} s**, "
+                  f"probe after calibration: **{calibration['calibrated_probe_rt60_s']:.3f} s**.",
+                  "",
+                  "> Calibration measured once at a reference microphone/source, not separately for each moving geometry."
+              ])
           signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
           if signal_path.is_file():
               audit = json.loads(signal_path.read_text())
