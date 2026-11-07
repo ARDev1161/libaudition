@@ -213,6 +213,16 @@ The backend may add a fixed fractional-delay FIR group delay.
 This task tests **relative** propagation time; absolute delay
 calibration and direct-path reflection-free RT60 tests remain open.
 The test publishes `acoustix_physics.json` for falsifiable results.
+**Verified on exact branch commit `8ed6f0179bc61c5b386176cdea801c9789ecb6b3`:**
+[full CPU Acoustix + CTest PASS #42343220326](https://github.com/ARDev1161/libaudition/actions/runs/42343220326).
+Observed 1 m / 2 m direct RIR peaks at samples 87 / 133
+(**46 samples** vs **46.647 expected**), near/far direct-peak
+difference **5.435 dB** vs **6.021 dB expected**, nonzero reflected
+energy and byte-identical repeat RIR. The fractional-delay FIR
+introduces an approximately constant ~40-sample group delay, so this
+first test gates *relative*, not absolute, propagation timing.
+The old 12-second Acoustix metrics remain 2,448 tracked observations,
+18.71% matched voice-source hops and zero recorder drops.
 The gate does not validate moving-phase physics, acoustic materials,
 ASR quality or the whole S1 milestone.
 
