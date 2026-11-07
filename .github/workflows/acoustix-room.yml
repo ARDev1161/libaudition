@@ -103,7 +103,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
         run: |
           ctest --no-tests=error --test-dir build-acoustix \
-            -R '^audio_acoustix_(scene_contract|timing_selftest|heldout_manifest_selftest|heldout_cpu|scene_boundaries_selftest|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|replay_recipe_selftest|rir_physics|rt60_physics|spatial_rt60_physics|motion_physics|replay_physics|dynamic_room)$' \
+            -R '^audio_acoustix_(scene_contract|timing_selftest|heldout_manifest_selftest|heldout_cpu|snr_selftest|snr_cpu|scene_boundaries_selftest|metrics_selftest|signal_selftest|physics_selftest|rt60_metric_selftest|replay_recipe_selftest|rir_physics|rt60_physics|spatial_rt60_physics|motion_physics|replay_physics|dynamic_room)$' \
             --output-on-failure --verbose
       - name: Summarize acoustic tracking diagnostics
         if: always()
@@ -303,6 +303,19 @@ jobs:
               ])
           else:
               rows.extend(["", "### S1 spatial RT60", "", "No report; inspect CTest failures."])
+          snr_path = Path("build-acoustix/tests/acoustix_snr_cpu.json")
+          if snr_path.is_file():
+              snr = json.loads(snr_path.read_text())
+              rows.extend([
+                  "",
+                  "### S1: true CPU RIR voice-versus-background-noise targets",
+                  "",
+                  f"| Requested SNR | {snr.get('requested_background_snr_db')} dB |",
+                  f"| Quantized microphone PCM error threshold | {snr.get('pcm_absolute_error_gate_db')} dB |",
+                  f"| Acoustix CPU SNR gate | {'PASS' if snr.get('passed') else 'FAIL'} |",
+                  "",
+                  "> Measures voices against refrigerator/AC/car, NOT against other talkers."
+              ])
           heldout_path = Path("build-acoustix/tests/acoustix_heldout_cpu.json")
           if heldout_path.is_file():
               heldout = json.loads(heldout_path.read_text())
@@ -377,6 +390,7 @@ jobs:
             build-acoustix/tests/acoustix_replay.json
             build-acoustix/tests/acoustix_spatial_rt60.json
             build-acoustix/tests/acoustix_heldout_cpu.json
+            build-acoustix/tests/acoustix_snr_cpu.json
             build-acoustix/tests/acoustix_heldout_cpu/
             build-acoustix/Testing/Temporary/LastTest.log
           retention-days: 10
