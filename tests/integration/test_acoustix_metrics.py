@@ -42,6 +42,17 @@ class AcoustixMetricsTests(unittest.TestCase):
         self.assertEqual({s["id"]: t["id"] for s, t, _ in assignment},
                          {"A": "A-only", "B": "shared"})
 
+    def test_azimuth_does_not_conflate_elevation_error(self):
+        truth = [{"hop": 0, "sources": [voice("A", 45, 0)]}]
+        observed = [track("speaker-track", 45, 30)]
+        report = compute_metrics(truth, observed, SUMMARY)
+        self.assertEqual(report["matched_voice_source_hops"], 1)
+        self.assertAlmostEqual(report["matched_median_azimuth_error_deg"], 0.0,
+                               places=4)
+        self.assertAlmostEqual(report["matched_p90_azimuth_error_deg"], 0.0,
+                               places=4)
+        self.assertGreater(report["matched_median_3d_angular_error_deg"], 29)
+
     def test_unique_track_cannot_satisfy_seven_speakers(self):
         sources = [voice(f"speaker_{i}", i * 4) for i in range(7)]
         assignment = match_sources_to_tracks(sources, [track("one", 12)])
