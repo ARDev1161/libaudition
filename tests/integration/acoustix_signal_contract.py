@@ -10,6 +10,7 @@ from __future__ import annotations
 from array import array
 from contextlib import ExitStack
 import math
+import re
 from pathlib import Path
 import sys
 import wave
@@ -28,6 +29,9 @@ def audit_audio(input_wav: Path, stem_dir: Path,
                 chunk_frames: int = 4096) -> dict:
     if not source_ids or len(source_ids) != len(set(source_ids)):
         raise ValueError("Source IDs must be unique and nonempty")
+    if any(not isinstance(sid, str) or re.fullmatch(r"[a-z][a-z0-9_]*", sid) is None
+           for sid in source_ids):
+        raise ValueError("Source ID must be a safe filename stem")
     if chunk_frames <= 0:
         raise ValueError("chunk_frames must be positive")
     with ExitStack() as stack:
@@ -37,6 +41,8 @@ def audit_audio(input_wav: Path, stem_dir: Path,
         if (master.getnchannels(), master.getframerate(), master.getsampwidth()) != (6, sample_rate, 2):
             raise ValueError("ODAS input must be six-channel PCM16 at configured sample rate")
         total = master.getnframes()
+        if total <= 0:
+            raise ValueError("ODAS input WAV must contain at least one frame")
         for name, item in zip(source_ids, stems):
             if (item.getnchannels(), item.getframerate(), item.getsampwidth(),
                     item.getnframes()) != (4, sample_rate, 2, total):
