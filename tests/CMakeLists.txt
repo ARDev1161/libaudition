@@ -245,6 +245,36 @@ if(TARGET audition::backend_odas)
             LABELS "audio-integration;odas"
             TIMEOUT 180)
     endforeach()
+    # Optional, expensive Acoustix CPU room simulation using image-source RIR.
+    # This is never enabled by the lightweight/default CTest matrix.
+    option(LIBAUDITION_ENABLE_ACOUSTIX_SCENE_TESTS
+        "Register full headless Acoustix -> ODAS integration test" OFF)
+    set(LIBAUDITION_ACOUSTIX_RENDER_SECONDS "1.5" CACHE STRING
+        "Seconds of the 7x7 room to render (12 for complete local scenario)")
+    set(LIBAUDITION_ACOUSTIX_HOP_MS "250" CACHE STRING
+        "Time-varying RIR update interval in milliseconds")
+    set(LIBAUDITION_ACOUSTIX_SPEECH_DIR "" CACHE PATH
+        "Optional directory of seven genuine mono 16kHz PCM16 WAV files")
+    if(LIBAUDITION_ENABLE_ACOUSTIX_SCENE_TESTS)
+        set(_acoustix_arguments
+            --scene "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/acoustix/table_conversation_7x7.json"
+            --output "${CMAKE_CURRENT_BINARY_DIR}/acoustix_7x7"
+            --max-seconds "${LIBAUDITION_ACOUSTIX_RENDER_SECONDS}"
+            --hop-ms "${LIBAUDITION_ACOUSTIX_HOP_MS}"
+            --runner "$<TARGET_FILE:audition_offline_integration>")
+        if(NOT "${LIBAUDITION_ACOUSTIX_SPEECH_DIR}" STREQUAL "")
+            list(APPEND _acoustix_arguments
+                --speech-dir "${LIBAUDITION_ACOUSTIX_SPEECH_DIR}")
+        endif()
+        add_test(NAME audio_acoustix_dynamic_room COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/acoustix_scene.py"
+            ${_acoustix_arguments})
+        set_tests_properties(audio_acoustix_dynamic_room PROPERTIES
+            LABELS "audio-integration;acoustix;odas;reverberation;optional"
+            TIMEOUT 1800)
+    endif()
+
     # Explicit known-elevation planar scenes: quantitative quality gates
     # compare directly against generated ground truth (no output projection).
     # Keep unconstrained ReSpeaker profiles above as 3D diagnostics.
