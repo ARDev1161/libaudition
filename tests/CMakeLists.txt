@@ -308,6 +308,17 @@ if(TARGET audition::backend_odas)
         set_tests_properties(audio_acoustix_rt60_physics PROPERTIES
             LABELS "audio-integration;acoustix;physics;reverberation;optional"
             TIMEOUT 180)
+        # Moving microphone sound-wave integrity: static convolution oracle,
+        # emission-time RIR overlap-add, slow rotation/translation and
+        # refinement of snapshot spacing (100ms vs 50ms).
+        add_test(NAME audio_acoustix_motion_physics COMMAND
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_acoustix_motion.py"
+            --cpu-rir
+            --report "${CMAKE_CURRENT_BINARY_DIR}/acoustix_motion.json")
+        set_tests_properties(audio_acoustix_motion_physics PROPERTIES
+            LABELS "audio-integration;acoustix;motion;physics;optional"
+            TIMEOUT 240)
         set(_acoustix_arguments
             --scene "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/acoustix/table_conversation_7x7.json"
             --output "${CMAKE_CURRENT_BINARY_DIR}/acoustix_7x7"
