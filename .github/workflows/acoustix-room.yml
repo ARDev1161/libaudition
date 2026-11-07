@@ -133,18 +133,21 @@ jobs:
           compare_path = Path("build-acoustix/tests/acoustix_7x7/capacity_comparison.json")
           if compare_path.is_file():
               c = json.loads(compare_path.read_text())
+              names = ["4x4", "4x8", "8x4", "8x8"]
+              configs = c["configurations"]
               rows.extend([
                   "",
-                  "### ODAS 4/4 versus 8/8 source capacity",
+                  "### ODAS factorial capacity sweep (same microphone WAV)",
                   "",
-                  "The same WAV is replayed twice; only ODAS capacity differs.",
+                  "First number = SSL proposals, second = SST tracker slots. Only capacity changes.",
                   "",
-                  "| Result | Default 4 SSL / 4 SST | Expanded 8 SSL / 8 SST |",
-                  "| --- | ---: | ---: |",
+                  "| Metric | 4/4 | 4/8 | 8/4 | 8/8 |",
+                  "| --- | ---: | ---: | ---: | ---: |",
               ])
-              a, b = c["baseline"], c["expanded"]
               for title, key in [
                   ("Maximum simultaneous tracks", "max_simultaneous_tracks"),
+                  ("Median peak SSL activity", "median_peak_ssl_activity"),
+                  ("SSL proposals", "potential_observations"),
                   ("Matched voice-source hops (45°)", "matched_voice_source_hops"),
                   ("Matched voice fraction", "matched_voice_source_fraction"),
                   ("Median 3D angular error, matched only", "matched_median_3d_angular_error_deg"),
@@ -153,8 +156,12 @@ jobs:
                   ("Track observations", "track_observations"),
                   ("Saved recordings", "recordings"),
               ]:
-                  rows.append(f"| {title} | {a[key]} | {b[key]} |")
-              rows.extend(["", "> This is not a calibrated seven-speaker quality acceptance gate."])
+                  cells = " | ".join(str(configs[name][key]) for name in names)
+                  rows.append(f"| {title} | {cells} |")
+              rows.extend([
+                  "",
+                  "> Diagnostics only; this sweep does not tune ODAS thresholds or prove seven-way speech separation."
+              ])
           signal_path = Path("build-acoustix/tests/acoustix_7x7/signal_audit.json")
           if signal_path.is_file():
               audit = json.loads(signal_path.read_text())
