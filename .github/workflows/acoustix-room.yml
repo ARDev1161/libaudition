@@ -93,6 +93,41 @@ jobs:
           ctest --no-tests=error --test-dir build-acoustix \
             -R '^audio_acoustix_(scene_contract|metrics_selftest|dynamic_room)$' \
             --output-on-failure --verbose
+      - name: Summarize acoustic tracking diagnostics
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          path = Path("build-acoustix/tests/acoustix_7x7/metrics.json")
+          if path.is_file():
+              m = json.loads(path.read_text())
+              rows = [
+                  "### Acoustix moving-room spatial diagnostics",
+                  "",
+                  "> Synthetic reverberant scene; diagnostics are not calibrated real-room accuracy gates.",
+                  "",
+                  "| Metric | Result |",
+                  "| --- | ---: |",
+                  f"| Active voices (maximum) | {m['max_active_voices']} |",
+                  f"| Simultaneous ODAS tracks (maximum) | {m['max_simultaneous_tracks']} |",
+                  f"| Matched voice-source hop fraction (45°) | {100*m['matched_voice_source_fraction']:.2f}% |",
+                  f"| 3D DOA median / P90 | {m['matched_median_3d_angular_error_deg']}° / {m['matched_p90_3d_angular_error_deg']}° |",
+                  f"| Adjacent matched ID switches | {m['adjacent_matched_id_switches']} / {m['adjacent_matched_id_comparisons']} |",
+                  f"| SSL proposals / track observations | {m['potential_observations']} / {m['track_observations']} |",
+                  f"| Saved recordings / dropped frames | {m['recordings']} / {m['recorder_drops']} |",
+                  "",
+                  "| Speaker | Matched source-hops | Active source-hops |",
+                  "| --- | ---: | ---: |",
+              ]
+              for name, values in m["per_voice"].items():
+                  rows.append(f"| {name} | {values['matched_hops']} | {values['active_hops']} |")
+          else:
+              rows = ["### Acoustix room diagnostics", "", "No metrics.json was generated; see failed CTest and job logs."]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+              stream.write("\n".join(rows) + "\n")
+          PY
       - name: Upload WAV, ground truth, per-source tracking report
         if: always()
         uses: actions/upload-artifact@v4
