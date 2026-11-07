@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 from acoustix_scene import (
+    direct_path_delay_samples,
     microphone_world_position,
     pose_at,
     source_body_angles,
@@ -79,6 +80,16 @@ class GeometryContractTests(unittest.TestCase):
                 self.assertAlmostEqual(bearing, az, places=8)
                 self.assertAlmostEqual(elevation, 0, places=8)
 
+    def test_absolute_delay_oracle_includes_filter_group_delay(self):
+        prediction = direct_path_delay_samples(
+            [4, 4, 1.5], 0, [3, 4, 1.5],
+            [[0, 0, 0], [1, 0, 0]], 16000, 343.0, 40)
+        self.assertAlmostEqual(prediction[0], 40 + 16000 / 343)
+        self.assertAlmostEqual(prediction[1], 40 + 32000 / 343)
+        with self.assertRaises(ValueError):
+            direct_path_delay_samples([4, 4, 1.5], 0, [3, 4, 1.5],
+                                      [[0, 0, 0]], 16000, 0, 40)
+
     def test_rir_emission_windows_form_partition_of_unity(self):
         # Mirrors the window construction used in acoustix_scene.render,
         # including its beyond-end snapshot and the first partial window.
@@ -95,6 +106,7 @@ class GeometryContractTests(unittest.TestCase):
 class CpuRirPhysicsTests(unittest.TestCase):
     def test_real_cpu_rir_direct_delay_distance_and_repeatability(self):
         import numpy as np
+        import pyroomacoustics as pra
         from acoustix_scene import rir_snapshot
 
         # Same source into two receivers at 1 m and 2 m, keeping the
@@ -116,10 +128,18 @@ class CpuRirPhysicsTests(unittest.TestCase):
         self.assertTrue(np.array_equal(rirs[0][0], rirs_again[0][0]))
         self.assertTrue(np.array_equal(rirs[1][0], rirs_again[1][0]))
 
-        # A fractional-delay FIR can shift both measured peaks by the
-        # same constant group delay. Compare the DIFFERENCE of arrivals,
-        # not an uncalibrated absolute impulse offset.
+        # The pinned pyroomacoustics documentation defines an 81-tap
+        # fractional-delay filter with exactly 40 samples of group delay.
+        # This is NOT measured/fitted from the observed RIR peaks.
         speed_of_sound = 343.0
+        self.assertAlmostEqual(float(pra.constants.get("c")), speed_of_sound)
+        filter_length = int(pra.constants.get("frac_delay_length"))
+        self.assertEqual(filter_length, 81, "Changed backend needs new calibration review")
+        group_delay = filter_length // 2
+        predicted_absolute = direct_path_delay_samples(
+            scene["robot"]["trajectory"][0]["position_m"], 0,
+            scene["sources"][0]["position_m"],
+            scene["robot"]["microphones_m"], fs, speed_of_sound, group_delay)
         expected = [round(distance * fs / speed_of_sound) for distance in (1., 2.)]
         observed = []
         direct_peaks = []
@@ -137,6 +157,22 @@ class CpuRirPhysicsTests(unittest.TestCase):
             tail_energies.append(float(np.sum(tail.astype(np.float64) ** 2)))
             self.assertGreater(tail_energies[-1], 0.0,
                                "RIR must contain nonzero late reflections")
+        # Absolute arrival test: a true input pulse at sample 137 must
+        # emerge at sample 137 + (distance/c + 40-sample group delay).
+        # Check the production-path convolution, not just the raw RIR.
+        pulse_index = 137
+        pulse = np.zeros(256, dtype=np.float32)
+        pulse[pulse_index] = 1.0
+        pulse_arrivals = []
+        for mi, mic in enumerate(rirs):
+            self.assertLessEqual(abs(observed[mi] - predicted_absolute[mi]), 2.0)
+            output = np.convolve(pulse, mic[0])
+            begin = pulse_index + int(predicted_absolute[mi]) - 3
+            end = begin + 7
+            arrival = begin + int(np.argmax(np.abs(output[begin:end])))
+            pulse_arrivals.append(arrival)
+            self.assertLessEqual(abs(arrival - pulse_index -
+                                     predicted_absolute[mi]), 2.0)
         measured_delta = observed[1] - observed[0]
         expected_delta = (2.0 - 1.0) * fs / speed_of_sound
         self.assertLessEqual(abs(measured_delta - expected_delta), 3.0,
@@ -149,6 +185,12 @@ class CpuRirPhysicsTests(unittest.TestCase):
             "fixture": "static one-source, two-receiver RIR (1 and 2 meters)",
             "backend": "pinned Acoustix CPU PyRoomAcousticsRoom",
             "expected_delta_samples": expected_delta,
+            "fractional_delay_filter_taps": filter_length,
+            "fractional_delay_group_samples": group_delay,
+            "predicted_absolute_arrival_samples": predicted_absolute,
+            "observed_convolved_pulse_arrival_samples": pulse_arrivals,
+            "convolved_pulse_emission_sample": pulse_index,
+            "absolute_arrival_max_tolerance_samples": 2.0,
             "measured_peak_sample_indices": observed,
             "measured_delta_samples": measured_delta,
             "near_over_far_peak_db": near_to_far_db,
