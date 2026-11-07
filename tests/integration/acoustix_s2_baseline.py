@@ -31,8 +31,13 @@ def compare(baseline, report):
             raise ValueError("input WAV hash mismatch: " + name)
         if old["oracle_voice_source_hops"] != now["oracle_voice_source_hops"]:
             raise ValueError("oracle denominator changed: " + name)
+        for key in ("matched_voice_source_hops", "max_simultaneous_tracks",
+                    "adjacent_id_switches", "recorder_drops"):
+            value = old.get(key)
+            if type(value) is not int or value < 0:
+                raise ValueError("invalid baseline integer " + key + ": " + name)
         denominator = old["oracle_voice_source_hops"]
-        if not isinstance(denominator, int) or denominator <= 0:
+        if type(denominator) is not int or denominator <= 0:
             raise ValueError("invalid oracle denominator: " + name)
         # Reject malformed observations before applying one-sided regression gates.
         # Otherwise negative drops/switches, negative matches or impossible
@@ -42,6 +47,8 @@ def compare(baseline, report):
             value = now.get(key)
             if type(value) is not int or value < 0:
                 raise ValueError("invalid nonnegative integer " + key + ": " + name)
+        if old["matched_voice_source_hops"] > denominator:
+            raise ValueError("baseline matches exceed oracle: " + name)
         if now["matched_voice_source_hops"] > denominator:
             raise ValueError("matched source hops exceed oracle: " + name)
         if not isinstance(now.get("passed_pipeline_integrity"), bool):
@@ -53,6 +60,8 @@ def compare(baseline, report):
         checks = {
             "no_recorder_drops": now["recorder_drops"] == 0,
             "pipeline_integrity": now["passed_pipeline_integrity"],
+            "track_capacity_not_regressed":
+                now["max_simultaneous_tracks"] >= old["max_simultaneous_tracks"],
             "source_hop_recall_not_regressed": now["matched_voice_source_hops"] >= min_matches,
             "id_switches_not_increased":
                 now["adjacent_id_switches"] <= old["adjacent_id_switches"],
