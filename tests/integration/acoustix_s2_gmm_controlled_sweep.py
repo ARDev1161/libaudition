@@ -15,6 +15,8 @@ import subprocess
 import sys
 import wave
 
+from acoustix_s2_gmm_doa_audit import measure_t03_oracle_pairs, read_native_tracks
+
 
 REAL_CASES = ("t02_dev_single", "t03_eval_two", "t07_eval_seven")
 VARIANTS = {
@@ -230,10 +232,25 @@ def sweep(root, runner, validator, output):
                                   overlap.get(case_name), EXPECTED[variant])
                 trace_sha = file_sha256(dest / "sst_raw_trace.jsonl")
                 source_kind = "fresh native ODAS replay"
-            entry[case_name] = {
+            case_entry = {
                 "wav_sha256": sha, "trace_sha256": trace_sha,
                 "source": source_kind, "metrics": metrics,
             }
+            if case_name == "t03_eval_two":
+                native_dir = (root / case_name / "odas"
+                              if variant == "baseline" else dest)
+                true_oracle = read_json(
+                    root / case_name / "render/ground_truth.json")["ground_truth"]
+                spatial = measure_t03_oracle_pairs(
+                    true_oracle, read_native_tracks(
+                        native_dir / "observations.csv"))
+                if (spatial["oracle_exactly_two_voice_hops"] !=
+                        metrics["oracle_exactly_two_voice_hops"] or
+                    spatial["two_or_more_active_tracks_in_overlap_hops"] !=
+                        metrics["oracle_two_voice_hops_with_at_least_two_active_tracks"]):
+                    raise SweepError("active SST clock disagrees with native geometry observations")
+                case_entry["spatial_oracle_diagnostics"] = spatial
+            entry[case_name] = case_entry
         report["variants"][variant] = {
             "cli": list(args), "verified_parameters": EXPECTED[variant],
             "cases": entry,
