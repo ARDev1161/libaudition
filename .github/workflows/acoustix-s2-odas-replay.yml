@@ -452,7 +452,7 @@ jobs:
         with:
           name: acoustix-s2-real-odas-diagnostics
           run-id: 42444370597
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
           path: build-s2-before-zero-ssl-guard
 
       - name: Compare real native ODAS zero-evidence birth fix against identical pre-fix WAV/variant artifacts
