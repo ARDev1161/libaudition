@@ -80,6 +80,32 @@ class RealEvidenceContractTests(unittest.TestCase):
         self.assertEqual(r["any_two_candidates_above_birth_threshold_hops"], 1)
         self.assertEqual(r["matched_pair_both_above_birth_threshold_hops"], 1)
 
+    def test_unassigned_false_peak_mass_dominates(self):
+        rows, oracle = data()
+        for c in rows[0]["ssl_candidates"]:
+            c["birth_posterior"] = 0.001
+            c["track_posteriors"][0]["posterior"] = 0.02
+        result = analyse(rows, oracle)
+        for target in result["speaker_direction_matches"].values():
+            self.assertEqual(target["dominant_posterior_class"]["unassigned_residual"], 1)
+            self.assertGreater(target["unassigned_or_false_peak_mass"]["median"], 0.97)
+
+    def test_existing_track_mass_dominates(self):
+        rows, oracle = data()
+        for c in rows[0]["ssl_candidates"]:
+            c["birth_posterior"] = 0.01
+            c["track_posteriors"][0]["posterior"] = 0.95
+        result = analyse(rows, oracle)
+        for target in result["speaker_direction_matches"].values():
+            self.assertEqual(target["dominant_posterior_class"]["existing_track"], 1)
+
+    def test_invalid_probability_simplex_rejected(self):
+        rows, oracle = data()
+        rows[0]["ssl_candidates"][0]["birth_posterior"] = 0.7
+        rows[0]["ssl_candidates"][0]["track_posteriors"][0]["posterior"] = 0.7
+        with self.assertRaisesRegex(ValueError, "exceed unit probability"):
+            analyse(rows, oracle)
+
     def test_two_distinct_proposals_do_not_imply_two_active_tracks(self):
         rows, oracle = data()
         rows[0]["tracks_after"] = [{"state": "A"}]
