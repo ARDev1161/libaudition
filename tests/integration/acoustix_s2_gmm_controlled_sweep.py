@@ -69,8 +69,10 @@ def silent_control(source_wav, target_wav):
 def oracle_overlap_frames(case_root):
     ground = read_json(case_root / "render/ground_truth.json")
     rows = ground["ground_truth"]
-    if len(rows) != 1875:
-        raise SweepError("unexpected oracle length")
+    # The frozen oracle can cover fewer hops than the full 15-second WAV;
+    # do not invent speech/source labels in the trailing unlabelled period.
+    if not rows or len(rows) > 1875:
+        raise SweepError("empty or oversized Acoustix oracle")
     if any(row["hop"] != index for index, row in enumerate(rows)):
         raise SweepError("oracle hop discontinuity")
     return frozenset(index for index, row in enumerate(rows)
