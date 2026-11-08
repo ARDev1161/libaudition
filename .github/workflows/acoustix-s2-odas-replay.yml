@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   real-speech-odas:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' || github.head_ref == 'test/acoustix-s2-gmm-epsilon-evidence' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' || github.head_ref == 'test/acoustix-s2-gmm-epsilon-evidence' || github.head_ref == 'test/acoustix-s2-gmm-controlled-sweep' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -330,6 +330,48 @@ jobs:
                   "strong_ssl_gt_0_8_birth_lt_0_01":
                       case["strong_ssl_gt_0_8_birth_lt_0_01"]
               } for name, case in report["cases"].items()}, sort_keys=True))
+          PY
+
+      - name: Native GMM parameter sensitivity on identical real PCM and synthetic T00 silence
+        run: |
+          python3 -m unittest discover -s tests/integration \
+            -p 'test_acoustix_s2_gmm_controlled_sweep.py' -v
+          validator="$(find build-s2-odas -type f -path '*/tools/validate_sst_raw_trace.py' -print -quit)"
+          test -f "$validator"
+          python3 tests/integration/acoustix_s2_gmm_controlled_sweep.py \
+            --artifact-root build-s2 \
+            --runner build-s2-odas/tests/audition_offline_integration \
+            --validator "$validator" \
+            --output build-s2/gmm-sweep
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("build-s2/gmm-sweep/gmm_sweep_report.json").read_text())
+          assert report["schema"] == "libaudition.s2_native_gmm_sensitivity.v1"
+          expected = ("baseline", "active_mean_030",
+                      "active_var_001", "false_prior_003")
+          assert set(report["variants"]) == set(expected)
+          for variant in expected:
+              cases = report["variants"][variant]["cases"]
+              assert set(cases) == {
+                  "t00_zero_pcm_control", "t02_dev_single",
+                  "t03_eval_two", "t07_eval_seven"}
+              assert cases["t00_zero_pcm_control"]["metrics"]["validated_128_frame_hops"] == 1875
+              assert cases["t03_eval_two"]["metrics"]["oracle_exactly_two_voice_hops"] == 243
+              for case in ("t02_dev_single", "t03_eval_two", "t07_eval_seven"):
+                  assert cases[case]["wav_sha256"] == (
+                      report["variants"]["baseline"]["cases"][case]["wav_sha256"])
+          print("Measured native replay complete: tracking diagnostics, not speech-separation acceptance")
+          for name in expected:
+              c = report["variants"][name]["cases"]
+              print(name, "T00 synthetic zero-PCM active hops:",
+                    c["t00_zero_pcm_control"]["metrics"]["hops_any_active"],
+                    "T02 max active:",
+                    c["t02_dev_single"]["metrics"]["max_simultaneous_active_tracks"],
+                    "T03 two-active-overlap hops:",
+                    c["t03_eval_two"]["metrics"]["oracle_two_voice_hops_with_at_least_two_active_tracks"],
+                    "T07 max active:",
+                    c["t07_eval_seven"]["metrics"]["max_simultaneous_active_tracks"])
           PY
 
       - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
