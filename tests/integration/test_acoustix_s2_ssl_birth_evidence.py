@@ -76,6 +76,9 @@ class RealEvidenceContractTests(unittest.TestCase):
         rows, oracle = data()
         rows[0]["ssl_candidates"][0]["birth_posterior"] = 0.95
         rows[0]["ssl_candidates"][1]["birth_posterior"] = 0.97
+        # Keep the independent mixture-label posterior simplex valid.
+        for candidate in rows[0]["ssl_candidates"]:
+            candidate["track_posteriors"][0]["posterior"] = 0.01
         r = analyse(rows, oracle)
         self.assertEqual(r["any_two_candidates_above_birth_threshold_hops"], 1)
         self.assertEqual(r["matched_pair_both_above_birth_threshold_hops"], 1)
