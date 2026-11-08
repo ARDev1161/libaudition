@@ -266,11 +266,16 @@ jobs:
           assert m["distinct_ssl_streaks"]["runs_at_least_5_hops"] == 5
           assert m["two_active_sst_tracks_hops"] == 0
           assert m["speaker_direction_matches"]["speaker_2"]["above_birth_threshold_hops"] == 0
+          assert m["speaker_direction_matches"]["speaker_2"]["dominant_posterior_class"] == {
+              "new_source": 0, "existing_track": 27,
+              "unassigned_residual": 70, "ambiguous": 0
+          }
           print("T03 measured directional/association baseline:", json.dumps({
               "two_oracle_voice_hops": m["oracle_two_voice_hops"],
               "two_distinct_ssl_hops": m["two_distinct_ssl_direction_hops"],
               "distinct_streaks": m["distinct_ssl_streaks"],
               "speaker_2_birth": m["speaker_direction_matches"]["speaker_2"]["birth_posterior"],
+              "speaker_2_mass_fate": m["speaker_direction_matches"]["speaker_2"]["dominant_posterior_class"],
               "two_birth_evidence_hops": m["any_two_candidates_above_birth_threshold_hops"]
           }, sort_keys=True))
           PY
