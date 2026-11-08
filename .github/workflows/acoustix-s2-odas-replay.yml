@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   real-speech-odas:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' || github.head_ref == 'test/acoustix-s2-gmm-epsilon-evidence' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -278,6 +278,58 @@ jobs:
               "speaker_2_mass_fate": m["speaker_direction_matches"]["speaker_2"]["dominant_posterior_class"],
               "two_birth_evidence_hops": m["any_two_candidates_above_birth_threshold_hops"]
           }, sort_keys=True))
+          PY
+
+      - name: Diagnose native ODAS GMM false/new likelihood and absolute epsilon floor
+        run: |
+          python3 -m unittest discover -s tests/integration \
+            -p 'test_acoustix_s2_gmm_epsilon_audit.py' -v
+          python3 - <<'PY'
+          from pathlib import Path
+          h = Path("backends/odas/include/audition/backends/odas/odas_options.hpp").read_text()
+          run = Path("tests/integration/offline_pipeline_runner.cpp").read_text()
+          deps = Path("cmake/Dependencies.cmake").read_text()
+          for needle in (
+              "active_gmm{{1.0, 0.4, 0.0025}}",
+              "inactive_gmm{{1.0, 0.25, 0.0025}}",
+              "false_probability{0.1}",
+              "new_probability{0.1}",
+              "new_threshold{0.9}",
+          ):
+              assert needle in h, ("Native GMM/prior default changed", needle)
+          assert "options.sst.active_gmm" not in run
+          assert "options.sst.inactive_gmm" not in run
+          assert "options.sst.false_probability" not in run
+          assert "options.sst.new_probability" not in run
+          assert "GIT_TAG e5d10d5f9a6f70c84ec563c57dd7dccb1699aae8" in deps
+          print("Native ODAS GMM/priors and exact traced ODAS dependency verified")
+          PY
+          python3 tests/integration/acoustix_s2_gmm_epsilon_audit.py \
+            --artifact-root build-s2 \
+            --output build-s2/real_speech_gmm_epsilon_audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path(
+              "build-s2/real_speech_gmm_epsilon_audit.json").read_text())
+          assert report["schema"] == "libaudition.acoustix-s2-native-gmm-epsilon-evidence.v1"
+          expected = {
+              "t02_dev_single": (7500, 7),
+              "t03_eval_two": (7500, 14),
+              "t07_eval_seven": (7500, 0),
+          }
+          for case_name, (candidates, epsilon_count) in expected.items():
+              case = report["cases"][case_name]
+              assert case["hops"] == 1875, case_name
+              assert case["candidates"] == candidates, case_name
+              assert case["epsilon_dominant"] == epsilon_count, case_name
+          print("Actual real-PCM ODAS GMM/epsilon evidence:", json.dumps(
+              {name: {
+                  "epsilon_dominant": case["epsilon_dominant"],
+                  "strong_ssl_gt_0_8": case["strong_ssl_gt_0_8"],
+                  "strong_ssl_gt_0_8_birth_lt_0_01":
+                      case["strong_ssl_gt_0_8_birth_lt_0_01"]
+              } for name, case in report["cases"].items()}, sort_keys=True))
           PY
 
       - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
