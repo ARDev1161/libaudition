@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   real-speech-odas:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' || github.head_ref == 'test/acoustix-s2-gmm-epsilon-evidence' || github.head_ref == 'test/acoustix-s2-gmm-controlled-sweep' || github.head_ref == 'test/acoustix-s2-horizontal-source-prior' || github.head_ref == 'test/acoustix-s2-zero-ssl-birth-fix-ab' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' || github.head_ref == 'test/acoustix-s2-gmm-epsilon-evidence' || github.head_ref == 'test/acoustix-s2-gmm-controlled-sweep' || github.head_ref == 'test/acoustix-s2-horizontal-source-prior' || github.head_ref == 'test/acoustix-s2-zero-ssl-birth-fix-ab' || github.head_ref == 'test/acoustix-s2-zero-ssl-birth-fix-ab' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -445,6 +445,44 @@ jobs:
                     cases["t03_eval_two"]["native_3d_track_elevation"]["active_track_observations_above_45deg_absolute_elevation"],
                     "T00 synthetic births:",
                     cases["t00_zero_pcm_control"]["tracker_metrics"]["birth_events"])
+          PY
+
+      - name: Download exact pre-zero-birth-guard Acoustix native evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: acoustix-s2-real-odas-diagnostics
+          run-id: 42444370597
+          github-token: \${{ github.token }}
+          path: build-s2-before-zero-ssl-guard
+
+      - name: Compare real native ODAS zero-evidence birth fix against identical pre-fix WAV/variant artifacts
+        run: |
+          python3 -m unittest discover -s tests/integration \
+            -p 'test_acoustix_s2_zero_evidence_birth_compare.py' -v
+          python3 tests/integration/acoustix_s2_zero_evidence_birth_compare.py \
+            --before build-s2-before-zero-ssl-guard \
+            --after build-s2 \
+            --output build-s2/zero_ssl_birth_guard_before_after.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path(
+              "build-s2/zero_ssl_birth_guard_before_after.json").read_text())
+          assert report["schema"] == "libaudition.zero_ssl_potential_birth_native_ab_v1"
+          assert set(report["variants"]) == {
+              "baseline_off", "baseline_plane",
+              "active_var_001_off", "active_var_001_plane"}
+          for mode, variant in report["variants"].items():
+              cases = variant["cases"]
+              before = cases["t00_zero_pcm_control"]["before"]["birth_events"]
+              after = cases["t00_zero_pcm_control"]["after"]["birth_events"]
+              assert after == 0, (mode, before, after)
+              if variant["gmm"] == "active_var_001":
+                  assert before == 1252, (mode, before)
+              assert cases["t03_eval_two"]["after_3d"]["oracle_exactly_two_voice_hops"] == 243
+              print(mode, "synthetic T00 births", before, "->", after,
+                    "T03 genuine two-person 45deg matches:",
+                    cases["t03_eval_two"]["after_3d"]["two_distinct_track_to_voice_matches_within_45deg_hops"])
           PY
 
       - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
