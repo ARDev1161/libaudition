@@ -172,6 +172,11 @@ direction TB
  AM06["AM-06 — Evaluate optional acoustic captions with grounded claims, uncertainty and licensing metadata"]
  AM07["AM-07 — Research evidence-bound audio question-answering that may abstain when audio evidence is insufficient"]
  AM08["AM-08 — Support explicit forgetting, expiry, deletion and redaction requests through consumer-facing contracts"]
+ AM09["AM-09 — Define an optional versioned three-stream source descriptor: spatial position/motion/uncertainty, acoustic timbre/spectrum, and temporal change/motifs; preserve per-stream clocks, quality and provenance"]
+ AM10["AM-10 — Implement modality-aware comparison separating physical-source re-identification from sound-type similarity, with missing-modality handling and spatial frame/motion assumptions"]
+ AM11["AM-11 — Evaluate open-set nearest prototypes, novelty and optional offline clustering for unlabeled sounds; bound memory and reject low-confidence or contaminated observations"]
+ AM12["AM-12 — Represent multi-window temporal embedding trajectories for repeated motifs, state changes and drift; preserve gaps and source-generation epochs"]
+ AM13["AM-13 — Benchmark recognition across robot motion, reverberation, overlap and source leakage; measure retrieval, false merges/splits, unknown rejection, novelty alarms and resource cost"]
  M10G{{"M10 gate — Held-out retrieval, novelty and anomaly metrics; verified identity isolation, opt-in storage, bounded retention and model provenance."}}
  AM01 --> M10G
  AM02 --> M10G
@@ -181,6 +186,11 @@ direction TB
  AM06 --> M10G
  AM07 --> M10G
  AM08 --> M10G
+ AM09 --> M10G
+ AM10 --> M10G
+ AM11 --> M10G
+ AM12 --> M10G
+ AM13 --> M10G
 end
 subgraph M11["M11 — Pipeline SDK and observability / P2 (proposed)"]
 direction TB
@@ -219,7 +229,8 @@ direction TB
  Q11["Q11 — Stress concurrent sources and models, worker failures, restarts, memory bounds and p50/p95/p99 end-to-end latency"]
  Q12["Q12 — Compare adaptive processing CPU/RAM/energy savings against miss rate, event recall, WER and starvation"]
  Q13["Q13 — Verify corpus and model licensing, provenance, storage opt-in, forgetting, deletion and consumer privacy boundaries"]
- Q01 --> Q02 --> Q03 --> Q04 --> Q05 --> Q06 --> Q07 --> Q08 --> Q09 --> Q10 --> Q11 --> Q12 --> Q13
+ Q14["Q14 — Score three-stream unknown-sound discovery: same-source vs same-type retrieval, cluster purity, false merges/splits, open-set rejection, novelty false alarms/hour, domain shift and resource cost"]
+ Q01 --> Q02 --> Q03 --> Q04 --> Q05 --> Q06 --> Q07 --> Q08 --> Q09 --> Q10 --> Q11 --> Q12 --> Q13 --> Q14
 end
 subgraph EXP["Optional research / not release blockers"]
 direction TB
@@ -251,6 +262,7 @@ Q13 -. verification .-> M7G
 Q13 -. verification .-> M8G
 Q13 -. verification .-> M9G
 Q13 -. verification .-> M10G
+Q14 -. verification .-> M10G
 Q13 -. verification .-> M11G
 D06 --> M1G
 T06 --> M2G
@@ -265,6 +277,8 @@ M3G --> SC01
 M5G --> SC01
 M8G --> AT01
 M8G --> AM01
+M3G --> AM09
+M5G --> AM09
 M6G --> SDK01
 M7G --> SDK04
 M9G --> SDK04
