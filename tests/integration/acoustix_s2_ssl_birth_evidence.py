@@ -92,6 +92,11 @@ def analyse(rows, ground_truth, tolerance=25.0):
     probs = [[], []]
     strengths = [[], []]
     assigned = [[], []]
+    residuals = [[], []]
+    dominance = [{
+        "new_source": 0, "existing_track": 0,
+        "unassigned_residual": 0, "ambiguous": 0,
+    } for _ in range(2)]
     above = [0, 0]
     by_sep = {"<30": {"hops": 0, "paired": 0},
               "30-60": {"hops": 0, "paired": 0},
@@ -150,9 +155,24 @@ def analyse(rows, ground_truth, tolerance=25.0):
                    for p in association):
                 raise ValueError("invalid track association marginal")
             prob = candidate["birth_posterior"]
+            existing = sum(association)
+            if existing + prob > 1.0001:
+                raise ValueError("ODAS per-candidate marginals exceed unit probability")
+            # The remaining normalized mixture label is the false peak;
+            # the normalization epsilon may contribute a tiny residual.
+            unassigned = max(0.0, 1.0 - prob - existing)
             probs[voice].append(prob)
             strengths[voice].append(strength)
             assigned[voice].append(max(association, default=0))
+            residuals[voice].append(unassigned)
+            if unassigned > 0.5:
+                dominance[voice]["unassigned_residual"] += 1
+            elif existing > 0.5:
+                dominance[voice]["existing_track"] += 1
+            elif prob > 0.5:
+                dominance[voice]["new_source"] += 1
+            else:
+                dominance[voice]["ambiguous"] += 1
             above[voice] += prob > theta
     if total == 0:
         raise ValueError("no actual two-voice overlap in oracle")
@@ -169,10 +189,14 @@ def analyse(rows, ground_truth, tolerance=25.0):
             "speaker_1": {"birth_posterior": distribution(probs[0]),
                           "strength": distribution(strengths[0]),
                           "max_existing_track_posterior": distribution(assigned[0]),
+                          "unassigned_or_false_peak_mass": distribution(residuals[0]),
+                          "dominant_posterior_class": dominance[0],
                           "above_birth_threshold_hops": above[0]},
             "speaker_2": {"birth_posterior": distribution(probs[1]),
                           "strength": distribution(strengths[1]),
                           "max_existing_track_posterior": distribution(assigned[1]),
+                          "unassigned_or_false_peak_mass": distribution(residuals[1]),
+                          "dominant_posterior_class": dominance[1],
                           "above_birth_threshold_hops": above[1]}},
         "separation_strata": by_sep,
         "limitation": "geometric ODAS candidate evidence only; no speaker identity, "
