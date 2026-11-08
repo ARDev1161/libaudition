@@ -1,6 +1,6 @@
 # libaudition — development roadmap
 
-> Status: proposed technical plan (updated 1 November 2026). This document describes intended work, not a delivery commitment or a claim that all listed features are implemented.
+> Status: proposed technical plan (updated 8 November 2026). This document describes intended work, not a delivery commitment or a claim that all listed features are implemented.
 
 ## Scope and baseline
 
@@ -203,6 +203,11 @@ direction TB
  AM06["AM-06 — Evaluate optional acoustic captions with grounded claims, uncertainty and licensing metadata"]
  AM07["AM-07 — Research evidence-bound audio question-answering that may abstain when audio evidence is insufficient"]
  AM08["AM-08 — Support explicit forgetting, expiry, deletion and redaction requests through consumer-facing contracts"]
+ AM09["AM-09 — Define an optional versioned three-stream source descriptor: spatial position/motion/uncertainty, acoustic timbre/spectrum, and temporal change/motifs; preserve per-stream clocks, quality and provenance"]
+ AM10["AM-10 — Implement modality-aware comparison separating physical-source re-identification from sound-type similarity, with missing-modality handling and spatial frame/motion assumptions"]
+ AM11["AM-11 — Evaluate open-set nearest prototypes, novelty and optional offline clustering for unlabeled sounds; bound memory and reject low-confidence or contaminated observations"]
+ AM12["AM-12 — Represent multi-window temporal embedding trajectories for repeated motifs, state changes and drift; preserve gaps and source-generation epochs"]
+ AM13["AM-13 — Benchmark recognition across robot motion, reverberation, overlap and source leakage; measure retrieval, false merges/splits, unknown rejection, novelty alarms and resource cost"]
  M10G{{"M10 gate — Held-out retrieval, novelty and anomaly metrics; verified identity isolation, opt-in storage, bounded retention and model provenance."}}
  AM01 --> M10G
  AM02 --> M10G
@@ -212,6 +217,11 @@ direction TB
  AM06 --> M10G
  AM07 --> M10G
  AM08 --> M10G
+ AM09 --> M10G
+ AM10 --> M10G
+ AM11 --> M10G
+ AM12 --> M10G
+ AM13 --> M10G
 end
 subgraph M11["M11 — Pipeline SDK and observability / P2 (proposed)"]
 direction TB
@@ -250,7 +260,8 @@ direction TB
  Q11["Q11 — Stress concurrent sources and models, worker failures, restarts, memory bounds and p50/p95/p99 end-to-end latency"]
  Q12["Q12 — Compare adaptive processing CPU/RAM/energy savings against miss rate, event recall, WER and starvation"]
  Q13["Q13 — Verify corpus and model licensing, provenance, storage opt-in, forgetting, deletion and consumer privacy boundaries"]
- Q01 --> Q02 --> Q03 --> Q04 --> Q05 --> Q06 --> Q07 --> Q08 --> Q09 --> Q10 --> Q11 --> Q12 --> Q13
+ Q14["Q14 — Score three-stream unknown-sound discovery: same-source vs same-type retrieval, cluster purity, false merges/splits, open-set rejection, novelty false alarms/hour, domain shift and resource cost"]
+ Q01 --> Q02 --> Q03 --> Q04 --> Q05 --> Q06 --> Q07 --> Q08 --> Q09 --> Q10 --> Q11 --> Q12 --> Q13 --> Q14
 end
 subgraph EXP["Optional research / not release blockers"]
 direction TB
@@ -282,6 +293,7 @@ Q13 -. verification .-> M7G
 Q13 -. verification .-> M8G
 Q13 -. verification .-> M9G
 Q13 -. verification .-> M10G
+Q14 -. verification .-> M10G
 Q13 -. verification .-> M11G
 D06 --> M1G
 T06 --> M2G
@@ -296,6 +308,8 @@ M3G --> SC01
 M5G --> SC01
 M8G --> AT01
 M8G --> AM01
+M3G --> AM09
+M5G --> AM09
 M6G --> SDK01
 M7G --> SDK04
 M9G --> SDK04
@@ -463,8 +477,15 @@ The following are planned capabilities, **not implemented feature claims**. Work
 - **AM-06:** Evaluate optional acoustic captions with grounded claims, uncertainty and licensing metadata.
 - **AM-07:** Research evidence-bound audio question-answering that may abstain when audio evidence is insufficient.
 - **AM-08:** Support explicit forgetting, expiry, deletion and redaction requests through consumer-facing contracts.
+- **AM-09:** Define an optional, versioned three-stream `SourceRepresentation`: **spatial** (direction/position/trajectory with coordinate-frame and motion assumptions), **acoustic** (spectrum/timbre/optional learned embedding) and **temporal** (multi-scale feature trajectories and motifs). Each stream carries its own validity interval, source-generation ID, dimensionality/model/config version, quality, uncertainty and provenance.
+- **AM-10:** Compare physical-source identity and sound-type similarity **separately**. Use context-dependent modality gating; spatial disagreement must not prohibit recognition of the same *kind* of sound elsewhere, while sound similarity alone must never assert that two observations are the same physical source.
+- **AM-11:** Evaluate unknown-sound similarity, versioned prototypes, novelty detection and optional offline clustering (e.g. HDBSCAN), with explicit unknown/abstain outputs, delayed corroboration, bounded storage and safeguards against separation leakage and mixed-source contamination.
+- **AM-12:** Encode temporal evolution with short and longer windows, including transients, periodic patterns, temporal alignment and drift/change detection. Preserve silence, discontinuities, late observations and source-generation epochs; do not silently merge unrelated tracks.
+- **AM-13:** Evaluate on reproducible multichannel simulation and held-out recordings: stationary/moving sources and observer, reverberation, overlapping speakers, machinery/noise and intermittent external events. Report same-source vs same-type retrieval, cluster purity, false merges/splits, open-set rejection, novelty false alarms/hour, confidence calibration and CPU/RAM/p95 latency against acoustic-only and flat-embedding baselines.
 
-**M10 acceptance gate:** Held-out retrieval, novelty and anomaly metrics; verified identity isolation, opt-in storage, bounded retention and model provenance.
+**M10 acceptance gate:** Held-out retrieval, novelty and anomaly metrics; verified identity isolation, opt-in storage, bounded retention and model provenance. For AM-09–AM-13 additionally require separately scored physical-source identity versus sound-type matching, reliable unknown/rejection behavior, contamination tests, and baseline-relative performance/resource measurements.
+
+**Deferred research slice — three-stream source representation and acoustic memory.** This is a future capability, not a current API or an instruction to modify working classifiers/separation. Start with deterministic DSP/spatial/temporal features and an optional feature backend; compare against flat acoustic embeddings before introducing learned models. Spatial representation must declare its coordinate frame, and ego-motion compensation requires explicitly supplied data from an application adapter (no ROS 2 or robot-policy dependency in core). Similarity scores are evidence, not proof of common physical origin or causal relations. Evaluate first with deterministic synthetic fixtures, then a separate acoustics-simulation corpus (for example, a 7×7 m room with seven overlapping speakers, a moving listener, appliance noise, and intermittent exterior traffic), and finally held-out annotated recordings. Do not mark the stage complete merely because CI passes: measure accuracy, leakage robustness, false alarms, memory, and latency on reproducible datasets.
 
 ### M11. Pipeline SDK and observability (P2)
 
@@ -495,6 +516,7 @@ The following are planned capabilities, **not implemented feature claims**. Work
 - **Q11:** Stress concurrent sources and models, worker failures, restarts, memory bounds and p50/p95/p99 end-to-end latency.
 - **Q12:** Compare adaptive processing CPU/RAM/energy savings against miss rate, event recall, WER and starvation.
 - **Q13:** Verify corpus and model licensing, provenance, storage opt-in, forgetting, deletion and consumer privacy boundaries.
+- **Q14:** Benchmark three-stream embeddings and unknown-sound discovery with separate ground truth for physical-source identity and sound-type similarity; include spatial motion, room changes, overlap/leakage, confidence calibration, false merges/splits, cluster purity, novelty false alarms/hour and resource cost.
 
 **Evidence requirements:** Each reported benchmark must identify library commit, dataset/annotation revision, model hash, array geometry, configuration, scoring definition and hardware. Numerical release thresholds must be based on recorded baselines, not invented in advance.
 
