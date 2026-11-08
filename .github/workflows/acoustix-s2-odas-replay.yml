@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   real-speech-odas:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
