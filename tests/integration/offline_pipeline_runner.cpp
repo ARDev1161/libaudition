@@ -270,6 +270,7 @@ int run(const fs::path& path, const fs::path& outputDir,
         << "  \"separated_frames\": " << separatedFrames << ",\n"
         << "  \"recordings\": " << entries.size() << ",\n"
         << "  \"recorder_drops\": " << recorder.dropped() << ",\n"
+        << "  \"horizontal_sources\": " << (horizontalSources ? "true" : "false") << ",\n"
         << "  \"sst_experiment\": {"
         << "\"active_mean\": " << options.sst.active_gmm.front().mean
         << ", \"active_variance\": " << options.sst.active_gmm.front().variance

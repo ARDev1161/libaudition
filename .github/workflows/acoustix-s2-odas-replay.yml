@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   real-speech-odas:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' || github.head_ref == 'test/acoustix-s2-gmm-epsilon-evidence' || github.head_ref == 'test/acoustix-s2-gmm-controlled-sweep' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' || github.head_ref == 'test/acoustix-s2-gmm-epsilon-evidence' || github.head_ref == 'test/acoustix-s2-gmm-controlled-sweep' || github.head_ref == 'test/acoustix-s2-horizontal-source-prior' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -395,6 +395,55 @@ jobs:
                     c["t03_eval_two"]["spatial_oracle_diagnostics"]["two_distinct_track_to_voice_matches_within_45deg_hops"],
                     "T00 provisional births:",
                     c["t00_zero_pcm_control"]["metrics"]["birth_events"])
+          PY
+
+      - name: Real-waveform horizontal source-prior ablation with independent active-track 3D oracle matches
+        run: |
+          python3 -m unittest discover -s tests/integration \
+            -p 'test_acoustix_s2_horizontal_prior_ab.py' -v
+          validator="$(find build-s2-odas -type f -path '*/tools/validate_sst_raw_trace.py' -print -quit)"
+          test -f "$validator"
+          python3 tests/integration/acoustix_s2_horizontal_prior_ab.py \
+            --artifact-root build-s2 \
+            --runner build-s2-odas/tests/audition_offline_integration \
+            --validator "$validator" \
+            --output build-s2/horizontal-prior-ab
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("build-s2/horizontal-prior-ab/horizontal_prior_report.json")
+          result = json.loads(p.read_text())
+          assert result["schema"] == "libaudition.s2_horizontal_prior_ab_v1"
+          variants = result["variants"]
+          assert set(variants) == {
+              "baseline_off", "baseline_plane",
+              "active_var_001_off", "active_var_001_plane"}
+          baseline = variants["baseline_off"]["cases"]
+          wide = variants["active_var_001_off"]["cases"]
+          assert baseline["t03_eval_two"]["t03_distinct_speaker_3d_matches"]["oracle_exactly_two_voice_hops"] == 243
+          assert baseline["t03_eval_two"]["t03_distinct_speaker_3d_matches"]["two_or_more_active_tracks_in_overlap_hops"] == 0
+          assert wide["t03_eval_two"]["t03_distinct_speaker_3d_matches"]["two_or_more_active_tracks_in_overlap_hops"] == 227
+          assert wide["t03_eval_two"]["t03_distinct_speaker_3d_matches"]["two_distinct_track_to_voice_matches_within_45deg_hops"] == 0
+          assert wide["t00_zero_pcm_control"]["tracker_metrics"]["birth_events"] == 1252
+          for name, variant in variants.items():
+              cases = variant["cases"]
+              assert set(cases) == {
+                  "t00_zero_pcm_control", "t02_dev_single",
+                  "t03_eval_two", "t07_eval_seven"}
+              assert cases["t03_eval_two"]["t03_distinct_speaker_3d_matches"]["oracle_exactly_two_voice_hops"] == 243
+              assert cases["t03_eval_two"]["tracker_metrics"]["validated_128_frame_hops"] == 1875
+              for case in ("t02_dev_single", "t03_eval_two", "t07_eval_seven"):
+                  assert (cases[case]["input_wav_sha256"] ==
+                          baseline[case]["input_wav_sha256"]), (name, case)
+              # A high two-track count with no 3D oracle matches is NOT quality improvement.
+              g = cases["t03_eval_two"]["t03_distinct_speaker_3d_matches"]
+              print(name,
+                    "true 2-voice 45deg hits:", g["two_distinct_track_to_voice_matches_within_45deg_hops"],
+                    "two-active hops:", g["two_or_more_active_tracks_in_overlap_hops"],
+                    "high-elevation SST track observations:",
+                    cases["t03_eval_two"]["native_3d_track_elevation"]["active_track_observations_above_45deg_absolute_elevation"],
+                    "T00 synthetic births:",
+                    cases["t00_zero_pcm_control"]["tracker_metrics"]["birth_events"])
           PY
 
       - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
