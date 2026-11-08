@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   real-speech-odas:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' || github.head_ref == 'test/acoustix-s2-gmm-epsilon-evidence' || github.head_ref == 'test/acoustix-s2-gmm-controlled-sweep' || github.head_ref == 'test/acoustix-s2-horizontal-source-prior' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' || github.head_ref == 'test/acoustix-s2-gmm-epsilon-evidence' || github.head_ref == 'test/acoustix-s2-gmm-controlled-sweep' || github.head_ref == 'test/acoustix-s2-horizontal-source-prior' || github.head_ref == 'test/acoustix-s2-zero-ssl-birth-fix-ab' || github.head_ref == 'test/acoustix-s2-zero-ssl-birth-fix-ab' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -306,7 +306,7 @@ jobs:
           assert "options.sst.inactive_gmm" not in run
           import re
           assert not re.search(r"options\.sst\.new_probability\s*=", run)
-          assert "GIT_TAG e5d10d5f9a6f70c84ec563c57dd7dccb1699aae8" in deps
+          assert "GIT_TAG 76da9ec6be6dce89cbfbdb5fb241e7180297b53c" in deps
           print("Native ODAS GMM/priors and exact traced ODAS dependency verified")
           PY
           python3 tests/integration/acoustix_s2_gmm_epsilon_audit.py \
@@ -369,14 +369,12 @@ jobs:
               assert spatial["oracle_exactly_two_voice_hops"] == 243
               assert (spatial["two_or_more_active_tracks_in_overlap_hops"] ==
                       cases["t03_eval_two"]["metrics"]["oracle_two_voice_hops_with_at_least_two_active_tracks"])
-              if variant == "active_var_001":
-                  # 227 additional active-track hops are real but NOT
-                  # two voice detections: none is a one-to-one 45° match.
-                  assert spatial["two_or_more_active_tracks_in_overlap_hops"] == 227
-                  assert spatial["two_distinct_track_to_voice_matches_within_45deg_hops"] == 0
-                  assert cases["t00_zero_pcm_control"]["metrics"]["birth_events"] == 1252
-              else:
-                  assert spatial["two_or_more_active_tracks_in_overlap_hops"] == 0
+              # New algorithm invariant: no SST births from zero-score
+              # SSL placeholders, irrespective of the GMM setting.
+              assert cases["t00_zero_pcm_control"]["metrics"]["birth_events"] == 0
+              assert cases["t00_zero_pcm_control"]["metrics"]["hops_any_active"] == 0
+              assert (spatial["two_distinct_track_to_voice_matches_within_45deg_hops"] <=
+                      spatial["two_or_more_active_tracks_in_overlap_hops"])
               for case in ("t02_dev_single", "t03_eval_two", "t07_eval_seven"):
                   assert cases[case]["wav_sha256"] == (
                       report["variants"]["baseline"]["cases"][case]["wav_sha256"])
@@ -422,9 +420,12 @@ jobs:
           wide = variants["active_var_001_off"]["cases"]
           assert baseline["t03_eval_two"]["t03_distinct_speaker_3d_matches"]["oracle_exactly_two_voice_hops"] == 243
           assert baseline["t03_eval_two"]["t03_distinct_speaker_3d_matches"]["two_or_more_active_tracks_in_overlap_hops"] == 0
-          assert wide["t03_eval_two"]["t03_distinct_speaker_3d_matches"]["two_or_more_active_tracks_in_overlap_hops"] == 227
-          assert wide["t03_eval_two"]["t03_distinct_speaker_3d_matches"]["two_distinct_track_to_voice_matches_within_45deg_hops"] == 0
-          assert wide["t00_zero_pcm_control"]["tracker_metrics"]["birth_events"] == 1252
+          # Do not freeze the old misleading active-track count; this
+          # experiment changes whether zero-strength SST births are legal.
+          # Only the no-evidence invariant and immutable source oracle
+          # remain hard gates.
+          assert wide["t00_zero_pcm_control"]["tracker_metrics"]["birth_events"] == 0
+          assert wide["t00_zero_pcm_control"]["tracker_metrics"]["hops_any_active"] == 0
           for name, variant in variants.items():
               cases = variant["cases"]
               assert set(cases) == {
@@ -444,6 +445,44 @@ jobs:
                     cases["t03_eval_two"]["native_3d_track_elevation"]["active_track_observations_above_45deg_absolute_elevation"],
                     "T00 synthetic births:",
                     cases["t00_zero_pcm_control"]["tracker_metrics"]["birth_events"])
+          PY
+
+      - name: Download exact pre-zero-birth-guard Acoustix native evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: acoustix-s2-real-odas-diagnostics
+          run-id: 42444370597
+          github-token: ${{ github.token }}
+          path: build-s2-before-zero-ssl-guard
+
+      - name: Compare real native ODAS zero-evidence birth fix against identical pre-fix WAV/variant artifacts
+        run: |
+          python3 -m unittest discover -s tests/integration \
+            -p 'test_acoustix_s2_zero_evidence_birth_compare.py' -v
+          python3 tests/integration/acoustix_s2_zero_evidence_birth_compare.py \
+            --before build-s2-before-zero-ssl-guard \
+            --after build-s2 \
+            --output build-s2/zero_ssl_birth_guard_before_after.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path(
+              "build-s2/zero_ssl_birth_guard_before_after.json").read_text())
+          assert report["schema"] == "libaudition.zero_ssl_potential_birth_native_ab_v1"
+          assert set(report["variants"]) == {
+              "baseline_off", "baseline_plane",
+              "active_var_001_off", "active_var_001_plane"}
+          for mode, variant in report["variants"].items():
+              cases = variant["cases"]
+              before = cases["t00_zero_pcm_control"]["before"]["birth_events"]
+              after = cases["t00_zero_pcm_control"]["after"]["birth_events"]
+              assert after == 0, (mode, before, after)
+              if variant["gmm"] == "active_var_001":
+                  assert before == 1252, (mode, before)
+              assert cases["t03_eval_two"]["after_3d"]["oracle_exactly_two_voice_hops"] == 243
+              print(mode, "synthetic T00 births", before, "->", after,
+                    "T03 genuine two-person 45deg matches:",
+                    cases["t03_eval_two"]["after_3d"]["two_distinct_track_to_voice_matches_within_45deg_hops"])
           PY
 
       - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
