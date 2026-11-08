@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   real-speech-odas:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') || github.head_ref == 'test/acoustix-s2-ssl-birth-evidence' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -239,6 +239,45 @@ jobs:
                     "two_distinct_ssl_candidates_within_45_deg_hops",
                     "two_active_sst_tracks_during_two_voice_hops",
                     "provisional_births_during_oracle_multivoice")}, sort_keys=True))
+          PY
+
+      - name: Measure real T03 SSL directional continuity and birth-vs-track evidence
+        run: |
+          python3 -m unittest discover -s tests/integration \
+            -p 'test_acoustix_s2_ssl_birth_evidence.py' -v
+          python3 tests/integration/acoustix_s2_ssl_birth_evidence.py \
+            --artifact-root build-s2 \
+            --output build-s2/t03_real_ssl_birth_evidence.json \
+            --tolerance 25
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path(
+              "build-s2/t03_real_ssl_birth_evidence.json").read_text())
+          m = report["diagnostics"]
+          assert report["schema"] == "libaudition.acoustix-s2-ssl-birth-evidence.v1"
+          assert report["validated_real_odas_hops"] == 1875
+          assert report["input_pcm_sha256"] == (
+              "c14fe750e47064de1b105c5fceab1ffe8e5330157b7519818a5c175d6c54f0ee")
+          # Frozen real PCM baseline, not a quality acceptance threshold.
+          assert m["oracle_two_voice_hops"] == 243
+          assert m["two_distinct_ssl_direction_hops"] == 97
+          assert m["any_two_candidates_above_birth_threshold_hops"] == 0
+          assert m["distinct_ssl_streaks"]["runs_at_least_5_hops"] == 5
+          assert m["two_active_sst_tracks_hops"] == 0
+          assert m["speaker_direction_matches"]["speaker_2"]["above_birth_threshold_hops"] == 0
+          assert m["speaker_direction_matches"]["speaker_2"]["dominant_posterior_class"] == {
+              "new_source": 0, "existing_track": 27,
+              "unassigned_residual": 70, "ambiguous": 0
+          }
+          print("T03 measured directional/association baseline:", json.dumps({
+              "two_oracle_voice_hops": m["oracle_two_voice_hops"],
+              "two_distinct_ssl_hops": m["two_distinct_ssl_direction_hops"],
+              "distinct_streaks": m["distinct_ssl_streaks"],
+              "speaker_2_birth": m["speaker_direction_matches"]["speaker_2"]["birth_posterior"],
+              "speaker_2_mass_fate": m["speaker_direction_matches"]["speaker_2"]["dominant_posterior_class"],
+              "two_birth_evidence_hops": m["any_two_candidates_above_birth_threshold_hops"]
+          }, sort_keys=True))
           PY
 
       - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
