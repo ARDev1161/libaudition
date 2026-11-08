@@ -27,7 +27,7 @@ jobs:
       - name: Verify immutable fork pin, never moving dev
         run: |
           grep -F 'GIT_REPOSITORY https://github.com/ARDev1161/odas.git' cmake/Dependencies.cmake
-          grep -F 'GIT_TAG 1d862592fa69c8e789743e71160e9e26ff38ebfc' cmake/Dependencies.cmake
+          grep -F 'GIT_TAG 4c8e3bfcb56124ee340477a2443ea2ebe11ee712' cmake/Dependencies.cmake
       - name: Configure libaudition with actual fork backend
         run: |
           cmake -S . -B build-odas-pin -G Ninja \
