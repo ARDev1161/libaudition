@@ -61,7 +61,7 @@ function(libaudition_find_or_fetch_odas)
     ExternalProject_Add(libaudition_odas_external
         # Fork dev integration SHA: exact immutable commit; never GIT_TAG dev.
         GIT_REPOSITORY https://github.com/ARDev1161/odas.git
-        GIT_TAG 1d862592fa69c8e789743e71160e9e26ff38ebfc
+        GIT_TAG 4c8e3bfcb56124ee340477a2443ea2ebe11ee712
         GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         INSTALL_DIR "${_odas_install_dir}"
