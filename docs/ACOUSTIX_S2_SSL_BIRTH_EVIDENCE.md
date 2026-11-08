@@ -88,3 +88,39 @@ regression, T03 paired actual replay and T07 7-voice negative controls.
 Do not claim speaker identity or clean source separation from DOA.
 True SI-SDRi, SIRi, WER, VAD onset, and physical ReSpeaker acceptance
 are still NOT MEASURED by this analysis.
+
+
+## Additional posterior-mass decomposition (frozen T03)
+
+The ODAS mixture implementation has independent per-SSL-potential
+normalized labels for new source, existing tracks and a false peak.
+For each *geometrically matched* potential, the auditor calculates
+the unassigned residual as 1 minus the new-source posterior minus
+the sum of all existing-track posteriors. The residual also contains
+normalization epsilon and must NOT be presented as a directly
+measured human speech classification. The new test fails closed if
+posterior totals exceed one by more than a small float tolerance.
+
+For the candidate selected near the second oracle voice, at most
+25 degrees in 3D and distinct from the first matched candidate:
+
+| Dominant (>0.5) normalized label | Actual T03 hops |
+| --- | ---: |
+| Unassigned/false-peak residual | **70 of 97** |
+| Assignment to existing tracked source(s) | **27 of 97** |
+| Creation of a new source | **0 of 97** |
+| Ambiguous (none exceeds 0.5) | **0 of 97** |
+
+This establishes two competing ODAS **model decisions** for the
+geometrically plausible second voice: it is usually treated as a
+false peak, and otherwise absorbed into an existing tracked source.
+This evidence is more precise than attributing the missing speaker
+solely to the 40 ms probation window. It is not yet evidence that
+the candidate contains intelligible speech from the second human.
+The false-peak class comes from a normalized posterior residual,
+not from oracle labeling or recording real separated audio.
+
+Before modifying ODAS code, inspect actual per-candidate likelihood
+terms in mixture2mixture.c and the source-activity GMM for the
+T03 frozen candidate/track pairs. Change independent false/new/track
+probability assumptions only with T00/T02/T03/T07 controlled replays.
