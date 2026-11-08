@@ -22,6 +22,7 @@
 #include <set>
 #include <sstream>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -29,10 +30,18 @@
 namespace {
 namespace fs = std::filesystem;
 
+// Test-only diagnostic parameters. No production/public API changes.
+struct SstExperimentOverrides {
+    std::optional<double> activeMean;
+    std::optional<double> activeVariance;
+    std::optional<double> falsePrior;
+};
+
 audition::OdasOptions optionsForFixture(bool horizontalSources,
                                         const std::vector<std::string>& microphoneSpecs,
                                         std::uint32_t maxTracks, std::uint32_t potentialSources,
-                                        std::uint32_t sstInputPotentials) {
+                                        std::uint32_t sstInputPotentials,
+                                        const SstExperimentOverrides& experiment) {
     audition::OdasOptions options{};
     options.microphone_array.microphones = {
         audition::MicrophoneGeometry{{-0.032, 0.0, 0.0}},
@@ -78,6 +87,9 @@ audition::OdasOptions optionsForFixture(bool horizontalSources,
     options.sst.max_tracks = maxTracks;
     options.ssl.potential_source_count = potentialSources;
     options.sst.max_input_potentials = sstInputPotentials;
+    if (experiment.activeMean) options.sst.active_gmm.front().mean = *experiment.activeMean;
+    if (experiment.activeVariance) options.sst.active_gmm.front().variance = *experiment.activeVariance;
+    if (experiment.falsePrior) options.sst.false_probability = *experiment.falsePrior;
     // Match the live ReSpeaker USB 4-Mic angular response. This is a
     // +Z-facing microphone/spatial-filter mask with an 80-100 degree
     // transition, NOT a narrow horizontal-plane (zero-elevation) prior.
@@ -116,12 +128,13 @@ void writeObservation(std::ostream& out, std::uint64_t hop,
 int run(const fs::path& path, const fs::path& outputDir,
         bool horizontalSources, const std::vector<std::string>& microphones,
         std::uint32_t maxTracks, std::uint32_t potentialSources,
-        std::uint32_t sstInputPotentials) {
+        std::uint32_t sstInputPotentials,
+        const SstExperimentOverrides& experiment) {
     const auto wav = audition::io::loadWav(path);
     const auto format = wav.audio.format();
     const auto options = optionsForFixture(horizontalSources, microphones,
                                            maxTracks, potentialSources,
-                                           sstInputPotentials);
+                                           sstInputPotentials, experiment);
     if (format.sample_rate_hz != options.sample_rate_hz ||
         (microphones.empty() && format.channel_count != 6U) ||
         format.layout != audition::AudioLayout::Interleaved ||
@@ -256,7 +269,17 @@ int run(const fs::path& path, const fs::path& outputDir,
         << "  \"track_observations\": " << trackFrames << ",\n"
         << "  \"separated_frames\": " << separatedFrames << ",\n"
         << "  \"recordings\": " << entries.size() << ",\n"
-        << "  \"recorder_drops\": " << recorder.dropped() << "\n"
+        << "  \"recorder_drops\": " << recorder.dropped() << ",\n"
+        << "  \"sst_experiment\": {"
+        << "\"active_mean\": " << options.sst.active_gmm.front().mean
+        << ", \"active_variance\": " << options.sst.active_gmm.front().variance
+        << ", \"false_prior\": " << options.sst.false_probability
+        << ", \"new_prior\": " << options.sst.new_probability
+        << ", \"track_prior\": " << options.sst.track_probability
+        << ", \"birth_threshold\": " << options.sst.new_threshold
+        << ", \"probation_window\": " << options.sst.probability_window
+        << ", \"probation_threshold\": " << options.sst.probability_threshold
+        << "}\n"
         << "}\n";
     if (!summary) throw std::runtime_error("Cannot flush summary.json");
     std::cout << "offline-audio-integration=ok file=" << path.filename().string()
@@ -272,7 +295,9 @@ int main(int argc, char** argv) {
         std::cerr << "Usage: audition_offline_integration INPUT_WAV OUTPUT_DIR "
                      "[--horizontal-sources] [--mic CHANNEL:X:Y:Z ...] "
                      "[--max-tracks N] [--potential-sources N] "
-                     "[--sst-input-potentials N]\n";
+                     "[--sst-input-potentials N] "
+                     "[--sst-active-mean X] [--sst-active-variance X] "
+                     "[--sst-false-prior X]\n";
         return 2;
     }
     bool horizontal = false;
@@ -280,6 +305,7 @@ int main(int argc, char** argv) {
     std::uint32_t maxTracks = 4U;
     std::uint32_t potentialSources = 4U;
     std::uint32_t sstInputPotentials = 0U;
+    SstExperimentOverrides experiment;
     try {
         for (int i = 3; i < argc; ++i) {
             const std::string flag{argv[i]};
@@ -287,6 +313,22 @@ int main(int argc, char** argv) {
                 horizontal = true;
             } else if (flag == "--mic" && i + 1 < argc) {
                 microphones.emplace_back(argv[++i]);
+            } else if ((flag == "--sst-active-mean" ||
+                        flag == "--sst-active-variance" ||
+                        flag == "--sst-false-prior") && i + 1 < argc) {
+                const std::string token{argv[++i]};
+                std::size_t end = 0U;
+                const auto value = std::stod(token, &end);
+                const bool valid = (end == token.size() && std::isfinite(value) &&
+                    (flag == "--sst-active-mean" ? (value >= 0.0 && value <= 1.0) :
+                     flag == "--sst-active-variance" ? (value >= 0.0001 && value <= 0.04) :
+                     (value > 0.0 && value <= 1.0)));
+                if (!valid) throw std::invalid_argument("Invalid SST experiment value");
+                auto& dst = (flag == "--sst-active-mean" ? experiment.activeMean :
+                             flag == "--sst-active-variance" ? experiment.activeVariance :
+                             experiment.falsePrior);
+                if (dst) throw std::invalid_argument("Duplicate SST experiment override");
+                dst = value;
             } else if ((flag == "--max-tracks" || flag == "--potential-sources"
                         || flag == "--sst-input-potentials")
                        && i + 1 < argc) {
@@ -310,7 +352,8 @@ int main(int argc, char** argv) {
             }
         }
         return run(argv[1], argv[2], horizontal, microphones,
-                   maxTracks, potentialSources, sstInputPotentials);
+                   maxTracks, potentialSources, sstInputPotentials,
+                   experiment);
     } catch (const std::exception& ex) {
         std::cerr << "offline-audio-integration=fail: " << ex.what() << '\n';
         return 1;
