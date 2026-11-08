@@ -1,0 +1,106 @@
+name: Refresh documentation from main
+
+# GitHub Actions only reads a push workflow from the branch receiving the push.
+# The actual site, Doxygen configuration and guides live on documentation.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/docs-sync.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Share the deployment lock with documentation's own Pages workflow.
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Merge main, build and update documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the documentation branch with full history
+        uses: actions/checkout@v4
+        with:
+          ref: documentation
+          fetch-depth: 0
+
+      - name: Merge the latest library changes
+        run: |
+          git fetch --no-tags origin main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Keep both histories. For overlapping text edits, prioritize the
+          # current public library docs from main; site-only files remain.
+          # Never force-push or silently replace the documentation branch.
+          git merge --no-edit -X theirs origin/main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+
+      - name: Install documentation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz
+          python -m pip install -r docs/requirements.txt
+
+      - name: Extract API and generate Sphinx HTML
+        run: |
+          doxygen docs/Doxyfile.public
+          doxygen docs/Doxyfile.pages
+          python3 docs/doxygen_links.py --check
+          find docs/_build/doxygen -name '*.svg' -print -quit | grep -q .
+          sphinx-build -b html --keep-going docs docs/_build/html
+          test -s docs/_build/html/index.html
+          # Keep the published sidebar API version aligned with CMake.
+          python3 - <<'PY'
+          from pathlib import Path
+          import runpy
+          release = runpy.run_path("docs/conf.py")["release"]
+          html = Path("docs/_build/html/index.html").read_text(encoding="utf-8")
+          assert f"v{release}" in html
+          PY
+          test -s docs/_build/doxygen/index.html
+          cp -a docs/_build/doxygen docs/_build/html/doxygen
+          test -s docs/_build/html/doxygen/index.html
+          grep -q 'doxygen/index.html' docs/_build/html/index.html
+          # A documentation-only commit in main must propagate to the published site.
+          grep -q 'M11' docs/development_roadmap.md
+          grep -q 'M11' docs/_build/html/development_roadmap.html
+
+      - name: Publish synced sources to documentation
+        if: github.event_name != 'pull_request'
+        run: |
+          # GITHUB_TOKEN pushes do NOT trigger a second workflow; this
+          # workflow builds and deploys the same revision below.
+          git push origin HEAD:refs/heads/documentation
+
+      - name: Upload built website
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build/html
+
+  deploy:
+    name: Deploy refreshed documentation
+    if: github.event_name != 'pull_request'
+    needs: refresh
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4

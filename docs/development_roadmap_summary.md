@@ -22,12 +22,12 @@ The repository already includes backend adapters for ODAS, sherpa-onnx, WebRTC A
 6. **P1/P2: Packaging and performance.** Benchmark x86/ARM64, improve documentation and packaging, and add optional hardware acceleration or language bindings based on measured demand.
 7. **P1: M7 advanced spatial.** Transfer-function calibration, noise-aware MUSIC, beamforming, separation and source-specific leakage/WER evidence.
 8. **P1: M8 scene model.** Timed acoustic source/event/speaker relations, ambiguity and provenance.
-9. **P1–P2: M9–M10 attention and memory.** Salience, resource-aware processing suggestions, episodes, novelty and opt-in semantic search.
+9. **P1–P2: M9–M10 attention and memory.** Salience, resource-aware processing suggestions, episodes, novelty and opt-in semantic search. Proposed AM-09–AM-13: three-stream spatial/acoustic/temporal source representations, separate physical-source versus sound-type similarity, open-set grouping of unknown sounds, and simulation/held-out contamination benchmarks; not yet implemented.
 10. **P2: M11 SDK.** Validated typed DAG, explicit backend capabilities, deterministic replay, telemetry and optional editor.
 
 ## Phase acceptance
 
-**New QA Q07–Q13:** require matched-input spatial/semantic metrics, uncertainty evaluation, scene identity evidence, overload stress, attention resource-vs-recall studies and licensing/retention checks. The added stages must pass their own recorded-data acceptance gates without retroactively blocking v1.0.
+**New QA Q07–Q14:** require matched-input spatial/semantic metrics, uncertainty evaluation, scene identity evidence, overload stress, attention resource-vs-recall studies and licensing/retention checks, plus source-identity versus sound-type retrieval, open-set clustering and leakage robustness. The added stages must pass their own recorded-data acceptance gates without retroactively blocking v1.0.
 
 
 Each implementation must include a documented API, bounded-state behavior where streaming is supported, deterministic numerical tests, independently annotated real-audio evaluation when quality is claimed, and resource measurements on relevant targets. A CI pass is not equivalent to a quality benchmark. Missing corpora must be reported as not evaluated, not passed.
