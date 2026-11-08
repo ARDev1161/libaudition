@@ -306,7 +306,7 @@ jobs:
           assert "options.sst.inactive_gmm" not in run
           import re
           assert not re.search(r"options\.sst\.new_probability\s*=", run)
-          assert "GIT_TAG e5d10d5f9a6f70c84ec563c57dd7dccb1699aae8" in deps
+          assert "GIT_TAG 76da9ec6be6dce89cbfbdb5fb241e7180297b53c" in deps
           print("Native ODAS GMM/priors and exact traced ODAS dependency verified")
           PY
           python3 tests/integration/acoustix_s2_gmm_epsilon_audit.py \
