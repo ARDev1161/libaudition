@@ -73,3 +73,55 @@ persistence, false tracks, leakage, SI-SDRi/SIRi and ASR WER.
 Any actual ODAS DSP change belongs in a separate task PR into dev
 with deterministic C tests and paired frozen audio. Do not merge
 this diagnostic stack into libaudition main automatically.
+
+
+## Verified first native sensitivity matrix (2026-11-08)
+
+The controlled real Acoustix workflow
+https://github.com/ARDev1161/libaudition/actions/runs/42442313800
+completed successfully at commit 61e0e836e86164622cfb5fbcd3791ef36dda9d35.
+All 11 negative/contract unit tests passed. The immutable real T02/T03/T07
+WAVs, native ODAS traces, runtime parameter maps and the generated synthetic
+T00 silence were validated; no recorder drops occurred. The complete
+original report is stored in GitHub Actions artifact ID 13601139651
+and the output gmm-sweep/gmm_sweep_report.json.
+
+| Variant | T03 two-active hops / 243 overlap | T02 max active | T00 zero-PCM provisional births | T00 active |
+| --- | ---: | ---: | ---: | ---: |
+| baseline | 0 | 1 | 0 | 0 |
+| active_mean_030 | 0 | 2 | 0 | 0 |
+| active_var_001 | **227** | **3** | **1252** | 0 |
+| false_prior_003 | 0 | 1 | 0 | 0 |
+
+The original T02 had one unique active SST track ID; widening the active
+GMM variance to 0.01 yielded six unique active IDs for this single voice,
+and more than one simultaneous active track. This is a severe fragmentation/
+false-source warning, not improved T02 localization. The 1252 provisional
+birth events on exact digital silence are a separate strong negative result
+even though none reached state A.
+
+IMPORTANT: reinspection of the exact native ODAS observations.csv and the
+real Acoustix T03 oracle established that the 227 two-active-track hops
+under active_var_001 do NOT represent two real source directions.
+Across the 227 hops, **0** have a one-to-one correspondence of two
+different SST active IDs to the two distinct oracle voice directions
+even at the generous **45 degree 3D cone**; at 25 degrees also 0.
+The median *minimum possible maximum angular error* across all
+distinct track-to-speaker assignments on these two-active hops is
+approximately **81.83 degrees** (the best observed block still had
+about 80.24 degrees worst-voice error). These are geometric errors,
+not waveform separation measurements. The additional active source
+is NOT evidence of recognizing the second person.
+
+A follow-up code change adds this one-to-one distinct-track geometric
+matching to the automated report, together with negative tests that
+rule out crediting a single track to both people. The corresponding
+CI result must be checked on that later exact commit before claiming
+the match auditor itself has passed.
+
+Consequence: **DO NOT** promote any of the three tested single-factor
+variants to ODAS dev defaults. In particular, the tempting active-GMM
+variance 0.01 merely inflates SST track counts and makes spurious
+provisional tracks even on digital silence. The still-missing second
+true voice track requires a different localization/association approach
+and held-out real audio acceptance.
