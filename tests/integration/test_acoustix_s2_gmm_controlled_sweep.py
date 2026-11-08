@@ -7,7 +7,7 @@ import wave
 
 from acoustix_s2_gmm_controlled_sweep import (
     EXPECTED, VARIANTS, SweepError, file_sha256, silent_control,
-    trace_metrics, verify_recorded_case, sweep)
+    oracle_overlap_frames, trace_metrics, verify_recorded_case, sweep)
 
 
 def row(index, tracks=None, births=(), retirements=()):
@@ -60,6 +60,24 @@ class GmmSensitivityContractTests(unittest.TestCase):
                 wav.writeframes(b"\0" * 6 * 2 * 128)
             with self.assertRaisesRegex(SweepError, "frozen six-channel"):
                 silent_control(p/"short.wav", p/"zero.wav")
+
+    def test_shorter_actual_oracle_is_allowed_but_gaps_rejected(self):
+        # Oracle labels may end before WAV EOF; the unlabeled tail is
+        # not evidence for or against two simultaneously speaking humans.
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)
+            (path/"render").mkdir()
+            fixture = {"ground_truth": [
+                {"hop": 0, "sources": [{"kind": "voice"}, {"kind": "voice"}]},
+                {"hop": 1, "sources": [{"kind": "voice"}]},
+            ]}
+            f = path/"render"/"ground_truth.json"
+            f.write_text(json.dumps(fixture))
+            self.assertEqual(oracle_overlap_frames(path), frozenset({0}))
+            fixture["ground_truth"][1]["hop"] = 3
+            f.write_text(json.dumps(fixture))
+            with self.assertRaisesRegex(SweepError, "continuity"):
+                oracle_overlap_frames(path)
 
     def test_actual_hop_clock_is_checked(self):
         rows = [row(i) for i in range(1875)]
