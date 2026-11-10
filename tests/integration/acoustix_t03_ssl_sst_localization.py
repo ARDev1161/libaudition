@@ -39,10 +39,7 @@ def load_observations(path, hop_limit):
                 raise ValueError("invalid native activity")
             observations.setdefault(hop, {"proposal":[],"track":[]})[row["kind"]].append(row)
     for hop, groups in observations.items():
-        for kind, rows in groups.items():
-            ids = [row["id"] for row in rows]
-            if len(ids) != len(set(ids)):
-                raise ValueError(f"duplicate native {kind} ID at hop {hop}")
+        # SSL proposal IDs are candidate slot labels, not persistent identities.\n        # Native ODAS may legitimately reuse a slot label within a hop.\n        # SST active track IDs, by contrast, must be unique per hop.\n        ids = [row["id"] for row in groups["track"]]\n        if len(ids) != len(set(ids)):\n            raise ValueError(f"duplicate native track ID at hop {hop}")
     return observations
 
 
