@@ -8,6 +8,7 @@ hash. A missing quality metric is reported as unmeasured, never as PASS.
 import argparse
 import json
 import math
+import re
 from pathlib import Path
 
 METRICS = {
@@ -26,6 +27,17 @@ REQUIRED_IDENTITY = ("input_wav_sha256", "oracle_sha256", "configuration_sha256"
 
 
 def compare(a, b):
+    for hash_key in ("input_wav_sha256", "oracle_sha256", "configuration_sha256"):
+        for side in (a, b):
+            if not isinstance(side.get(hash_key), str) or not re.fullmatch(r"[0-9a-f]{64}", side[hash_key]):
+                raise ValueError("invalid SHA256 identity: " + hash_key)
+    for side in (a, b):
+        for numeric_key in ("input_frames", "sample_rate_hz"):
+            value = side.get(numeric_key)
+            if type(value) is not int or value <= 0:
+                raise ValueError("invalid sample clock: " + numeric_key)
+        if not isinstance(side.get("case_id"), str) or not side["case_id"]:
+            raise ValueError("invalid case_id")
     for key in REQUIRED_IDENTITY:
         if key not in a or key not in b or a[key] != b[key]:
             raise ValueError("unpaired A/B: missing or different " + key)
@@ -43,6 +55,15 @@ def compare(a, b):
             if isinstance(x, bool) or isinstance(y, bool) or not all(
                     isinstance(z, (int, float)) and math.isfinite(z) for z in (x, y)):
                 raise ValueError("non-finite/non-numeric metric: " + group + "." + name)
+            if name in ("candidate_recall", "candidate_precision", "source_recall",
+                        "source_precision", "idf1") and not all(0 <= z <= 1 for z in (x, y)):
+                raise ValueError("metric outside [0,1]: " + group + "." + name)
+            if name in ("azimuth_median_deg", "azimuth_p90_deg") and not all(0 <= z <= 180 for z in (x, y)):
+                raise ValueError("invalid angular metric: " + group + "." + name)
+            if name in ("id_switches", "false_tracks") and not all(type(z) is int and z >= 0 for z in (x, y)):
+                raise ValueError("invalid event count: " + group + "." + name)
+            if name in ("false_candidates_per_second", "birth_latency_ms", "retirement_latency_ms") and not all(z >= 0 for z in (x, y)):
+                raise ValueError("negative rate or latency: " + group + "." + name)
             delta = y - x
             improvement = delta if name in HIGHER_BETTER else -delta
             status = "IMPROVED" if improvement > 0 else ("REGRESSED" if improvement < 0 else "UNCHANGED")
