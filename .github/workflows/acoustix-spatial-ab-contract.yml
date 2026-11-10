@@ -6,6 +6,8 @@ on:
       - tests/integration/test_acoustix_t03_frozen_evidence_gate.py
       - tests/integration/acoustix_t03_ssl_sst_localization.py
       - tests/integration/test_acoustix_t03_ssl_sst_localization.py
+      - tests/integration/acoustix_odas_three_way_ab.py
+      - tests/integration/test_acoustix_odas_three_way_ab.py
       - tests/integration/acoustix_spatial_paired_ab.py
       - tests/integration/test_acoustix_spatial_paired_ab.py
       - .github/workflows/acoustix-spatial-ab-contract.yml
@@ -15,6 +17,8 @@ on:
       - tests/integration/test_acoustix_t03_frozen_evidence_gate.py
       - tests/integration/acoustix_t03_ssl_sst_localization.py
       - tests/integration/test_acoustix_t03_ssl_sst_localization.py
+      - tests/integration/acoustix_odas_three_way_ab.py
+      - tests/integration/test_acoustix_odas_three_way_ab.py
       - tests/integration/acoustix_spatial_paired_ab.py
       - tests/integration/test_acoustix_spatial_paired_ab.py
       - .github/workflows/acoustix-spatial-ab-contract.yml
@@ -33,6 +37,7 @@ jobs:
       - name: Validate identity and SSL/SST/SSS regression contracts
         run: |
           python3 -m unittest discover -s tests/integration -p test_acoustix_spatial_paired_ab.py -v
+          python3 -m unittest discover -s tests/integration -p test_acoustix_odas_three_way_ab.py -v
           python3 -m unittest discover -s tests/integration -p test_acoustix_t03_ssl_sst_localization.py -v
           python3 -m unittest discover -s tests/integration -p test_acoustix_t03_frozen_evidence_gate.py -v
 
