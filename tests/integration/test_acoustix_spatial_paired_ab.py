@@ -56,6 +56,30 @@ class SpatialPairedABTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "non-finite"):
             ab.compare(a, b)
 
+    def test_bad_hash_rejected(self):
+        a, b = fixture(), fixture()
+        a["input_wav_sha256"] = "not-a-real-hash"
+        with self.assertRaisesRegex(ValueError, "invalid SHA256"):
+            ab.compare(a, b)
+
+    def test_invalid_sample_clock_rejected(self):
+        a, b = fixture(), fixture()
+        b["sample_rate_hz"] = True
+        with self.assertRaisesRegex(ValueError, "invalid sample clock"):
+            ab.compare(a, b)
+
+    def test_recall_over_one_rejected(self):
+        a, b = fixture(), fixture()
+        a["ssl"], b["ssl"] = {"candidate_recall": 0.5}, {"candidate_recall": 1.2}
+        with self.assertRaisesRegex(ValueError, "outside"):
+            ab.compare(a, b)
+
+    def test_negative_switch_count_rejected(self):
+        a, b = fixture(), fixture()
+        a["sst"], b["sst"] = {"id_switches": 1}, {"id_switches": -1}
+        with self.assertRaisesRegex(ValueError, "event count"):
+            ab.compare(a, b)
+
     def test_all_measured_equal(self):
         a, b = fixture(), fixture()
         for group, names in ab.METRICS.items():
