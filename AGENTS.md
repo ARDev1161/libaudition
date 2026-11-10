@@ -42,6 +42,15 @@ hardware limitations must nevertheless be documented honestly.
 - `docs/ACOUSTIC_SCENE_SPEECH_BACKENDS.md`: supported VAD/ASR families,
   model formats, languages, and demo limitations.
 - `docs/qt_demo.md`, `docs/full_demo_build.md`: demo usage and presets.
+- **`docs/ACOUSTIC_VALIDATION_ROADMAP.md`: source of truth for the
+  Acoustix/ODAS/libaudition audio-quality acceptance plan, simulation
+  readiness levels S0–S3 and product-quality gates L1–L6.**
+  Read it before changing the simulator, ODAS integration, microphone
+  geometry, VAD/ASR routing, source separation, test metrics or
+  claiming that speech/audio quality is fixed.
+- `docs/acoustix_room_ci.md`: existing headless fixture execution,
+  artifact format and verified historical baseline. This does not by
+  itself establish real speech separation.
 - `docs/test_maintenance_map.md`, `docs/ctest_suites.md`,
   `docs/algorithm_test_matrix.md`: evidence and test ownership.
 - `CONTRIBUTING.md`, `THIRD_PARTY.md`, `models/manifest.yaml`:
@@ -241,6 +250,31 @@ Before claiming that installed packaging works, run the appropriate
   branches, or rewrite shared history unless explicitly requested.
 - At handoff, summarize actual changes, tests/evidence, remaining known
   limitations, and whether a physical microphone/model smoke was performed.
+
+## Acoustic evidence and completion labels
+
+- Keep **S0 structural harness PASS**, **S1 validated acoustic fixture**,
+  **S2 real-speech benchmark**, **S3 measured-room correlation** distinct.
+  Do not label the simulator "ready for quality fixes" until S1+S2
+  have passed, or "physically validated" until S3.
+- Do not claim "libaudition audio fixed" solely from a green synthetic
+  Acoustix run. L1–L5 require verified held-out speech sources,
+  leakage/separation metrics, ASR/quiet-speech onset and lifecycle tests.
+  L6 is an additional field-validation requirement.
+- Distinguish spatial ODAS tracks from acoustic-source identity, speaker
+  identity, separated WAV recordings and ASR transcripts. Metrics must
+  measure each independently and expose missed/unmatched sources.
+- Every acoustic quality fix: first add/freeze a failing fixture and
+  objective metric, then fix its owning algorithm in the correct repo
+  (ODAS SST/SSS changes in `ARDev1161/odas` task branches → `dev`).
+  Test a specific fork commit in a separate libaudition branch and
+  update the stable immutable ODAS SHA only after the fork PR is merged.
+- Changes to acceptance thresholds require a documented reviewer
+  decision; never relax gates only to make CI green. A future
+  research-quality benchmark is **not automatically a v1.0 blocker**,
+  but claims of verified separation must meet the specified evidence.
+- Update the roadmap dashboard, affected test manifest, metrics and
+  CI artifact references when a relevant task is completed.
 
 ## v1.0 acceptance orientation
 

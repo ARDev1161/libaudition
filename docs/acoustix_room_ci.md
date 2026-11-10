@@ -1,5 +1,12 @@
 # Acoustix headless 7×7 m acoustic simulation
 
+**Acceptance and future work:** see
+[Acoustic Validation Roadmap](ACOUSTIC_VALIDATION_ROADMAP.md) for the
+definition of "simulator ready", test scenarios, speaker-separation and
+ASR quality gates, evidence requirements and ODAS vs libaudition task
+ownership. A green structural Acoustix CI is only **S0**, not proof
+of S1/S2 readiness or real-speech quality.
+
 Status: **experimental offline integration**, not calibrated real-room accuracy.
 
 ## Architecture and boundaries
