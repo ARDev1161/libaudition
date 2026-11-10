@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
 
 spec=importlib.util.spec_from_file_location("loc",Path(__file__).with_name("acoustix_t03_ssl_sst_localization.py"))
 loc=importlib.util.module_from_spec(spec)
@@ -42,6 +43,25 @@ class LocalizationTests(unittest.TestCase):
         obs={0:{"proposal":[candidate(1,0),candidate(2,90)],
                 "track":[candidate(1,0),candidate(2,90)]}}
         self.assertEqual(loc.diagnose(oracle(),obs)["sst_two_matches"],1)
+
+    def test_repeated_proposal_slot_labels_are_not_track_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / "observations.csv"
+            p.write_text("hop,kind,id,x,y,z,activity\\n"
+                         "0,proposal,0,1,0,0,1\\n"
+                         "0,proposal,0,0,1,0,1\\n"
+                         "0,track,7,1,0,0,1\\n")
+            observations = loc.load_observations(p, 1)
+            self.assertEqual(loc.diagnose(oracle(), observations)["ssl_two_matches"], 1)
+
+    def test_duplicate_active_track_ids_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / "observations.csv"
+            p.write_text("hop,kind,id,x,y,z,activity\\n"
+                         "0,track,7,1,0,0,1\\n"
+                         "0,track,7,0,1,0,1\\n")
+            with self.assertRaisesRegex(ValueError, "duplicate native track"):
+                loc.load_observations(p, 1)
 
     def test_duplicate_oracle_voice_rejected(self):
         bad=[{"hop":0,"sources":[voice("a",0),voice("a",90)]}]
