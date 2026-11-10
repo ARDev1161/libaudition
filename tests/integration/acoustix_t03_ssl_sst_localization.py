@@ -38,6 +38,11 @@ def load_observations(path, hop_limit):
             if not math.isfinite(float(row["activity"])):
                 raise ValueError("invalid native activity")
             observations.setdefault(hop, {"proposal":[],"track":[]})[row["kind"]].append(row)
+    for hop, groups in observations.items():
+        for kind, rows in groups.items():
+            ids = [row["id"] for row in rows]
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"duplicate native {kind} ID at hop {hop}")
     return observations
 
 
@@ -89,7 +94,7 @@ def main():
     a=p.parse_args()
     oracle=json.loads(a.oracle.read_text())
     if isinstance(oracle,dict):
-        oracle=oracle["hops"]
+        oracle=oracle["ground_truth"]
     result=diagnose(oracle,load_observations(a.observations,len(oracle)),a.threshold_deg)
     a.output.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
 
