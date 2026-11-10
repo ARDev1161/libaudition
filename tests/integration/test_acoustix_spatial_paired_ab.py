@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Independent negative/positive contracts for the spatial paired A/B tool."""
+import importlib.util
+from pathlib import Path
+import unittest
+
+path = Path(__file__).with_name("acoustix_spatial_paired_ab.py")
+spec = importlib.util.spec_from_file_location("spatial_ab", path)
+ab = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ab)
+
+
+def fixture():
+    return dict(input_wav_sha256="a" * 64, oracle_sha256="b" * 64,
+                configuration_sha256="c" * 64, case_id="T03",
+                input_frames=30000, sample_rate_hz=16000)
+
+
+class SpatialPairedABTests(unittest.TestCase):
+    def test_missing_sss_cannot_pass(self):
+        result = ab.compare(fixture(), fixture())
+        self.assertEqual(result["status"], "INCOMPLETE")
+        self.assertEqual(result["metrics"]["sss"]["si_sdri_db"]["status"], "UNMEASURED")
+
+    def test_different_wav_rejected(self):
+        a, b = fixture(), fixture()
+        b["input_wav_sha256"] = "d" * 64
+        with self.assertRaisesRegex(ValueError, "input_wav_sha256"):
+            ab.compare(a, b)
+
+    def test_different_geometry_options_rejected(self):
+        a, b = fixture(), fixture()
+        b["configuration_sha256"] = "d" * 64
+        with self.assertRaisesRegex(ValueError, "configuration_sha256"):
+            ab.compare(a, b)
+
+    def test_different_oracle_rejected(self):
+        a, b = fixture(), fixture()
+        b["oracle_sha256"] = "d" * 64
+        with self.assertRaisesRegex(ValueError, "oracle_sha256"):
+            ab.compare(a, b)
+
+    def test_improved_doa_but_worse_leakage_detected(self):
+        a, b = fixture(), fixture()
+        a["ssl"] = {"azimuth_median_deg": 20}
+        b["ssl"] = {"azimuth_median_deg": 10}
+        a["sss"] = {"interferer_leakage_db": -12}
+        b["sss"] = {"interferer_leakage_db": -5}
+        result = ab.compare(a, b)
+        self.assertEqual(result["metrics"]["ssl"]["azimuth_median_deg"]["status"], "IMPROVED")
+        self.assertIn("sss.interferer_leakage_db", result["regressions"])
+
+    def test_nonfinite_quality_rejected(self):
+        a, b = fixture(), fixture()
+        a["sst"], b["sst"] = {"idf1": float("nan")}, {"idf1": 0.5}
+        with self.assertRaisesRegex(ValueError, "non-finite"):
+            ab.compare(a, b)
+
+    def test_all_measured_equal(self):
+        a, b = fixture(), fixture()
+        for group, names in ab.METRICS.items():
+            a[group] = {name: 0 for name in names}
+            b[group] = dict(a[group])
+        self.assertEqual(ab.compare(a, b)["status"], "NO_REGRESSIONS")
+
+
+if __name__ == "__main__":
+    unittest.main()
