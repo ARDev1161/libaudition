@@ -44,6 +44,15 @@ def compare(a, b):
     result = {"case_id": a["case_id"], "identity": {k: a[k] for k in REQUIRED_IDENTITY},
               "metrics": {}, "complete": True, "regressions": []}
     for group, names in METRICS.items():
+        for side in (a, b):
+            if group in side and not isinstance(side[group], dict):
+                raise ValueError("invalid metric group: " + group)
+            metrics = side.get(group, {})
+            if "azimuth_median_deg" in metrics and "azimuth_p90_deg" in metrics:
+                median, p90 = metrics["azimuth_median_deg"], metrics["azimuth_p90_deg"]
+                if median is not None and p90 is not None and all(
+                        type(v) in (int, float) and math.isfinite(v) for v in (median, p90)) and p90 < median:
+                    raise ValueError("azimuth P90 below median: " + group)
         values = {}
         for name in names:
             x = a.get(group, {}).get(name)
