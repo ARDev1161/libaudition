@@ -2,6 +2,8 @@ name: Spatial SSL SST SSS paired A/B contracts
 on:
   push:
     paths:
+      - tests/integration/acoustix_t03_frozen_evidence_gate.py
+      - tests/integration/test_acoustix_t03_frozen_evidence_gate.py
       - tests/integration/acoustix_t03_ssl_sst_localization.py
       - tests/integration/test_acoustix_t03_ssl_sst_localization.py
       - tests/integration/acoustix_spatial_paired_ab.py
@@ -9,6 +11,8 @@ on:
       - .github/workflows/acoustix-spatial-ab-contract.yml
   pull_request:
     paths:
+      - tests/integration/acoustix_t03_frozen_evidence_gate.py
+      - tests/integration/test_acoustix_t03_frozen_evidence_gate.py
       - tests/integration/acoustix_t03_ssl_sst_localization.py
       - tests/integration/test_acoustix_t03_ssl_sst_localization.py
       - tests/integration/acoustix_spatial_paired_ab.py
@@ -30,6 +34,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/integration -p test_acoustix_spatial_paired_ab.py -v
           python3 -m unittest discover -s tests/integration -p test_acoustix_t03_ssl_sst_localization.py -v
+          python3 -m unittest discover -s tests/integration -p test_acoustix_t03_frozen_evidence_gate.py -v
 
   frozen-real-t03:
     runs-on: ubuntu-latest
@@ -69,6 +74,7 @@ jobs:
             --oracle frozen-s2/t03_eval_two/render/ground_truth.json \
             --observations frozen-s2/t03_eval_two/odas/observations.csv \
             --output t03_native_ssl_sst_failure_localization.json
+          python3 tests/integration/acoustix_t03_frozen_evidence_gate.py t03_native_ssl_sst_failure_localization.json
           cat t03_native_ssl_sst_failure_localization.json
       - uses: actions/upload-artifact@v4
         if: always()
