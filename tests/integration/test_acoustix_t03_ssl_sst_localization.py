@@ -84,6 +84,31 @@ class LocalizationTests(unittest.TestCase):
         self.assertEqual(result["ssl_proposals_in_overlap"], 6)
         self.assertEqual(result["sst_tracks_in_overlap"], 6)
 
+    def test_capacity_vs_wrong_direction_failure(self):
+        both = [candidate(1, 0), candidate(2, 90)]
+        wrong = [candidate(1, 0), candidate(2, 0)]
+        points = [{"hop": i, "sources": [voice("a", 0), voice("b", 90)]}
+                  for i in range(2)]
+        obs = {0: {"proposal": both, "track": [candidate(1, 0)]},
+               1: {"proposal": both, "track": wrong}}
+        result = loc.diagnose(points, obs)
+        self.assertEqual(result["ssl_hit_sst_miss"], 2)
+        self.assertEqual(result["track_capacity_by_stage"]["ssl_hit_sst_miss"],
+                         {"fewer_than_two_tracks": 1, "two_or_more_tracks": 1})
+        self.assertEqual([row["stage"] for row in result["hop_attribution"]],
+                         ["ssl_hit_sst_miss", "ssl_hit_sst_miss"])
+        self.assertEqual([row["sst_tracks"] for row in result["hop_attribution"]], [1, 2])
+
+    def test_non_overlap_hops_not_misclassified(self):
+        points = [{"hop": 0, "sources": [voice("a", 0)]},
+                  {"hop": 1, "sources": [voice("a", 0), voice("b", 90)]}]
+        obs = {0: {"proposal": [], "track": []},
+               1: {"proposal": [candidate(1, 0), candidate(2, 90)],
+                   "track": []}}
+        result = loc.diagnose(points, obs)
+        self.assertEqual(result["overlap_hops"], 1)
+        self.assertEqual([row["hop"] for row in result["hop_attribution"]], [1])
+
     def test_duplicate_oracle_voice_rejected(self):
         bad=[{"hop":0,"sources":[voice("a",0),voice("a",90)]}]
         with self.assertRaisesRegex(ValueError,"duplicate"):
