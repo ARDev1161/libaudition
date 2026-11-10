@@ -43,6 +43,30 @@ class ThreeWayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"configuration_sha256"):
             threeway.evaluate(rows)
 
+    def test_invalid_hashes_fail_before_comparison(self):
+        for key in ("input_wav_sha256", "oracle_sha256", "configuration_sha256"):
+            for invalid in ("", "not-a-digest", "A"*64, "g"*64, None):
+                with self.subTest(key=key, invalid=invalid):
+                    rows=fixtures()
+                    rows["feature"][key]=invalid
+                    with self.assertRaisesRegex(ValueError, key):
+                        threeway.evaluate(rows)
+
+    def test_invalid_replay_dimensions_fail_before_comparison(self):
+        for key in ("input_frames", "sample_rate_hz"):
+            for invalid in (0, -1, 1.5, True, "16000", None):
+                with self.subTest(key=key, invalid=invalid):
+                    rows=fixtures()
+                    rows["feature"][key]=invalid
+                    with self.assertRaisesRegex(ValueError, key):
+                        threeway.evaluate(rows)
+
+    def test_blank_case_id_rejected(self):
+        rows=fixtures()
+        rows["feature"]["case_id"]="  "
+        with self.assertRaisesRegex(ValueError, "case_id"):
+            threeway.evaluate(rows)
+
     def test_same_dev_feature_sha_rejected(self):
         rows=fixtures()
         rows["feature"]["odas_commit_sha"]=rows["dev"]["odas_commit_sha"]
