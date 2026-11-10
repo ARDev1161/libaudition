@@ -9,12 +9,15 @@ on:
       - .github/workflows/acoustix-spatial-ab-contract.yml
   pull_request:
     paths:
+      - tests/integration/acoustix_t03_ssl_sst_localization.py
+      - tests/integration/test_acoustix_t03_ssl_sst_localization.py
       - tests/integration/acoustix_spatial_paired_ab.py
       - tests/integration/test_acoustix_spatial_paired_ab.py
       - .github/workflows/acoustix-spatial-ab-contract.yml
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   paired-ab-contract:
     runs-on: ubuntu-latest
@@ -27,3 +30,49 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/integration -p test_acoustix_spatial_paired_ab.py -v
           python3 -m unittest discover -s tests/integration -p test_acoustix_t03_ssl_sst_localization.py -v
+
+  frozen-real-t03:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download immutable native ODAS real-speech evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: acoustix-s2-real-odas-diagnostics
+          run-id: 42445272845
+          github-token: ${{ github.token }}
+          path: frozen-s2
+      - name: Check frozen real WAV provenance and native artifacts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          case=Path("frozen-s2/t03_eval_two")
+          wav=case/"render/input.wav"
+          assert wav.is_file(), "missing frozen T03 real PCM"
+          actual=hashlib.sha256(wav.read_bytes()).hexdigest()
+          assert actual=="c14fe750e47064de1b105c5fceab1ffe8e5330157b7519818a5c175d6c54f0ee",actual
+          oracle=json.loads((case/"render/ground_truth.json").read_text())
+          summary=json.loads((case/"odas/summary.json").read_text())
+          assert summary["recorder_drops"]==0
+          assert summary["input_frames"]==oracle["wav_frames"]
+          assert (case/"odas/observations.csv").is_file()
+          print("Frozen real T03 native evidence validated",actual)
+          PY
+      - name: Attribute measured T03 SSL versus SST failures
+        run: |
+          python3 tests/integration/acoustix_t03_ssl_sst_localization.py \
+            --oracle frozen-s2/t03_eval_two/render/ground_truth.json \
+            --observations frozen-s2/t03_eval_two/odas/observations.csv \
+            --output t03_native_ssl_sst_failure_localization.json
+          cat t03_native_ssl_sst_failure_localization.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t03-native-ssl-sst-failure-localization
+          path: t03_native_ssl_sst_failure_localization.json
+          if-no-files-found: warn
