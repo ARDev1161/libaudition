@@ -109,8 +109,7 @@ def main():
     if isinstance(oracle,dict):
         oracle=oracle["ground_truth"]
     result=diagnose(oracle,load_observations(a.observations,len(oracle)),a.threshold_deg)
-    a.output.write_text(json.dumps(result,indent=2,sort_keys=True)+"
-")
+    a.output.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
 
 
 if __name__=="__main__":
