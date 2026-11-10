@@ -64,7 +64,7 @@ def diagnose(oracle, observations, threshold=45.):
     if not 0 < threshold <= 180:
         raise ValueError("invalid threshold")
     counts = dict(overlap_hops=0, ssl_two_matches=0, sst_two_matches=0,
-                  ssl_miss=0, ssl_hit_sst_miss=0)
+                  ssl_miss=0, ssl_hit_sst_miss=0,\n                  ssl_miss_sst_hit=0, ssl_and_sst_miss=0,\n                  ssl_and_sst_hit=0, ssl_proposals_in_overlap=0,\n                  sst_tracks_in_overlap=0)
     for hop, row in enumerate(oracle):
         if row["hop"] != hop:
             raise ValueError("non-contiguous oracle hops")
@@ -74,15 +74,15 @@ def diagnose(oracle, observations, threshold=45.):
             continue
         counts["overlap_hops"] += 1
         native = observations.get(hop, {"proposal":[],"track":[]})
-        ssl = pair_hits(voices, native["proposal"], threshold)
+        counts["ssl_proposals_in_overlap"] += len(native["proposal"])\n        counts["sst_tracks_in_overlap"] += len(native["track"])\n        ssl = pair_hits(voices, native["proposal"], threshold)
         sst = pair_hits(voices, native["track"], threshold)
         counts["ssl_two_matches"] += int(ssl)
         counts["sst_two_matches"] += int(sst)
         counts["ssl_miss"] += int(not ssl)
-        counts["ssl_hit_sst_miss"] += int(ssl and not sst)
+        counts["ssl_hit_sst_miss"] += int(ssl and not sst)\n        counts["ssl_miss_sst_hit"] += int(not ssl and sst)\n        counts["ssl_and_sst_miss"] += int(not ssl and not sst)\n        counts["ssl_and_sst_hit"] += int(ssl and sst)
     if not counts["overlap_hops"]:
         raise ValueError("oracle has no two-voice overlap")
-    return {"schema":"libaudition.t03_ssl_sst_failure_localization.v1",
+    if (counts["ssl_and_sst_hit"] + counts["ssl_hit_sst_miss"] +\n            counts["ssl_miss_sst_hit"] + counts["ssl_and_sst_miss"] != counts["overlap_hops"]):\n        raise ValueError("inconsistent contingency accounting")\n    return {"schema":"libaudition.t03_ssl_sst_failure_localization.v1",
             "threshold_deg":threshold, **counts,
             "interpretation":"geometric proposal/track coverage only; SSS unmeasured"}
 
