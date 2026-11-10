@@ -186,6 +186,7 @@ can be marked DONE without marking all of L3/L4 DONE.
 | P3 — ODAS algorithm | `ARDev1161/odas` per-task feature branches → `dev` | Track birth numerical stability (already fixed), next evaluate source capacity, false positives, track ID persistence; each change backed by Acoustix, independent ODAS unit tests and performance checks |
 | P4 — libaudition recording/VAD/ASR | libaudition `src/`, `backends/`, demo only as a consumer | Fix truncated first words, 3 s silent-source retirement, track/audio ownership and playback contamination → **L1/L2/L5** |
 | P5 — separation quality | ODAS SSS or other backend in its owning repo; libaudition integration | Improve T03/T04 contamination without deleting target speech; compare before/after by held-out SI-SDRi/SIRi/WER → **L3/L4** |
+| P5a — post-S2 algorithm A/B evaluation | libaudition benchmark tooling + experimental backend adapters | Compare ODAS baseline against candidate SSL/SST/SSS alternatives on frozen paired speech fixtures; publish evidence, without changing the production backend automatically (see §7) |
 | P6 — physical validation | libaudition + microphone hardware | Capture reference room/array, compare acoustic fingerprints, DOA, leakage, ASR and resource bounds → **S3/L6** |
 
 Changes to ODAS are **not** implemented by copying DSP algorithms into
@@ -196,7 +197,81 @@ merge tested fix to ODAS `dev`, then update a libaudition dependency
 pin by separate PR. Never pin a floating `dev` branch and never change
 ODAS `master` or libaudition `main` without an explicit merge decision.
 
-## 7. CI policy, artifacts and anti-overfitting
+## 7. Post-simulator research: ODAS alternatives, strictly paired A/B
+
+**Trigger / reminder:** start this work **after S1 + S2 are PASS** and the
+real-speech evaluation manifest and metric implementations are frozen.
+This is a research follow-up, **not** an S1/S2 readiness requirement,
+not a current fix, and not proof that an alternative outperforms ODAS.
+Keep the ODAS fork-dev SHA and the existing libaudition pipeline as the
+baseline, including the currently observed speaker/playback leakage.
+
+**Shortlist to test (ranked by investigation priority, NOT demonstrated
+quality superiority over ODAS on this array):**
+
+1. **Online SpatialNet / SpatialNet**: candidate neural spatial SSS
+   under moving speakers and reverberation. Verify which implementation
+   actually supports streaming, moving sources, four channels, and
+   reproducible weights; these are not assumed capabilities of every
+   SpatialNet checkpoint. It does not supply ODAS-equivalent physical
+   SSL/SST identities out of the box.
+2. **Recursive EM + multichannel Wiener / LCMV beamforming**: research
+   candidate for joint spatial estimation and separation. Published
+   two-speaker comparisons report advantages over ODAS on speech
+   quality, **not** verified superiority for four-mic moving-source
+   SST; reproducing an appropriately licensed implementation is a
+   prerequisite.
+3. **Multichannel TF-GridNet (ESPnet)**: offline upper-reference / SSS
+   candidate for speech overlaps; do not count it as an SSL/SST
+   replacement or real-time until measured on the target runtime.
+4. **SpatialNet RPC / relative-position conditioning**: optional
+   exploratory near-collinear/close-bearing case only if a usable,
+   reproducible implementation and weights are available. Paper-only
+   results are not an integration deliverable.
+
+Do not add HARK, generic Pyroomacoustics recipes, or broad toolkit names
+as putative winners without a **specific pinned algorithm/configuration**
+and a measured ODAS-relative improvement on this benchmark. They may
+still be used as diagnostic references.
+
+**Experiment design / acceptance evidence:**
+
+- Use the exact same 4-mic ReSpeaker geometry/config, source PCM,
+  Acoustix/ODAS scene, calibrated gain, manifest and reference delay
+  policy for each candidate; capture immutable commits, weights and
+  inference settings. Never allow ground-truth oracle identities or
+  source stems into the candidate inference path.
+- **SSL:** oracle-associated bearing error (median/P90) **and** source
+  recall/precision; fixed/world-frame motion, near-plane ambiguity,
+  30°/60°/120° separations and reverberation slices.
+- **SST:** IDF1, ID switches, fragmentation, track births/deaths,
+  missed and phantom tracks, 3-second silence and reacquisition.
+  Methods without tracking are **SSS-only** candidates; score their
+  SSL/SST as *not applicable*, not as an improvement.
+- **SSS:** permutation-invariant SI-SDRi/SIRi, target preservation,
+  target-to-interferer leakage per track, speaker+playback contamination
+  in T04, quiet/overlap cases and same-ASR WER/CER with first-word
+  deletions. Silence or missing output must not inflate quality metrics.
+- **Operational:** algorithmic + end-to-end latency (including
+  buffering), RTF/CPU/GPU/RAM usage, failure/reset behavior,
+  deterministic replay (where applicable), model/dependency licenses.
+  Measure both desktop CI and intended edge hardware when accessible;
+  an offline oracle cannot be called a viable real-time backend.
+- At minimum compare T02/T03/T04/T05/T06/T08 plus T07 as stress (not a
+  four-mic seven-speaker acceptance gate), on the **held-out ≥20-seed**
+  speech benchmark. Report confidence intervals or paired uncertainty,
+  per-speaker tails and worst-case regressions, not only a mean score.
+
+**Decision rule:** retain ODAS unless a candidate gives a reproducible,
+meaningful improvement on the target held-out scenarios **without**
+regressing tracking identity, source audibility or end-to-end ASR.
+Choose either (a) targeted SST/SSS improvements in `ARDev1161/odas:dev`
+or (b) an optional replaceable SSS backend in libaudition when only
+separation improves. Never interpret SSS improvements as evidence of
+better SSL/SST; require a separately reviewed change, A/B artifacts
+and performance/compatibility CI before a default-backend switch.
+
+## 8. CI policy, artifacts and anti-overfitting
 
 - **Every PR:** fast stdlib scenario/metric unit tests, C++ build,
   ODAS targeted unit tests and installed SDK tests. This includes
@@ -222,7 +297,7 @@ ODAS `master` or libaudition `main` without an explicit merge decision.
   acceptance baseline is frozen in a reviewed PR. Keep prospective
   criteria visible even while instrumentation is being built.
 
-## 8. Working dashboard / next checks
+## 9. Working dashboard / next checks
 
 | Milestone | Current status | Next concrete PR |
 | --- | --- | --- |
@@ -234,6 +309,7 @@ ODAS `master` or libaudition `main` without an explicit merge decision.
 | L1/L2 first word and quiet speech | **OPEN** | VAD pre-roll with onset ground truth; same-model WER |
 | L3/L4 source quality and playback mixing | **OPEN** | Two-voice overlap first, then T04 loudspeaker+user, then 3/7 stress |
 | L5 3-second silence and lifecycle | **OPEN** | Track retirement and ID/recording/ASR isolation tests |
+| Post-S2 alternative SSL/SST/SSS A/B | **BACKLOG (after S1+S2)** | Freeze paired ODAS vs Online SpatialNet / recursive EM-LCMV / multichannel TF-GridNet experiments; RPC only if reproducible implementation is available |
 | S3/L6 measured microphone correlation | **OPEN** | ReSpeaker room recording and mismatch report |
 
 **Revision policy:** update this dashboard and its evidence links after
