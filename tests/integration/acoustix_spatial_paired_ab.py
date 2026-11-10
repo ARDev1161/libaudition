@@ -57,13 +57,28 @@ def compare(a, b):
         for name in names:
             x = a.get(group, {}).get(name)
             y = b.get(group, {}).get(name)
+            # Validate every *present* measurement before marking a pair
+            # incomplete. A malformed feature result must never be hidden by
+            # an absent upstream/dev measurement.
+            for z in (x, y):
+                if z is not None and (type(z) not in (int, float) or not math.isfinite(z)):
+                    raise ValueError("non-finite/non-numeric metric: " + group + "." + name)
+                if z is None:
+                    continue
+                if name in ("candidate_recall", "candidate_precision", "source_recall",
+                            "source_precision", "idf1") and not 0 <= z <= 1:
+                    raise ValueError("metric outside [0,1]: " + group + "." + name)
+                if name in ("azimuth_median_deg", "azimuth_p90_deg") and not 0 <= z <= 180:
+                    raise ValueError("invalid angular metric: " + group + "." + name)
+                if name in ("id_switches", "false_tracks") and (type(z) is not int or z < 0):
+                    raise ValueError("invalid event count: " + group + "." + name)
+                if name in ("false_candidates_per_second", "birth_latency_ms",
+                            "retirement_latency_ms") and z < 0:
+                    raise ValueError("negative rate or latency: " + group + "." + name)
             if x is None or y is None:
                 values[name] = {"status": "UNMEASURED"}
                 result["complete"] = False
                 continue
-            if isinstance(x, bool) or isinstance(y, bool) or not all(
-                    isinstance(z, (int, float)) and math.isfinite(z) for z in (x, y)):
-                raise ValueError("non-finite/non-numeric metric: " + group + "." + name)
             if name in ("candidate_recall", "candidate_precision", "source_recall",
                         "source_precision", "idf1") and not all(0 <= z <= 1 for z in (x, y)):
                 raise ValueError("metric outside [0,1]: " + group + "." + name)
