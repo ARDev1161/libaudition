@@ -9,6 +9,7 @@ import json
 import math
 from pathlib import Path
 import argparse
+from collections import Counter
 
 
 def angle(voice, candidate):
@@ -68,6 +69,8 @@ def diagnose(oracle, observations, threshold=45.):
                   ssl_miss_sst_hit=0, ssl_and_sst_miss=0,
                   ssl_and_sst_hit=0, ssl_proposals_in_overlap=0,
                   sst_tracks_in_overlap=0)
+    breakdown = {stage: Counter() for stage in ("ssl_hit_sst_miss", "ssl_and_sst_miss", "ssl_and_sst_hit", "ssl_miss_sst_hit")}
+    hop_records = []
     for hop, row in enumerate(oracle):
         if row["hop"] != hop:
             raise ValueError("non-contiguous oracle hops")
@@ -88,12 +91,27 @@ def diagnose(oracle, observations, threshold=45.):
         counts["ssl_miss_sst_hit"] += int(not ssl and sst)
         counts["ssl_and_sst_miss"] += int(not ssl and not sst)
         counts["ssl_and_sst_hit"] += int(ssl and sst)
+        stage = ("ssl_and_sst_hit" if ssl and sst else
+                 "ssl_hit_sst_miss" if ssl else
+                 "ssl_miss_sst_hit" if sst else "ssl_and_sst_miss")
+        breakdown[stage][len(native["track"])] += 1
+        hop_records.append({"hop": hop, "stage": stage,
+                            "ssl_candidates": len(native["proposal"]),
+                            "sst_tracks": len(native["track"])})
     if not counts["overlap_hops"]:
         raise ValueError("oracle has no two-voice overlap")
     if (counts["ssl_and_sst_hit"] + counts["ssl_hit_sst_miss"] +
             counts["ssl_miss_sst_hit"] + counts["ssl_and_sst_miss"] != counts["overlap_hops"]):
         raise ValueError("inconsistent contingency accounting")
+    # Separate too-few-track births from tracks present at wrong directions.
+    capacity = {
+        stage: {"fewer_than_two_tracks": sum(n for k, n in hist.items() if k < 2),
+                "two_or_more_tracks": sum(n for k, n in hist.items() if k >= 2)}
+        for stage, hist in breakdown.items()
+    }
     return {"schema":"libaudition.t03_ssl_sst_failure_localization.v1",
+            "track_capacity_by_stage": capacity,
+            "hop_attribution": hop_records,
             "threshold_deg":threshold, **counts,
             "interpretation":"geometric proposal/track coverage only; SSS unmeasured"}
 
