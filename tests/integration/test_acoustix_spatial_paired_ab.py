@@ -80,6 +80,18 @@ class SpatialPairedABTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "event count"):
             ab.compare(a, b)
 
+    def test_null_metric_group_rejected(self):
+        a, b = fixture(), fixture()
+        a["sss"] = None
+        with self.assertRaisesRegex(ValueError, "invalid metric group"):
+            ab.compare(a, b)
+
+    def test_inconsistent_azimuth_percentiles_rejected(self):
+        a, b = fixture(), fixture()
+        a["ssl"] = {"azimuth_median_deg": 45.0, "azimuth_p90_deg": 20.0}
+        with self.assertRaisesRegex(ValueError, "P90 below median"):
+            ab.compare(a, b)
+
     def test_all_measured_equal(self):
         a, b = fixture(), fixture()
         for group, names in ab.METRICS.items():
