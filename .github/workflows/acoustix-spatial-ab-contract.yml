@@ -11,6 +11,7 @@ on:
       - tests/integration/test_acoustix_odas_three_way_ab.py
       - tests/integration/acoustix_spatial_paired_ab.py
       - tests/integration/test_acoustix_spatial_paired_ab.py
+      - tests/integration/test_acoustix_ab_incomplete_validation.py
       - .github/workflows/acoustix-spatial-ab-contract.yml
   pull_request:
     paths:
@@ -23,6 +24,7 @@ on:
       - tests/integration/test_acoustix_odas_three_way_ab.py
       - tests/integration/acoustix_spatial_paired_ab.py
       - tests/integration/test_acoustix_spatial_paired_ab.py
+      - tests/integration/test_acoustix_ab_incomplete_validation.py
       - .github/workflows/acoustix-spatial-ab-contract.yml
   workflow_dispatch:
 permissions:
@@ -40,6 +42,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/integration -p test_acoustix_spatial_paired_ab.py -v
           python3 -m unittest discover -s tests/integration -p test_acoustix_odas_three_way_ab.py -v
+          python3 -m unittest discover -s tests/integration -p test_acoustix_ab_incomplete_validation.py -v
           python3 -m unittest discover -s tests/integration -p test_acoustix_t03_ssl_sst_localization.py -v
           python3 -m unittest discover -s tests/integration -p test_acoustix_t03_frozen_evidence_gate.py -v
 
