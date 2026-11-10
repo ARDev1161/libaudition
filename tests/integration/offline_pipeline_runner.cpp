@@ -30,7 +30,8 @@ namespace {
 namespace fs = std::filesystem;
 
 audition::OdasOptions optionsForFixture(bool horizontalSources,
-                                        const std::vector<std::string>& microphoneSpecs) {
+                                        const std::vector<std::string>& microphoneSpecs,
+                                        std::uint32_t maxTracks, std::uint32_t potentialSources) {
     audition::OdasOptions options{};
     options.microphone_array.microphones = {
         audition::MicrophoneGeometry{{-0.032, 0.0, 0.0}},
@@ -73,6 +74,8 @@ audition::OdasOptions optionsForFixture(bool horizontalSources,
     options.hop_size = 128U;
     options.frame_size = 256U;
     options.speed_of_sound_mps = 343.0;
+    options.sst.max_tracks = maxTracks;
+    options.ssl.potential_source_count = potentialSources;
     // Match the live ReSpeaker USB 4-Mic angular response. This is a
     // +Z-facing microphone/spatial-filter mask with an 80-100 degree
     // transition, NOT a narrow horizontal-plane (zero-elevation) prior.
@@ -109,10 +112,12 @@ void writeObservation(std::ostream& out, std::uint64_t hop,
 }
 
 int run(const fs::path& path, const fs::path& outputDir,
-        bool horizontalSources, const std::vector<std::string>& microphones) {
+        bool horizontalSources, const std::vector<std::string>& microphones,
+        std::uint32_t maxTracks, std::uint32_t potentialSources) {
     const auto wav = audition::io::loadWav(path);
     const auto format = wav.audio.format();
-    const auto options = optionsForFixture(horizontalSources, microphones);
+    const auto options = optionsForFixture(horizontalSources, microphones,
+                                           maxTracks, potentialSources);
     if (format.sample_rate_hz != options.sample_rate_hz ||
         (microphones.empty() && format.channel_count != 6U) ||
         format.layout != audition::AudioLayout::Interleaved ||
@@ -240,6 +245,8 @@ int run(const fs::path& path, const fs::path& outputDir,
         << "  \"input_frames\": " << wav.audio.frameCount() << ",\n"
         << "  \"sample_rate_hz\": " << format.sample_rate_hz << ",\n"
         << "  \"hops\": " << hops << ",\n"
+        << "  \"sst_max_tracks\": " << options.sst.max_tracks << ",\n"
+        << "  \"ssl_potential_source_count\": " << options.ssl.potential_source_count << ",\n"
         << "  \"potential_observations\": " << proposalFrames << ",\n"
         << "  \"track_observations\": " << trackFrames << ",\n"
         << "  \"separated_frames\": " << separatedFrames << ",\n"
@@ -258,25 +265,40 @@ int run(const fs::path& path, const fs::path& outputDir,
 int main(int argc, char** argv) {
     if (argc < 3) {
         std::cerr << "Usage: audition_offline_integration INPUT_WAV OUTPUT_DIR "
-                     "[--horizontal-sources] [--mic CHANNEL:X:Y:Z ...]\n";
+                     "[--horizontal-sources] [--mic CHANNEL:X:Y:Z ...] "
+                     "[--max-tracks N] [--potential-sources N]\n";
         return 2;
     }
     bool horizontal = false;
     std::vector<std::string> microphones;
-    for (int i = 3; i < argc; ++i) {
-        const std::string flag{argv[i]};
-        if (flag == "--horizontal-sources") {
-            horizontal = true;
-        } else if (flag == "--mic" && i + 1 < argc) {
-            microphones.emplace_back(argv[++i]);
-        } else {
-            std::cerr << "Unknown or incomplete offline ODAS option: "
-                      << flag << '\n';
-            return 2;
-        }
-    }
+    std::uint32_t maxTracks = 4U;
+    std::uint32_t potentialSources = 4U;
     try {
-        return run(argv[1], argv[2], horizontal, microphones);
+        for (int i = 3; i < argc; ++i) {
+            const std::string flag{argv[i]};
+            if (flag == "--horizontal-sources") {
+                horizontal = true;
+            } else if (flag == "--mic" && i + 1 < argc) {
+                microphones.emplace_back(argv[++i]);
+            } else if ((flag == "--max-tracks" || flag == "--potential-sources")
+                       && i + 1 < argc) {
+                const std::string token{argv[++i]};
+                std::size_t end = 0;
+                const auto number = std::stoul(token, &end);
+                if (end != token.size() || number < 1UL || number > 32UL)
+                    throw std::invalid_argument("ODAS source capacity must be 1..32");
+                if (flag == "--max-tracks")
+                    maxTracks = static_cast<std::uint32_t>(number);
+                else
+                    potentialSources = static_cast<std::uint32_t>(number);
+            } else {
+                std::cerr << "Unknown or incomplete offline ODAS option: "
+                          << flag << '\n';
+                return 2;
+            }
+        }
+        return run(argv[1], argv[2], horizontal, microphones,
+                   maxTracks, potentialSources);
     } catch (const std::exception& ex) {
         std::cerr << "offline-audio-integration=fail: " << ex.what() << '\n';
         return 1;
