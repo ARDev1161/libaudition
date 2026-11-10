@@ -63,6 +63,27 @@ class LocalizationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate native track"):
                 loc.load_observations(p, 1)
 
+
+    def test_complete_contingency_accounting(self):
+        both = [candidate(1,0), candidate(2,90)]
+        only = [candidate(1,0)]
+        points = [{"hop": i, "sources": [voice("a",0),voice("b",90)]}
+                  for i in range(4)]
+        obs = {
+            0: {"proposal": both, "track": both},
+            1: {"proposal": both, "track": only},
+            2: {"proposal": only, "track": both},
+            3: {"proposal": only, "track": only},
+        }
+        result = loc.diagnose(points, obs)
+        self.assertEqual(result["overlap_hops"], 4)
+        self.assertEqual(result["ssl_and_sst_hit"], 1)
+        self.assertEqual(result["ssl_hit_sst_miss"], 1)
+        self.assertEqual(result["ssl_miss_sst_hit"], 1)
+        self.assertEqual(result["ssl_and_sst_miss"], 1)
+        self.assertEqual(result["ssl_proposals_in_overlap"], 6)
+        self.assertEqual(result["sst_tracks_in_overlap"], 6)
+
     def test_duplicate_oracle_voice_rejected(self):
         bad=[{"hop":0,"sources":[voice("a",0),voice("a",90)]}]
         with self.assertRaisesRegex(ValueError,"duplicate"):
