@@ -47,19 +47,19 @@ class LocalizationTests(unittest.TestCase):
     def test_repeated_proposal_slot_labels_are_not_track_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory) / "observations.csv"
-            p.write_text("hop,kind,id,x,y,z,activity\\n"
-                         "0,proposal,0,1,0,0,1\\n"
-                         "0,proposal,0,0,1,0,1\\n"
-                         "0,track,7,1,0,0,1\\n")
+            p.write_text("hop,kind,id,x,y,z,activity\n"
+                         "0,proposal,0,1,0,0,1\n"
+                         "0,proposal,0,0,1,0,1\n"
+                         "0,track,7,1,0,0,1\n")
             observations = loc.load_observations(p, 1)
             self.assertEqual(loc.diagnose(oracle(), observations)["ssl_two_matches"], 1)
 
     def test_duplicate_active_track_ids_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory) / "observations.csv"
-            p.write_text("hop,kind,id,x,y,z,activity\\n"
-                         "0,track,7,1,0,0,1\\n"
-                         "0,track,7,0,1,0,1\\n")
+            p.write_text("hop,kind,id,x,y,z,activity\n"
+                         "0,track,7,1,0,0,1\n"
+                         "0,track,7,0,1,0,1\n")
             with self.assertRaisesRegex(ValueError, "duplicate native track"):
                 loc.load_observations(p, 1)
 
