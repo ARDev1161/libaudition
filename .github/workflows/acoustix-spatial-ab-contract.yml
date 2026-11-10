@@ -1,0 +1,25 @@
+name: Spatial SSL SST SSS paired A/B contracts
+on:
+  push:
+    paths:
+      - tests/integration/acoustix_spatial_paired_ab.py
+      - tests/integration/test_acoustix_spatial_paired_ab.py
+      - .github/workflows/acoustix-spatial-ab-contract.yml
+  pull_request:
+    paths:
+      - tests/integration/acoustix_spatial_paired_ab.py
+      - tests/integration/test_acoustix_spatial_paired_ab.py
+      - .github/workflows/acoustix-spatial-ab-contract.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paired-ab-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate identity and SSL/SST/SSS regression contracts
+        run: python3 -m unittest discover -s tests/integration -p test_acoustix_spatial_paired_ab.py -v
