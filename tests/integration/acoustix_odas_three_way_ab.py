@@ -28,6 +28,17 @@ def evaluate(replays):
             raise ValueError("invalid ODAS commit SHA: " + role)
         if not isinstance(row["odas_repository"], str) or not row["odas_repository"]:
             raise ValueError("missing ODAS repository: " + role)
+        for key in ("input_wav_sha256", "oracle_sha256", "configuration_sha256"):
+            digest = row[key]
+            if not isinstance(digest, str) or len(digest) != 64 or any(
+                    c not in "0123456789abcdef" for c in digest):
+                raise ValueError("invalid " + key + " for " + role)
+        if not isinstance(row["case_id"], str) or not row["case_id"].strip():
+            raise ValueError("invalid case_id for " + role)
+        for key in ("input_frames", "sample_rate_hz"):
+            value = row[key]
+            if type(value) is not int or value <= 0:
+                raise ValueError("invalid " + key + " for " + role)
     if len({replays[r]["odas_commit_sha"] for r in ROLES}) != 3:
         raise ValueError("upstream/dev/feature must have three distinct commits")
     if replays["dev"]["odas_repository"] != replays["feature"]["odas_repository"]:
