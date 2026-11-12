@@ -23,6 +23,23 @@ voice. In libodas, a track can only reach the inactivity retirement test
 when its internal conditions and inactivity counters advance; a high
 `sourceActivities` value does not by itself prove an audible source exists.
 
-Keep `IAcousticPresenceDetector` output observational. Any future attempt
-to couple it to track retirement requires real-array validation, false-retirement
-rate measurement, and a separate API/design review.
+Keep `IAcousticPresenceDetector` output observational; it is not a
+calibrated permission source for native ODAS SST.
+
+## Qt demo: explicit source-silence retirement
+
+The Qt live adapter has a separate **fixed, absolute SSS RMS** timeout.
+After 3.0 s below -55 dBFS (both adjustable; 0 s disables), it closes the
+source WAV and ASR generation and hides that track even if ODAS still
+reports the numeric ID. It does not reset or alter native SST state, and
+has no learned noise floor that could mistake continuous speech for silence.
+It reads separated/postfiltered PCM **before** optional NS and AGC. A dormant
+ID needs a hop at least 6 dB louder than the threshold to start a fresh
+recording/ASR generation. Actual ODAS ID disappearance clears dormancy.
+
+This is intentionally **not** the speech VAD state: ordinary pauses between
+words are VAD-silent and must not remove a source. The absolute level is not
+calibrated for distance or microphone sensitivity. Quiet speech may falsely
+retire, while strong competing-source bleed may defeat the timeout. Test on
+real ReSpeaker audio, compare disabled/enabled, and track false retire/rearm
+counts before considering this policy production-ready.

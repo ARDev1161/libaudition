@@ -3,6 +3,7 @@
 #include <audition/backends/odas/respeaker_usb4_profile.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -152,6 +153,29 @@ TEST(OdasBackend, ProcessesOneConfiguredHopWithoutOwningScheduling) {
     }
 
     EXPECT_NO_THROW(engine.reset());
+}
+
+TEST(OdasBackend, DgssPostfilteredPathCanProcessAndReset) {
+    auto options = makeFourMicOptions();
+    options.sss.separation_mode =
+        audition::OdasSeparationMode::GeometricSourceSeparation;
+    options.sss.post_filter_mode = audition::OdasPostFilterMode::MultiSource;
+    options.sss.output = audition::OdasSeparatedOutput::Postfiltered;
+    ASSERT_NO_THROW(audition::validateOdasOptions(options));
+    audition::OdasSpatialEngine engine{options};
+    auto block = makeSilence(options);
+    for (int hop = 0; hop < 16; ++hop) {
+        const auto output = engine.process(block.view());
+        EXPECT_EQ(output.tracks.size(), output.separated_frames.size());
+        for (const auto& separated : output.separated_frames) {
+            EXPECT_EQ(separated.audio.frameCount(), options.hop_size);
+            EXPECT_TRUE(std::all_of(separated.audio.samples().begin(),
+                separated.audio.samples().end(),
+                [](float v) { return std::isfinite(v); }));
+        }
+    }
+    ASSERT_NO_THROW(engine.reset());
+    EXPECT_NO_THROW((void)engine.process(block.view()));
 }
 
 TEST(OdasBackend, InPlaceSstTuningKeepsRuntimeOperational) {

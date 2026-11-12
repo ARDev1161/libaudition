@@ -5,6 +5,7 @@
 #endif
 #include "live_audio_tagging_worker.hpp"
 #include "source_track_lifecycle.hpp"
+#include "source_silence_timeout.hpp"
 #include "speech_epoch_recording_cleanup.hpp"
 #include "speech_recording_log_router.hpp"
 #include <audition/recording/source_wav_recorder.hpp>
@@ -342,9 +343,22 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             options.sst.inactive_gmm.front().mean = config.sst_release;
             options.sst.inactive_timeout_hops = config.sst_inactive_hops;
         }
-        // Source-specific classification needs actual SSS mono audio. Avoid
-        // the extra DSP cost when no classifier model is configured.
-        options.sss.enabled = true; // source WAV recording is available independently
+        // Native DGSS and multi-source postfilter for competing speaker bleed.
+        // Keep a user-selectable delay-and-sum baseline for A/B testing.
+        if (config.sss_separation_mode == "dgss")
+            options.sss.separation_mode = audition::OdasSeparationMode::GeometricSourceSeparation;
+        else if (config.sss_separation_mode == "delay_and_sum")
+            options.sss.separation_mode = audition::OdasSeparationMode::DelayAndSum;
+        else
+            throw std::invalid_argument{"Unknown ODAS separation mode"};
+        if (config.sss_output == "postfiltered")
+            options.sss.output = audition::OdasSeparatedOutput::Postfiltered;
+        else if (config.sss_output == "separated")
+            options.sss.output = audition::OdasSeparatedOutput::Separated;
+        else
+            throw std::invalid_argument{"Unknown ODAS output mode"};
+        options.sss.post_filter_mode = audition::OdasPostFilterMode::MultiSource;
+        options.sss.enabled = true; // source WAV recording independent of ASR
         audition::OdasSpatialEngine engine{options};
         std::uint64_t appliedSstRevision = 0;
         std::string lastSstTuningError;
@@ -684,6 +698,9 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             }
         };
         auto pcm = openPcm(config);
+        SourceSilenceTimeout silenceTimeout{
+            config.sample_rate_hz, config.source_silence_seconds,
+            config.source_silence_threshold_dbfs};
 
         const auto channelCount = static_cast<std::size_t>(config.channel_count);
         const auto hop = static_cast<std::size_t>(config.hop_size);
@@ -707,6 +724,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             for (auto& meter : channelMeters) meter.reset();
             sssMeters.clear();
             odasStageMonitor.reset(); // start a fresh continuous ODAS epoch
+            silenceTimeout.reset();
 #if LIBAUDITION_DEMO_HAS_SHERPA
             speechMeters.clear();
 #endif
@@ -863,19 +881,35 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
                 });
             odasStageMonitor.observe(hasPositiveSsl,
                 !resultFrame.tracks.empty(), !resultFrame.separated_frames.empty());
+            std::set<std::uint64_t> audible;
             { // Recording is independent of classifier and ASR toggles.
                 std::set<std::uint64_t> present;
-                for (const auto& track : resultFrame.tracks) {
+                std::map<std::uint64_t, const std::vector<float>*> sssById;
+                for (const auto& track : resultFrame.tracks)
                     present.insert(track.track_id.value());
-                }
                 for (const auto& separated : resultFrame.separated_frames) {
-                    present.insert(separated.track_id.value());
+                    const auto id = separated.track_id.value();
+                    present.insert(id);
+                    sssById[id] = &separated.audio.samples();
                 }
+                for (const auto id : present) {
+                    const auto found = sssById.find(id);
+                    const bool awake = found == sssById.end()
+                        ? silenceTimeout.observeMissing(id, config.hop_size)
+                        : silenceTimeout.observe(id, found->second->data(),
+                                                 found->second->size());
+                    if (awake) audible.insert(id);
+                }
+                silenceTimeout.retain(present);
                 drainClassification();
-                source_lifecycle.update(std::move(present), [&](std::uint64_t id) {
+                // Retire only once on transition to dormant; preserve native
+                // ODAS IDs and restart WAV/ASR with a fresh generation when
+                // that ID has sufficient new acoustic evidence.
+                source_lifecycle.update(audible, [&](std::uint64_t id) {
                     retireSource(id);
                 });
                 for (const auto& separated : resultFrame.separated_frames) {
+                    if (audible.count(separated.track_id.value()) == 0U) continue;
                     sssMeters[separated.track_id.value()].push(
                         separated.audio.samples().data(),
                         separated.audio.samples().size());
@@ -1016,6 +1050,7 @@ void AlsaLiveCapture::run(LiveCaptureConfig config) noexcept {
             std::vector<AcousticSceneTrack> tracks;
             tracks.reserve(resultFrame.tracks.size());
             for (const auto& t : resultFrame.tracks) {
+                if (audible.count(t.track_id.value()) == 0U) continue;
                 const auto xyz = t.direction.direction.vector();
                 AcousticSceneTrack track{
                     t.track_id.value(),

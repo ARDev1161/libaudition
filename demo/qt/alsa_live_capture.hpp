@@ -36,6 +36,12 @@ struct LiveCaptureConfig {
     bool respeaker_angular_profile{false};
     bool near_plane_sources{false};
     bool tune_sst{true};
+    // Qt-only timeout for quiet SSS PCM; it does not modify native SST.
+    double source_silence_seconds{3.0};
+    double source_silence_threshold_dbfs{-55.0};
+    // Stronger source separation than backend defaults; allow baseline A/B.
+    std::string sss_separation_mode{"dgss"};
+    std::string sss_output{"postfiltered"};
     double sst_onset{0.34};
     double sst_release{0.25};
     std::uint32_t sst_inactive_hops{125};
