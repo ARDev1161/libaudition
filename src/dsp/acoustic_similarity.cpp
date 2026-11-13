@@ -88,7 +88,8 @@ std::optional<double> spectralDynamics(
 
     std::array<double, kWindow> window{};
     for (std::size_t i = 0; i < kWindow; ++i) {
-        window[i] = 0.5 * (1.0 - std::cos(2.0 * kPi * i / (kWindow - 1)));
+        window[i] = 0.5 * (1.0 - std::cos(2.0 * kPi * static_cast<double>(i) /
+                                            static_cast<double>(kWindow - 1)));
     }
 
     std::array<double, kFrequencyBins.size()> previous_first{};
