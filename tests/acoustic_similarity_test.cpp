@@ -119,9 +119,9 @@ TEST(AcousticSimilarity, RejectsMismatchedRatesLengthsAndChannels) {
         {16000U, 2U, audition::AudioLayout::Interleaved},
         audition::Timestamp{}};
     audition::dsp::AcousticSimilarityAnalyzer analyzer;
-    EXPECT_THROW(analyzer.compare(a.view(), wrong_rate.view()), audition::Error);
-    EXPECT_THROW(analyzer.compare(a.view(), wrong_length.view()), audition::Error);
-    EXPECT_THROW(analyzer.compare(a.view(), stereo.view()), audition::Error);
+    EXPECT_THROW(static_cast<void>(analyzer.compare(a.view(), wrong_rate.view())), audition::Error);
+    EXPECT_THROW(static_cast<void>(analyzer.compare(a.view(), wrong_length.view())), audition::Error);
+    EXPECT_THROW(static_cast<void>(analyzer.compare(a.view(), stereo.view())), audition::Error);
 }
 
 TEST(AcousticSimilarity, RejectsNonFinitePcm) {
@@ -130,9 +130,9 @@ TEST(AcousticSimilarity, RejectsNonFinitePcm) {
     b_values[100] = std::numeric_limits<float>::quiet_NaN();
     audition::AudioView b{b_values.data(), b_values.size(), kMono, audition::Timestamp{}};
     audition::dsp::AcousticSimilarityAnalyzer analyzer;
-    EXPECT_THROW(analyzer.compare(a.view(), b), audition::Error);
+    EXPECT_THROW(static_cast<void>(analyzer.compare(a.view(), b)), audition::Error);
     b_values[100] = std::numeric_limits<float>::infinity();
-    EXPECT_THROW(analyzer.compare(a.view(), b), audition::Error);
+    EXPECT_THROW(static_cast<void>(analyzer.compare(a.view(), b)), audition::Error);
 }
 
 TEST(AcousticSimilarity, AnalysisLengthIsBoundedByOptions) {
