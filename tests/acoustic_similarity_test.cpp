@@ -54,6 +54,26 @@ TEST(AcousticSimilarity, DelayedGainScaledCopyIsAlignedAndSpectrallySimilar) {
     EXPECT_EQ(result.compared_samples, kSamples - 37U);
 }
 
+TEST(AcousticSimilarity, AdvancedCopyUsesNegativeDelayAndCorrectOverlap) {
+    auto original = noise(932U);
+    std::vector<float> advanced(kSamples, 0.F);
+    for (std::size_t i = 0; i + 43U < kSamples; ++i) {
+        advanced[i] = 0.6F * original[i + 43U];
+    }
+
+    audition::dsp::AcousticSimilarityAnalyzer analyzer;
+    auto a = mono(std::move(original));
+    auto b = mono(std::move(advanced));
+    const auto result = analyzer.compare(a.view(), b.view());
+
+    ASSERT_TRUE(result.waveform_correlation);
+    EXPECT_EQ(result.delay_samples, -43);
+    EXPECT_GT(*result.waveform_correlation, 0.99999);
+    EXPECT_EQ(result.compared_samples, kSamples - 43U);
+    ASSERT_TRUE(result.spectral_change_similarity);
+    EXPECT_GT(*result.spectral_change_similarity, 0.96);
+}
+
 TEST(AcousticSimilarity, PolarityInversionRetainsSignedCorrelation) {
     auto original = noise(481U);
     auto inverted = original;
