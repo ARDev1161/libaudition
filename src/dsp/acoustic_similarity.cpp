@@ -171,7 +171,8 @@ AcousticSimilarityResult AcousticSimilarityAnalyzer::compare(
     }
 
     const auto floor_energy =
-        static_cast<long double>(options_.minimum_rms) * options_.minimum_rms * count;
+        static_cast<long double>(options_.minimum_rms) * options_.minimum_rms *
+        static_cast<long double>(count);
     if (energy_first <= floor_energy || energy_second <= floor_energy) {
         return result;
     }
