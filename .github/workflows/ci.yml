@@ -865,7 +865,8 @@ jobs:
 
 
   qt-odas-sherpa-classifier:
-    runs-on: ubuntu-latest
+    # Pin the apt-based Qt/ODAS integration job to a stable Ubuntu image.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Install combined audio backend dependencies
