@@ -48,7 +48,8 @@ std::optional<double> normalizedCorrelation(
     const long double n = static_cast<long double>(overlap.count);
     const long double vx = xx - sum_x * sum_x / n;
     const long double vy = yy - sum_y * sum_y / n;
-    if (vx <= 1e-20L || vy <= 1e-20L) {
+    if (vx <= std::max(1e-20L, 1e-12L * xx) ||
+        vy <= std::max(1e-20L, 1e-12L * yy)) {
         return std::nullopt;
     }
     const long double covariance = xy - sum_x * sum_y / n;
