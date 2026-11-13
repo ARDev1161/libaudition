@@ -148,6 +148,7 @@ install(TARGETS libaudition_memory
 
 add_library(libaudition_dsp
     dsp/basic.cpp
+    dsp/acoustic_similarity.cpp
     dsp/audio_frontend.cpp
     dsp/quality.cpp)
 add_library(audition::dsp ALIAS libaudition_dsp)
