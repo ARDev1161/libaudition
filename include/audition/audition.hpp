@@ -3,6 +3,7 @@
 #include <audition/core.hpp>
 #include <audition/interfaces.hpp>
 #include <audition/dsp/basic.hpp>
+#include <audition/dsp/acoustic_similarity.hpp>
 #include <audition/dsp/audio_frontend.hpp>
 #include <audition/dsp/quality.hpp>
 #include <audition/logging/logging.hpp>
