@@ -131,7 +131,7 @@ pipeline/acoustic_event_assembler.cpp pipeline/temporal_acoustic_event_detector.
 pipeline/vocabulary.cpp pipeline/source_classification_runtime.cpp
 pipeline/progressive_source_classification_runtime.cpp pipeline/per_source_speech_runtime.cpp
 memory/in_memory_registries.cpp memory/sound_prototype_matcher.cpp memory/source_identity_resolver.cpp
-dsp/basic.cpp dsp/audio_frontend.cpp dsp/quality.cpp
+dsp/basic.cpp dsp/audio_frontend.cpp dsp/quality.cpp dsp/acoustic_similarity.cpp
 """.split()
 BACKEND_SOURCE_UNITS = {
     "odas": "odas_options.cpp odas_config.cpp odas_runtime.cpp odas_spatial_engine.cpp",

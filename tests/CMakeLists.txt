@@ -142,6 +142,7 @@ add_executable(libaudition_tests
     spl_calibration_test.cpp
     temporal_spatial_smoother_test.cpp
     dsp_test.cpp
+    acoustic_similarity_test.cpp
     wav_io_test.cpp
     recording_timeline_json_test.cpp
     audio_frontend_test.cpp

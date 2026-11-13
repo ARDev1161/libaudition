@@ -1,0 +1,27 @@
+name: Acoustic similarity C++17 contracts
+
+on:
+  pull_request:
+    paths:
+      - 'include/audition/dsp/acoustic_similarity.hpp'
+      - 'src/dsp/acoustic_similarity.cpp'
+      - 'src/CMakeLists.txt'
+      - 'tests/acoustic_similarity_test.cpp'
+      - 'tests/CMakeLists.txt'
+      - 'include/audition/audition.hpp'
+      - '.github/workflows/acoustic-similarity.yml'
+  workflow_dispatch:
+
+jobs:
+  core-acoustic-similarity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure dependency-light C++17 core
+        run: cmake --preset ci
+      - name: Build core GTests and analyzer
+        run: cmake --build --preset ci --target libaudition_tests --parallel 3
+      - name: Run dedicated delay and spectral-change regressions
+        run: >-
+          ctest --test-dir build/ci --no-tests=error
+          -R '^AcousticSimilarity[.]' --output-on-failure
