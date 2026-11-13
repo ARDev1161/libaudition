@@ -102,6 +102,28 @@ TEST(AcousticSimilarity, UnrelatedSignalsDoNotProduceWaveformDuplicateEvidence) 
     EXPECT_LT(std::abs(*result.spectral_change_similarity), 0.30);
 }
 
+TEST(AcousticSimilarity, SharedDominantLeakageIsNotSpeakerIdentity) {
+    // Two independently varying weak sources are mixed with the same dominant
+    // leaked source. A high score must not be interpreted as speaker identity.
+    const auto dominant = noise(891U);
+    const auto independent_a = noise(128U);
+    const auto independent_b = noise(129U);
+    std::vector<float> left(kSamples);
+    std::vector<float> right(kSamples);
+    for (std::size_t i = 0; i < kSamples; ++i) {
+        left[i] = dominant[i] + 0.05F * independent_a[i];
+        right[i] = dominant[i] + 0.05F * independent_b[i];
+    }
+    auto a = mono(std::move(left));
+    auto b = mono(std::move(right));
+    audition::dsp::AcousticSimilarityAnalyzer analyzer;
+    const auto result = analyzer.compare(a.view(), b.view());
+    ASSERT_TRUE(result.waveform_correlation);
+    EXPECT_EQ(result.delay_samples, 0);
+    EXPECT_GT(*result.waveform_correlation, 0.99);
+    // No same-speaker decision is exposed by this API.
+}
+
 TEST(AcousticSimilarity, SilenceIsAbsenceOfEvidenceNotZeroSimilarity) {
     auto a = mono(noise(16U));
     auto silence = mono(std::vector<float>(kSamples, 0.F));
