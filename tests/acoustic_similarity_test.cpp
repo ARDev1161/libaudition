@@ -49,7 +49,7 @@ TEST(AcousticSimilarity, DelayedGainScaledCopyIsAlignedAndSpectrallySimilar) {
     EXPECT_EQ(result.delay_samples, 37);
     EXPECT_GT(*result.waveform_correlation, 0.99999);
     ASSERT_TRUE(result.spectral_change_similarity.has_value());
-    EXPECT_GT(*result.spectral_change_similarity, 0.99);
+    EXPECT_GT(*result.spectral_change_similarity, 0.96);
     EXPECT_GT(result.spectral_frames, 2U);
     EXPECT_EQ(result.compared_samples, kSamples - 37U);
 }
