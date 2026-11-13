@@ -1,32 +1,32 @@
 # AcousticSimilarityAnalyzer: pre-tracking acoustic evidence (experimental)
 
 The dependency-free C++17 DSP API
-\`<audition/dsp/acoustic_similarity.hpp>\` compares **two existing mono audio
+`<audition/dsp/acoustic_similarity.hpp>` compares **two existing mono audio
 streams**. It is designed for the proposed SSL-candidate -> provisional
 separation -> acoustic association -> SST pipeline. It neither generates
 separated channels nor changes ODAS' current SSL/SST/SSS pipeline.
 
 ## Contract
 
-\`audition::dsp::AcousticSimilarityAnalyzer::compare(first, second)\` returns:
+`audition::dsp::AcousticSimilarityAnalyzer::compare(first, second)` returns:
 
-- \`waveform_correlation\`: *signed* normalized waveform Pearson correlation at
+- `waveform_correlation`: *signed* normalized waveform Pearson correlation at
   the best absolute-correlation lag, range [-1,1]. Strong magnitude suggests
   **shared signal content**, which can also be caused by leakage between two
   beams. It does **not** certify a shared physical source.
-- \`delay_samples\`: lag maximizing absolute correlation, such that
-  \`second[t + delay_samples]\` aligns to \`first[t]\`. It does not estimate
+- `delay_samples`: lag maximizing absolute correlation, such that
+  `second[t + delay_samples]` aligns to `first[t]`. It does not estimate
   physical propagation distance.
-- \`spectral_change_similarity\`: cosine similarity of changes in logarithmic
+- `spectral_change_similarity`: cosine similarity of changes in logarithmic
   short-time power across nine fixed FFT bins (implemented using Hann-windowed
   Goertzel), also [-1,1]. Comparing **changes**, rather than average FFT
   pictures, reduces false similarity from two voices with similar timbre.
-- \`compared_samples\` and \`spectral_frames\`: exact evidence window sizes.
+- `compared_samples` and `spectral_frames`: exact evidence window sizes.
 
 Inputs must be finite float32 PCM, mono, same sample rate and frame count.
 **The caller must ensure the two windows represent the same capture interval;**
 the analyzer does not perform clock/sequence synchronization. The first
-\`max_analysis_samples\` are examined (8192 samples by default); no history is
+`max_analysis_samples` are examined (8192 samples by default); no history is
 retained between calls and no threads or model weights are used. Only the
 source-window's first segment is compared: a calling pipeline must deliberately
 choose a speech-active segment, rather than passing many seconds of initial
@@ -45,7 +45,7 @@ fingerprint, a full-resolution FFT image, or source separation quality.
 
 ## Intended composition
 
-\`\`\`text
+```text
 four synchronized microphone signals
   -> SSL potentials (direction + score)
   -> [future candidate separator: one mono stream per direction]
@@ -53,7 +53,7 @@ four synchronized microphone signals
   -> [future acoustic association: independent / shared / insufficient]
   -> SST (spatial source motion and persistent track lifecycle)
   -> final SSS, VAD, ASR
-\`\`\`
+```
 
 Provisional directions may include multipath reflections, ghosts and
 independently speaking people at nearby angles. **Never merge based on
@@ -65,12 +65,12 @@ spatial consistency, calibrated leakage tests and temporal persistence.
 
 ## Reproducible verification and limits
 
-\`\`\`bash
+```bash
 cmake --preset ci
 cmake --build --preset ci --target libaudition_tests
 ctest --test-dir build/ci --no-tests=error \
   -R '^AcousticSimilarity[.]' --output-on-failure
-\`\`\`
+```
 
 The deterministic GTests cover a gain-scaled delayed copy, opposite polarity,
 independent synthetic signals, common gain envelopes, silence, constant
@@ -78,7 +78,7 @@ waveforms, invalid arguments, and bounded processing. These are **algorithm
 contract tests**, not speaker separation acceptance.
 
 For real quality, run the frozen **Acoustix** T03 human-speech WAV and oracle
-through the *unchanged* upstream ODAS and current \`odas/dev\` baseline, then
+through the *unchanged* upstream ODAS and current `odas/dev` baseline, then
 through a separate experimental candidate separator; only then compare
 candidate audio and evaluate:
 
