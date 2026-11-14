@@ -76,6 +76,8 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
     errors = []
     azimuth_errors = []
     simultaneous = []
+    simultaneous_matched = []
+    multi_voice_hops = fully_matched_multi_voice_hops = 0
     all_counts = []
     max_active_voices = 0
     for point in ground_truth:
@@ -88,9 +90,12 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
             continue
         active_hops += 1
         total_voice_hops += len(voices)
-        if len(voices) > 1:
-            simultaneous.append(len(tracks))
         matches = match_sources_to_tracks(voices, tracks, max_error_deg)
+        if len(voices) > 1:
+            multi_voice_hops += 1
+            simultaneous.append(len(tracks))
+            simultaneous_matched.append(len(matches))
+            fully_matched_multi_voice_hops += int(len(matches) == len(voices))
         matched_voice_hops += len(matches)
         if matches:
             matched_hops += 1
@@ -135,6 +140,12 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
         "max_simultaneous_tracks": max(all_counts, default=0),
         "mean_tracks_during_multi_voice": round(statistics.mean(simultaneous), 4)
             if simultaneous else None,
+        "max_tracks_during_multi_voice": max(simultaneous, default=0),
+        "max_unique_oracle_matches_during_multi_voice": max(simultaneous_matched, default=0),
+        "multi_voice_hops": multi_voice_hops,
+        "fully_matched_multi_voice_hops": fully_matched_multi_voice_hops,
+        "fully_matched_multi_voice_fraction": round(fully_matched_multi_voice_hops / multi_voice_hops, 6)
+            if multi_voice_hops else None,
         "matched_median_3d_angular_error_deg": round(statistics.median(errors), 4)
             if errors else None,
         "matched_p90_3d_angular_error_deg": round(
