@@ -149,6 +149,9 @@ jobs:
                   print(name,v["odas_sha"],json.dumps({k:m.get(k) for k in ("max_simultaneous_tracks","matched_voice_source_fraction","matched_median_azimuth_error_deg","matched_p90_azimuth_error_deg","adjacent_matched_id_switches")},sort_keys=True))
           Path("results/ab_comparison.json").write_text(json.dumps(variants,indent=2,sort_keys=True))
           PY
+      - name: Test paired quality verdict with independent adversarial fixtures
+        run: |
+          PYTHONPATH=tests/integration python3 -m unittest -v test_odas_paired_quality_verdict
       - name: Explicit quality verdict (pipeline PASS does not mean source quality PASS)
         run: |
           python3 tests/integration/odas_paired_quality_verdict.py results --output results/quality_verdict.json
