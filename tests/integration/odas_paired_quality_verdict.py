@@ -82,7 +82,9 @@ def evaluate(root):
                 "max_simultaneous_tracks": feature["max_simultaneous_tracks"] - base["max_simultaneous_tracks"]},
             "feature_capacity_deficit": max(0, expected - feature["max_unique_oracle_matches_during_multi_voice"]),
             "status": ("TRACK_CAPACITY_DEFICIT" if feature["max_tracks_during_multi_voice"] < expected
-                       else "ORACLE_MATCH_DEFICIT")\n            if feature["max_unique_oracle_matches_during_multi_voice"] < expected\n            else "OVERLAP_MATCH_ONLY_NOT_IDF1_OR_SSS_PASS"}
+                       else "ORACLE_MATCH_DEFICIT")
+            if feature["max_unique_oracle_matches_during_multi_voice"] < expected
+            else "OVERLAP_MATCH_ONLY_NOT_IDF1_OR_SSS_PASS"}
     report["quality_blockers"] = [
         case + ": " + flag
         for case, record in report["cases"].items()
