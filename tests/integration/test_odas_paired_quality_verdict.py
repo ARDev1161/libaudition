@@ -21,6 +21,11 @@ def fixture(root):
                     "matched_p90_azimuth_error_deg": 8.0,
                     "max_simultaneous_tracks": expected,
                     "adjacent_matched_id_switches": 0,
+                    "max_tracks_during_multi_voice": expected if expected > 1 else 0,
+                    "max_unique_oracle_matches_during_multi_voice": expected if expected > 1 else 0,
+                    "multi_voice_hops": 10 if expected > 1 else 0,
+                    "fully_matched_multi_voice_hops": 10 if expected > 1 else 0,
+                    "fully_matched_multi_voice_fraction": 1.0 if expected > 1 else 0.0,
                 },
             }
         p = root / ("odas-ab-" + variant)
@@ -66,6 +71,18 @@ class QualityVerdictTests(unittest.TestCase):
         result = evaluate(self.root)
         self.assertIn("coverage worse than dev", result["cases"]["t02_dev_single"]["regression_flags"])
 
+    def test_raw_capacity_cannot_mask_failed_oracle_matching(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            max_simultaneous_tracks=7,
+            max_tracks_during_multi_voice=7,
+            max_unique_oracle_matches_during_multi_voice=1,
+            fully_matched_multi_voice_hops=0,
+            fully_matched_multi_voice_fraction=0.0))
+        result = evaluate(self.root)
+        self.assertEqual(result["cases"]["t03_eval_two"]["feature_capacity_deficit"], 1)
+        self.assertIn("1:1 overlap capacity worse than dev",
+                      result["cases"]["t03_eval_two"]["regression_flags"])
+
     def test_missing_variant_rejected(self):
         (self.root / "odas-ab-dev" / "ab_result.json").unlink()
         with self.assertRaisesRegex(ValueError, "missing real-run"):
@@ -102,10 +119,10 @@ class QualityVerdictTests(unittest.TestCase):
             evaluate(self.root)
 
     def test_deficit_is_not_silently_passed(self):
-        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(max_simultaneous_tracks=1))
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(max_unique_oracle_matches_during_multi_voice=1))
         result = evaluate(self.root)
         self.assertEqual(result["cases"]["t03_eval_two"]["feature_capacity_deficit"], 1)
-        self.assertEqual(result["cases"]["t03_eval_two"]["status"], "CAPACITY_DEFICIT")
+        self.assertEqual(result["cases"]["t03_eval_two"]["status"], "ORACLE_MATCH_DEFICIT")
         self.assertIn("T03: fewer than two simultaneous tracks", result["quality_blockers"])
 
 
