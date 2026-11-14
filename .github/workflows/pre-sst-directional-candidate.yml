@@ -1,0 +1,19 @@
+name: Pre-SST directional candidate C++17 contract
+on:
+  pull_request:
+    paths:
+      - 'include/audition/dsp/directional_candidate.hpp'
+      - 'tests/directional_candidate_contract.cpp'
+      - '.github/workflows/pre-sst-directional-candidate.yml'
+  workflow_dispatch:
+jobs:
+  candidate-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Compile independent C++17 contract
+        run: c++ -std=c++17 -O2 -Wall -Wextra -Werror -UNDEBUG -Iinclude tests/directional_candidate_contract.cpp -o /tmp/directional_candidate_contract
+      - name: Test steering and invalid input
+        run: /tmp/directional_candidate_contract
