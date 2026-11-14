@@ -7,6 +7,15 @@ from pathlib import Path
 
 CASES = {"t02_dev_single": 1, "t03_eval_two": 2, "t07_eval_seven": 7}
 VARIANTS = ("upstream", "dev", "feature")
+# Frozen revisions for this particular paired experiment; reject mislabeled artifacts.
+EXPECTED_SHAS = {
+    "upstream": "004cb824c6073771cb23cf9139f01e9d8581025b",
+    "dev": "4c8e3bfcb56124ee340477a2443ea2ebe11ee712",
+    "feature": "d8e91ba01432c77081e28f4f6895c6575551dab4",
+}
+# Diagnostic tolerances, NOT product acceptance thresholds.
+AZIMUTH_P90_REGRESSION_TOLERANCE_DEG = 1.0
+COVERAGE_REGRESSION_TOLERANCE = 0.01
 METRICS = ("matched_voice_source_fraction", "matched_p90_azimuth_error_deg",
            "max_simultaneous_tracks", "adjacent_matched_id_switches")
 
@@ -18,7 +27,7 @@ def evaluate(root):
         if not p.is_file():
             raise ValueError("missing real-run artifact: " + str(p))
         runs[name] = json.loads(p.read_text(encoding="utf-8"))
-        if runs[name].get("variant") != name or not runs[name].get("odas_sha"):
+        if runs[name].get("variant") != name or runs[name].get("odas_sha") != EXPECTED_SHAS[name]:
             raise ValueError("missing/incorrect revision provenance: " + name)
         if set(runs[name].get("cases", {})) != set(CASES):
             raise ValueError("incomplete case matrix: " + name)
@@ -42,9 +51,18 @@ def evaluate(root):
             records[name] = {key: metrics[key] for key in METRICS}
         if len(fingerprints) != 1 or any(not x for x in next(iter(fingerprints))):
             raise ValueError("A/B input/oracle mismatch: " + case)
-        base, feature = records["upstream"], records["feature"]
+        base, dev, feature = records["upstream"], records["dev"], records["feature"]
+        regression_flags = []
+        for label, reference in (("upstream", base), ("dev", dev)):
+            if feature["matched_voice_source_fraction"] < reference["matched_voice_source_fraction"] - COVERAGE_REGRESSION_TOLERANCE:
+                regression_flags.append("coverage worse than " + label)
+            if feature["matched_p90_azimuth_error_deg"] > reference["matched_p90_azimuth_error_deg"] + AZIMUTH_P90_REGRESSION_TOLERANCE_DEG:
+                regression_flags.append("P90 azimuth worse than " + label)
+            if feature["max_simultaneous_tracks"] < reference["max_simultaneous_tracks"]:
+                regression_flags.append("track capacity worse than " + label)
         report["cases"][case] = {
             "expected_simultaneous_sources": expected, "variants": records,
+            "regression_flags": regression_flags,
             "feature_minus_upstream": {
                 "matched_voice_source_fraction": round(feature["matched_voice_source_fraction"] - base["matched_voice_source_fraction"], 6),
                 "matched_p90_azimuth_error_deg": round(feature["matched_p90_azimuth_error_deg"] - base["matched_p90_azimuth_error_deg"], 4),
@@ -52,6 +70,10 @@ def evaluate(root):
             "feature_capacity_deficit": max(0, expected - feature["max_simultaneous_tracks"]),
             "status": "CAPACITY_DEFICIT" if feature["max_simultaneous_tracks"] < expected else "CAPACITY_ONLY_NOT_IDF1_OR_SSS_PASS"}
     report["quality_blockers"] = [
+        case + ": " + flag
+        for case, record in report["cases"].items()
+        for flag in record["regression_flags"]
+    ] + [
         "T03: fewer than two simultaneous tracks" if report["cases"]["t03_eval_two"]["feature_capacity_deficit"] else None,
         "T07: fewer than seven simultaneous tracks" if report["cases"]["t07_eval_seven"]["feature_capacity_deficit"] else None,
         "No 1:1 source IDF1/false-track/latency acceptance in this A/B",
