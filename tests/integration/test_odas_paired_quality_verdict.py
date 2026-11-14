@@ -83,6 +83,16 @@ class QualityVerdictTests(unittest.TestCase):
         self.assertIn("1:1 overlap capacity worse than dev",
                       result["cases"]["t03_eval_two"]["regression_flags"])
 
+    def test_true_track_capacity_deficit_is_distinct(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            max_simultaneous_tracks=1,
+            max_tracks_during_multi_voice=1,
+            max_unique_oracle_matches_during_multi_voice=1,
+            fully_matched_multi_voice_hops=0,
+            fully_matched_multi_voice_fraction=0.0))
+        result = evaluate(self.root)
+        self.assertEqual(result["cases"]["t03_eval_two"]["status"], "TRACK_CAPACITY_DEFICIT")
+
     def test_missing_variant_rejected(self):
         (self.root / "odas-ab-dev" / "ab_result.json").unlink()
         with self.assertRaisesRegex(ValueError, "missing real-run"):
@@ -123,7 +133,7 @@ class QualityVerdictTests(unittest.TestCase):
         result = evaluate(self.root)
         self.assertEqual(result["cases"]["t03_eval_two"]["feature_capacity_deficit"], 1)
         self.assertEqual(result["cases"]["t03_eval_two"]["status"], "ORACLE_MATCH_DEFICIT")
-        self.assertIn("T03: fewer than two simultaneous tracks", result["quality_blockers"])
+        self.assertIn("T03: fewer than two simultaneous 1:1 oracle-matched tracks", result["quality_blockers"])
 
 
 if __name__ == "__main__":
