@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from odas_paired_quality_verdict import CASES, VARIANTS, evaluate
+from odas_paired_quality_verdict import CASES, VARIANTS, EXPECTED_SHAS, evaluate
 
 
 def fixture(root):
@@ -26,7 +26,7 @@ def fixture(root):
         p = root / ("odas-ab-" + variant)
         p.mkdir()
         (p / "ab_result.json").write_text(json.dumps({
-            "variant": variant, "odas_sha": variant + "-sha", "cases": cases
+            "variant": variant, "odas_sha": EXPECTED_SHAS[variant], "cases": cases
         }))
 
 
@@ -49,6 +49,22 @@ class QualityVerdictTests(unittest.TestCase):
         self.assertEqual(result["quality_status"], "BLOCKED")
         self.assertEqual(result["cases"]["t03_eval_two"]["feature_capacity_deficit"], 0)
         self.assertTrue(any("SI-SDRi" in x for x in result["quality_blockers"]))
+
+    def test_wrong_odas_revision_rejected(self):
+        mutate(self.root, "dev", lambda d: d.update(odas_sha="0" * 40))
+        with self.assertRaisesRegex(ValueError, "revision provenance"):
+            evaluate(self.root)
+
+    def test_feature_azimuth_regression_is_flagged(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(matched_p90_azimuth_error_deg=12.0))
+        result = evaluate(self.root)
+        self.assertIn("P90 azimuth worse than dev", result["cases"]["t03_eval_two"]["regression_flags"])
+        self.assertIn("t03_eval_two: P90 azimuth worse than upstream", result["quality_blockers"])
+
+    def test_feature_coverage_regression_is_flagged(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t02_dev_single"]["metrics"].update(matched_voice_source_fraction=0.6))
+        result = evaluate(self.root)
+        self.assertIn("coverage worse than dev", result["cases"]["t02_dev_single"]["regression_flags"])
 
     def test_missing_variant_rejected(self):
         (self.root / "odas-ab-dev" / "ab_result.json").unlink()
