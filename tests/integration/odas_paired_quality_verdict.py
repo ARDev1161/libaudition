@@ -81,14 +81,15 @@ def evaluate(root):
                 "matched_p90_azimuth_error_deg": round(feature["matched_p90_azimuth_error_deg"] - base["matched_p90_azimuth_error_deg"], 4),
                 "max_simultaneous_tracks": feature["max_simultaneous_tracks"] - base["max_simultaneous_tracks"]},
             "feature_capacity_deficit": max(0, expected - feature["max_unique_oracle_matches_during_multi_voice"]),
-            "status": "CAPACITY_DEFICIT" if feature["max_unique_oracle_matches_during_multi_voice"] < expected else "OVERLAP_MATCH_ONLY_NOT_IDF1_OR_SSS_PASS"}
+            "status": ("TRACK_CAPACITY_DEFICIT" if feature["max_tracks_during_multi_voice"] < expected
+                       else "ORACLE_MATCH_DEFICIT")\n            if feature["max_unique_oracle_matches_during_multi_voice"] < expected\n            else "OVERLAP_MATCH_ONLY_NOT_IDF1_OR_SSS_PASS"}
     report["quality_blockers"] = [
         case + ": " + flag
         for case, record in report["cases"].items()
         for flag in record["regression_flags"]
     ] + [
-        "T03: fewer than two simultaneous tracks" if report["cases"]["t03_eval_two"]["feature_capacity_deficit"] else None,
-        "T07: fewer than seven simultaneous tracks" if report["cases"]["t07_eval_seven"]["feature_capacity_deficit"] else None,
+        "T03: fewer than two simultaneous 1:1 oracle-matched tracks" if report["cases"]["t03_eval_two"]["feature_capacity_deficit"] else None,
+        "T07: fewer than seven simultaneous 1:1 oracle-matched tracks" if report["cases"]["t07_eval_seven"]["feature_capacity_deficit"] else None,
         "No 1:1 source IDF1/false-track/latency acceptance in this A/B",
         "No separated source PCM, SI-SDRi, SIRi, leakage or per-speaker WER in this A/B",
     ]
