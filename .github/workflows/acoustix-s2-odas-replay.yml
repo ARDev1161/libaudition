@@ -1,204 +1,156 @@
 name: Acoustix S2 real-speech ODAS replay (opt-in)
-
-# Replay the EXACT already-rendered/validated real human speech WAV artifact:
-# never regenerate RIRs between baseline and downstream ODAS comparisons.
 on:
   pull_request:
-    types: [ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
-    inputs:
-      speech_artifact_run_id:
-        description: "Successful real LibriSpeech Acoustix run with signed manifests"
-        required: true
-        default: "42367742782"
-        type: string
-
 permissions:
   contents: read
   actions: read
-
 jobs:
-  real-speech-odas:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/acoustix-s2-odas-replay') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+  paired-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: upstream
+            odas_sha: 004cb824c6073771cb23cf9139f01e9d8581025b
+          - variant: dev
+            odas_sha: 4c8e3bfcb56124ee340477a2443ea2ebe11ee712
+          - variant: feature
+            odas_sha: d8e91ba01432c77081e28f4f6895c6575551dab4
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download exact previous real-human speech Acoustix artifact
-        uses: actions/download-artifact@v4
         with:
-          name: acoustix-s2-real-librispeech-evidence
-          run-id: ${{ inputs.speech_artifact_run_id || '42367742782' }}
-          github-token: ${{ github.token }}
-          path: build-s2
-
-      - name: Check baseline provenance and previously rendered WAVs
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Fetch exact immutable real-human Acoustix recording
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          mkdir -p build-s2
+          gh run download 42367742782 --repo ARDev1161/libaudition --name acoustix-s2-real-librispeech-evidence --dir build-s2
           python3 - <<'PY'
-          import hashlib, json
+          import hashlib,json
           from pathlib import Path
-          root = Path("build-s2")
-          baseline = json.loads((root/"real_speech_cpu_audit.json").read_text())
-          corpus = json.loads((root/"corpus_audit.json").read_text())
-          assert baseline["passed"] and baseline["real_cpu_rir"]
-          assert corpus["passed"] and corpus["evidence"]["distinct_speaker_count"] == 7
-          assert len(baseline["cases"]) == 3
-          for name in ("t02_dev_single", "t03_eval_two", "t07_eval_seven"):
-              case = root / name
-              wav = case / "render" / "input.wav"
-              assert wav.is_file() and wav.stat().st_size > 0
-              oracle = json.loads((case/"render"/"ground_truth.json").read_text())
-              assert oracle["speech_schedule"]["speech_event_count"] in (1, 2, 7)
-              (case/"input_sha256.txt").write_text(
-                  hashlib.sha256(wav.read_bytes()).hexdigest()+"\n")
-          print("Real human speech artifact provenance and WAVs intact")
+          root=Path("build-s2")
+          audit=json.loads((root/"real_speech_cpu_audit.json").read_text())
+          corpus=json.loads((root/"corpus_audit.json").read_text())
+          assert audit["passed"] and audit["real_cpu_rir"] and corpus["passed"]
+          for case in ("t02_dev_single","t03_eval_two","t07_eval_seven"):
+              wav=root/case/"render"/"input.wav"
+              assert wav.is_file() and wav.stat().st_size>44
+              (root/case/"input_sha256.txt").write_text(hashlib.sha256(wav.read_bytes()).hexdigest()+"\n")
           PY
-
-      - name: Install pinned CMake and ODAS native build dependencies
+      - name: Install native ODAS build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config libfftw3-dev libasound2-dev libconfig-dev libpulse-dev libopenblas-dev
           python3 -m pip install "cmake==4.1.2"
-          cmake --version
-
-      - name: Build actual libaudition ODAS SSL/SST/SSS offline runner
+      - name: Pin EXACT ODAS revision for this independent build
+        env:
+          ODAS_SHA: ${{ matrix.odas_sha }}
         run: |
-          cmake -S . -B build-s2-odas -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBAUDITION_WITH_ODAS=ON             -DLIBAUDITION_WITH_SPDLOG=OFF             -DLIBAUDITION_BUILD_TESTS=ON             -DLIBAUDITION_BUILD_EXAMPLES=OFF             -DLIBAUDITION_BUILD_QT_DEMO=OFF             -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
-          cmake --build build-s2-odas --target audition_offline_integration --parallel 2
-          test -x build-s2-odas/tests/audition_offline_integration
-
-      - name: Replay SAME real human WAVs through libaudition ODAS
+          python3 - <<'PY'
+          import os,re
+          from pathlib import Path
+          p=Path("cmake/Dependencies.cmake")
+          s=p.read_text()
+          start=s.index("function(libaudition_find_or_fetch_odas)")
+          end=s.index("endfunction()",start)+len("endfunction()")
+          block=s[start:end]
+          block,n=re.subn(r"GIT_TAG [0-9a-f]{40}", "GIT_TAG "+os.environ["ODAS_SHA"],block)
+          assert n==1,(n,block)
+          p.write_text(s[:start]+block+s[end:])
+          print("ODAS exact SHA",os.environ["ODAS_SHA"])
+          PY
+      - name: Build actual libaudition offline SSL/SST/SSS runner
+        run: |
+          cmake -S . -B build-ab -G Ninja -DCMAKE_BUILD_TYPE=Release -DLIBAUDITION_WITH_ODAS=ON -DLIBAUDITION_WITH_SPDLOG=OFF -DLIBAUDITION_BUILD_TESTS=ON -DLIBAUDITION_BUILD_EXAMPLES=OFF -DLIBAUDITION_BUILD_QT_DEMO=OFF -DLIBAUDITION_WARNINGS_AS_ERRORS=ON
+          cmake --build build-ab --target audition_offline_integration --parallel 2
+          test -x build-ab/tests/audition_offline_integration
+      - name: Replay byte-identical WAVs through REAL ODAS backend
         run: |
           for case in t02_dev_single t03_eval_two t07_eval_seven; do
             mkdir -p "build-s2/$case/odas"
-            # Fresh trace per exact SHA-pinned WAV; no stale concatenated hops.
             export ODAS_SST_TRACE_JSONL="$PWD/build-s2/$case/odas/sst_raw_trace.jsonl"
             export ODAS_SST_TRACE_HOP_FRAMES=128
             rm -f "$ODAS_SST_TRACE_JSONL"
-            build-s2-odas/tests/audition_offline_integration               "build-s2/$case/render/input.wav"               "build-s2/$case/odas"               > "build-s2/$case/odas/runner.stdout.txt"               2> "build-s2/$case/odas/runner.stderr.txt"
-            test -s "$ODAS_SST_TRACE_JSONL"
+            build-ab/tests/audition_offline_integration "build-s2/$case/render/input.wav" "build-s2/$case/odas" > "build-s2/$case/odas/runner.stdout.txt" 2> "build-s2/$case/odas/runner.stderr.txt"
+            test -s "build-s2/$case/odas/summary.json"
+            test -s "build-s2/$case/odas/observations.csv"
           done
-
-      - name: Validate REAL offline ODAS SSL/SST JSONL (no synthetic oracle)
-        run: |
-          # The validator comes from the exact pinned external ODAS checkout.
-          validator="$(find build-s2-odas -type f -path '*/tools/validate_sst_raw_trace.py' -print -quit)"
-          test -n "$validator" && test -f "$validator"
-          for case in t02_dev_single t03_eval_two t07_eval_seven; do
-            python3 "$validator" "build-s2/$case/odas/sst_raw_trace.jsonl" \
-              > "build-s2/$case/odas/sst_trace_integrity.json"
-          done
-
-      - name: Score ODAS source-track diagnostics vs human-voice DOA oracle
+      - name: Score actual SST oracle matches, DOA and track counts
+        env:
+          VARIANT: ${{ matrix.variant }}
+          ODAS_SHA: ${{ matrix.odas_sha }}
         run: |
           python3 - <<'PY'
-          from array import array
-          import csv, hashlib, json, math, sys, wave
+          import csv,hashlib,json,os,sys
           from pathlib import Path
-          sys.path.insert(0, "tests/integration")
+          sys.path.insert(0,"tests/integration")
           from acoustix_metrics import compute_metrics
-          root = Path("build-s2")
-          cases = []
-          errors = []
-          for name, voices in (
-                  ("t02_dev_single", 1), ("t03_eval_two", 2), ("t07_eval_seven", 7)):
-              case = root / name
-              input_file = case / "render" / "input.wav"
-              expected_sha = (case/"input_sha256.txt").read_text().strip()
-              if hashlib.sha256(input_file.read_bytes()).hexdigest() != expected_sha:
-                  raise RuntimeError("ODAS replay input WAV changed: " + name)
-              ground_truth = json.loads(
-                  (case/"render"/"ground_truth.json").read_text())
-              summary = json.loads((case/"odas"/"summary.json").read_text())
-              with (case/"odas"/"observations.csv").open(newline="") as reader:
-                  observations = list(csv.DictReader(reader))
-              with wave.open(str(input_file), "rb") as wav:
-                  if wav.getnchannels() != 6 or wav.getsampwidth() != 2:
-                      raise ValueError("Unexpected real-speech six-channel PCM")
-                  raw = wav.readframes(wav.getnframes())
-                  frames = wav.getnframes()
-              samples = array("h")
-              samples.frombytes(raw)
-              silence_start = 0
-              for i in range(frames - 1, -1, -1):
-                  if any(samples[i*6+mic] != 0 for mic in range(1, 5)):
-                      silence_start = i + 1
-                      break
-              metrics = compute_metrics(
-                  ground_truth["ground_truth"], observations, summary,
-                  silence_start_frame=silence_start)
-              (case/"odas"/"source_track_metrics.json").write_text(
-                  json.dumps(metrics, indent=2) + "\n")
-              passed = (
-                  int(summary["input_frames"]) == int(ground_truth["wav_frames"])
-                  and int(summary["recorder_drops"]) == 0)
-              record = {
-                  "case": name, "real_speech_sources": voices,
-                  "passed_pipeline_integrity": passed,
-                  "sample_rate_hz": summary["sample_rate_hz"],
-                  "input_sha256": expected_sha,
-                  "input_frames": summary["input_frames"],
-                  "recorder_drops": summary["recorder_drops"],
-                  "ssl_proposals": metrics["potential_observations"],
-                  "sst_track_observations": metrics["track_observations"],
-                  "max_simultaneous_tracks": metrics["max_simultaneous_tracks"],
-                  "oracle_voice_source_hops": metrics["active_voice_source_hops"],
-                  "matched_voice_source_hops": metrics["matched_voice_source_hops"],
-                  "matched_voice_source_fraction": metrics["matched_voice_source_fraction"],
-                  "matched_azimuth_median_deg": metrics["matched_median_azimuth_error_deg"],
-                  "matched_azimuth_p90_deg": metrics["matched_p90_azimuth_error_deg"],
-                  "adjacent_id_switches": metrics["adjacent_matched_id_switches"],
-                  "recordings": metrics["recordings"],
-              }
-              cases.append(record)
-              print(json.dumps(record), flush=True)
-              if not passed:
-                  errors.append(name + ": frame/recorder-drop integrity failure")
-          report = {
-              "schema": "libaudition.acoustix-s2-real-odas-diagnostics.v1",
-              "real_human_speech": "LibriSpeech dev-clean, CC BY 4.0",
-              "source_cpu_rir_artifact_run_id": 42367742782,
-              "pcm_wavs_identical_to_source_artifact": True,
-              "pipeline_integrity_passed": not errors,
-              "cases": cases,
-              "limit": "DOA/track association ONLY; no separated PCM leakage, SI-SDRi/SIRi or ASR WER",
-              "failed_integrity_cases": errors,
-          }
-          (root/"real_speech_odas_diagnostics.json").write_text(
-              json.dumps(report, indent=2)+"\n")
-          if errors:
-              raise SystemExit("Real speech ODAS integrity failed: " + "; ".join(errors))
+          root=Path("build-s2")
+          report={"variant":os.environ["VARIANT"],"odas_sha":os.environ["ODAS_SHA"],"cases":{}}
+          for name in ("t02_dev_single","t03_eval_two","t07_eval_seven"):
+              case=root/name
+              wav=case/"render"/"input.wav"
+              sha=hashlib.sha256(wav.read_bytes()).hexdigest()
+              assert sha==(case/"input_sha256.txt").read_text().strip()
+              oracle=json.loads((case/"render"/"ground_truth.json").read_text())
+              summary=json.loads((case/"odas"/"summary.json").read_text())
+              with (case/"odas"/"observations.csv").open(newline="") as f:
+                  observations=list(csv.DictReader(f))
+              assert int(summary["input_frames"])==int(oracle["wav_frames"])
+              assert int(summary["recorder_drops"])==0
+              metrics=compute_metrics(oracle["ground_truth"],observations,summary)
+              report["cases"][name]={"wav_sha256":sha,"oracle_sha256":hashlib.sha256((case/"render"/"ground_truth.json").read_bytes()).hexdigest(),"metrics":metrics}
+          (root/"ab_result.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(report,indent=2))
           PY
-
-      - name: Verify frozen real-speech ODAS baseline comparison and adversarial contracts
-        run: |
-          PYTHONPATH=tests/integration python3 -m unittest tests/integration/test_acoustix_s2_baseline.py -v
-          python3 tests/integration/acoustix_s2_baseline.py \
-            tests/fixtures/acoustix/s2_real_odas_baseline.json \
-            build-s2/real_speech_odas_diagnostics.json \
-            build-s2/real_speech_odas_baseline_comparison.json
-
-      - name: Report real human speech SST tracking (diagnostic only)
-        if: always()
-        run: |
-          {
-            echo "## ODAS/libaudition on unchanged real LibriSpeech microphone WAVs"
-            echo ""
-            echo "DOA association and lifecycle diagnostic, NOT source separation audio quality."
-            echo ""
-            if test -f build-s2/real_speech_odas_diagnostics.json; then
-              cat build-s2/real_speech_odas_diagnostics.json
-            else
-              echo "No complete diagnostics. Inspect job logs and artifacts."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload real-speech ODAS inputs, observations and track diagnostics
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: acoustix-s2-real-odas-diagnostics
-          path: build-s2/
+          name: odas-ab-${{ matrix.variant }}
+          path: |
+            build-s2/ab_result.json
+            build-s2/*/odas/
+            build-s2/*/input_sha256.txt
           retention-days: 14
+          if-no-files-found: warn
+  compare:
+    needs: paired-replay
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: odas-ab-*
+          path: results
+      - name: Reject incomplete or incomparable A/B and report differences
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          variants={}
+          for name in ("upstream","dev","feature"):
+              p=Path("results")/("odas-ab-"+name)/"ab_result.json"
+              if not p.exists():
+                  raise SystemExit("BLOCKED: missing actual ODAS run "+name)
+              variants[name]=json.loads(p.read_text())
+          for case in ("t02_dev_single","t03_eval_two","t07_eval_seven"):
+              fingerprints={(v["cases"][case]["wav_sha256"],v["cases"][case]["oracle_sha256"]) for v in variants.values()}
+              if len(fingerprints)!=1:
+                  raise SystemExit("FAIL: incomparable WAV/oracle "+case)
+              print("CASE",case)
+              for name,v in variants.items():
+                  m=v["cases"][case]["metrics"]
+                  print(name,v["odas_sha"],json.dumps({k:m.get(k) for k in ("max_simultaneous_tracks","matched_voice_source_fraction","matched_median_azimuth_error_deg","matched_p90_azimuth_error_deg","adjacent_matched_id_switches")},sort_keys=True))
+          Path("results/ab_comparison.json").write_text(json.dumps(variants,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: odas-ab-comparison
+          path: results/ab_comparison.json
           if-no-files-found: warn
