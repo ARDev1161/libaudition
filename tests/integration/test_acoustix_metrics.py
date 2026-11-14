@@ -82,6 +82,38 @@ class AcoustixMetricsTests(unittest.TestCase):
         self.assertEqual(metrics["adjacent_matched_id_comparisons"], 3)
         self.assertAlmostEqual(metrics["matched_voice_source_fraction"], 5/6, places=5)
 
+
+    def test_silence_phantom_tracks_cannot_fake_two_voice_capacity(self):
+        truth = [{"hop": 0, "sources": [voice("A", 0), voice("B", 90)]},
+                 {"hop": 1, "sources": [voice("A", 0), voice("B", 90)]},
+                 {"hop": 2, "sources": []}]
+        observed = [dict(track("a", 0), hop="0"), dict(track("a", 0), hop="1"),
+                    dict(track("phantom1", 0), hop="2"),
+                    dict(track("phantom2", 90), hop="2"),
+                    dict(track("phantom3", 180), hop="2")]
+        m = compute_metrics(truth, observed, SUMMARY)
+        self.assertEqual(m["max_simultaneous_tracks"], 3)
+        self.assertEqual(m["max_tracks_during_multi_voice"], 1)
+        self.assertEqual(m["max_unique_oracle_matches_during_multi_voice"], 1)
+        self.assertEqual(m["fully_matched_multi_voice_fraction"], 0)
+
+    def test_two_tracks_on_one_speaker_are_not_two_oracle_matches(self):
+        truth = [{"hop": 0, "sources": [voice("A", 0), voice("B", 120)]}]
+        observed = [dict(track("a", 0), hop="0"), dict(track("a2", 10), hop="0")]
+        m = compute_metrics(truth, observed, SUMMARY)
+        self.assertEqual(m["max_tracks_during_multi_voice"], 2)
+        self.assertEqual(m["max_unique_oracle_matches_during_multi_voice"], 1)
+        self.assertEqual(m["fully_matched_multi_voice_fraction"], 0)
+
+    def test_full_overlap_one_to_one_match(self):
+        truth = [{"hop": 0, "sources": [voice("A", 0), voice("B", 120)]},
+                 {"hop": 1, "sources": [voice("A", 0)]}]
+        observed = [dict(track("a", 0), hop="0"), dict(track("b", 120), hop="0")]
+        m = compute_metrics(truth, observed, SUMMARY)
+        self.assertEqual(m["multi_voice_hops"], 1)
+        self.assertEqual(m["fully_matched_multi_voice_hops"], 1)
+        self.assertEqual(m["fully_matched_multi_voice_fraction"], 1)
+
     def test_gapped_track_does_not_count_as_adjacent_switch(self):
         truth = [{"hop": i, "sources": [voice("A", 0)]} for i in range(3)]
         observed = [dict(track("1", 0), hop="0"), dict(track("2", 0), hop="2")]
