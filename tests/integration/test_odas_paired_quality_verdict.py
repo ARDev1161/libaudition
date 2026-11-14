@@ -55,6 +55,20 @@ class QualityVerdictTests(unittest.TestCase):
         self.assertEqual(result["cases"]["t03_eval_two"]["feature_capacity_deficit"], 0)
         self.assertTrue(any("SI-SDRi" in x for x in result["quality_blockers"]))
 
+    def test_real_single_voice_has_undefined_overlap_fraction(self):
+        for variant in VARIANTS:
+            mutate(self.root, variant, lambda d: d["cases"]["t02_dev_single"]["metrics"].update(
+                fully_matched_multi_voice_fraction=None))
+        report = evaluate(self.root)
+        self.assertIsNone(report["cases"]["t02_dev_single"]["feature_capacity_deficit"])
+        self.assertEqual(report["cases"]["t02_dev_single"]["status"], "NOT_APPLICABLE_SINGLE_SPEAKER")
+
+    def test_undefined_fraction_rejected_when_overlap_exists(self):
+        mutate(self.root, "dev", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            fully_matched_multi_voice_fraction=None))
+        with self.assertRaisesRegex(ValueError, "invalid native metric"):
+            evaluate(self.root)
+
     def test_wrong_odas_revision_rejected(self):
         mutate(self.root, "dev", lambda d: d.update(odas_sha="0" * 40))
         with self.assertRaisesRegex(ValueError, "revision provenance"):
