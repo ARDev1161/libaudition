@@ -21,6 +21,8 @@ def fixture(root):
                     "matched_p90_azimuth_error_deg": 8.0,
                     "max_simultaneous_tracks": expected,
                     "adjacent_matched_id_switches": 0,
+                    "unmatched_track_observations_during_voice": 0,
+                    "max_unmatched_tracks_during_voice": 0,
                     "max_tracks_during_multi_voice": expected if expected > 1 else 0,
                     "max_unique_oracle_matches_during_multi_voice": expected if expected > 1 else 0,
                     "multi_voice_hops": 10 if expected > 1 else 0,
@@ -119,6 +121,31 @@ class QualityVerdictTests(unittest.TestCase):
             fully_matched_multi_voice_fraction=0.0))
         result = evaluate(self.root)
         self.assertEqual(result["cases"]["t03_eval_two"]["status"], "TRACK_CAPACITY_DEFICIT")
+
+    def test_single_speaker_ghost_track_regression_is_blocked(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t02_dev_single"]["metrics"].update(
+            max_simultaneous_tracks=2,
+            unmatched_track_observations_during_voice=12,
+            max_unmatched_tracks_during_voice=1))
+        report = evaluate(self.root)
+        single = report["cases"]["t02_dev_single"]
+        self.assertEqual(single["single_voice_ghost_track_observations"], 12)
+        self.assertIn("unmatched single-voice tracks worse than dev", single["regression_flags"])
+        self.assertIn("t02_dev_single: unmatched single-voice tracks worse than upstream",
+                      report["quality_blockers"])
+
+    def test_unmatched_track_count_cannot_exceed_capacity(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t02_dev_single"]["metrics"].update(
+            max_simultaneous_tracks=1,
+            max_unmatched_tracks_during_voice=2))
+        with self.assertRaisesRegex(ValueError, "unmatched tracks exceed track capacity"):
+            evaluate(self.root)
+
+    def test_no_extra_tracks_remains_unflagged(self):
+        report = evaluate(self.root)
+        self.assertEqual(report["cases"]["t02_dev_single"]["single_voice_ghost_track_observations"], 0)
+        self.assertFalse(any("unmatched single-voice" in flag
+                             for flag in report["quality_blockers"]))
 
     def test_missing_variant_rejected(self):
         (self.root / "odas-ab-dev" / "ab_result.json").unlink()
