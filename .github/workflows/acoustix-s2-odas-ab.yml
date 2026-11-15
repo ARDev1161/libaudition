@@ -4,6 +4,9 @@ on:
     branches: [test/acoustix-s2-odas-replay-trace]
     paths:
       - '.github/workflows/acoustix-s2-odas-ab.yml'
+      - 'tests/integration/odas_paired_quality_verdict.py'
+      - 'tests/integration/test_odas_paired_quality_verdict.py'
+      - 'tests/integration/acoustix_metrics.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -125,6 +128,9 @@ jobs:
     if: always()
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/download-artifact@v4
         with:
           pattern: odas-ab-*
@@ -150,9 +156,16 @@ jobs:
                   print(name,v["odas_sha"],json.dumps({k:m.get(k) for k in ("max_simultaneous_tracks","matched_voice_source_fraction","matched_median_azimuth_error_deg","matched_p90_azimuth_error_deg","adjacent_matched_id_switches")},sort_keys=True))
           Path("results/ab_comparison.json").write_text(json.dumps(variants,indent=2,sort_keys=True))
           PY
+      - name: Validate paired quality contracts and produce explicit BLOCKED verdict
+        run: |
+          python3 -m compileall -q tests/integration/odas_paired_quality_verdict.py tests/integration/test_odas_paired_quality_verdict.py
+          PYTHONPATH=tests/integration python3 -m unittest -v test_odas_paired_quality_verdict
+          python3 tests/integration/odas_paired_quality_verdict.py results --output results/ab_quality_verdict.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: odas-ab-comparison
-          path: results/ab_comparison.json
+          path: |
+            results/ab_comparison.json
+            results/ab_quality_verdict.json
           if-no-files-found: warn
