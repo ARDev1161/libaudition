@@ -69,6 +69,19 @@ class QualityVerdictTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid native metric"):
             evaluate(self.root)
 
+    def test_multi_speaker_oracle_without_overlap_rejected(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            multi_voice_hops=0, fully_matched_multi_voice_hops=0,
+            fully_matched_multi_voice_fraction=None))
+        with self.assertRaisesRegex(ValueError, "missing oracle overlap"):
+            evaluate(self.root)
+
+    def test_overlap_fraction_must_agree_with_native_hop_counts(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t07_eval_seven"]["metrics"].update(
+            fully_matched_multi_voice_hops=4, fully_matched_multi_voice_fraction=0.9))
+        with self.assertRaisesRegex(ValueError, "inconsistent overlap fraction"):
+            evaluate(self.root)
+
     def test_wrong_odas_revision_rejected(self):
         mutate(self.root, "dev", lambda d: d.update(odas_sha="0" * 40))
         with self.assertRaisesRegex(ValueError, "revision provenance"):
