@@ -82,6 +82,9 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
     max_active_voices = 0
     unmatched_track_observations_during_voice = 0
     max_unmatched_tracks_during_voice = 0
+    unmatched_track_ids_during_voice = set()
+    unmatched_runs = {}
+    max_consecutive_unmatched_hops = 0
     for point in ground_truth:
         hop = int(point["hop"])
         voices = [src for src in point["sources"] if src["kind"] == "voice"]
@@ -98,6 +101,19 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
         unmatched = len(tracks) - len(matches)
         unmatched_track_observations_during_voice += unmatched
         max_unmatched_tracks_during_voice = max(max_unmatched_tracks_during_voice, unmatched)
+        matched_track_ids = {str(track["id"]) for _, track, _ in matches}
+        unmatched_ids = {str(track["id"]) for track in tracks} - matched_track_ids
+        unmatched_track_ids_during_voice.update(unmatched_ids)
+        # A run is consecutive only across oracle-active hops; a missing
+        # observation or a matched track breaks the false-track run.
+        for tid in list(unmatched_runs):
+            if tid not in unmatched_ids:
+                del unmatched_runs[tid]
+        for tid in unmatched_ids:
+            previous_hop, length = unmatched_runs.get(tid, (None, 0))
+            length = length + 1 if previous_hop == hop - 1 else 1
+            unmatched_runs[tid] = (hop, length)
+            max_consecutive_unmatched_hops = max(max_consecutive_unmatched_hops, length)
         if len(voices) > 1:
             multi_voice_hops += 1
             simultaneous.append(len(tracks))
@@ -147,6 +163,8 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
         "max_simultaneous_tracks": max(all_counts, default=0),
         "unmatched_track_observations_during_voice": unmatched_track_observations_during_voice,
         "max_unmatched_tracks_during_voice": max_unmatched_tracks_during_voice,
+        "distinct_unmatched_track_ids_during_voice": len(unmatched_track_ids_during_voice),
+        "max_consecutive_unmatched_track_hops_during_voice": max_consecutive_unmatched_hops,
         "mean_tracks_during_multi_voice": round(statistics.mean(simultaneous), 4)
             if simultaneous else None,
         "max_tracks_during_multi_voice": max(simultaneous, default=0),
