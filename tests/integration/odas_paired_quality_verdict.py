@@ -20,7 +20,9 @@ METRICS = ("matched_voice_source_fraction", "matched_p90_azimuth_error_deg",
            "max_simultaneous_tracks", "adjacent_matched_id_switches",
            "max_tracks_during_multi_voice", "max_unique_oracle_matches_during_multi_voice",
            "multi_voice_hops", "fully_matched_multi_voice_hops",
-           "fully_matched_multi_voice_fraction")
+           "fully_matched_multi_voice_fraction",
+           "unmatched_track_observations_during_voice",
+           "max_unmatched_tracks_during_voice")
 
 
 def evaluate(root):
@@ -58,8 +60,10 @@ def evaluate(root):
                 raise ValueError("inconsistent overlap fraction: " + name + "/" + case)
             if not 0 <= metrics["matched_voice_source_fraction"] <= 1:
                 raise ValueError("invalid coverage")
-            if metrics["max_simultaneous_tracks"] < 0 or metrics["adjacent_matched_id_switches"] < 0:
+            if any(metrics[key] < 0 or int(metrics[key]) != metrics[key] for key in ("max_simultaneous_tracks", "adjacent_matched_id_switches", "unmatched_track_observations_during_voice", "max_unmatched_tracks_during_voice")):
                 raise ValueError("invalid tracking count")
+            if metrics["max_unmatched_tracks_during_voice"] > metrics["max_simultaneous_tracks"]:
+                raise ValueError("unmatched tracks exceed track capacity")
             if metrics["multi_voice_hops"] == 0 and metrics["fully_matched_multi_voice_hops"] != 0:
                 raise ValueError("overlap matches without overlap")
             if metrics["multi_voice_hops"] > 0 and not 0 <= metrics["fully_matched_multi_voice_fraction"] <= 1:
@@ -78,6 +82,8 @@ def evaluate(root):
                 regression_flags.append("coverage worse than " + label)
             if feature["matched_p90_azimuth_error_deg"] > reference["matched_p90_azimuth_error_deg"] + AZIMUTH_P90_REGRESSION_TOLERANCE_DEG:
                 regression_flags.append("P90 azimuth worse than " + label)
+            if expected == 1 and feature["unmatched_track_observations_during_voice"] > reference["unmatched_track_observations_during_voice"]:
+                regression_flags.append("unmatched single-voice tracks worse than " + label)
             if expected > 1 and feature["fully_matched_multi_voice_fraction"] < reference["fully_matched_multi_voice_fraction"] - COVERAGE_REGRESSION_TOLERANCE:
                 regression_flags.append("full overlap 1:1 matching worse than " + label)
             if feature["max_unique_oracle_matches_during_multi_voice"] < reference["max_unique_oracle_matches_during_multi_voice"]:
@@ -92,6 +98,7 @@ def evaluate(root):
                 "matched_p90_azimuth_error_deg": round(feature["matched_p90_azimuth_error_deg"] - base["matched_p90_azimuth_error_deg"], 4),
                 "max_simultaneous_tracks": feature["max_simultaneous_tracks"] - base["max_simultaneous_tracks"]},
             "feature_capacity_deficit": max(0, expected - feature["max_unique_oracle_matches_during_multi_voice"]) if expected > 1 else None,
+            "single_voice_ghost_track_observations": feature["unmatched_track_observations_during_voice"] if expected == 1 else None,
             "status": "NOT_APPLICABLE_SINGLE_SPEAKER" if expected == 1 else ("TRACK_CAPACITY_DEFICIT" if feature["max_tracks_during_multi_voice"] < expected
                        else "ORACLE_MATCH_DEFICIT")
             if feature["max_unique_oracle_matches_during_multi_voice"] < expected
