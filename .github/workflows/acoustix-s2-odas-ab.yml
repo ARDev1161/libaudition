@@ -153,7 +153,7 @@ jobs:
               print("CASE",case)
               for name,v in variants.items():
                   m=v["cases"][case]["metrics"]
-                  print(name,v["odas_sha"],json.dumps({k:m.get(k) for k in ("max_simultaneous_tracks","matched_voice_source_fraction","matched_median_azimuth_error_deg","matched_p90_azimuth_error_deg","adjacent_matched_id_switches")},sort_keys=True))
+                  print(name,v["odas_sha"],json.dumps({k:m.get(k) for k in ("max_simultaneous_tracks","matched_voice_source_fraction","matched_median_azimuth_error_deg","matched_p90_azimuth_error_deg","adjacent_matched_id_switches","unmatched_track_observations_during_voice","max_unmatched_tracks_during_voice","distinct_unmatched_track_ids_during_voice","max_consecutive_unmatched_track_hops_during_voice","fully_matched_multi_voice_fraction")},sort_keys=True))
           Path("results/ab_comparison.json").write_text(json.dumps(variants,indent=2,sort_keys=True))
           PY
       - name: Validate paired quality contracts and produce explicit BLOCKED verdict
