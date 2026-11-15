@@ -80,6 +80,8 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
     multi_voice_hops = fully_matched_multi_voice_hops = 0
     all_counts = []
     max_active_voices = 0
+    unmatched_track_observations_during_voice = 0
+    max_unmatched_tracks_during_voice = 0
     for point in ground_truth:
         hop = int(point["hop"])
         voices = [src for src in point["sources"] if src["kind"] == "voice"]
@@ -91,6 +93,11 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
         active_hops += 1
         total_voice_hops += len(voices)
         matches = match_sources_to_tracks(voices, tracks, max_error_deg)
+        # Every track is assigned at most once. Unassigned tracks are not
+        # evidence of an additional speaker, even when total recall improves.
+        unmatched = len(tracks) - len(matches)
+        unmatched_track_observations_during_voice += unmatched
+        max_unmatched_tracks_during_voice = max(max_unmatched_tracks_during_voice, unmatched)
         if len(voices) > 1:
             multi_voice_hops += 1
             simultaneous.append(len(tracks))
@@ -138,6 +145,8 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
             if active_hops else None,
         "max_active_voices": max_active_voices,
         "max_simultaneous_tracks": max(all_counts, default=0),
+        "unmatched_track_observations_during_voice": unmatched_track_observations_during_voice,
+        "max_unmatched_tracks_during_voice": max_unmatched_tracks_during_voice,
         "mean_tracks_during_multi_voice": round(statistics.mean(simultaneous), 4)
             if simultaneous else None,
         "max_tracks_during_multi_voice": max(simultaneous, default=0),
