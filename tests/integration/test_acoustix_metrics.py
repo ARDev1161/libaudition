@@ -121,6 +121,29 @@ class AcoustixMetricsTests(unittest.TestCase):
         self.assertEqual(metrics["adjacent_matched_id_switches"], 0)
         self.assertEqual(metrics["adjacent_matched_id_comparisons"], 0)
 
+    def test_unmatched_track_persistence_and_distinct_ids(self):
+        truth = [{"hop": h, "sources": [voice("A", 0)]} for h in range(5)]
+        observed = []
+        for h in range(5):
+            observed.append(dict(track("correct", 0), hop=str(h)))
+        for h, tid in [(0, "ghost"), (1, "ghost"), (3, "ghost"),
+                       (4, "new-ghost")]:
+            observed.append(dict(track(tid, 120), hop=str(h)))
+        report = compute_metrics(truth, observed, SUMMARY)
+        self.assertEqual(report["unmatched_track_observations_during_voice"], 4)
+        self.assertEqual(report["distinct_unmatched_track_ids_during_voice"], 2)
+        self.assertEqual(report["max_consecutive_unmatched_track_hops_during_voice"], 2)
+
+    def test_matched_track_breaks_unmatched_run(self):
+        truth = [{"hop": h, "sources": [voice("A", 0)]} for h in range(3)]
+        observed = [dict(track("same", 120), hop="0"),
+                    dict(track("same", 0), hop="1"),
+                    dict(track("same", 120), hop="2")]
+        report = compute_metrics(truth, observed, SUMMARY)
+        self.assertEqual(report["unmatched_track_observations_during_voice"], 2)
+        self.assertEqual(report["distinct_unmatched_track_ids_during_voice"], 1)
+        self.assertEqual(report["max_consecutive_unmatched_track_hops_during_voice"], 1)
+
     def test_tracking_after_last_nonzero_mic_sample(self):
         truth = [{"hop": 0, "sources": [voice("A", 0)]}]
         summary = dict(SUMMARY, sample_rate_hz=16000, input_frames=1280)
