@@ -49,6 +49,13 @@ def evaluate(root):
                     continue  # Undefined (not zero) when no simultaneous speech exists.
                 if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
                     raise ValueError("invalid native metric: " + name + "/" + case + "/" + key)
+            if expected > 1 and metrics["multi_voice_hops"] == 0:
+                raise ValueError("missing oracle overlap for multi-speaker case: " + case)
+            if metrics["multi_voice_hops"] > 0 and not math.isclose(
+                    metrics["fully_matched_multi_voice_fraction"],
+                    metrics["fully_matched_multi_voice_hops"] / metrics["multi_voice_hops"],
+                    abs_tol=1e-6):
+                raise ValueError("inconsistent overlap fraction: " + name + "/" + case)
             if not 0 <= metrics["matched_voice_source_fraction"] <= 1:
                 raise ValueError("invalid coverage")
             if metrics["max_simultaneous_tracks"] < 0 or metrics["adjacent_matched_id_switches"] < 0:
