@@ -53,6 +53,23 @@ class NormMusicTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "sources must"):
             probe.music_spectrum(np.zeros((2048, 4)), 16000, sources=4)
 
+    def test_windowed_direction_change_and_silence(self):
+        first = delayed_broadband(-60, seed=10, count=8192)
+        second = delayed_broadband(75, seed=11, count=8192)
+        silent = np.zeros((8192, 4))
+        audio = np.concatenate((first, silent, second), axis=0)
+        windows = probe.windowed_music(audio, 16000, 0.512, 0.512)
+        self.assertEqual(len(windows), 3)
+        self.assertEqual(windows[1]["status"], "silent")
+        self.assertIsNone(windows[1]["peak_azimuth_deg"])
+        self.assertLessEqual(circular_error(windows[0]["peak_azimuth_deg"], -60), 8)
+        self.assertLessEqual(circular_error(windows[2]["peak_azimuth_deg"], 75), 8)
+        self.assertEqual(windows[2]["start_sample"], 16384)
+
+    def test_windowed_invalid_step_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "positive"):
+            probe.windowed_music(np.zeros((8192, 4)), 16000, 0.5, 0)
+
     def test_acoustix_pcm_channel_mapping(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "six.wav"
