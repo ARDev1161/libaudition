@@ -113,12 +113,26 @@ def main():
     rate, audio = read_acoustix(args.wav)
     windows = windowed_music(audio, rate, args.window_seconds,
                              args.step_seconds, sources=args.sources)
-    angles, spectrum, bins = music_spectrum(audio, rate, sources=args.sources)
+    # A completely silent file is a valid negative fixture (T00), not a crash.
+    # Keep the same schema but explicitly emit no global direction.
+    try:
+        angles, spectrum, bins = music_spectrum(audio, rate, sources=args.sources)
+        global_status = "hypothesis"
+        global_peak = float(angles[np.argmax(spectrum)])
+    except ValueError as exc:
+        if str(exc) != "no non-silent frequency bins":
+            raise
+        angles = np.arange(-180, 180, dtype=np.float64)
+        spectrum = np.zeros(len(angles))
+        bins = 0
+        global_status = "silent"
+        global_peak = None
     result = {"algorithm": "experimental_normmusic", "status": "diagnostic_only",
               "rate_hz": rate, "mic_geometry_m": MIC_XY.tolist(),
               "pcm_channels_zero_based": [1, 2, 3, 4],
               "source_hypothesis": args.sources, "frequency_bins": bins,
-              "peak_azimuth_deg": float(angles[np.argmax(spectrum)]),
+              "peak_azimuth_deg": global_peak,
+              "global_status": global_status,
               "angles_deg": angles.tolist(), "normalized_spectrum": spectrum.tolist(),
               "windows": windows}
     with open(args.output, "w", encoding="utf-8") as out:
