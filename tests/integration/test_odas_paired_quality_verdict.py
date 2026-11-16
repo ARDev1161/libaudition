@@ -247,6 +247,25 @@ class QualityVerdictTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid tracking count"):
             evaluate(self.root)
 
+    def test_oracle_matches_cannot_exceed_actual_speakers(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            max_simultaneous_tracks=3, max_tracks_during_multi_voice=3,
+            max_unique_oracle_matches_during_multi_voice=3))
+        with self.assertRaisesRegex(ValueError, "oracle matches exceed source cardinality"):
+            evaluate(self.root)
+
+    def test_overlap_track_peak_cannot_exceed_global_peak(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t07_eval_seven"]["metrics"].update(
+            max_tracks_during_multi_voice=8))
+        with self.assertRaisesRegex(ValueError, "overlap track count exceeds peak capacity"):
+            evaluate(self.root)
+
+    def test_full_overlap_requires_all_oracle_sources(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            max_unique_oracle_matches_during_multi_voice=1))
+        with self.assertRaisesRegex(ValueError, "full overlap without complete oracle matches"):
+            evaluate(self.root)
+
     def test_coverage_over_one_rejected(self):
         mutate(self.root, "upstream", lambda d: d["cases"]["t02_dev_single"]["metrics"].update(matched_voice_source_fraction=1.01))
         with self.assertRaisesRegex(ValueError, "invalid coverage"):
