@@ -60,7 +60,7 @@ def evaluate(root):
                 raise ValueError("inconsistent overlap fraction: " + name + "/" + case)
             if not 0 <= metrics["matched_voice_source_fraction"] <= 1:
                 raise ValueError("invalid coverage")
-            if any(metrics[key] < 0 or int(metrics[key]) != metrics[key] for key in ("max_simultaneous_tracks", "adjacent_matched_id_switches", "unmatched_track_observations_during_voice", "max_unmatched_tracks_during_voice")):
+            if any(metrics[key] < 0 or int(metrics[key]) != metrics[key] for key in ("max_simultaneous_tracks", "adjacent_matched_id_switches", "unmatched_track_observations_during_voice", "max_unmatched_tracks_during_voice", "max_tracks_during_multi_voice", "max_unique_oracle_matches_during_multi_voice", "multi_voice_hops", "fully_matched_multi_voice_hops")):
                 raise ValueError("invalid tracking count")
             if metrics["max_unmatched_tracks_during_voice"] > metrics["max_simultaneous_tracks"]:
                 raise ValueError("unmatched tracks exceed track capacity")
