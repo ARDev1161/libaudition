@@ -2,14 +2,14 @@
 """Experimental narrowband NormMUSIC SSL baseline for frozen Acoustix PCM16.
 
 Diagnostic SSL only: not an SST/SSS backend, and no quality PASS is implied.
-Uses the four ReSpeaker cross microphones in Acoustix channels 1..4.
+Uses the four ReSpeaker cross microphones in Acoustix channels 1..4.\nGeometry is read in the exact order of table_conversation_7x7.json: -X,-Y,+X,+Y.
 """
 import argparse
 import json
 import wave
 import numpy as np
 
-MIC_XY = np.array([[0.032, 0], [0, 0.032], [-0.032, 0], [0, -0.032]])
+MIC_XY = np.array([[-0.032, 0], [0, -0.032], [0.032, 0], [0, 0.032]])
 C = 343.0
 
 
