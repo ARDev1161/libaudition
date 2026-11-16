@@ -88,8 +88,9 @@ def evaluate(root):
                 regression_flags.append("full overlap 1:1 matching worse than " + label)
             if feature["max_unique_oracle_matches_during_multi_voice"] < reference["max_unique_oracle_matches_during_multi_voice"]:
                 regression_flags.append("1:1 overlap capacity worse than " + label)
-            if feature["max_simultaneous_tracks"] < reference["max_simultaneous_tracks"]:
-                regression_flags.append("track capacity worse than " + label)
+            # Raw SST track count is not a quality capacity metric: fewer
+            # tracks may mean ghost suppression. Judge real-source capacity
+            # exclusively by simultaneous 1:1 oracle matches above.
             # A directionally plausible track is not necessarily a real speaker.
             # Reject ghost observations even when geometric coverage improves.
             if feature["unmatched_track_observations_during_voice"] > reference["unmatched_track_observations_during_voice"]:
