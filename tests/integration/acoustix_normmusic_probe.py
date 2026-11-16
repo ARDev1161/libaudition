@@ -65,20 +65,62 @@ def music_spectrum(samples, rate, nfft=512, hop=128, sources=1):
     return angles, spectrum / used, used
 
 
+
+def windowed_music(audio, rate, window_seconds=0.5, step_seconds=0.25,
+                   sources=1):
+    """Emit time-indexed SSL hypotheses; silence windows yield no detection.
+
+    No oracle is consulted. These are hypotheses, not one-to-one speaker
+    matches. A fixed source count is an experimental assumption.
+    """
+    if not np.isfinite(window_seconds) or not np.isfinite(step_seconds):
+        raise ValueError("window and step must be finite")
+    if window_seconds <= 0 or step_seconds <= 0:
+        raise ValueError("window and step must be positive")
+    if audio.ndim != 2 or audio.shape[1] != 4 or rate <= 0:
+        raise ValueError("four channels and positive rate required")
+    width = int(round(window_seconds * rate))
+    step = int(round(step_seconds * rate))
+    if width < 512 + 128 * 7 or step < 1:
+        raise ValueError("window too short or step below one sample")
+    result = []
+    for start in range(0, len(audio) - width + 1, step):
+        segment = audio[start:start + width]
+        try:
+            angles, spectrum, bins = music_spectrum(segment, rate,
+                                                    sources=sources)
+        except ValueError as exc:
+            if str(exc) == "no non-silent frequency bins":
+                result.append({"start_sample": start, "end_sample": start + width,
+                               "status": "silent", "peak_azimuth_deg": None})
+                continue
+            raise
+        result.append({"start_sample": start, "end_sample": start + width,
+                       "status": "hypothesis",
+                       "peak_azimuth_deg": float(angles[np.argmax(spectrum)]),
+                       "frequency_bins": bins})
+    return result
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("wav")
     p.add_argument("--sources", type=int, default=1)
     p.add_argument("--output", required=True)
+    p.add_argument("--window-seconds", type=float, default=0.5)
+    p.add_argument("--step-seconds", type=float, default=0.25)
     args = p.parse_args()
     rate, audio = read_acoustix(args.wav)
+    windows = windowed_music(audio, rate, args.window_seconds,
+                             args.step_seconds, sources=args.sources)
     angles, spectrum, bins = music_spectrum(audio, rate, sources=args.sources)
     result = {"algorithm": "experimental_normmusic", "status": "diagnostic_only",
               "rate_hz": rate, "mic_geometry_m": MIC_XY.tolist(),
               "pcm_channels_zero_based": [1, 2, 3, 4],
               "source_hypothesis": args.sources, "frequency_bins": bins,
               "peak_azimuth_deg": float(angles[np.argmax(spectrum)]),
-              "angles_deg": angles.tolist(), "normalized_spectrum": spectrum.tolist()}
+              "angles_deg": angles.tolist(), "normalized_spectrum": spectrum.tolist(),
+              "windows": windows}
     with open(args.output, "w", encoding="utf-8") as out:
         json.dump(result, out, indent=2)
 
