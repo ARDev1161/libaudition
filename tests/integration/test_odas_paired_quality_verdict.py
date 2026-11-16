@@ -272,7 +272,9 @@ class QualityVerdictTests(unittest.TestCase):
             evaluate(self.root)
 
     def test_deficit_is_not_silently_passed(self):
-        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(max_unique_oracle_matches_during_multi_voice=1))
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            max_unique_oracle_matches_during_multi_voice=1,
+            fully_matched_multi_voice_hops=0, fully_matched_multi_voice_fraction=0.0))
         result = evaluate(self.root)
         self.assertEqual(result["cases"]["t03_eval_two"]["feature_capacity_deficit"], 1)
         self.assertEqual(result["cases"]["t03_eval_two"]["status"], "ORACLE_MATCH_DEFICIT")
