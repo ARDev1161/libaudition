@@ -2,6 +2,8 @@
 """Deterministic contract tests for the experimental four-mic MUSIC probe."""
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 import wave
@@ -78,6 +80,27 @@ class NormMusicTests(unittest.TestCase):
     def test_windowed_invalid_step_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "positive"):
             probe.windowed_music(np.zeros((8192, 4)), 16000, 0.5, 0)
+
+    def test_cli_silent_t00_emits_no_direction(self):
+        # Actual six-channel PCM16 fixture; no invented detection on silence.
+        with tempfile.TemporaryDirectory() as tmp:
+            wav_path = Path(tmp) / "t00_silent.wav"
+            out_path = Path(tmp) / "ssl.json"
+            with wave.open(str(wav_path), "wb") as out:
+                out.setnchannels(6)
+                out.setsampwidth(2)
+                out.setframerate(16000)
+                out.writeframes(np.zeros((16000, 6), dtype="<i2").tobytes())
+            subprocess.run([sys.executable, str(HERE / "acoustix_normmusic_probe.py"),
+                            str(wav_path), "--output", str(out_path)], check=True)
+            result = json.loads(out_path.read_text(encoding="utf-8"))
+            self.assertEqual(result["global_status"], "silent")
+            self.assertIsNone(result["peak_azimuth_deg"])
+            self.assertEqual(result["frequency_bins"], 0)
+            self.assertTrue(result["windows"])
+            self.assertTrue(all(w["status"] == "silent" and
+                                w["peak_azimuth_deg"] is None
+                                for w in result["windows"]))
 
     def test_acoustix_pcm_channel_mapping(self):
         with tempfile.TemporaryDirectory() as tmp:
