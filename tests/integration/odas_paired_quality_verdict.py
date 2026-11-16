@@ -90,6 +90,12 @@ def evaluate(root):
                 regression_flags.append("1:1 overlap capacity worse than " + label)
             if feature["max_simultaneous_tracks"] < reference["max_simultaneous_tracks"]:
                 regression_flags.append("track capacity worse than " + label)
+            # A directionally plausible track is not necessarily a real speaker.
+            # Reject ghost observations even when geometric coverage improves.
+            if feature["unmatched_track_observations_during_voice"] > reference["unmatched_track_observations_during_voice"]:
+                regression_flags.append("unmatched track observations worse than " + label)
+            if feature["adjacent_matched_id_switches"] > reference["adjacent_matched_id_switches"]:
+                regression_flags.append("matched ID switches worse than " + label)
         report["cases"][case] = {
             "expected_simultaneous_sources": expected, "variants": records,
             "regression_flags": regression_flags,
