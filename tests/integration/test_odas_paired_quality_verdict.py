@@ -112,6 +112,19 @@ class QualityVerdictTests(unittest.TestCase):
         self.assertIn("1:1 overlap capacity worse than dev",
                       result["cases"]["t03_eval_two"]["regression_flags"])
 
+    def test_ghost_suppression_must_not_be_mislabeled_capacity_regression(self):
+        # The dev baseline has an extra ghost track, but both variants
+        # maintain all two oracle-matched sources during overlap.
+        mutate(self.root, "dev", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            max_simultaneous_tracks=3, max_tracks_during_multi_voice=3,
+            max_unique_oracle_matches_during_multi_voice=2,
+            unmatched_track_observations_during_voice=20,
+            max_unmatched_tracks_during_voice=1))
+        report = evaluate(self.root)
+        flags = report["cases"]["t03_eval_two"]["regression_flags"]
+        self.assertFalse(any("track capacity worse" in flag for flag in flags))
+        self.assertEqual(report["cases"]["t03_eval_two"]["feature_capacity_deficit"], 0)
+
     def test_true_track_capacity_deficit_is_distinct(self):
         mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
             max_simultaneous_tracks=1,
