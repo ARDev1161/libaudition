@@ -72,6 +72,15 @@ def evaluate(root):
                 raise ValueError("invalid full-overlap counts")
             if not 0 <= metrics["max_unique_oracle_matches_during_multi_voice"] <= metrics["max_tracks_during_multi_voice"]:
                 raise ValueError("invalid one-to-one overlap capacity")
+            # Oracle cardinality is a hard bound, independent of raw SST
+            # proposals. A malformed replay must not fabricate extra matches.
+            if metrics["max_unique_oracle_matches_during_multi_voice"] > expected:
+                raise ValueError("oracle matches exceed source cardinality: " + name + "/" + case)
+            if metrics["max_tracks_during_multi_voice"] > metrics["max_simultaneous_tracks"]:
+                raise ValueError("overlap track count exceeds peak capacity: " + name + "/" + case)
+            if (metrics["fully_matched_multi_voice_hops"] > 0 and
+                    metrics["max_unique_oracle_matches_during_multi_voice"] < expected):
+                raise ValueError("full overlap without complete oracle matches: " + name + "/" + case)
             records[name] = {key: metrics[key] for key in METRICS}
         if len(fingerprints) != 1 or any(not x for x in next(iter(fingerprints))):
             raise ValueError("A/B input/oracle mismatch: " + case)
