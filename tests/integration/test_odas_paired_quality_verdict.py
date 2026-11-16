@@ -134,6 +134,38 @@ class QualityVerdictTests(unittest.TestCase):
         self.assertIn("t02_dev_single: unmatched single-voice tracks worse than upstream",
                       report["quality_blockers"])
 
+    def test_multi_speaker_ghost_regression_is_flagged_even_with_good_coverage(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            matched_voice_source_fraction=0.95,
+            max_simultaneous_tracks=3,
+            unmatched_track_observations_during_voice=25,
+            max_unmatched_tracks_during_voice=1))
+        report = evaluate(self.root)
+        flags = report["cases"]["t03_eval_two"]["regression_flags"]
+        self.assertIn("unmatched track observations worse than dev", flags)
+        self.assertIn("unmatched track observations worse than upstream", flags)
+        self.assertIn("t03_eval_two: unmatched track observations worse than dev",
+                      report["quality_blockers"])
+
+    def test_matched_id_switch_regression_is_flagged_independently(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t07_eval_seven"]["metrics"].update(
+            adjacent_matched_id_switches=2))
+        report = evaluate(self.root)
+        flags = report["cases"]["t07_eval_seven"]["regression_flags"]
+        self.assertIn("matched ID switches worse than dev", flags)
+        self.assertIn("matched ID switches worse than upstream", flags)
+
+    def test_equal_ghost_and_id_switch_counts_do_not_trigger_regression(self):
+        for variant in VARIANTS:
+            mutate(self.root, variant, lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+                max_simultaneous_tracks=3,
+                unmatched_track_observations_during_voice=5,
+                max_unmatched_tracks_during_voice=1,
+                adjacent_matched_id_switches=1))
+        flags = evaluate(self.root)["cases"]["t03_eval_two"]["regression_flags"]
+        self.assertFalse(any("unmatched track observations worse" in flag or
+                             "matched ID switches worse" in flag for flag in flags))
+
     def test_unmatched_track_count_cannot_exceed_capacity(self):
         mutate(self.root, "feature", lambda d: d["cases"]["t02_dev_single"]["metrics"].update(
             max_simultaneous_tracks=1,
