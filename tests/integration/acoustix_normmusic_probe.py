@@ -33,9 +33,12 @@ def music_spectrum(samples, rate, nfft=512, hop=128, sources=1):
         raise ValueError("four microphone channels required")
     if sources < 1 or sources >= 4:
         raise ValueError("sources must be in 1..3")
-    if not np.isfinite(samples).all() or rate <= 0:\n        raise ValueError("finite PCM and positive sample rate required")\n    if len(samples) < nfft + hop * 7:
+    if not np.isfinite(samples).all() or rate <= 0:
+        raise ValueError("finite PCM and positive sample rate required")
+    if len(samples) < nfft + hop * 7:
         raise ValueError("at least eight STFT frames required")
-    # Covariance uses x x^H; steering phase is exp(-j omega tau).\n    frames = np.stack([samples[i:i+nfft] for i in range(0, len(samples)-nfft+1, hop)])
+    # Covariance uses x x^H; steering phase is exp(-j omega tau).
+    frames = np.stack([samples[i:i+nfft] for i in range(0, len(samples)-nfft+1, hop)])
     frames = frames * np.hanning(nfft)[None, :, None]
     stft = np.fft.rfft(frames, axis=1)
     freqs = np.fft.rfftfreq(nfft, 1 / rate)
