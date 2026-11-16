@@ -209,6 +209,31 @@ class QualityVerdictTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid tracking count"):
             evaluate(self.root)
 
+    def test_fractional_overlap_counts_rejected(self):
+        for key in ("max_tracks_during_multi_voice",
+                    "max_unique_oracle_matches_during_multi_voice",
+                    "multi_voice_hops", "fully_matched_multi_voice_hops"):
+            with self.subTest(metric=key):
+                mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+                    {key: 1.5}))
+                with self.assertRaisesRegex(ValueError, "invalid tracking count"):
+                    evaluate(self.root)
+                fixture_root = self.root / "odas-ab-feature" / "ab_result.json"
+                data = json.loads(fixture_root.read_text())
+                data["cases"]["t03_eval_two"]["metrics"][key] = {
+                    "max_tracks_during_multi_voice": 2,
+                    "max_unique_oracle_matches_during_multi_voice": 2,
+                    "multi_voice_hops": 10,
+                    "fully_matched_multi_voice_hops": 10,
+                }[key]
+                fixture_root.write_text(json.dumps(data))
+
+    def test_negative_overlap_count_rejected(self):
+        mutate(self.root, "feature", lambda d: d["cases"]["t03_eval_two"]["metrics"].update(
+            multi_voice_hops=-1))
+        with self.assertRaisesRegex(ValueError, "invalid tracking count"):
+            evaluate(self.root)
+
     def test_coverage_over_one_rejected(self):
         mutate(self.root, "upstream", lambda d: d["cases"]["t02_dev_single"]["metrics"].update(matched_voice_source_fraction=1.01))
         with self.assertRaisesRegex(ValueError, "invalid coverage"):
