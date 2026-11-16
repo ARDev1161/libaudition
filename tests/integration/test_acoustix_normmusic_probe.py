@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic contract tests for the experimental four-mic MUSIC probe."""
 import importlib.util
+import json
 import tempfile
 import unittest
 import wave
@@ -33,6 +34,14 @@ def circular_error(a, b):
 
 
 class NormMusicTests(unittest.TestCase):
+    def test_geometry_matches_frozen_acoustix_scene(self):
+        scene = HERE.parent / "fixtures" / "acoustix" / "table_conversation_7x7.json"
+        fixture = json.loads(scene.read_text(encoding="utf-8"))
+        expected = np.asarray(fixture["robot"]["microphones_m"], dtype=float)
+        np.testing.assert_array_equal(probe.MIC_XY, expected[:, :2])
+        self.assertEqual(expected.shape, (4, 3))
+        np.testing.assert_array_equal(expected[:, 2], np.zeros(4))
+
     def test_azimuth_sign_and_quadrants(self):
         for direction in (-120, -45, 0, 40, 90, 155):
             with self.subTest(direction=direction):
