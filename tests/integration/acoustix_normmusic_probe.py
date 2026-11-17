@@ -61,8 +61,9 @@ def music_spectrum(samples, rate, nfft=512, hop=128, sources=1):
             for i, j in pairs:
                 cross = cov[i, j]
                 if abs(cross) > 1e-12:
-                    # cov[i,j] = conj(X_i) * X_j, so cancel its phase with -omega*(tau_i-tau_j).
-                    phase = np.exp(-2j * np.pi * freqs[bin_index] * (delays[:, i] - delays[:, j]))
+                    # cov[i,j] = X_i * conj(X_j) has phase -omega*(tau_i-tau_j).
+                    # SRP steering must conjugate that phase, not double it.
+                    phase = np.exp(+2j * np.pi * freqs[bin_index] * (delays[:, i] - delays[:, j]))
                     score += np.real((cross / abs(cross)) * phase)
             score -= score.min()
         else:
