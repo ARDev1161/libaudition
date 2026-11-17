@@ -62,6 +62,18 @@ class NormMusicTests(unittest.TestCase):
         self.assertGreater(float(spectrum.max() - spectrum.min()), 0)
         self.assertLessEqual(circular_error(float(angles[np.argmax(spectrum)]), 40), 12)
 
+    def test_explicit_srp_phat_single_source_direction(self):
+        audio = delayed_broadband(40, seed=19)
+        angles, spectrum, used = probe.music_spectrum(
+            audio, 16000, sources=1, algorithm="srp-phat")
+        self.assertGreater(used, 0)
+        self.assertLessEqual(circular_error(float(angles[np.argmax(spectrum)]), 40), 8)
+
+    def test_explicit_music_rejects_four_sources_without_noise_subspace(self):
+        with self.assertRaisesRegex(ValueError, "cannot resolve four"):
+            probe.music_spectrum(np.zeros((2048, 4)), 16000,
+                                 sources=4, algorithm="normmusic")
+
     def test_silence_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "no non-silent"):
             probe.music_spectrum(np.zeros((2048, 4)), 16000)
