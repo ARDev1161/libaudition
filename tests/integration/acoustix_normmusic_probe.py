@@ -31,8 +31,8 @@ def music_spectrum(samples, rate, nfft=512, hop=128, sources=1):
     """
     if samples.ndim != 2 or samples.shape[1] != 4:
         raise ValueError("four microphone channels required")
-    if sources < 1 or sources >= 4:
-        raise ValueError("sources must be in 1..3")
+    if sources < 1 or sources > 4:
+        raise ValueError("sources must be in 1..4")
     if not np.isfinite(samples).all() or rate <= 0:
         raise ValueError("finite PCM and positive sample rate required")
     if len(samples) < nfft + hop * 7:
@@ -47,17 +47,30 @@ def music_spectrum(samples, rate, nfft=512, hop=128, sources=1):
     delays = (unit @ MIC_XY.T) / C
     spectrum = np.zeros(len(angles))
     used = 0
+    # Four microphones cannot provide a nonempty MUSIC noise subspace for
+    # four independent sources. For this case use explicit pairwise SRP-PHAT
+    # rather than silently pretending a four-source MUSIC decomposition exists.
+    pairs = [(i, j) for i in range(4) for j in range(i + 1, 4)]
     for bin_index in np.flatnonzero((freqs >= 500) & (freqs <= min(3500, rate / 2))):
         x = stft[:, bin_index, :]
         cov = x.T @ x.conj() / len(x)
         if np.trace(cov).real < 1e-12:
             continue
-        _, eigvec = np.linalg.eigh(cov)
-        noise = eigvec[:, :4-sources]
-        steering = np.exp(-2j * np.pi * freqs[bin_index] * delays)
-        projection = steering.conj() @ noise
-        denominator = np.sum(abs(projection) ** 2, axis=1)
-        score = 1 / np.maximum(denominator, 1e-12)
+        if sources == 4:
+            score = np.zeros(len(angles))
+            for i, j in pairs:
+                cross = cov[i, j]
+                if abs(cross) > 1e-12:
+                    phase = np.exp(2j * np.pi * freqs[bin_index] * (delays[:, i] - delays[:, j]))
+                    score += np.real((cross / abs(cross)) * phase)
+            score -= score.min()
+        else:
+            _, eigvec = np.linalg.eigh(cov)
+            noise = eigvec[:, :4-sources]
+            steering = np.exp(-2j * np.pi * freqs[bin_index] * delays)
+            projection = steering.conj() @ noise
+            denominator = np.sum(abs(projection) ** 2, axis=1)
+            score = 1 / np.maximum(denominator, 1e-12)
         spectrum += score / max(score.max(), 1e-12)
         used += 1
     if not used:
@@ -147,7 +160,7 @@ def main():
         bins = 0
         global_status = "silent"
         global_peak = None
-    result = {"algorithm": "experimental_normmusic", "status": "diagnostic_only",
+    result = {"algorithm": "experimental_srp_phat" if args.sources == 4 else "experimental_normmusic", "status": "diagnostic_only",
               "rate_hz": rate, "mic_geometry_m": MIC_XY.tolist(),
               "pcm_channels_zero_based": [1, 2, 3, 4],
               "source_hypothesis": args.sources, "frequency_bins": bins,
