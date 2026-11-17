@@ -72,7 +72,7 @@ class NormMusicTests(unittest.TestCase):
 
     def test_invalid_source_hypothesis_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "sources must"):
-            probe.music_spectrum(np.zeros((2048, 4)), 16000, sources=4)
+            probe.music_spectrum(np.zeros((2048, 4)), 16000, sources=5)
 
     def test_windowed_direction_change_and_silence(self):
         first = delayed_broadband(-60, seed=10, count=8192)
