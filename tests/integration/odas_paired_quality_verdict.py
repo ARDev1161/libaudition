@@ -11,7 +11,7 @@ VARIANTS = ("upstream", "dev", "feature")
 EXPECTED_SHAS = {
     "upstream": "004cb824c6073771cb23cf9139f01e9d8581025b",
     "dev": "4c8e3bfcb56124ee340477a2443ea2ebe11ee712",
-    "feature": "13fcb0ac5570e97b5f4218365fde3bef33f9a343",
+    "feature": "f408567e16d2f41da650d5885f99915f28fbb4f7",
 }
 # Diagnostic tolerances, NOT product acceptance thresholds.
 AZIMUTH_P90_REGRESSION_TOLERANCE_DEG = 1.0
