@@ -25,6 +25,15 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual((result["true_positives"], result["missed_sources"]), (1, 1))
         self.assertEqual(result["recall"], .5)
 
+    def test_two_simultaneous_directions_require_two_oracle_matches(self):
+        hypothesis = h(0, "hypothesis", 30)
+        hypothesis["azimuths_deg"] = [31, -42]
+        result = mod.score([hypothesis], [o(0, [30, -40])])
+        self.assertEqual(result["true_positives"], 2)
+        self.assertEqual(result["missed_sources"], 0)
+        self.assertEqual(result["false_proposals"], 0)
+        self.assertEqual(result["recall"], 1)
+
     def test_silence_false_proposal(self):
         result = mod.score([h(0, "hypothesis", 20)], [o(0, [])])
         self.assertEqual(result["false_proposals"], 1)
