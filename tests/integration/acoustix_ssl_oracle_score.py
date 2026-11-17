@@ -32,6 +32,10 @@ def score(hypotheses, oracle, tolerance_deg=25):
     if (isinstance(tolerance_deg, bool) or not isinstance(tolerance_deg, (int, float))
             or not math.isfinite(tolerance_deg) or not 0 < tolerance_deg <= 180):
         raise ValueError("invalid angular tolerance")
+    if not isinstance(hypotheses, list) or not isinstance(oracle, list):
+        raise ValueError("hypotheses and oracle windows must be lists")
+    if not hypotheses or not oracle:
+        raise ValueError("empty SSL window comparison is not evidence")
     if len(hypotheses) != len(oracle):
         raise ValueError("window count mismatch")
     tp = fp = fn = 0
@@ -50,6 +54,8 @@ def score(hypotheses, oracle, tolerance_deg=25):
         targets = [_angle(x) for x in targets]
         if h["status"] not in ("silent", "hypothesis"):
             raise ValueError("unknown hypothesis status")
+        if h["status"] == "silent" and h.get("peak_azimuth_deg") is not None:
+            raise ValueError("silent window must not contain a direction")
         detected = [] if h["status"] == "silent" else [h["peak_azimuth_deg"]]
         detected = [_angle(x) for x in detected]
         # One-to-one minimum-distance matching, never reuse a detection.
