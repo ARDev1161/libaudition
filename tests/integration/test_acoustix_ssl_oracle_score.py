@@ -62,10 +62,18 @@ class ScoreTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     mod.score([hypothesis], [o(0, [])])
 
-    def test_rejects_overlapping_or_unordered_windows(self):
-        with self.assertRaisesRegex(ValueError, "overlapping"):
-            mod.score([h(0, "silent"), h(4000, "silent")],
-                      [o(0, []), o(4000, [])])
+    def test_overlapping_windows_match_probe_default_half_step(self):
+        result = mod.score([h(0, "hypothesis", 30), h(4000, "hypothesis", -40)],
+                           [o(0, [30]), o(4000, [-40])])
+        self.assertEqual(result["true_positives"], 2)
+        self.assertEqual(result["recall"], 1)
+
+    def test_rejects_duplicate_or_unordered_windows(self):
+        for starts in [(0, 0), (4000, 0)]:
+            with self.subTest(starts=starts):
+                with self.assertRaisesRegex(ValueError, "unordered|duplicate"):
+                    mod.score([h(x, "silent") for x in starts],
+                              [o(x, []) for x in starts])
 
     def test_rejects_nonlist_oracle(self):
         with self.assertRaisesRegex(ValueError, "list"):
