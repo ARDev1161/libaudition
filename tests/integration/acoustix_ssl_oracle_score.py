@@ -14,24 +14,44 @@ def distance(a, b):
     return abs((a - b + 180) % 360 - 180)
 
 
+def _angle(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError("invalid numeric azimuth")
+    return float(value)
+
+
+def _bounds(window):
+    start, end = window["start_sample"], window["end_sample"]
+    if (type(start) is not int or type(end) is not int
+            or start < 0 or end <= start):
+        raise ValueError("invalid window sample bounds")
+    return start, end
+
+
 def score(hypotheses, oracle, tolerance_deg=25):
-    if not 0 < tolerance_deg <= 180:
+    if (isinstance(tolerance_deg, bool) or not isinstance(tolerance_deg, (int, float))
+            or not math.isfinite(tolerance_deg) or not 0 < tolerance_deg <= 180):
         raise ValueError("invalid angular tolerance")
     if len(hypotheses) != len(oracle):
         raise ValueError("window count mismatch")
     tp = fp = fn = 0
     errors = []
+    previous_end = 0
     for h, truth in zip(hypotheses, oracle):
-        if (h["start_sample"], h["end_sample"]) != (truth["start_sample"], truth["end_sample"]):
+        hb, tb = _bounds(h), _bounds(truth)
+        if hb[0] < previous_end:
+            raise ValueError("overlapping or unordered windows")
+        previous_end = hb[1]
+        if hb != tb:
             raise ValueError("window sample bounds mismatch")
         targets = truth["azimuths_deg"]
-        if any(not math.isfinite(x) for x in targets):
-            raise ValueError("nonfinite oracle direction")
+        if not isinstance(targets, list):
+            raise ValueError("oracle azimuths must be a list")
+        targets = [_angle(x) for x in targets]
         if h["status"] not in ("silent", "hypothesis"):
             raise ValueError("unknown hypothesis status")
         detected = [] if h["status"] == "silent" else [h["peak_azimuth_deg"]]
-        if any(x is None or not math.isfinite(x) for x in detected):
-            raise ValueError("invalid hypothesis")
+        detected = [_angle(x) for x in detected]
         # One-to-one minimum-distance matching, never reuse a detection.
         pairs = sorted((distance(a, b), i, j)
                        for i, a in enumerate(detected)
