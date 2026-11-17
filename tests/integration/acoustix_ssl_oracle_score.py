@@ -56,7 +56,8 @@ def score(hypotheses, oracle, tolerance_deg=25):
             raise ValueError("unknown hypothesis status")
         if h["status"] == "silent" and h.get("peak_azimuth_deg") is not None:
             raise ValueError("silent window must not contain a direction")
-        detected = [] if h["status"] == "silent" else [h["peak_azimuth_deg"]]
+        detected = ([] if h["status"] == "silent" else
+                    h.get("azimuths_deg", [h["peak_azimuth_deg"]]))
         detected = [_angle(x) for x in detected]
         # One-to-one minimum-distance matching, never reuse a detection.
         pairs = sorted((distance(a, b), i, j)
