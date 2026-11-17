@@ -64,12 +64,16 @@ def music_spectrum(samples, rate, nfft=512, hop=128, sources=1, algorithm="auto"
         if method == "srp-phat":
             score = np.zeros(len(angles))
             for i, j in pairs:
-                cross = cov[i, j]
-                if abs(cross) > 1e-12:
-                    # cov[i,j] = X_i * conj(X_j) has phase -omega*(tau_i-tau_j).
-                    # SRP steering must conjugate that phase, not double it.
+                # Apply PHAT before temporal averaging. Normalizing the
+                # averaged covariance instead suppresses weaker/intermittent
+                # directions when cross-spectra cancel across speech frames.
+                cross_frames = x[:, i] * x[:, j].conj()
+                valid = np.abs(cross_frames) > 1e-12
+                if np.any(valid):
+                    phat = np.mean(cross_frames[valid] / np.abs(cross_frames[valid]))
+                    # X_i * conj(X_j) has phase -omega*(tau_i-tau_j).
                     phase = np.exp(+2j * np.pi * freqs[bin_index] * (delays[:, i] - delays[:, j]))
-                    score += np.real((cross / abs(cross)) * phase)
+                    score += np.real(phat * phase)
             score -= score.min()
         else:
             _, eigvec = np.linalg.eigh(cov)
