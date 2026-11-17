@@ -23,7 +23,7 @@ def read_acoustix(path):
     return rate, samples[:, 1:5].astype(np.float64) / 32768.0
 
 
-def music_spectrum(samples, rate, nfft=512, hop=128, sources=1):
+def music_spectrum(samples, rate, nfft=512, hop=128, sources=1, algorithm="auto"):
     """Return angular pseudo-spectrum; fixed one-source hypothesis by default.
 
     Wideband normalized MUSIC: average normalized frequency-bin spectra.
@@ -33,6 +33,11 @@ def music_spectrum(samples, rate, nfft=512, hop=128, sources=1):
         raise ValueError("four microphone channels required")
     if sources < 1 or sources > 4:
         raise ValueError("sources must be in 1..4")
+    if algorithm not in ("auto", "normmusic", "srp-phat"):
+        raise ValueError("unknown SSL algorithm")
+    if algorithm == "normmusic" and sources == 4:
+        raise ValueError("four-microphone MUSIC cannot resolve four independent sources")
+    method = ("srp-phat" if sources == 4 else "normmusic") if algorithm == "auto" else algorithm
     if not np.isfinite(samples).all() or rate <= 0:
         raise ValueError("finite PCM and positive sample rate required")
     if len(samples) < nfft + hop * 7:
@@ -56,7 +61,7 @@ def music_spectrum(samples, rate, nfft=512, hop=128, sources=1):
         cov = x.T @ x.conj() / len(x)
         if np.trace(cov).real < 1e-12:
             continue
-        if sources == 4:
+        if method == "srp-phat":
             score = np.zeros(len(angles))
             for i, j in pairs:
                 cross = cov[i, j]
@@ -101,7 +106,7 @@ def select_peaks(angles, spectrum, count, min_separation_deg=20):
 
 
 def windowed_music(audio, rate, window_seconds=0.5, step_seconds=0.25,
-                   sources=1):
+                   sources=1, algorithm="auto"):
     """Emit time-indexed SSL hypotheses; silence windows yield no detection.
 
     No oracle is consulted. These are hypotheses, not one-to-one speaker
@@ -122,7 +127,7 @@ def windowed_music(audio, rate, window_seconds=0.5, step_seconds=0.25,
         segment = audio[start:start + width]
         try:
             angles, spectrum, bins = music_spectrum(segment, rate,
-                                                    sources=sources)
+                                                    sources=sources, algorithm=algorithm)
         except ValueError as exc:
             if str(exc) == "no non-silent frequency bins":
                 result.append({"start_sample": start, "end_sample": start + width,
@@ -141,17 +146,18 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("wav")
     p.add_argument("--sources", type=int, default=1)
+    p.add_argument("--algorithm", choices=("auto", "normmusic", "srp-phat"), default="auto")
     p.add_argument("--output", required=True)
     p.add_argument("--window-seconds", type=float, default=0.5)
     p.add_argument("--step-seconds", type=float, default=0.25)
     args = p.parse_args()
     rate, audio = read_acoustix(args.wav)
     windows = windowed_music(audio, rate, args.window_seconds,
-                             args.step_seconds, sources=args.sources)
+                             args.step_seconds, sources=args.sources, algorithm=args.algorithm)
     # A completely silent file is a valid negative fixture (T00), not a crash.
     # Keep the same schema but explicitly emit no global direction.
     try:
-        angles, spectrum, bins = music_spectrum(audio, rate, sources=args.sources)
+        angles, spectrum, bins = music_spectrum(audio, rate, sources=args.sources, algorithm=args.algorithm)
         global_status = "hypothesis"
         global_peak = float(angles[np.argmax(spectrum)])
     except ValueError as exc:
@@ -162,7 +168,7 @@ def main():
         bins = 0
         global_status = "silent"
         global_peak = None
-    result = {"algorithm": "experimental_srp_phat" if args.sources == 4 else "experimental_normmusic", "status": "diagnostic_only",
+    result = {"algorithm": "experimental_" + (("srp_phat" if args.sources == 4 else "normmusic") if args.algorithm == "auto" else args.algorithm.replace("-", "_")), "status": "diagnostic_only",
               "rate_hz": rate, "mic_geometry_m": MIC_XY.tolist(),
               "pcm_channels_zero_based": [1, 2, 3, 4],
               "source_hypothesis": args.sources, "frequency_bins": bins,
