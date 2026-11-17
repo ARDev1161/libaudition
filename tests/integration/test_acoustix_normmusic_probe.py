@@ -52,6 +52,16 @@ class NormMusicTests(unittest.TestCase):
                 self.assertGreater(used, 0)
                 self.assertLessEqual(circular_error(float(angles[np.argmax(score)]), direction), 8)
 
+    def test_four_source_request_uses_nonempty_srp_phat_spectrum(self):
+        # A four-mic MUSIC noise subspace has dimension zero at four sources.
+        # The explicit PHAT fallback must still produce directional evidence.
+        audio = delayed_broadband(40)
+        angles, spectrum, bins = probe.music_spectrum(audio, 16000, sources=4)
+        self.assertGreater(bins, 0)
+        self.assertTrue(np.isfinite(spectrum).all())
+        self.assertGreater(float(spectrum.max() - spectrum.min()), 0)
+        self.assertLessEqual(circular_error(float(angles[np.argmax(spectrum)]), 40), 12)
+
     def test_silence_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "no non-silent"):
             probe.music_spectrum(np.zeros((2048, 4)), 16000)
