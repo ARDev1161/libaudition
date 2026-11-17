@@ -36,12 +36,12 @@ def score(hypotheses, oracle, tolerance_deg=25):
         raise ValueError("window count mismatch")
     tp = fp = fn = 0
     errors = []
-    previous_end = 0
+    previous_start = -1
     for h, truth in zip(hypotheses, oracle):
         hb, tb = _bounds(h), _bounds(truth)
-        if hb[0] < previous_end:
-            raise ValueError("overlapping or unordered windows")
-        previous_end = hb[1]
+        if hb[0] <= previous_start:
+            raise ValueError("duplicate or unordered window starts")
+        previous_start = hb[0]
         if hb != tb:
             raise ValueError("window sample bounds mismatch")
         targets = truth["azimuths_deg"]
