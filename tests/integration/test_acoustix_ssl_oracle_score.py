@@ -44,6 +44,33 @@ class ScoreTests(unittest.TestCase):
         result = mod.score([h(0, "hypothesis", -179)], [o(0, [179])])
         self.assertEqual(result["matched_azimuth_median_deg"], 2)
 
+    def test_rejects_malformed_numeric_inputs(self):
+        for bad in [None, True, "30", float("nan"), float("inf")]:
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    mod.score([h(0, "hypothesis", bad)], [o(0, [30])])
+                with self.assertRaises(ValueError):
+                    mod.score([h(0, "silent")], [o(0, [bad])])
+                with self.assertRaises(ValueError):
+                    mod.score([h(0, "silent")], [o(0, [])], tolerance_deg=bad)
+
+    def test_rejects_invalid_window_bounds(self):
+        for start, end in [(-1, 8000), (0, 0), (0, True), (False, 8000)]:
+            with self.subTest(start=start, end=end):
+                hypothesis = h(0, "silent")
+                hypothesis.update(start_sample=start, end_sample=end)
+                with self.assertRaises(ValueError):
+                    mod.score([hypothesis], [o(0, [])])
+
+    def test_rejects_overlapping_or_unordered_windows(self):
+        with self.assertRaisesRegex(ValueError, "overlapping"):
+            mod.score([h(0, "silent"), h(4000, "silent")],
+                      [o(0, []), o(4000, [])])
+
+    def test_rejects_nonlist_oracle(self):
+        with self.assertRaisesRegex(ValueError, "list"):
+            mod.score([h(0, "silent")], [o(0, "30")])
+
     def test_unmatched_direction(self):
         result = mod.score([h(0, "hypothesis", 90)], [o(0, [-90])])
         self.assertEqual((result["true_positives"], result["false_proposals"], result["missed_sources"]), (0, 1, 1))
