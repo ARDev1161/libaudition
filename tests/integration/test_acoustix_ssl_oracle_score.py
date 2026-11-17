@@ -79,6 +79,20 @@ class ScoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "list"):
             mod.score([h(0, "silent")], [o(0, "30")])
 
+    def test_empty_comparison_fails_closed(self):
+        for hypotheses, oracle in [([], []), ([], [o(0, [])]), ([h(0, "silent")], [])]:
+            with self.subTest(hypotheses=hypotheses, oracle=oracle):
+                with self.assertRaisesRegex(ValueError, "empty"):
+                    mod.score(hypotheses, oracle)
+
+    def test_silent_window_with_direction_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "silent window"):
+            mod.score([h(0, "silent", 45)], [o(0, [])])
+
+    def test_hypothesis_without_direction_fails_closed(self):
+        with self.assertRaises(ValueError):
+            mod.score([h(0, "hypothesis", None)], [o(0, [30])])
+
     def test_unmatched_direction(self):
         result = mod.score([h(0, "hypothesis", 90)], [o(0, [-90])])
         self.assertEqual((result["true_positives"], result["false_proposals"], result["missed_sources"]), (0, 1, 1))
