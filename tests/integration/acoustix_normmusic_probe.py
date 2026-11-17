@@ -66,6 +66,25 @@ def music_spectrum(samples, rate, nfft=512, hop=128, sources=1):
 
 
 
+def select_peaks(angles, spectrum, count, min_separation_deg=20):
+    """Pick independent circular local maxima, not repeated adjacent bins."""
+    if count < 1:
+        raise ValueError("positive peak count required")
+    peaks = []
+    for i in range(len(spectrum)):
+        if spectrum[i] >= spectrum[(i - 1) % len(spectrum)] and spectrum[i] > spectrum[(i + 1) % len(spectrum)]:
+            peaks.append(i)
+    peaks.sort(key=lambda i: (-float(spectrum[i]), float(angles[i])))
+    selected = []
+    for i in peaks:
+        if all(abs((float(angles[i]) - float(angles[j]) + 180) % 360 - 180) >= min_separation_deg
+               for j in selected):
+            selected.append(i)
+            if len(selected) == count:
+                break
+    return [float(angles[i]) for i in selected]
+
+
 def windowed_music(audio, rate, window_seconds=0.5, step_seconds=0.25,
                    sources=1):
     """Emit time-indexed SSL hypotheses; silence windows yield no detection.
@@ -92,12 +111,13 @@ def windowed_music(audio, rate, window_seconds=0.5, step_seconds=0.25,
         except ValueError as exc:
             if str(exc) == "no non-silent frequency bins":
                 result.append({"start_sample": start, "end_sample": start + width,
-                               "status": "silent", "peak_azimuth_deg": None})
+                               "status": "silent", "peak_azimuth_deg": None, "azimuths_deg": []})
                 continue
             raise
         result.append({"start_sample": start, "end_sample": start + width,
                        "status": "hypothesis",
                        "peak_azimuth_deg": float(angles[np.argmax(spectrum)]),
+                       "azimuths_deg": select_peaks(angles, spectrum, sources),
                        "frequency_bins": bins})
     return result
 
@@ -133,6 +153,7 @@ def main():
               "source_hypothesis": args.sources, "frequency_bins": bins,
               "peak_azimuth_deg": global_peak,
               "global_status": global_status,
+              "azimuths_deg": select_peaks(angles, spectrum, args.sources) if bins else [],
               "angles_deg": angles.tolist(), "normalized_spectrum": spectrum.tolist(),
               "windows": windows}
     with open(args.output, "w", encoding="utf-8") as out:
