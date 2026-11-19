@@ -76,8 +76,15 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
     errors = []
     azimuth_errors = []
     simultaneous = []
+    simultaneous_matched = []
+    multi_voice_hops = fully_matched_multi_voice_hops = 0
     all_counts = []
     max_active_voices = 0
+    unmatched_track_observations_during_voice = 0
+    max_unmatched_tracks_during_voice = 0
+    unmatched_track_ids_during_voice = set()
+    unmatched_runs = {}
+    max_consecutive_unmatched_hops = 0
     for point in ground_truth:
         hop = int(point["hop"])
         voices = [src for src in point["sources"] if src["kind"] == "voice"]
@@ -88,9 +95,30 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
             continue
         active_hops += 1
         total_voice_hops += len(voices)
-        if len(voices) > 1:
-            simultaneous.append(len(tracks))
         matches = match_sources_to_tracks(voices, tracks, max_error_deg)
+        # Every track is assigned at most once. Unassigned tracks are not
+        # evidence of an additional speaker, even when total recall improves.
+        unmatched = len(tracks) - len(matches)
+        unmatched_track_observations_during_voice += unmatched
+        max_unmatched_tracks_during_voice = max(max_unmatched_tracks_during_voice, unmatched)
+        matched_track_ids = {str(track["id"]) for _, track, _ in matches}
+        unmatched_ids = {str(track["id"]) for track in tracks} - matched_track_ids
+        unmatched_track_ids_during_voice.update(unmatched_ids)
+        # A run is consecutive only across oracle-active hops; a missing
+        # observation or a matched track breaks the false-track run.
+        for tid in list(unmatched_runs):
+            if tid not in unmatched_ids:
+                del unmatched_runs[tid]
+        for tid in unmatched_ids:
+            previous_hop, length = unmatched_runs.get(tid, (None, 0))
+            length = length + 1 if previous_hop == hop - 1 else 1
+            unmatched_runs[tid] = (hop, length)
+            max_consecutive_unmatched_hops = max(max_consecutive_unmatched_hops, length)
+        if len(voices) > 1:
+            multi_voice_hops += 1
+            simultaneous.append(len(tracks))
+            simultaneous_matched.append(len(matches))
+            fully_matched_multi_voice_hops += int(len(matches) == len(voices))
         matched_voice_hops += len(matches)
         if matches:
             matched_hops += 1
@@ -133,8 +161,18 @@ def compute_metrics(ground_truth: list, observations: list, summary: dict,
             if active_hops else None,
         "max_active_voices": max_active_voices,
         "max_simultaneous_tracks": max(all_counts, default=0),
+        "unmatched_track_observations_during_voice": unmatched_track_observations_during_voice,
+        "max_unmatched_tracks_during_voice": max_unmatched_tracks_during_voice,
+        "distinct_unmatched_track_ids_during_voice": len(unmatched_track_ids_during_voice),
+        "max_consecutive_unmatched_track_hops_during_voice": max_consecutive_unmatched_hops,
         "mean_tracks_during_multi_voice": round(statistics.mean(simultaneous), 4)
             if simultaneous else None,
+        "max_tracks_during_multi_voice": max(simultaneous, default=0),
+        "max_unique_oracle_matches_during_multi_voice": max(simultaneous_matched, default=0),
+        "multi_voice_hops": multi_voice_hops,
+        "fully_matched_multi_voice_hops": fully_matched_multi_voice_hops,
+        "fully_matched_multi_voice_fraction": round(fully_matched_multi_voice_hops / multi_voice_hops, 6)
+            if multi_voice_hops else None,
         "matched_median_3d_angular_error_deg": round(statistics.median(errors), 4)
             if errors else None,
         "matched_p90_3d_angular_error_deg": round(
