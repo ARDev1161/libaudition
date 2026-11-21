@@ -24,7 +24,7 @@ jobs:
           - variant: dev
             odas_sha: 4c8e3bfcb56124ee340477a2443ea2ebe11ee712
           - variant: feature
-            odas_sha: 580759c1906ab8f05f0293499e31f58bb0febf6c
+            odas_sha: fdce209c0aa86d1e2a944b9cbc0a88eaed897bda
     steps:
       - uses: actions/checkout@v4
         with:
