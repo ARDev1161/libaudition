@@ -175,7 +175,7 @@ jobs:
           for case in ("t02_dev_single","t03_eval_two","t07_eval_seven"):
               wav=root/case/"render"/"input.wav"
               assert wav.is_file() and wav.stat().st_size>44
-              (root/case/"input_sha256.txt").write_text(hashlib.sha256(wav.read_bytes()).hexdigest()+"\\n")
+              (root/case/"input_sha256.txt").write_text(hashlib.sha256(wav.read_bytes()).hexdigest()+"\n")
           PY
       - name: Install native ODAS build dependencies
         run: |
