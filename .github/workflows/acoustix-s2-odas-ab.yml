@@ -34,7 +34,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p build-s2
-          gh run download 42367742782 --repo ARDev1161/libaudition --name acoustix-s2-real-librispeech-evidence --dir build-s2
+          gh run download 44969895510 --repo ARDev1161/libaudition --name acoustix-s2-frozen-fixture --dir build-s2
           python3 - <<'PY'
           import hashlib,json
           from pathlib import Path
