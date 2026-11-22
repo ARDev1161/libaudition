@@ -1,7 +1,7 @@
 name: Acoustix S2 ODAS upstream-dev-feature A/B (real replay)
 on:
   pull_request:
-    branches: [test/acoustix-s2-odas-replay-trace]
+    branches: [test/acoustix-s2-upstream-dev-feature-ab]
     paths:
       - '.github/workflows/acoustix-s2-odas-ab.yml'
       - 'tests/integration/odas_paired_quality_verdict.py'
@@ -24,7 +24,7 @@ jobs:
           - variant: dev
             odas_sha: 4c8e3bfcb56124ee340477a2443ea2ebe11ee712
           - variant: feature
-            odas_sha: e7c4d053d1536bbfe456a967c10a84d539f2d8f4
+            odas_sha: e09f12514c77ecfb53aa382ed3b855d23bd48aa8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,7 +34,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p build-s2
-          gh run download 42367742782 --repo ARDev1161/libaudition --name acoustix-s2-real-librispeech-evidence --dir build-s2
+          gh run download 44969895510 --repo ARDev1161/libaudition --name acoustix-s2-frozen-fixture --dir build-s2
           python3 - <<'PY'
           import hashlib,json
           from pathlib import Path
